@@ -1108,6 +1108,249 @@ body,
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Cenas animadas da tela Início (laser, guindaste, bateria, calandra…) */
+/* ------------------------------------------------------------------ */
+
+/* Cilindro novo subindo do pátio até o vão embaixo do carrinho. */
+@keyframes cena-icar {
+  from {
+    transform: translateY(var(--desl));
+    opacity: 0;
+  }
+
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes cena-icar-cabo {
+  from {
+    transform: scaleY(var(--sy));
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+@keyframes cena-assenta {
+  0% {
+    transform: scaleY(1);
+  }
+
+  35% {
+    transform: scaleY(0.93);
+  }
+
+  70% {
+    transform: scaleY(1.02);
+  }
+
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+/* Tronco (ou carga solta) tombando até deitar no chão, com um quique. */
+@keyframes cena-desaba {
+  0% {
+    transform: none;
+  }
+
+  72% {
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot));
+  }
+
+  86% {
+    transform: translate(var(--dx), calc(var(--dy) - 5px)) rotate(var(--rot));
+  }
+
+  100% {
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot));
+  }
+}
+
+@keyframes cena-poeira {
+  from {
+    transform: scale(0.4);
+    opacity: 0.7;
+  }
+
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+@keyframes cena-gira {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cena-fagulha {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  35% {
+    opacity: 0.65;
+    transform: scale(1.35);
+  }
+
+  70% {
+    opacity: 0.9;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes cena-pulsa {
+  from {
+    opacity: 0.25;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cena-fluxo {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+@keyframes cena-pisca {
+  0%,
+  60% {
+    opacity: 1;
+  }
+
+  61%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes cena-flutua {
+  0%,
+  100% {
+    transform: translateY(-2px);
+  }
+
+  50% {
+    transform: translateY(2px);
+  }
+}
+
+@keyframes cena-brilho {
+  0% {
+    transform: scale(0) rotate(0deg);
+    opacity: 0;
+  }
+
+  40% {
+    transform: scale(1.2) rotate(45deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0) rotate(90deg);
+    opacity: 0;
+  }
+}
+
+.cena-icar {
+  animation: cena-icar 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+.cena-icar-cabo {
+  animation: cena-icar-cabo 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+/* Assentar o tronco: a carga desce o vão inteiro e o cabo estica junto. */
+.cena-desce {
+  transform: translateY(24px);
+  transition: transform 0.32s cubic-bezier(0.5, 0, 0.9, 0.6);
+}
+
+.cena-desce-cabo {
+  transform: scaleY(var(--sy-desce));
+  transition: transform 0.32s cubic-bezier(0.5, 0, 0.9, 0.6);
+}
+
+.cena-assenta {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: cena-assenta 0.45s ease-out;
+}
+
+.cena-desaba {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: cena-desaba 1s cubic-bezier(0.5, 0, 0.9, 0.6) var(--atraso, 0s) both;
+}
+
+.cena-poeira {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: cena-poeira 0.7s ease-out forwards;
+}
+
+.cena-gira {
+  animation: cena-gira 1s linear infinite;
+}
+
+.cena-fagulha {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: cena-fagulha 0.22s linear infinite;
+}
+
+.cena-pulsa {
+  animation: cena-pulsa 0.9s ease-in-out infinite alternate;
+}
+
+.cena-fluxo {
+  animation: cena-fluxo 0.6s linear infinite;
+}
+
+.cena-pisca {
+  animation: cena-pisca 1.4s steps(1) infinite;
+}
+
+.cena-flutua {
+  animation: cena-flutua 3s ease-in-out infinite;
+}
+
+.cena-brilho {
+  animation: cena-brilho 1.4s ease-out 2 backwards;
+}
+
+.cena-some {
+  opacity: 0;
+  transition: opacity 0.6s;
+}
+
+/* Movimento ambiente some com movimento reduzido; o que a pessoa dispara com
+   o clique (assentar, poeira) fica, encurtado pela regra global acima. */
+@media (prefers-reduced-motion: reduce) {
+
+  .cena-gira,
+  .cena-fagulha,
+  .cena-pulsa,
+  .cena-fluxo,
+  .cena-pisca,
+  .cena-flutua,
+  .cena-brilho {
+    animation: none !important;
+  }
+}
+
 /* Barra regressiva de 6 segundos para toasts com ação de Desfazer */
 @keyframes toast-countdown {
   from {

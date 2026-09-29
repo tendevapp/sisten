@@ -28,7 +28,7 @@ import { formatDateTimeBR } from '../lib/format';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
-import { supabase, supabaseAdmin } from './supabaseClient';
+import { supabase } from './supabaseClient';
 import { emailDeLogin, ehEmailInterno, usuarioLoginValido } from '../lib/loginSemEmail';
 import { FBL1N_COLUMNS, mapFbl1nRow } from '../lib/fbl1n';
 import { MB51_COLUMNS, mapMb51Row, parseMb51Number } from '../lib/mb51';
@@ -8821,7 +8821,7 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const client = supabaseAdmin || supabase;
+      const client = supabase;
       const { error } = await client.from('core_perfis')
         .update({
           status: status,
@@ -8863,7 +8863,7 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const client = supabaseAdmin || supabase;
+      const client = supabase;
       const { error } = await client.from('core_perfis')
         .update({
           roles: [role],
@@ -8906,7 +8906,7 @@ class LocalDatabase {
     }
 
     if (supabase) {
-      const client = supabaseAdmin || supabase;
+      const client = supabase;
       const { error } = await client.from('core_perfis')
         .update({
           sector_id: normalizedSectorId
@@ -8941,11 +8941,9 @@ class LocalDatabase {
    * e-mail, o usuário já nasce ativo e com `must_change_password`, então a
    * senha provisória digitada pelo admin só serve para o primeiro login.
    *
-   * Criar usuário já confirmado exige a Admin API. Caminho preferido: a Edge
-   * Function `admin-criar-usuario`, que guarda a service_role só no servidor e
-   * confere o papel `admin` do chamador. Se a função não estiver publicada,
-   * cai para a Admin API direta (`supabaseAdmin`, que exige
-   * VITE_SUPABASE_SERVICE_ROLE_KEY no build).
+   * Criar usuário já confirmado exige a Admin API, que só roda na Edge Function
+   * `admin-criar-usuario`: ela guarda a service_role no servidor e confere o
+   * papel `admin` do chamador. O navegador não tem service_role.
    */
   public async criarUsuarioSemEmail(params: {
     nome: string;
@@ -9009,97 +9007,12 @@ class LocalDatabase {
       console.warn('admin-criar-usuario indisponível, tentando via Admin API direta:', e);
     }
 
-    // 1b. Fallback: Admin API direta com a service_role do build.
-    if (!supabaseAdmin) {
-      return {
-        profile: null,
-        erro: 'Criação de usuário indisponível: publique a Edge Function admin-criar-usuario (npx supabase functions deploy admin-criar-usuario) ou configure a chave service_role no build.',
-      };
-    }
-
-    const email = emailDeLogin(usuario);
-
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password: senha,
-      // Sem caixa de e-mail não há como confirmar o endereço; confirmar na
-      // criação é o que permite o primeiro login acontecer.
-      email_confirm: true,
-      user_metadata: {
-        name: nome,
-        cargo: (params.cargo || '').trim(),
-        sector_id: params.sectorId ?? null,
-      },
-    });
-
-    if (error) {
-      console.error('Erro ao criar usuário sem e-mail via Admin API:', error);
-      const msg = error.message || '';
-      if (/already been registered|already exists|duplicate/i.test(msg)) {
-        return { profile: null, erro: `O identificador "${usuario}" já está em uso. Tente incluir o nome do meio.` };
-      }
-      const status = (error as any).status;
-      if (status === 401 || status === 403 || /not_admin|not allowed|service_role/i.test(msg)) {
-        return { profile: null, erro: 'Sem permissão para criar usuários. Verifique a chave service_role do Supabase.' };
-      }
-      return { profile: null, erro: msg || 'Falha ao criar o usuário no servidor.' };
-    }
-
-    const novoId = data.user?.id;
-    if (!novoId) return { profile: null, erro: 'O servidor não devolveu o usuário criado.' };
-
-    // O trigger `handle_new_user` já criou o perfil com papel padrão; aqui
-    // vale o que o admin escolheu na tela.
-    const perfil: Profile = {
-      id: novoId,
-      email,
-      name: nome,
-      cargo: (params.cargo || '').trim(),
-      sector_id: params.sectorId ?? null,
-      roles: [params.role || 'visualizador'],
-      page_access: {},
-      status: 'ativo',
-      must_change_password: true,
-      login_sem_email: true,
-      created_at: new Date().toISOString(),
-    } as Profile;
-
-    // Escrita pelo cliente de serviço, não pelo cliente do admin logado: a
-    // policy de INSERT em `core_perfis` é `auth.uid() = id` — cada um cria só
-    // o próprio perfil — e esta linha é de outra pessoa. Sem isso o PostgREST
-    // devolve 403 e o acesso nasce sem perfil.
-    const { error: perfilError } = await supabaseAdmin
-      .from('core_perfis')
-      .upsert(perfil as any, { onConflict: 'id' });
-
-    if (perfilError) {
-      console.error('Erro ao gravar perfil do usuário sem e-mail:', perfilError);
-      // O acesso existiria no Auth sem perfil correspondente — o login
-      // seguiria com um id órfão. Desfaz para não deixar meio-usuário.
-      //
-      // Apagar o usuário do Auth NÃO apaga a linha que o trigger
-      // `handle_new_user` já criou em `core_perfis`: sem a limpeza abaixo,
-      // cada tentativa falha deixava um perfil sem dono no diretório.
-      await supabaseAdmin.auth.admin.deleteUser(novoId).catch(() => undefined);
-      await supabaseAdmin.from('core_perfis').delete().eq('id', novoId).then(
-        () => undefined,
-        () => undefined,
-      );
-      return { profile: null, erro: 'Usuário criado no login, mas falhou ao gravar o perfil. Nada foi mantido; tente novamente.' };
-    }
-
-    const perfis = this.getProfiles();
-    perfis.push(perfil);
-    this.setStorageItem(this.profilesKey, perfis);
-
-    this.logActivity(
-      'admin',
-      'Administração',
-      'Novo Usuário',
-      `Acesso sem e-mail criado para ${nome} (${usuario}). Troca de senha obrigatória no primeiro login.`,
-    );
-
-    return { profile: perfil, erro: null };
+    // Criar usuário já confirmado exige a Admin API, que só roda no servidor
+    // (Edge Function): o navegador não guarda service_role.
+    return {
+      profile: null,
+      erro: 'Criação de usuário indisponível: publique a Edge Function admin-criar-usuario (npx supabase functions deploy admin-criar-usuario).',
+    };
   }
 
   // Reset de senha forçado pelo admin (Painel de Administração > Usuários).
@@ -9107,10 +9020,9 @@ class LocalDatabase {
   // Admin API e o perfil é marcado com must_change_password para obrigar o
   // usuário a criar a própria senha logo após o próximo login.
   //
-  // Caminho preferido: a Edge Function `admin-reset-password`, que guarda a
-  // service_role só no servidor e confere o papel `admin` do chamador. Se a
-  // função ainda não estiver publicada, cai para a Admin API direta (que exige
-  // VITE_SUPABASE_SERVICE_ROLE_KEY no build). Retorna 'sucesso' ou uma mensagem.
+  // Roda na Edge Function `admin-reset-password`, que guarda a service_role só
+  // no servidor e confere o papel `admin` do chamador. Retorna 'sucesso' ou uma
+  // mensagem.
   public async adminResetUserPassword(userId: string, newPassword: string): Promise<string> {
     if (!newPassword || newPassword.length < 6) {
       return 'A senha provisória deve ter pelo menos 6 caracteres.';
@@ -9150,43 +9062,9 @@ class LocalDatabase {
       console.warn('admin-reset-password indisponível, tentando via Admin API direta:', e);
     }
 
-    // 1b. Fallback: Admin API direta. Sem a service_role key configurada,
-    //     supabaseAdmin cai para a chave anônima e a Admin API responde 403.
-    const adminClient = supabaseAdmin || supabase;
-    const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
-      password: newPassword,
-    });
-    if (authError) {
-      console.error('Erro ao redefinir senha do usuário via Admin API:', authError);
-      const status = (authError as any).status;
-      if (status === 401 || status === 403 || /not_admin|not admin|service_role|user not allowed/i.test(authError.message || '')) {
-        return 'Sem permissão para redefinir senha. Publique a Edge Function admin-reset-password (npx supabase functions deploy admin-reset-password) ou configure a chave service_role no build.';
-      }
-      return authError.message || 'Falha ao redefinir a senha no servidor.';
-    }
-
-    // 2. Marca o perfil para exigir troca de senha no próximo login.
-    const prevFlag = users[idx].must_change_password;
-    users[idx].must_change_password = true;
-    this.setStorageItem(this.profilesKey, users);
-
-    const { error: flagError } = await supabase.from('core_perfis')
-      .update({ must_change_password: true })
-      .eq('id', userId);
-
-    if (flagError) {
-      console.error('Erro ao marcar must_change_password no Supabase:', flagError);
-      const revert = this.getProfiles();
-      const rIdx = revert.findIndex(u => u.id === userId);
-      if (rIdx !== -1) {
-        revert[rIdx].must_change_password = prevFlag;
-        this.setStorageItem(this.profilesKey, revert);
-      }
-      return 'A senha foi alterada, mas não foi possível marcar a exigência de troca. Tente novamente.';
-    }
-
-    this.logActivity('admin', 'Administração', 'Resetar Senha', `Senha de ${users[idx].name} redefinida pelo admin. Troca obrigatória no próximo login.`);
-    return 'sucesso';
+    // A Admin API só roda no servidor (Edge Function): o navegador não guarda
+    // service_role. Sem a função publicada não há como redefinir a senha.
+    return 'Redefinição de senha indisponível: publique a Edge Function admin-reset-password (npx supabase functions deploy admin-reset-password).';
   }
 
   // Define o grupo de compras SAP (ex.: 314, 358) associado a este usuário,
@@ -9202,7 +9080,7 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const client = supabaseAdmin || supabase;
+      const client = supabase;
       const { error } = await client.from('core_perfis')
         .update({ grupo_compras: value })
         .eq('id', userId);
@@ -9237,7 +9115,7 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const client = supabaseAdmin || supabase;
+      const client = supabase;
       const { error } = await client.from('core_perfis')
         .update({ aprovador_setores: sectorIds })
         .eq('id', userId);
@@ -9271,7 +9149,7 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const client = supabaseAdmin || supabase;
+      const client = supabase;
       const { error } = await client.from('core_perfis')
         .update({ demandas_setores: sectorIds })
         .eq('id', userId);
@@ -9306,7 +9184,7 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const client = supabaseAdmin || supabase;
+      const client = supabase;
       const { error } = await client.from('core_perfis')
         .update({ aprovador_cadastro_sap: value })
         .eq('id', userId);
@@ -9980,7 +9858,7 @@ class LocalDatabase {
     }
 
     if (supabase) {
-      const client = supabaseAdmin || supabase;
+      const client = supabase;
       const payload: Record<string, any> = { name: upperName, cargo: cleanCargo };
       if (normalizedSectorId !== undefined) {
         payload.sector_id = normalizedSectorId;

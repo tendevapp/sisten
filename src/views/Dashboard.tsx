@@ -24,7 +24,7 @@ import type { Notification, Profile, Request } from '../types';
 import { PAGES, canAccessPage, pageIdForPath } from '../lib/pages';
 import { getRecentPages, getFavoritePages, toggleFavoritePage } from '../lib/homePrefs';
 import { resolverRotaNotificacao } from '../lib/notificationRouting';
-import TorreEolica from '../components/home/TorreEolica';
+import CenaInicio from '../components/home/CenaInicio';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
@@ -307,7 +307,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      {/* Saudação — com a torre eólica girando ao lado, só de enfeite */}
+      {/* Saudação — com uma cena animada ao lado (sorteada a cada login), só de enfeite */}
       <header data-tour="inicio-saudacao" className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-1">
           <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
@@ -322,7 +322,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
             </span>
           </p>
         </div>
-        <TorreEolica />
+        <CenaInicio />
       </header>
 
       {/* Indicadores relevantes ao usuário */}

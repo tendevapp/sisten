@@ -11,14 +11,25 @@ describe('supabaseClient', () => {
     vi.unstubAllEnvs();
     vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
     vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-key');
-    vi.stubEnv('VITE_SUPABASE_SERVICE_ROLE_KEY', '');
   });
 
-  it('não cria cliente administrativo a partir da chave anônima', async () => {
-    const { supabase, supabaseAdmin } = await import('./supabaseClient');
+  it('cria um único cliente, com a chave anônima', async () => {
+    const modulo = await import('./supabaseClient');
 
-    expect(supabase).toEqual({ client: true });
-    expect(supabaseAdmin).toBeNull();
+    expect(modulo.supabase).toEqual({ client: true });
     expect(createClient).toHaveBeenCalledTimes(1);
+    expect((createClient.mock.calls[0] as unknown[])[1]).toBe('anon-key');
+  });
+
+  it('não usa a chave de serviço mesmo que ela esteja no ambiente do build', async () => {
+    vi.stubEnv('VITE_SUPABASE_SERVICE_ROLE_KEY', 'service-role-key');
+
+    const modulo = await import('./supabaseClient');
+
+    expect(modulo).not.toHaveProperty('supabaseAdmin');
+    expect(createClient).toHaveBeenCalledTimes(1);
+    for (const chamada of createClient.mock.calls as unknown[][]) {
+      expect(chamada[1]).not.toBe('service-role-key');
+    }
   });
 });

@@ -6,8 +6,8 @@
  * diretamente para as tabelas sup_cotacao_processos, sup_cotacao_propostas e
  * sup_cotacao_proposta_itens do Supabase.
  *
- * Uso:
- *   node scripts/importar_cotacoes_csv.mjs [caminho_do_arquivo.csv]
+ * Uso (a chave de serviço vem só do ambiente, nunca do código):
+ *   SUPABASE_SERVICE_ROLE_KEY="..." node scripts/importar_cotacoes_csv.mjs [caminho_do_arquivo.csv]
  */
 
 import fs from 'fs';
@@ -17,7 +17,12 @@ const require = createRequire(import.meta.url);
 const { createClient } = require('@supabase/supabase-js');
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://fwezzgduywgyhxinjurn.supabase.co';
-const serviceRoleKey = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || process.env.service_role || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3ZXp6Z2R1eXdneWh4aW5qdXJuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzI2NDE3NywiZXhwIjoyMDk4ODQwMTc3fQ.JRDHILtVGZUY66YsxS9Vjgyw5_Q1jv1zfLfsoBnWviQ';
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!serviceRoleKey) {
+  console.error('Defina SUPABASE_SERVICE_ROLE_KEY no ambiente antes de rodar este script.');
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 

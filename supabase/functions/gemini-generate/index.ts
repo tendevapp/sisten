@@ -39,6 +39,7 @@ const json = (body: unknown, status = 200) =>
 
 /** Preço por 1M de tokens (USD) — estimativa para a tela de análise, não é fonte oficial de cobrança. Ver o mesmo padrão em converter-markdown-ia. */
 const PRECO_POR_1M_TOKENS: Record<string, { entrada: number; saida: number }> = {
+  'gemini-3.6-flash': { entrada: 0.10, saida: 0.40 },
   'gemini-2.0-flash': { entrada: 0.10, saida: 0.40 },
   'gemini-flash-latest': { entrada: 0.10, saida: 0.40 },
   'gemini-1.5-flash': { entrada: 0.075, saida: 0.30 },
@@ -137,8 +138,8 @@ serve(async (req: Request) => {
 
     const body = await req.json().catch(() => ({}));
 
-    // Determina o modelo (padrão: gemini-flash-latest conforme cURL fornecido)
-    model = body.model || Deno.env.get('GEMINI_MODEL') || 'gemini-flash-latest';
+    // Determina o modelo (padrao: gemini-3.6-flash)
+    model = body.model || Deno.env.get('GEMINI_MODEL') || 'gemini-3.6-flash';
 
     // Monta o payload de contents
     let contents = body.contents;
@@ -165,7 +166,7 @@ serve(async (req: Request) => {
     // Prepara chamada HTTP para a API do Google Gemini
     const googleApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
-    const response = await fetch(googleApiUrl, {
+    let response = await fetch(googleApiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -178,7 +179,40 @@ serve(async (req: Request) => {
       }),
     });
 
-    const data = await response.json();
+    let data = await response.json().catch(() => ({}));
+
+    // Fallback de resiliência: se o modelo solicitado sofreu alta demanda (503 ou 429) e não era gemini-3.6-flash, tenta fallback automático
+    if (!response.ok && (response.status === 503 || response.status === 429) && model !== 'gemini-3.6-flash') {
+      const fallbackModel = 'gemini-3.6-flash';
+      const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/${fallbackModel}:generateContent`;
+      const fallbackResp = await fetch(fallbackUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents,
+          generationConfig: body.generationConfig,
+          safetySettings: body.safetySettings,
+        }),
+      });
+
+      if (fallbackResp.ok) {
+        const fallbackData = await fallbackResp.json().catch(() => ({}));
+        const duracaoMs = Date.now() - inicio;
+        await registrarUso({
+          modelo: `${fallbackModel} (fallback de ${model})`,
+          userId,
+          userName,
+          usageMetadata: fallbackData.usageMetadata,
+          duracaoMs,
+          sucesso: true,
+        });
+        return json(fallbackData, 200);
+      }
+    }
+
     const duracaoMs = Date.now() - inicio;
 
     if (!response.ok) {
@@ -188,6 +222,7 @@ serve(async (req: Request) => {
         {
           erro: {
             codigo: 'ERRO_API_GEMINI',
+            mensagem: mensagemErro,
             status: response.status,
             detalhes: data,
           },

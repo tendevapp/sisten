@@ -30,6 +30,7 @@ const PROMPT_CHAVE = 'vincular-cotacao-sap';
 
 const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-3.6-flash';
 const OPENROUTER_MODEL = Deno.env.get('OPENROUTER_MODEL') || 'deepseek/deepseek-v4-flash';
+const OPENAI_MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 
 const TIMEOUT_GEMINI_MS = 90_000;
 const TIMEOUT_MS = 150_000;
@@ -96,9 +97,9 @@ interface ResultadoProvedor {
   modelo: string;
 }
 
-async function chamarGemini(prompt: string, entrada: string, apiKey: string, rotulo: string): Promise<ResultadoProvedor> {
+async function chamarGemini(prompt: string, entrada: string, apiKey: string, rotulo: string, modelo = GEMINI_MODEL): Promise<ResultadoProvedor> {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL, systemInstruction: prompt });
+  const model = genAI.getGenerativeModel({ model: modelo, systemInstruction: prompt });
 
   const resultado = await comTimeout(
     model.generateContent({
@@ -122,20 +123,25 @@ async function chamarGemini(prompt: string, entrada: string, apiKey: string, rot
     content,
     uso: uso ? { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: uso.totalTokenCount ?? 0 } : null,
     custoUsd: uso ? estimarCustoGeminiUsd(promptTokens, completionTokens) : null,
-    modelo: `gemini:${GEMINI_MODEL}`,
+    modelo: `gemini:${modelo}`,
   };
 }
 
-async function chamarOpenRouter(prompt: string, entrada: string, apiKey: string): Promise<ResultadoProvedor> {
+async function chamarOpenRouter(prompt: string, entrada: string, apiKey: string, modelo = OPENROUTER_MODEL): Promise<ResultadoProvedor> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const resposta = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       signal: controller.signal,
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': Deno.env.get('SUPABASE_URL') ?? '',
+        'X-Title': 'SISTEN Vínculo Cotação SAP',
+      },
       body: JSON.stringify({
-        model: OPENROUTER_MODEL,
+        model: modelo,
         temperature: 0,
         response_format: { type: 'json_object' },
         max_tokens: MAX_TOKENS_RESPOSTA,
@@ -162,10 +168,51 @@ async function chamarOpenRouter(prompt: string, entrada: string, apiKey: string)
             total_tokens: data.usage.total_tokens ?? 0,
           }
         : null,
-      // OpenRouter não devolve custo neste endpoint; fica nulo em vez de
-      // inventar um preço que não é o cobrado.
+      custoUsd: typeof data.usage?.cost === 'number' ? data.usage.cost : null,
+      modelo: `openrouter:${modelo}`,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function chamarOpenAI(prompt: string, entrada: string, apiKey: string, modelo = OPENAI_MODEL): Promise<ResultadoProvedor> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const resposta = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: modelo,
+        response_format: { type: 'json_object' },
+        max_completion_tokens: MAX_TOKENS_RESPOSTA,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: entrada },
+        ],
+      }),
+    });
+
+    if (!resposta.ok) {
+      throw new ErroVinculo('PROVEDOR_INDISPONIVEL', `OpenAI respondeu ${resposta.status}: ${await resposta.text()}`, 502);
+    }
+    const data = await resposta.json();
+    const content = data?.choices?.[0]?.message?.content ?? '';
+    if (!content.trim()) throw new ErroVinculo('RESPOSTA_VAZIA', 'OpenAI não retornou conteúdo.', 502);
+
+    return {
+      content,
+      uso: data.usage
+        ? {
+            prompt_tokens: data.usage.prompt_tokens ?? 0,
+            completion_tokens: data.usage.completion_tokens ?? 0,
+            total_tokens: data.usage.total_tokens ?? 0,
+          }
+        : null,
       custoUsd: null,
-      modelo: `openrouter:${OPENROUTER_MODEL}`,
+      modelo: `openai:${modelo}`,
     };
   } finally {
     clearTimeout(timer);
@@ -196,6 +243,7 @@ Deno.serve(async (req) => {
   const geminiKey1 = Deno.env.get('GEMINI_API_KEY') || undefined;
   const geminiKey2 = Deno.env.get('GEMINI_API_KEY_2') || undefined;
   const openrouterKey = Deno.env.get('OPENROUTER_API_KEY') || undefined;
+  const openaiKey = Deno.env.get('OPENAI_API_KEY') || undefined;
 
   const authHeader = req.headers.get('Authorization') ?? '';
   const supabaseUser = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
@@ -266,26 +314,63 @@ Deno.serve(async (req) => {
 
     let resultado: ResultadoProvedor | null = null;
     const erros: string[] = [];
-    for (const [chave, rotulo] of [[geminiKey1, 'Gemini Key 1'], [geminiKey2, 'Gemini Key 2']] as const) {
-      if (!chave) continue;
-      try {
-        resultado = await chamarGemini(prompt, entrada, chave, rotulo);
-        break;
-      } catch (e) {
-        const erro = e instanceof ErroVinculo ? e : new ErroVinculo('ERRO_INTERNO', String(e), 500);
-        erros.push(`${rotulo} (${erro.codigo}): ${erro.message}`);
+
+    const ordemProvedores: string[] = Array.isArray(parametros.ordem_provedores) && parametros.ordem_provedores.length > 0
+      ? (parametros.ordem_provedores as string[])
+      : ['gemini', 'openrouter', 'openai'];
+    const provedoresAtivos: string[] = Array.isArray(parametros.provedores_ativos) && parametros.provedores_ativos.length > 0
+      ? (parametros.provedores_ativos as string[])
+      : ordemProvedores;
+
+    const modeloGemini = typeof parametros.modelo_gemini === 'string' && parametros.modelo_gemini.trim()
+      ? parametros.modelo_gemini.trim()
+      : promptRow?.modelo?.trim() || GEMINI_MODEL;
+    const modeloOpenrouter = typeof parametros.modelo_openrouter === 'string' && parametros.modelo_openrouter.trim()
+      ? parametros.modelo_openrouter.trim()
+      : OPENROUTER_MODEL;
+    const modeloOpenai = typeof parametros.modelo_openai === 'string' && parametros.modelo_openai.trim()
+      ? parametros.modelo_openai.trim()
+      : OPENAI_MODEL;
+
+    const provedoresParaTentar = ordemProvedores.filter(p => provedoresAtivos.includes(p));
+
+    for (const provedor of provedoresParaTentar) {
+      if (resultado) break;
+
+      if (provedor === 'gemini') {
+        for (const [chave, rotulo] of [[geminiKey1, 'Gemini Key 1'], [geminiKey2, 'Gemini Key 2']] as const) {
+          if (!chave) continue;
+          try {
+            resultado = await chamarGemini(prompt, entrada, chave, rotulo, modeloGemini);
+            break;
+          } catch (e) {
+            const erro = e instanceof ErroVinculo ? e : new ErroVinculo('ERRO_INTERNO', String(e), 500);
+            erros.push(`${rotulo} (${erro.codigo}): ${erro.message}`);
+          }
+        }
+      } else if (provedor === 'openrouter') {
+        if (openrouterKey) {
+          try {
+            resultado = await chamarOpenRouter(prompt, entrada, openrouterKey, modeloOpenrouter);
+          } catch (e) {
+            const erro = e instanceof ErroVinculo ? e : new ErroVinculo('ERRO_INTERNO', String(e), 500);
+            erros.push(`OpenRouter (${erro.codigo}): ${erro.message}`);
+          }
+        }
+      } else if (provedor === 'openai') {
+        if (openaiKey) {
+          try {
+            resultado = await chamarOpenAI(prompt, entrada, openaiKey, modeloOpenai);
+          } catch (e) {
+            const erro = e instanceof ErroVinculo ? e : new ErroVinculo('ERRO_INTERNO', String(e), 500);
+            erros.push(`OpenAI (${erro.codigo}): ${erro.message}`);
+          }
+        }
       }
     }
-    if (!resultado && openrouterKey) {
-      try {
-        resultado = await chamarOpenRouter(prompt, entrada, openrouterKey);
-      } catch (e) {
-        const erro = e instanceof ErroVinculo ? e : new ErroVinculo('ERRO_INTERNO', String(e), 500);
-        erros.push(`OpenRouter (${erro.codigo}): ${erro.message}`);
-      }
-    }
+
     if (!resultado) {
-      throw new ErroVinculo('PROVEDOR_INDISPONIVEL', erros.join(' | ') || 'Nenhum provedor de IA respondeu.', 502);
+      throw new ErroVinculo('PROVEDOR_INDISPONIVEL', erros.join(' | ') || 'Nenhum provedor de IA ativo ou configurado respondeu.', 502);
     }
 
     const escolhas = extrairResultados(resultado.content);

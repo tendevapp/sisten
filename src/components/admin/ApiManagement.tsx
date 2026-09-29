@@ -67,7 +67,7 @@ const APIS_DISPONIVEIS: ApiEndpointInfo[] = [
     descricao: 'Proxy seguro para geração de conteúdo, análises e assistente com Gemini Flash/Pro.',
     icone: Sparkles,
     cor: 'text-amber-600 bg-amber-50 border-amber-200',
-    modelos: ['gemini-flash-latest', 'gemini-3.6-flash', 'gemini-1.5-pro'],
+    modelos: ['gemini-3.6-flash', 'gemini-flash-latest', 'gemini-1.5-pro'],
     secrets: ['GEMINI_API_KEY', 'GEMINI_API_KEY_2'],
     finalidade: 'Geração de texto, assistente virtual e prompts generativos gerais no sistema.',
   },
@@ -87,25 +87,25 @@ const APIS_DISPONIVEIS: ApiEndpointInfo[] = [
     id: 'extrair-cotacao',
     nome: 'Extrator Estruturado de Cotações',
     funcaoSupabase: 'extrair-cotacao',
-    provedor: 'Gemini (Primário) + OpenRouter / OpenAI (Fallback)',
+    provedor: 'Gemini / OpenRouter / OpenAI (Ordem Configurável)',
     descricao: 'Extração automática de 40 campos estruturados de propostas comerciais a partir de texto.',
     icone: FileSpreadsheet,
     cor: 'text-blue-600 bg-blue-50 border-blue-200',
     modelos: ['gemini-3.6-flash', 'deepseek/deepseek-v4-flash', 'gpt-5.6-luna'],
     secrets: ['GEMINI_API_KEY', 'GEMINI_API_KEY_2', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY'],
-    finalidade: 'Etapa 2 do pipeline: popula itens, prazos, fretes e condições de pagamento na base. Prompt editável em "Prompts de IA", abaixo.',
+    finalidade: 'Etapa 2 do pipeline: popula itens, prazos, fretes e condições de pagamento na base. A ordem de prioridade de IA e os modelos são configuráveis abaixo na seção de Prompts e Prioridade.',
   },
   {
     id: 'vincular-cotacao-ia',
     nome: 'Vínculo de Cotação ao Material SAP',
     funcaoSupabase: 'vincular-cotacao-ia',
-    provedor: 'Gemini (Primário) + OpenRouter (Fallback)',
+    provedor: 'Gemini / OpenRouter / OpenAI (Ordem Configurável)',
     descricao: 'Escolhe o material do catálogo SAP para os itens cotados que o casamento com pedidos não resolveu.',
     icone: Link2,
     cor: 'text-violet-600 bg-violet-50 border-violet-200',
-    modelos: ['gemini-3.6-flash', 'deepseek/deepseek-v4-flash'],
-    secrets: ['GEMINI_API_KEY', 'GEMINI_API_KEY_2', 'OPENROUTER_API_KEY'],
-    finalidade: 'Alimenta a base de vínculos usada pela sugestão no mapa de cotação e pela auditoria cotação × pedido. Prompt editável em "Prompts de IA", abaixo.',
+    modelos: ['gemini-3.6-flash', 'deepseek/deepseek-v4-flash', 'gpt-5.6-luna'],
+    secrets: ['GEMINI_API_KEY', 'GEMINI_API_KEY_2', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY'],
+    finalidade: 'Alimenta a base de vínculos usada pela sugestão no mapa de cotação e pela auditoria cotação × pedido. A ordem de prioridade de IA e os modelos são configuráveis abaixo na seção de Prompts e Prioridade.',
   },
   {
     id: 'atualizar-ipca',
@@ -131,7 +131,7 @@ export function ApiManagement() {
   const [testingAll, setTestingAll] = useState(false);
 
   // Playground State (Gemini)
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-flash-latest');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.6-flash');
   const [promptInput, setPromptInput] = useState<string>(
     'Explique resumidamente em 2 frases o impacto da inteligência artificial na automação de suprimentos industriais.'
   );
@@ -167,7 +167,7 @@ export function ApiManagement() {
 
     try {
       if (apiId === 'gemini-generate') {
-        const texto = await gerarConteudoGemini('Responda apenas "OK - Gemini operacional".', 'gemini-flash-latest');
+        const texto = await gerarConteudoGemini('Responda apenas "OK - Gemini operacional".', 'gemini-3.6-flash');
         const fim = performance.now();
         statusResultado = {
           loading: false,
@@ -585,8 +585,8 @@ Condição: 30 dias | Frete: CIF
               onChange={(e) => setSelectedModel(e.target.value)}
               className="text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="gemini-flash-latest">gemini-flash-latest (Padrão)</option>
-              <option value="gemini-3.6-flash">gemini-3.6-flash</option>
+              <option value="gemini-3.6-flash">gemini-3.6-flash (Padrão)</option>
+              <option value="gemini-flash-latest">gemini-flash-latest</option>
               <option value="gemini-1.5-pro">gemini-1.5-pro</option>
             </select>
           </div>

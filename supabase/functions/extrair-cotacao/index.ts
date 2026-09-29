@@ -395,20 +395,24 @@ async function chamarChatCompletions(params: {
 
 /**
  * Segundo fallback (depois do Gemini). Modelo configurável via
- * OPENAI_MODEL (default "gpt-5.6-luna") — nome definido pelo usuário; não
- * validamos a existência do modelo aqui, um HTTP de erro da OpenAI já
- * dispara o próximo fallback. Usa `max_completion_tokens` (não
- * `max_tokens`) e omite `temperature`, como esperado pelos modelos mais
- * recentes da OpenAI.
+ * OPENAI_MODEL (default "gpt-5.6-luna") ou pelos parâmetros de Gestão de APIs.
+ * Usa `max_completion_tokens` (não `max_tokens`) e omite `temperature`,
+ * como esperado pelos modelos mais recentes da OpenAI.
  */
-async function chamarOpenAI(markdown: string, apiKey: string, systemPrompt = SYSTEM_PROMPT, timeoutMs?: number): Promise<ResultadoProvedor> {
+async function chamarOpenAI(
+  markdown: string,
+  apiKey: string,
+  systemPrompt = SYSTEM_PROMPT,
+  timeoutMs?: number,
+  modelo = OPENAI_MODEL,
+): Promise<ResultadoProvedor> {
   const { data, truncado, content } = await chamarChatCompletions({
     url: 'https://api.openai.com/v1/chat/completions',
     apiKey,
     nomeProvedor: 'OpenAI',
     timeoutMs,
     body: {
-      model: OPENAI_MODEL,
+      model: modelo,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: markdown },
@@ -429,12 +433,18 @@ async function chamarOpenAI(markdown: string, apiKey: string, systemPrompt = SYS
         }
       : null,
     custoUsd: null,
-    modelo: `openai:${OPENAI_MODEL}`,
+    modelo: `openai:${modelo}`,
   };
 }
 
-/** Primeiro fallback, entre o Gemini e a OpenAI. */
-async function chamarOpenRouter(markdown: string, apiKey: string, systemPrompt = SYSTEM_PROMPT, timeoutMs?: number): Promise<ResultadoProvedor> {
+/** Primeiro fallback, entre o Gemini e a OpenAI (ou primário se reordenado pelo admin). */
+async function chamarOpenRouter(
+  markdown: string,
+  apiKey: string,
+  systemPrompt = SYSTEM_PROMPT,
+  timeoutMs?: number,
+  modelo = OPENROUTER_MODEL,
+): Promise<ResultadoProvedor> {
   const { data, truncado, content } = await chamarChatCompletions({
     url: 'https://openrouter.ai/api/v1/chat/completions',
     apiKey,
@@ -445,7 +455,7 @@ async function chamarOpenRouter(markdown: string, apiKey: string, systemPrompt =
       'X-Title': 'SISTEN Extração de Cotação',
     },
     body: {
-      model: OPENROUTER_MODEL,
+      model: modelo,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: markdown },
@@ -472,77 +482,96 @@ async function chamarOpenRouter(markdown: string, apiKey: string, systemPrompt =
         }
       : null,
     custoUsd: typeof data.usage?.cost === 'number' ? data.usage.cost : null,
-    modelo: `openrouter:${OPENROUTER_MODEL}`,
+    modelo: `openrouter:${modelo}`,
   };
 }
 
 /**
  * Orçamento de tempo para a extração inteira, somando todas as tentativas —
  * bem abaixo do limite de execução de Edge Function da plataforma.
- *
- * Antes, cada provedor tinha seu próprio timeout fixo (45s Gemini, 150s
- * chat completions) e o fallback somava os quatro: Gemini x2 + OpenRouter +
- * OpenAI dava até 390s no pior caso — a plataforma mata a function bem antes
- * disso e devolve um 504 cru pro navegador, sem a mensagem de erro que esta
- * função tentaria montar. Repartir um orçamento único entre as tentativas
- * garante que a function sempre responde (sucesso ou erro decifrável) dentro
- * de um tempo previsível, e para de tentar fallback assim que não sobra
- * tempo para uma chance real de resposta.
  */
 const ORCAMENTO_TOTAL_MS = 100_000;
 /** Abaixo disso não vale a pena começar mais uma tentativa — não dá tempo de um provedor responder de verdade. */
 const TEMPO_MINIMO_TENTATIVA_MS = 12_000;
 
-/** Gemini é o provedor primário (duas chaves); falhando as duas, cai para OpenRouter e, por último, para OpenAI. */
+interface ChavesProvedores {
+  geminiKey1?: string;
+  geminiKey2?: string;
+  openrouterKey?: string;
+  openaiKey?: string;
+}
+
+interface ModelosConfig {
+  gemini: string;
+  openrouter: string;
+  openai: string;
+}
+
+/**
+ * Executa a extração seguindo a ordem dinâmica configurada pelo administrador
+ * na página de Gestão de APIs (ex: Gemini primeiro, ou DeepSeek no OpenRouter primeiro).
+ */
 async function extrairComFallback(
   markdown: string,
-  geminiKey1: string | undefined,
-  geminiKey2: string | undefined,
-  openrouterKey: string | undefined,
-  openaiKey: string | undefined,
+  chaves: ChavesProvedores,
   systemPrompt = SYSTEM_PROMPT,
-  modeloGemini = GEMINI_MODEL,
+  modelos: ModelosConfig = {
+    gemini: GEMINI_MODEL,
+    openrouter: OPENROUTER_MODEL,
+    openai: OPENAI_MODEL,
+  },
+  ordemProvedores: string[] = ['gemini', 'openrouter', 'openai'],
+  provedoresAtivos: string[] = ['gemini', 'openrouter', 'openai'],
 ): Promise<ResultadoProvedor> {
   const erros: string[] = [];
   const inicio = Date.now();
   const tempoRestante = () => ORCAMENTO_TOTAL_MS - (Date.now() - inicio);
 
-  if (geminiKey1 && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
-    try {
-      return await chamarGemini(markdown, geminiKey1, 'Gemini Key 1', systemPrompt, modeloGemini, Math.min(TIMEOUT_GEMINI_MS, tempoRestante()));
-    } catch (e) {
-      const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
-      erros.push(`Gemini Key 1 (${erro.codigo}): ${erro.message}`);
-      console.error('Gemini Key 1 falhou, tentando Gemini Key 2:', erro.message);
-    }
-  }
+  const provedoresParaTentar = ordemProvedores.filter(p => provedoresAtivos.includes(p));
 
-  if (geminiKey2 && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
-    try {
-      return await chamarGemini(markdown, geminiKey2, 'Gemini Key 2', systemPrompt, modeloGemini, Math.min(TIMEOUT_GEMINI_MS, tempoRestante()));
-    } catch (e) {
-      const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
-      erros.push(`Gemini Key 2 (${erro.codigo}): ${erro.message}`);
-      console.error('Gemini Key 2 falhou, tentando OpenRouter:', erro.message);
-    }
-  }
+  for (const provedor of provedoresParaTentar) {
+    if (tempoRestante() <= TEMPO_MINIMO_TENTATIVA_MS) break;
 
-  if (openrouterKey && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
-    try {
-      return await chamarOpenRouter(markdown, openrouterKey, systemPrompt, Math.min(TIMEOUT_MS, tempoRestante()));
-    } catch (e) {
-      const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
-      erros.push(`OpenRouter (${erro.codigo}): ${erro.message}`);
-      console.error('OpenRouter falhou, tentando OpenAI:', erro.message);
-    }
-  }
+    if (provedor === 'gemini') {
+      if (chaves.geminiKey1 && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
+        try {
+          return await chamarGemini(markdown, chaves.geminiKey1, 'Gemini Key 1', systemPrompt, modelos.gemini, Math.min(TIMEOUT_GEMINI_MS, tempoRestante()));
+        } catch (e) {
+          const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
+          erros.push(`Gemini Key 1 (${erro.codigo}): ${erro.message}`);
+          console.error('Gemini Key 1 falhou, tentando fallback:', erro.message);
+        }
+      }
 
-  if (openaiKey && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
-    try {
-      return await chamarOpenAI(markdown, openaiKey, systemPrompt, Math.min(TIMEOUT_MS, tempoRestante()));
-    } catch (e) {
-      const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
-      erros.push(`OpenAI (${erro.codigo}): ${erro.message}`);
+      if (chaves.geminiKey2 && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
+        try {
+          return await chamarGemini(markdown, chaves.geminiKey2, 'Gemini Key 2', systemPrompt, modelos.gemini, Math.min(TIMEOUT_GEMINI_MS, tempoRestante()));
+        } catch (e) {
+          const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
+          erros.push(`Gemini Key 2 (${erro.codigo}): ${erro.message}`);
+          console.error('Gemini Key 2 falhou, tentando próximo provedor:', erro.message);
+        }
+      }
+    } else if (provedor === 'openrouter') {
+      if (chaves.openrouterKey && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
+        try {
+          return await chamarOpenRouter(markdown, chaves.openrouterKey, systemPrompt, Math.min(TIMEOUT_MS, tempoRestante()), modelos.openrouter);
+        } catch (e) {
+          const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
+          erros.push(`OpenRouter (${erro.codigo}): ${erro.message}`);
+          console.error('OpenRouter falhou, tentando próximo provedor:', erro.message);
+        }
+      }
+    } else if (provedor === 'openai') {
+      if (chaves.openaiKey && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
+        try {
+          return await chamarOpenAI(markdown, chaves.openaiKey, systemPrompt, Math.min(TIMEOUT_MS, tempoRestante()), modelos.openai);
+        } catch (e) {
+          const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
+          erros.push(`OpenAI (${erro.codigo}): ${erro.message}`);
+          console.error('OpenAI falhou:', erro.message);
+        }
+      }
     }
   }
 
@@ -552,7 +581,7 @@ async function extrairComFallback(
 
   throw new ErroExtracao(
     'PROVEDOR_INDISPONIVEL',
-    erros.length ? erros.join(' | ') : 'Nenhum provedor de IA configurado.',
+    erros.length ? erros.join(' | ') : 'Nenhum provedor de IA ativo ou configurado.',
     502,
   );
 }
@@ -632,11 +661,18 @@ Deno.serve(async (req) => {
       throw new ErroExtracao('ENTRADA_GRANDE', `Cole um documento por vez (máximo de ${(MAX_CHARS / 1000).toFixed(0)} mil caracteres).`, 413);
     }
 
-    // Prompt vivo: o que o admin editou em Gestão de APIs vale a partir da
-    // próxima chamada, sem redeploy.
+    // Prompt vivo e parâmetros de prioridade: o que o admin configurou em Gestão de APIs
+    // vale a partir da próxima chamada, sem necessidade de redeploy.
     let systemPrompt = SYSTEM_PROMPT;
-    let modeloGemini = GEMINI_MODEL;
+    const modelosConfig: ModelosConfig = {
+      gemini: GEMINI_MODEL,
+      openrouter: OPENROUTER_MODEL,
+      openai: OPENAI_MODEL,
+    };
+    let ordemProvedores: string[] = ['gemini', 'openrouter', 'openai'];
+    let provedoresAtivos: string[] = ['gemini', 'openrouter', 'openai'];
     let versaoPrompt = 1;
+
     try {
       const { data: promptRow } = await supabaseUser
         .from('ops_ia_prompts')
@@ -646,14 +682,38 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (promptRow?.prompt?.trim()) systemPrompt = promptRow.prompt.trim();
-      if (promptRow?.modelo?.trim()) modeloGemini = promptRow.modelo.trim();
+      if (promptRow?.modelo?.trim()) modelosConfig.gemini = promptRow.modelo.trim();
       if (typeof promptRow?.versao === 'number') versaoPrompt = promptRow.versao;
+
+      const params = (promptRow?.parametros ?? {}) as Record<string, unknown>;
+      if (Array.isArray(params.ordem_provedores) && params.ordem_provedores.length > 0) {
+        ordemProvedores = params.ordem_provedores as string[];
+      }
+      if (Array.isArray(params.provedores_ativos) && params.provedores_ativos.length > 0) {
+        provedoresAtivos = params.provedores_ativos as string[];
+      }
+      if (typeof params.modelo_gemini === 'string' && params.modelo_gemini.trim()) {
+        modelosConfig.gemini = params.modelo_gemini.trim();
+      }
+      if (typeof params.modelo_openrouter === 'string' && params.modelo_openrouter.trim()) {
+        modelosConfig.openrouter = params.modelo_openrouter.trim();
+      }
+      if (typeof params.modelo_openai === 'string' && params.modelo_openai.trim()) {
+        modelosConfig.openai = params.modelo_openai.trim();
+      }
     } catch (errPrompt) {
-      console.warn('Falha ao carregar ops_ia_prompts, usando SYSTEM_PROMPT padrão:', errPrompt);
+      console.warn('Falha ao carregar ops_ia_prompts, usando padrões:', errPrompt);
     }
 
     const entrada = markdown + blocoInstrucoesExtras(escopo);
-    const resultado = await extrairComFallback(entrada, geminiKey1, geminiKey2, openrouterKey, openaiKey, systemPrompt, modeloGemini);
+    const resultado = await extrairComFallback(
+      entrada,
+      { geminiKey1, geminiKey2, openrouterKey, openaiKey },
+      systemPrompt,
+      modelosConfig,
+      ordemProvedores,
+      provedoresAtivos,
+    );
 
     const propostas = extrairJson(resultado.content, resultado.truncado).map((p: any) => ({ ...p, Arquivo_Origem: p?.Arquivo_Origem ?? arquivoOrigem }));
     const totalItens = propostas.reduce((acc: number, p: any) => acc + (Array.isArray(p.itens) ? p.itens.length : 0), 0);

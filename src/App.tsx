@@ -6,6 +6,7 @@ import { trackLogin, trackPageView } from './lib/usageTracker';
 import { recordRecentPage } from './lib/homePrefs';
 import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, pageIdForPath } from './lib/pages';
 import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia, usuarioSessaoPermanente } from './lib/sessaoDiaria';
+import { limparCenaSessao } from './lib/cenaInicio';
 import { pareceFalhaDeRede } from './lib/rede';
 
 // Components
@@ -292,6 +293,7 @@ export default function App() {
         if (session && session.user && !isRecovery && !isTvSession && sessaoExpirouNoDia(new Date(), session.user.email)) {
           await supabase.auth.signOut().catch(() => {});
           limparDiaSessao();
+          limparCenaSessao();
           session = null;
         }
 
@@ -390,6 +392,7 @@ export default function App() {
             }
           } else if (event === 'SIGNED_OUT') {
             limparDiaSessao();
+            limparCenaSessao();
             localDb.setCurrentUser(null);
             setUser(null);
           }
