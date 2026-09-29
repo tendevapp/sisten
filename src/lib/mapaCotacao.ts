@@ -20,6 +20,8 @@
  */
 
 import { normalizarDescricao } from './cotacoes';
+import { estimarCreditosPossiveis, estimarDifal } from './calcImpostos';
+import type { CreditosPossiveis, EstimativaDifal } from './calcImpostos';
 import type { CotacaoProcessoItem, CotacaoPropostaDraft, CotacaoPropostaItemDraft } from '../types';
 
 // =====================================================================
@@ -226,7 +228,18 @@ export interface CustoItem {
    * independe da base escolhida. É o que a célula mostra ao lado da alíquota
    * para o comprador ver quanto cada tributo pesa sem trocar a comparação.
    */
-  impostos: { ipi: number; icms: number; pisCofins: number };
+  impostos: { ipi: number; icms: number; pisCofins: number; difal: number };
+  /**
+   * Memória do DIFAL (fornecedor fora da BA); `null` quando não há DIFAL ou a
+   * UF é desconhecida. Só informativo: não entra em `liquido` nem em
+   * `comparavel`, em base nenhuma.
+   */
+  difal: EstimativaDifal | null;
+  /**
+   * Crédito que cada tributo geraria no item — informativo, não entra em
+   * `liquido` nem em `comparavel`. `null` quando falta preço.
+   */
+  creditosPossiveis: CreditosPossiveis | null;
   /** Desembolso do item, sem frete: bruto + IPI − créditos. É o número que compara duas propostas. */
   liquido: number | null;
   /** Parcela do frete da proposta atribuída a este item (proporcional ao valor). */
@@ -251,12 +264,27 @@ export function calcularCustoItem(
   item: CotacaoPropostaItemDraft,
   opcoes: OpcoesCusto,
   freteRateado = 0,
+  /** UF do fornecedor — só com ela há DIFAL. */
+  ufOrigem?: string | null,
 ): CustoItem {
   const bruto = brutoDoItem(item);
   const incompleto = bruto == null;
 
   const base = bruto ?? 0;
-  const ipi = opcoes.ipiSomado ? base * fracao(item.aliquota_ipi_pct) : 0;
+  const ipiDestacado = base * fracao(item.aliquota_ipi_pct);
+  const ipi = opcoes.ipiSomado ? ipiDestacado : 0;
+  // O IPI integra a base do DIFAL: a mercadoria é para consumo da TEN.
+  const difal = incompleto ? null : estimarDifal({
+    valorOperacao: base + ipiDestacado,
+    ufOrigem,
+    aliqIcmsDestacada: item.aliquota_icms_pct,
+  });
+  const creditosPossiveis = incompleto ? null : estimarCreditosPossiveis({
+    valorItem: base,
+    valorIpi: ipiDestacado,
+    ufOrigem,
+    aliqIcmsDestacada: item.aliquota_icms_pct,
+  });
   const creditoIcms = opcoes.creditaIcms ? base * fracao(item.aliquota_icms_pct) : 0;
   const creditoPisCofins = opcoes.creditaPisCofins
     ? base * (fracao(item.aliquota_pis_pct) + fracao(item.aliquota_cofins_pct))
@@ -278,10 +306,13 @@ export function calcularCustoItem(
     creditoIpi,
     creditos,
     impostos: {
-      ipi: base * fracao(item.aliquota_ipi_pct),
+      ipi: ipiDestacado,
       icms: base * fracao(item.aliquota_icms_pct),
       pisCofins: base * (fracao(item.aliquota_pis_pct) + fracao(item.aliquota_cofins_pct)),
+      difal: difal?.valor ?? 0,
     },
+    difal,
+    creditosPossiveis,
     liquido,
     freteRateado,
     comparavel,
@@ -467,6 +498,7 @@ export function agruparLinhasMapa(params: ParamsAgrupamento): LinhaMapa[] {
   // barata que a CIF na mesma matriz.
   const rateio = new Map<string, number>();
   const usaFreteTeorico = new Set<string>();
+  const ufPorProposta = new Map(propostas.map(p => [p.key, p.proposta.fornecedor_uf]));
   for (const { key, proposta } of propostas) {
     const frete = params.fretePorProposta?.[key] ?? null;
     const total = brutoDaProposta(proposta);
@@ -482,7 +514,7 @@ export function agruparLinhasMapa(params: ParamsAgrupamento): LinhaMapa[] {
         const frete = usaFreteTeorico.has(c.propostaKey)
           ? (c.item.frete_teorico ?? 0)
           : (brutoDoItem(c.item) ?? 0) * fator;
-        const custo = calcularCustoItem(c.item, opcoes, frete);
+        const custo = calcularCustoItem(c.item, opcoes, frete, ufPorProposta.get(c.propostaKey));
         return { propostaKey: c.propostaKey, item: c.item, custo, score: c.score, deltaPct: null, melhor: false };
       });
 
@@ -577,7 +609,7 @@ export interface ResumoFornecedor {
   totalIpi: number;
   totalCreditos: number;
   /** Soma de cada imposto destacado nos itens cotados, independente da base (ver `CustoItem.impostos`). */
-  totalImpostos: { ipi: number; icms: number; pisCofins: number };
+  totalImpostos: { ipi: number; icms: number; pisCofins: number; difal: number };
   /** Soma dos itens sem frete (bruto + IPI − créditos). */
   totalLiquido: number;
   frete: number | null;
@@ -630,8 +662,13 @@ export function resumirFornecedores(params: {
     const totalCreditos = celulas.reduce((s, c) => s + c.custo.creditos, 0);
     const totalLiquido = celulas.reduce((s, c) => s + (c.custo.liquido ?? 0), 0);
     const totalImpostos = celulas.reduce(
-      (s, c) => ({ ipi: s.ipi + c.custo.impostos.ipi, icms: s.icms + c.custo.impostos.icms, pisCofins: s.pisCofins + c.custo.impostos.pisCofins }),
-      { ipi: 0, icms: 0, pisCofins: 0 },
+      (s, c) => ({
+        ipi: s.ipi + c.custo.impostos.ipi,
+        icms: s.icms + c.custo.impostos.icms,
+        pisCofins: s.pisCofins + c.custo.impostos.pisCofins,
+        difal: s.difal + c.custo.impostos.difal,
+      }),
+      { ipi: 0, icms: 0, pisCofins: 0, difal: 0 },
     );
     // Sem frete cotado, o resumo mostra a soma do frete teórico das células —
     // é o mesmo número que entrou em cada custo comparável da coluna.

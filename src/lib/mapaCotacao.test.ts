@@ -204,6 +204,44 @@ describe('calcularCustoItem', () => {
   });
 });
 
+describe('calcularCustoItem — DIFAL', () => {
+  const sp = item({ descricao_produto: 'X', quantidade: 10, preco_total_item: 1000, aliquota_icms_pct: 12 });
+
+  it('estima o DIFAL quando o fornecedor é de fora da BA, só como informação', () => {
+    const c = calcularCustoItem(sp, OPCOES_CUSTO_PADRAO, 0, 'SP');
+    // base única: 1000 × (20,5% − 12%)
+    expect(c.impostos.difal).toBeCloseTo(85, 2);
+    expect(c.liquido).toBe(1000);
+    expect(c.comparavel).toBe(1000);
+  });
+
+  it('fornecedor da BA ou sem UF não tem DIFAL', () => {
+    expect(calcularCustoItem(sp, OPCOES_CUSTO_PADRAO, 0, 'BA').impostos.difal).toBe(0);
+    expect(calcularCustoItem(sp, OPCOES_CUSTO_PADRAO).difal).toBeNull();
+  });
+
+  it('informa o crédito possível de cada tributo sem mexer no custo', () => {
+    const c = calcularCustoItem(sp, OPCOES_CUSTO_PADRAO, 0, 'SP');
+    expect(c.creditosPossiveis?.icms).toBeCloseTo(120, 2);
+    expect(c.creditosPossiveis?.pisCofins).toBeCloseTo(81.4, 2);
+    expect(c.liquido).toBe(1000);
+  });
+
+  it('crédito de ICMS não mexe no DIFAL', () => {
+    const c = calcularCustoItem(sp, { ...OPCOES_CUSTO_PADRAO, creditaIcms: true }, 0, 'SP');
+    expect(c.liquido).toBeCloseTo(1000 - 120, 2);
+    expect(c.impostos.difal).toBeCloseTo(85, 2);
+  });
+
+  it('agruparLinhasMapa usa a UF da proposta', () => {
+    const [linha] = agruparLinhasMapa({
+      escopo: [], opcoes: OPCOES_CUSTO_PADRAO,
+      propostas: [proposta('Forn SP', [sp], { fornecedor_uf: 'SP' })],
+    });
+    expect(linha.celulas[0].custo.impostos.difal).toBeCloseTo(85, 2);
+  });
+});
+
 describe('opcoesDaBase', () => {
   const nenhum = { icms: false, pisCofins: false, ipi: false };
 

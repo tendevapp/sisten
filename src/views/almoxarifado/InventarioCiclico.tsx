@@ -19,7 +19,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, Check, ClipboardList, Download, Eye, FileText, Loader2, Plus, RefreshCw, RotateCcw, Search, Trash2,
+  AlertTriangle, ArrowLeft, Camera, Check, ClipboardList, CloudOff, Download, Eye, FileText,
+  Image as ImageIcon, Loader2, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Trash2, Upload, X,
 } from 'lucide-react';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
@@ -40,6 +41,29 @@ import { exportarPlanilhaInventario } from '../../lib/inventarioCiclicoPlanilha'
 import { exportInventarioCiclicoPdf } from '../../lib/pdfExport/exportInventarioCiclicoPdf';
 import { hojeISO } from '../../lib/recebimentoAlmox';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { ehRespostaOffline } from '../../lib/offline/configFormularios';
+import { argumentosNaFila, assinarFilaOffline } from '../../lib/offline/filaSupabase';
+import {
+  buscarFotosCatalogoPorCodigosSap,
+  salvarItemCatalogo,
+  type CatalogoItem,
+} from '../../lib/almoxCatalogoApi';
+import { comprimirImagemUpload } from '../../lib/imageCompression';
+
+/** Itens com contagem guardada no aparelho (sem rede) — ainda sem resultado do servidor. */
+function useItensContadosNaFila(): Set<string> {
+  const [ids, setIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let ativo = true;
+    const ler = () => argumentosNaFila('alm_inv_registrar_contagem')
+      .then(args => { if (ativo) setIds(new Set(args.map(a => String(a.p_item_id)))); })
+      .catch(() => {});
+    ler();
+    const cancelar = assinarFilaOffline(ler);
+    return () => { ativo = false; cancelar(); };
+  }, []);
+  return ids;
+}
 import type { EstoqueGiro, EstoqueItem, Profile } from '../../types';
 
 interface Props {
@@ -745,6 +769,35 @@ function VistaInventario({
   const algumContado = inv.itens.some((i) => i.contagens.length > 0);
   const podeExcluir = podeExcluirInventario(user, inv);
 
+  // Mapa de fotos do catálogo e Book de EPIs vinculadas aos materiais deste inventário
+  const [mapaFotos, setMapaFotos] = useState<Map<string, CatalogoItem>>(new Map());
+  const [imagemZoom, setImagemZoom] = useState<{ url: string; titulo: string; codigo: string } | null>(null);
+
+  const codigosMateriais = useMemo(() => {
+    return Array.from(new Set(inv.itens.map((i) => i.material))).filter(Boolean);
+  }, [inv.itens]);
+
+  useEffect(() => {
+    let ativo = true;
+    if (codigosMateriais.length === 0) return;
+    buscarFotosCatalogoPorCodigosSap(codigosMateriais)
+      .then((mapa) => {
+        if (ativo) setMapaFotos(mapa);
+      })
+      .catch((err) => {
+        console.warn('[InventarioCiclico] Falha ao carregar fotos do catálogo:', err);
+      });
+    return () => { ativo = false; };
+  }, [codigosMateriais]);
+
+  const handleFotoSalva = (codigoSap: string, itemCatalogo: CatalogoItem) => {
+    setMapaFotos((prev) => {
+      const novo = new Map(prev);
+      novo.set(codigoSap, itemCatalogo);
+      return novo;
+    });
+  };
+
   const contagemFiltro = useMemo(() => {
     const c: Record<FiltroItens, number> = { todos: r.total, abertos: r.pendentes + r.aguardando, pendente: r.pendentes, aguardando_decisao: r.aguardando, conferido: r.conferidos, divergente: r.divergentes };
     return c;
@@ -760,11 +813,13 @@ function VistaInventario({
   }, [inv.itens, filtro, busca]);
 
   const contando = inv.itens.find((i) => i.id === contandoId) ?? null;
-  // Depois de encerrar um item, "Próximo" leva ao seguinte em aberto na ordem da ficha.
+  const naFila = useItensContadosNaFila();
+  // Depois de encerrar um item, "Próximo" leva ao seguinte em aberto na ordem da ficha
+  // (pulando os que já têm contagem guardada no aparelho).
   const proximoAberto = (depoisDe: string) => {
     const lista = inv.itens;
     const idx = lista.findIndex((i) => i.id === depoisDe);
-    return [...lista.slice(idx + 1), ...lista.slice(0, idx)].find((i) => !itemEncerrado(i) && i.id !== depoisDe) ?? null;
+    return [...lista.slice(idx + 1), ...lista.slice(0, idx)].find((i) => !itemEncerrado(i) && i.id !== depoisDe && !naFila.has(i.id)) ?? null;
   };
 
   const exportar = async (tipo: 'xlsx' | 'pdf') => {
@@ -887,8 +942,14 @@ function VistaInventario({
               key={item.id}
               item={item}
               numero={inv.itens.indexOf(item) + 1}
-              podeRemover={dono && item.contagens.length === 0}
-              onAbrir={() => setContandoId(item.id)}
+              fotoItem={mapaFotos.get(item.material)}
+              podeRemover={dono && item.contagens.length === 0 && !naFila.has(item.id)}
+              contadoNaFila={naFila.has(item.id)}
+              onAbrir={() => {
+                if (naFila.has(item.id)) { toast.info('Este item já tem contagem guardada neste aparelho. O resultado aparece quando sincronizar.'); return; }
+                setContandoId(item.id);
+              }}
+              onVerZoom={(url, titulo, codigo) => setImagemZoom({ url, titulo, codigo })}
               onRemover={() => void remover(item)}
             />
           ))}
@@ -901,34 +962,128 @@ function VistaInventario({
           user={user}
           item={contando}
           numero={inv.itens.indexOf(contando) + 1}
+          fotoItem={mapaFotos.get(contando.material)}
+          onFotoSalva={(salvo) => handleFotoSalva(contando.material, salvo)}
+          onVerZoom={(url, titulo, codigo) => setImagemZoom({ url, titulo, codigo })}
           onRecarregar={onRecarregar}
           onProximo={() => setContandoId(proximoAberto(contando.id)?.id ?? null)}
           temProximo={proximoAberto(contando.id) != null}
           onClose={() => setContandoId(null)}
         />
       )}
+
+      {/* Modal: Zoom da foto do material */}
+      {imagemZoom && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in"
+          onClick={() => setImagemZoom(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="max-w-4xl max-h-[90vh] bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 bg-slate-950 flex items-center justify-between border-b border-slate-800">
+              <div>
+                <span className="font-mono text-xs text-amber-400 font-bold mr-2">
+                  SAP {imagemZoom.codigo}
+                </span>
+                <span className="text-sm font-semibold text-white">
+                  {imagemZoom.titulo}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setImagemZoom(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-2 flex items-center justify-center bg-black/50 overflow-auto max-h-[75vh]">
+              <img
+                src={imagemZoom.url}
+                alt={imagemZoom.titulo}
+                className="max-h-[70vh] w-auto object-contain rounded-lg shadow-lg"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function LinhaItem({
-  item, numero, podeRemover, onAbrir, onRemover,
-}: { item: ItemInventario; numero: number; podeRemover: boolean; onAbrir: () => void; onRemover: () => void }) {
+  item, numero, fotoItem, podeRemover, contadoNaFila, onAbrir, onVerZoom, onRemover,
+}: {
+  item: ItemInventario;
+  numero: number;
+  fotoItem?: CatalogoItem;
+  podeRemover: boolean;
+  contadoNaFila?: boolean;
+  onAbrir: () => void;
+  onVerZoom?: (url: string, titulo: string, codigo: string) => void;
+  onRemover: () => void;
+}) {
   const encerrado = itemEncerrado(item);
   const token = TOKEN_STATUS[item.status];
   return (
     <div
-      className="flex items-stretch gap-2 rounded-xl border"
+      className="flex items-stretch gap-2 rounded-xl border transition-all hover:border-slate-400 dark:hover:border-slate-600"
       style={{ borderColor: item.status === 'pendente' ? 'var(--hairline)' : `color-mix(in srgb, ${token} 45%, var(--hairline))`, background: 'var(--surface-raised)' }}
     >
-      <button type="button" onClick={onAbrir} className="min-w-0 flex-1 px-3 py-2.5 text-left">
+      <div className="flex items-center pl-3 py-2 shrink-0">
+        {fotoItem?.url_imagem ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onVerZoom?.(fotoItem.url_imagem!, item.descricao, item.material);
+            }}
+            className="relative group h-12 w-12 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 cursor-pointer shadow-2xs hover:scale-105 transition"
+            title="Ver foto do material cadastrada no catálogo"
+          >
+            <img src={fotoItem.url_imagem} alt="" className="h-full w-full object-cover" />
+            <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
+              <Eye className="h-3.5 w-3.5" />
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onAbrir}
+            className="h-12 w-12 rounded-lg border border-dashed border-amber-300 dark:border-amber-800/80 bg-amber-50/50 dark:bg-amber-950/20 flex flex-col items-center justify-center text-amber-700 dark:text-amber-400 hover:bg-amber-100/60 dark:hover:bg-amber-900/40 transition cursor-pointer"
+            title="Sem foto no catálogo — clique para abrir contagem e cadastrar foto"
+          >
+            <Camera className="h-4 w-4" />
+            <span className="text-[8px] font-bold mt-0.5 leading-none">+foto</span>
+          </button>
+        )}
+      </div>
+
+      <button type="button" onClick={onAbrir} className="min-w-0 flex-1 px-2.5 py-2.5 text-left cursor-pointer">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-extrabold tabular-nums" style={{ color: 'var(--ink-muted)' }}>{numero}.</span>
           <span className="min-w-0 flex-1 truncate text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{item.descricao || '—'}</span>
-          <ChipStatusItem status={item.status} />
+          {fotoItem?.url_imagem && (
+            fotoItem.codigo_registro?.startsWith('EPI-') ? (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                <ShieldCheck className="h-2.5 w-2.5" /> EPI
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                <Check className="h-2.5 w-2.5" /> Foto
+              </span>
+            )
+          )}
+          {contadoNaFila
+            ? <Chip token="var(--status-serious)"><CloudOff className="h-3 w-3" /> Contagem no aparelho</Chip>
+            : <ChipStatusItem status={item.status} />}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          <span className="font-mono">{item.material}</span>
+          <span className="font-mono font-semibold">{item.material}</span>
           <span>{formatDeposito(item.deposito)}</span>
           {item.classe && <span>Classe {item.classe}</span>}
           {item.contagens.map((c) => (
@@ -945,7 +1100,7 @@ function LinhaItem({
         </div>
       </button>
       {podeRemover && (
-        <button type="button" onClick={onRemover} title="Tirar da lista" className="shrink-0 px-3" style={{ color: 'var(--ink-muted)' }}>
+        <button type="button" onClick={onRemover} title="Tirar da lista" className="shrink-0 px-3 cursor-pointer hover:text-rose-600 transition" style={{ color: 'var(--ink-muted)' }}>
           <Trash2 className="h-4 w-4" />
         </button>
       )}
@@ -966,11 +1121,14 @@ function faseInicial(item: ItemInventario): Fase {
 }
 
 function ModalContagem({
-  user, item, numero, onRecarregar, onProximo, temProximo, onClose,
+  user, item, numero, fotoItem, onFotoSalva, onVerZoom, onRecarregar, onProximo, temProximo, onClose,
 }: {
   user: Profile;
   item: ItemInventario;
   numero: number;
+  fotoItem?: CatalogoItem;
+  onFotoSalva?: (itemCatalogo: CatalogoItem) => void;
+  onVerZoom?: (url: string, titulo: string, codigo: string) => void;
   onRecarregar: () => Promise<void>;
   onProximo: () => void;
   temProximo: boolean;
@@ -984,7 +1142,13 @@ function ModalContagem({
   const [obs, setObs] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [ultimo, setUltimo] = useState<ResultadoContagem | null>(null);
+  const [fotoAtual, setFotoAtual] = useState<CatalogoItem | null>(fotoItem ?? null);
+  const [modalFotoAberto, setModalFotoAberto] = useState(false);
   const qtdRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setFotoAtual(fotoItem ?? null);
+  }, [fotoItem]);
 
   // A fase segue o item quando ele recarrega (ex.: outro aparelho encerrou).
   useEffect(() => {
@@ -1010,6 +1174,14 @@ function ModalContagem({
         observacao: obs.trim() || null,
         por: user.name,
       });
+      if (ehRespostaOffline(r)) {
+        // Sem rede a contagem fica na fila do aparelho; quem compara com a
+        // ZL0024 (e pede recontagem) é o servidor, no envio.
+        toast.info('Sem conexão: contagem guardada neste aparelho. A comparação com a ZL0024 acontece quando sincronizar.');
+        setQtd(''); setObs('');
+        if (temProximo) onProximo(); else onClose();
+        return;
+      }
       setUltimo(r);
       setQtd(''); setObs('');
       await onRecarregar();
@@ -1055,6 +1227,94 @@ function ModalContagem({
         <h2 className="text-sm font-extrabold" style={{ color: 'var(--ink-primary)' }}>{item.descricao || '—'}</h2>
       </ModalHeader>
       <ModalBody className="space-y-4">
+        {/* Card de Foto de Cadastro do Material */}
+        <div
+          className="rounded-xl border p-3 flex flex-col sm:flex-row items-center gap-3 transition-all"
+          style={{
+            borderColor: fotoAtual?.url_imagem
+              ? 'color-mix(in srgb, var(--brand) 30%, var(--hairline))'
+              : 'color-mix(in srgb, var(--status-serious) 40%, var(--hairline))',
+            background: 'var(--surface-raised)',
+          }}
+        >
+          {fotoAtual?.url_imagem ? (
+            <div className="relative group shrink-0">
+              <img
+                src={fotoAtual.url_imagem}
+                alt={item.descricao}
+                className="h-20 w-20 rounded-lg object-cover border border-slate-300 dark:border-slate-700 shadow-xs cursor-pointer hover:opacity-90 transition"
+                onClick={() => onVerZoom?.(fotoAtual.url_imagem!, item.descricao, item.material)}
+              />
+              <button
+                type="button"
+                onClick={() => onVerZoom?.(fotoAtual.url_imagem!, item.descricao, item.material)}
+                className="absolute inset-0 bg-black/40 rounded-lg opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[10px] font-bold gap-1 cursor-pointer"
+                title="Ampliar foto"
+              >
+                <Eye className="h-3.5 w-3.5" /> Ampliar
+              </button>
+            </div>
+          ) : (
+            <div className="h-20 w-20 rounded-lg border border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 flex flex-col items-center justify-center text-amber-700 dark:text-amber-400 shrink-0">
+              <Camera className="h-6 w-6 stroke-1 mb-0.5" />
+              <span className="text-[9px] font-bold text-center leading-tight">Sem foto</span>
+            </div>
+          )}
+
+          <div className="min-w-0 flex-1 space-y-1 text-center sm:text-left w-full">
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5">
+              <span className="font-mono text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
+                SAP {item.material}
+              </span>
+              {fotoAtual?.url_imagem ? (
+                fotoAtual.codigo_registro?.startsWith('EPI-') ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                    <ShieldCheck className="h-3 w-3" /> Book EPI {fotoAtual.observacao || ''}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    <Check className="h-3 w-3" /> Foto no Catálogo
+                  </span>
+                )
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                  Pendente de Foto
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+              {fotoAtual?.url_imagem
+                ? 'Foto vinculada ao cadastro deste item no catálogo.'
+                : 'Aproveite o momento da contagem física para tirar a foto de cadastro deste item!'}
+            </p>
+
+            <div className="pt-1 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+              <button
+                type="button"
+                onClick={() => setModalFotoAberto(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer text-white shadow-xs"
+                style={{ background: fotoAtual?.url_imagem ? 'var(--ink-secondary)' : 'var(--brand)' }}
+              >
+                <Camera className="h-3.5 w-3.5" />
+                {fotoAtual?.url_imagem ? 'Alterar / Tirar Nova Foto' : 'Tirar Foto de Cadastro'}
+              </button>
+
+              {fotoAtual?.url_imagem && (
+                <button
+                  type="button"
+                  onClick={() => onVerZoom?.(fotoAtual.url_imagem!, item.descricao, item.material)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                  style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  Ver ampliada
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         {nContagens > 0 && (
           <div className="space-y-1.5">
             <span className="block text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>Contagens enviadas (não podem ser alteradas)</span>
@@ -1160,6 +1420,19 @@ function ModalContagem({
           </>
         )}
       </ModalFooter>
+
+      {modalFotoAberto && (
+        <ModalCapturaFotoInventario
+          user={user}
+          item={item}
+          fotoExistenteUrl={fotoAtual?.url_imagem}
+          onSalvo={(salvo) => {
+            setFotoAtual(salvo);
+            onFotoSalva?.(salvo);
+          }}
+          onClose={() => setModalFotoAberto(false)}
+        />
+      )}
     </Modal>
   );
 }
@@ -1198,5 +1471,196 @@ function ResultadoFinal({ item }: { item: ItemInventario }) {
       </div>
       {item.alerta && <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>{item.alerta}</p>}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Modal: Capturar / Cadastrar Foto do Material durante a contagem
+// ---------------------------------------------------------------------------
+
+function ModalCapturaFotoInventario({
+  user,
+  item,
+  fotoExistenteUrl,
+  onSalvo,
+  onClose,
+}: {
+  user: Profile;
+  item: ItemInventario;
+  fotoExistenteUrl?: string | null;
+  onSalvo: (itemCatalogo: CatalogoItem) => void;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(fotoExistenteUrl ?? null);
+  const [salvando, setSalvando] = useState(false);
+  const [obs, setObs] = useState('Foto registrada durante inventário cíclico');
+
+  const handleSelecionarArquivo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (previewUrl && previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setArquivo(f);
+    setPreviewUrl(URL.createObjectURL(f));
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const itemClp = Array.from(e.clipboardData.items).find((i) => i.type.startsWith('image/'));
+    if (!itemClp) return;
+    const f = itemClp.getAsFile();
+    if (!f) return;
+    if (previewUrl && previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setArquivo(f);
+    setPreviewUrl(URL.createObjectURL(f));
+    toast.success('Imagem colada da área de transferência.');
+  };
+
+  const salvarFoto = async () => {
+    if (!arquivo && !fotoExistenteUrl) {
+      toast.warning('Tire uma foto ou selecione uma imagem do material.');
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      // Busca dados cadastrais adicionais no estoque local para enriquecer o catálogo
+      const itemEstoque = localDb.getEstoque()?.find((e) => e.material === item.material);
+
+      const salvo = await salvarItemCatalogo({
+        codigo_sap: item.material,
+        descricao: item.descricao,
+        texto_tecnico: itemEstoque?.texto_pedido_compra || null,
+        grp_mercad: itemEstoque?.grp_mercad || null,
+        grupo_mercadorias: itemEstoque?.grupo_mercadorias || null,
+        umb: item.unidade || itemEstoque?.umb || 'UN',
+        fotoArquivo: arquivo,
+        observacao: obs.trim() || undefined,
+      }, user);
+
+      onSalvo(salvo);
+      toast.success(`Foto do material ${item.material} cadastrada no catálogo com sucesso!`);
+      onClose();
+    } catch (err: any) {
+      console.error('[ModalCapturaFotoInventario] Erro ao salvar foto:', err);
+      toast.error(err?.message || 'Falha ao salvar foto do item no catálogo.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <Modal onClose={onClose} maxWidth="max-w-md" ariaLabel="Cadastrar foto do material">
+      <ModalHeader onClose={onClose}>
+        <div className="flex items-center gap-2">
+          <Camera className="h-5 w-5 text-amber-600" />
+          <h2 className="text-sm font-extrabold" style={{ color: 'var(--ink-primary)' }}>
+            Foto de Cadastro do Material
+          </h2>
+        </div>
+        <p className="text-[11px] font-mono" style={{ color: 'var(--ink-muted)' }}>
+          SAP {item.material} · {item.descricao}
+        </p>
+      </ModalHeader>
+      <ModalBody className="space-y-4">
+        <div onPaste={handlePaste} className="space-y-4">
+          <div className="space-y-2">
+            {previewUrl ? (
+              <div className="relative rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 flex items-center justify-center h-56">
+                <img src={previewUrl} alt="Preview" className="h-full w-full object-contain" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+                    setArquivo(null);
+                    setPreviewUrl(null);
+                  }}
+                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white hover:bg-black/80 cursor-pointer"
+                  title="Trocar foto"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-5 text-center space-y-2">
+                <Camera className="h-10 w-10 mx-auto text-slate-400" />
+                <p className="text-xs text-slate-500">
+                  Tire a foto diretamente com a câmera do celular/tablet ou anexe um arquivo. Suporta colar imagem (Ctrl+V).
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 cursor-pointer shadow-xs">
+                    <Camera className="h-3.5 w-3.5" />
+                    Abrir Câmera
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleSelecionarArquivo}
+                      className="hidden"
+                    />
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-primary)' }}>
+                    <Upload className="h-3.5 w-3.5" />
+                    Escolher Arquivo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSelecionarArquivo}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Campo rotulo="Observação do Cadastro">
+            <input
+              value={obs}
+              onChange={(e) => setObs(e.target.value)}
+              placeholder="Ex: Foto registrada durante inventário cíclico"
+              className={inputCls}
+            />
+          </Campo>
+          <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            A foto é comprimida automaticamente e fica vinculada ao catálogo do almoxarifado, aparecendo nas requisições e compras.
+          </p>
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={salvando}
+          className={btnSec}
+          style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={() => void salvarFoto()}
+          disabled={salvando || (!arquivo && !fotoExistenteUrl)}
+          className={btnPri}
+          style={{ background: 'var(--brand)' }}
+        >
+          {salvando ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Comprimindo & Salvando…
+            </>
+          ) : (
+            <>
+              <Check className="h-4 w-4" />
+              Salvar Foto no Catálogo
+            </>
+          )}
+        </button>
+      </ModalFooter>
+    </Modal>
   );
 }

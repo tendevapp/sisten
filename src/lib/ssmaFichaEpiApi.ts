@@ -179,7 +179,7 @@ export function historicoDasFichas(fichasColaborador: SsmaFichaEpi[]): ItemHisto
  * a ficha é lançada em lote na admissão, e um recorte diário devolveria
  * códigos repetidos demais para conferência em papel.
  */
-async function proximoCodigoFicha(dataEntrega: string): Promise<string> {
+export async function proximoCodigoFicha(dataEntrega: string): Promise<string> {
   const [ano, mes] = dataEntrega.split('-');
   const { data, error } = await fichas()
     .select('codigo')

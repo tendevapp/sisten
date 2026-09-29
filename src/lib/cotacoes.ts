@@ -99,6 +99,21 @@ export function parseMoeda(bruto: string | null | undefined): number | null {
 }
 
 /**
+ * Peso estimado pela IA. O prompt pede "só o número, ponto decimal" e a IA
+ * costuma mandar três casas ("0.065", "1.250") — exatamente o formato que
+ * `parseMoeda` lê como milhar, transformando 65 g em 65 kg e o frete teórico
+ * da carga inteira em outra faixa de tarifa. Aqui o ponto é sempre decimal;
+ * vírgula ainda é aceita no formato brasileiro.
+ */
+export function parsePeso(bruto: string | null | undefined): number | null {
+  if (!temValor(bruto)) return null;
+  const s = String(bruto).trim().replace(/\s*kg$/i, '');
+  if (s.includes(',')) return parseMoeda(s);
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
  * Quantidade de item cotado. O prompt pede ponto decimal, e o PDF costuma
  * trazer três casas ("4,000" = 4) — a IA devolve "4.000", que `parseMoeda`
  * leria como milhar (4000). Nesse formato ambíguo, decide pela conta do
@@ -277,7 +292,7 @@ function itemParaDraft(item: ItemPropostaExtraido): CotacaoPropostaItemDraft {
     // depois de resolvidos contra o escopo real do processo (vinculoCotacao.ts):
     // a IA devolve um RI em texto, que pode não existir neste processo.
     vinculo_divergencias: [],
-    peso_unitario_kg: parseMoeda(item.Peso_Unitario_Kg),
+    peso_unitario_kg: parsePeso(item.Peso_Unitario_Kg),
     peso_origem: temValor(item.Peso_Unitario_Kg) ? 'ia' : null,
     frete_teorico: null,
     codigo_fiscal: null,
@@ -649,6 +664,28 @@ export function proximoIndiceCotacao(
   });
 
   return proximoIndiceCodigo('COT', codigosMes);
+}
+
+// =====================================================================
+// Título do processo
+// =====================================================================
+
+/**
+ * Parte fixa do título: as RMs do escopo, na ordem em que aparecem, sem
+ * repetir. `null` em cotação avulsa (sem RM) — aí o título é livre.
+ * Ex.: `RM 4500123`, `RMs 4500123, 4500124`.
+ */
+export function prefixoTituloRm(rms: (string | null | undefined)[]): string | null {
+  const unicas = Array.from(new Set(rms.map(r => (r ?? '').trim()).filter(Boolean)));
+  if (unicas.length === 0) return null;
+  return `${unicas.length === 1 ? 'RM' : 'RMs'} ${unicas.join(', ')}`;
+}
+
+/** Junta o prefixo das RMs com o texto complementar do comprador: `RM 4500123 — Parafusos obra X`. */
+export function montarTituloProcesso(prefixo: string | null, complemento: string | null | undefined): string | null {
+  const extra = (complemento ?? '').trim();
+  if (prefixo && extra) return `${prefixo} — ${extra}`;
+  return prefixo ?? (extra || null);
 }
 
 /** Converte uma proposta ja salva (vinda do Supabase) no formato de draft usado pelo mapa comparativo. */

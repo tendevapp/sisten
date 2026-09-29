@@ -49,6 +49,25 @@ Módulos legados com variações próprias (`SUP-DDMMAA-NN`, `ASE-DDMMAA-SETOR`,
 protocolos de portaria com sufixo aleatório) **ficam como estão**: o código já
 está impresso em registro de produção e renumerar quebraria o histórico.
 
+## 3. Formulário funciona sem rede
+
+Os formulários são preenchidos no pátio, com sinal intermitente. O cliente
+`supabase` usa `fetchOffline` (`src/lib/offline/filaSupabase.ts`): leituras
+saem da última cópia guardada no aparelho e gravações sem rede entram numa fila
+que sobe sozinha quando a conexão volta (selo e "Sincronizar agora" no canto da
+tela).
+
+Formulário novo **se registra** em `src/lib/offline/configFormularios.ts`:
+tabelas que ele grava (rótulo, resumo e regra de código `unique`), RPCs (com a
+resposta provisória no formato do retorno real) e buckets de foto. Fora dessa
+lista a gravação vai direto ao servidor e falha sem rede — de propósito para
+telas administrativas (excluir, exportar, importar SAP).
+
+Quando o resultado depende do servidor (ex.: contagem cega comparada com a
+ZL0024), a tela checa `ehRespostaOffline(retorno)` e não afirma o resultado.
+
+Os checklists da Qualidade têm modo offline próprio (`src/lib/qualidadeOffline.ts`).
+
 ## Verificação antes de entregar
 
 ```bash

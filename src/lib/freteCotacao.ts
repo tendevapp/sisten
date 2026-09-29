@@ -71,6 +71,29 @@ export interface SimulacaoFreteCotacao {
 }
 
 /**
+ * Unidades que querem dizer "uma peça" ou "um par" em grafias diferentes —
+ * a mesma embalagem, então o mesmo peso por unidade. Qualquer outra UM
+ * (CX, PACOTE, KG, M, RL…) só casa com ela mesma.
+ */
+const GRUPOS_UM: Record<string, string> = {
+  UN: 'UN', UND: 'UN', UNID: 'UN', UNIDADE: 'UN', PC: 'UN', 'PÇ': 'UN', PCA: 'UN', 'PÇA': 'UN', PECA: 'UN', 'PEÇA': 'UN', P: 'UN',
+  PAR: 'PAR', PARES: 'PAR', PR: 'PAR',
+};
+
+/**
+ * Chave do peso canônico: o RI **e** a unidade de medida. O peso é por
+ * unidade cotada — um fornecedor que cota o copo em PACOTE (100 un, 0,35 kg)
+ * e outro que cota em UN (3,5 g) falam do mesmo RI com pesos 100× diferentes;
+ * alinhar só pelo RI multiplicaria o frete de um deles por 100.
+ * `null` quando o item não tem vínculo.
+ */
+export function chavePesoAlinhado(item: Pick<CotacaoPropostaItemDraft, 'processo_item_id' | 'unidade_medida'>): string | null {
+  if (!item.processo_item_id) return null;
+  const um = (item.unidade_medida ?? '').trim().toUpperCase();
+  return `${item.processo_item_id}|${GRUPOS_UM[um] ?? (um || 'UN')}`;
+}
+
+/**
  * Alinha o peso estimado ao vínculo com a RM: o mesmo material físico (mesmo
  * `processo_item_id`) tem que pesar o mesmo em toda cotação, senão o frete
  * teórico de duas propostas do mesmo item perde a base de comparação — uma
@@ -93,13 +116,14 @@ export function alinharPesoComVinculo(
   const atualizado = new Map(pesoPorRi);
 
   const novosItens = itens.map(item => {
-    if (!item.processo_item_id) return item;
-    const canonico = atualizado.get(item.processo_item_id);
+    const chave = chavePesoAlinhado(item);
+    if (!chave) return item;
+    const canonico = atualizado.get(chave);
     if (canonico != null) {
       return item.peso_unitario_kg === canonico ? item : { ...item, peso_unitario_kg: canonico };
     }
     if (item.peso_unitario_kg != null) {
-      atualizado.set(item.processo_item_id, item.peso_unitario_kg);
+      atualizado.set(chave, item.peso_unitario_kg);
     }
     return item;
   });

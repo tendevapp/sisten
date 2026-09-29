@@ -148,6 +148,7 @@ function textoImpostos(r: ResumoFornecedor): string {
     r.totalImpostos.ipi > 0 ? `IPI ${brl(r.totalImpostos.ipi)}` : null,
     r.totalImpostos.icms > 0 ? `ICMS ${brl(r.totalImpostos.icms)}` : null,
     r.totalImpostos.pisCofins > 0 ? `PIS/COF ${brl(r.totalImpostos.pisCofins)}` : null,
+    r.totalImpostos.difal > 0 ? `DIFAL ${brl(r.totalImpostos.difal)}` : null,
   ].filter(Boolean);
   return partes.length ? partes.join(' · ') : 'sem impostos destacados';
 }

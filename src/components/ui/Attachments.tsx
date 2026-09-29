@@ -34,6 +34,7 @@ import { useToast } from './Toast';
 import { localDb } from '../../db/localDb';
 import { RequestAttachment } from '../../types';
 import { listarImagensEpiPorCodigoSap, urlFotoBookEpi } from '../../lib/ssmaBookEpisApi';
+import { listarImagensCatalogoPorCodigoSap, obterUrlFotoCatalogo } from '../../lib/almoxCatalogoApi';
 
 const ehPdf = (mime?: string) => mime === 'application/pdf';
 const ehImagem = (mime?: string) => !!mime && mime.startsWith('image/');
@@ -86,10 +87,15 @@ function ImageBankModal({ materialCode, jaAdicionados, onSelect, onClose }: Imag
   useEffect(() => {
     let cancelado = false;
     const locais = localDb.getAttachmentsByMaterialCode(materialCode).filter(a => ehImagem(a.mime_type) || ehPdf(a.mime_type));
-    listarImagensEpiPorCodigoSap(materialCode)
-      .then(epis => { if (!cancelado) setCandidatos(deduplicarPorArquivo([...epis, ...locais])); })
+    Promise.all([
+      listarImagensEpiPorCodigoSap(materialCode).catch(() => []),
+      listarImagensCatalogoPorCodigoSap(materialCode).catch(() => []),
+    ])
+      .then(([epis, catalogo]) => {
+        if (!cancelado) setCandidatos(deduplicarPorArquivo([...catalogo, ...epis, ...locais]));
+      })
       .catch(error => {
-        console.warn('Falha ao buscar imagens do Book de EPIs.', error);
+        console.warn('Falha ao buscar imagens do Book de EPIs/Catálogo.', error);
         if (!cancelado) setCandidatos(deduplicarPorArquivo(locais));
       });
     return () => { cancelado = true; };
@@ -104,6 +110,8 @@ function ImageBankModal({ materialCode, jaAdicionados, onSelect, onClose }: Imag
           const path = a.storage_path || a.url;
           const url = a.request_id.startsWith('ssma-book-epis-')
             ? await urlFotoBookEpi(path)
+            : a.request_id.startsWith('almox-catalogo-')
+            ? await obterUrlFotoCatalogo(path)
             : await localDb.getAttachmentUrl(path);
           if (url) resolvidas[a.id] = url;
         }
@@ -236,7 +244,13 @@ function ReusedThumb({ anexo }: { anexo: RequestAttachment }) {
 
   useEffect(() => {
     let cancelado = false;
-    localDb.getAttachmentUrl(anexo.storage_path || anexo.url).then(u => { if (!cancelado) setUrl(u); });
+    const resolver = async () => {
+      const path = anexo.storage_path || anexo.url;
+      if (anexo.request_id.startsWith('ssma-book-epis-')) return urlFotoBookEpi(path);
+      if (anexo.request_id.startsWith('almox-catalogo-')) return obterUrlFotoCatalogo(path);
+      return localDb.getAttachmentUrl(path);
+    };
+    resolver().then(u => { if (!cancelado) setUrl(u); });
     return () => { cancelado = true; };
   }, [anexo.id]);
 

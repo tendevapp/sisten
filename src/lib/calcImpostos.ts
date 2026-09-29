@@ -104,8 +104,8 @@ export const PRESETS_CODIGOS_FISCAIS: CodigoFiscalPreset[] = [
   },
   {
     codigo: 'C2',
-    titulo: 'C2 - Interestadual Sul/Sudeste (12%)',
-    descricao: 'Aliquota interestadual de 12% (origem Sul/Sudeste exceto ES para BA)',
+    titulo: 'C2 - Interestadual 12% (origem N/NE/CO e ES)',
+    descricao: 'Aliquota interestadual de 12% (origem Norte/Nordeste/Centro-Oeste ou ES para BA)',
     aliqIcms: 12,
     aliqPis: 1.65,
     aliqCofins: 7.60,
@@ -114,8 +114,8 @@ export const PRESETS_CODIGOS_FISCAIS: CodigoFiscalPreset[] = [
   },
   {
     codigo: 'C3',
-    titulo: 'C3 - Interestadual Norte/NE/CO (7%)',
-    descricao: 'Aliquota interestadual de 7% (origem Norte/Nordeste/Centro-Oeste e ES para BA)',
+    titulo: 'C3 - Interestadual 7% (origem Sul/Sudeste exceto ES)',
+    descricao: 'Aliquota interestadual de 7% (origem Sul/Sudeste exceto ES para BA)',
     aliqIcms: 7,
     aliqPis: 1.65,
     aliqCofins: 7.60,
@@ -161,14 +161,27 @@ export function presetPorCodigo(codigo: string | null | undefined): CodigoFiscal
   return PRESETS_CODIGOS_FISCAIS.find(p => p.codigo === alvo) ?? null;
 }
 
-/** UFs do Sul/Sudeste que aplicam 12% nas saidas interestaduais para a Bahia — o ES fica de fora por regra propria (7%). */
-const UFS_SUL_SUDESTE_12 = new Set(['SP', 'RJ', 'MG', 'PR', 'SC', 'RS']);
+/** Sul/Sudeste sem o ES — o ES segue a regra do Norte/Nordeste/Centro-Oeste. */
+const UFS_SUL_SUDESTE_SEM_ES = new Set(['SP', 'RJ', 'MG', 'PR', 'SC', 'RS']);
+
+/**
+ * Aliquota interestadual (Res. SF 22/89): 7% quando sai do Sul/Sudeste (sem
+ * o ES) para o Norte, Nordeste, Centro-Oeste ou ES; 12% em todo o resto.
+ * Para a fabrica na BA: SP/RJ/MG/PR/SC/RS = 7%, demais UFs e ES = 12% — o que
+ * as notas de entrada da ZL0136 confirmam (SP a 7%, ES a 12%). Importado com
+ * mais de 40% de conteudo estrangeiro e 4% (Res. SF 13/12) e so vem da nota.
+ */
+export function aliquotaInterestadualPorUf(ufOrigem: string, ufDestino = 'BA'): number {
+  const origem = ufOrigem.trim().toUpperCase();
+  const destino = ufDestino.trim().toUpperCase();
+  return UFS_SUL_SUDESTE_SEM_ES.has(origem) && !UFS_SUL_SUDESTE_SEM_ES.has(destino) ? 7 : 12;
+}
 
 /**
  * Escolhe o codigo fiscal provavel a partir da UF de origem da mercadoria,
  * com destino na Bahia (onde fica a fabrica). A aliquota de ICMS numa compra
  * interestadual e definida pela origem, nao pelo fornecedor: o mesmo material
- * comprado em Sao Paulo (12%) e em Salvador (18%) tem preco liquido diferente
+ * comprado em Sao Paulo (7%) e em Salvador (interna) tem preco liquido diferente
  * com o mesmo preco cotado.
  *
  * E sugestao, nao veredito — o comprador troca o codigo na revisao do pedido
@@ -183,7 +196,120 @@ export function inferirCodigoFiscal(
 
   if (!origem) return opcoes.temIpi ? 'C5' : 'C1';
   if (origem === destino) return opcoes.temIpi ? 'C5' : 'C1';
-  return UFS_SUL_SUDESTE_12.has(origem) ? 'C2' : 'C3';
+  return aliquotaInterestadualPorUf(origem, destino) === 7 ? 'C3' : 'C2';
+}
+
+/**
+ * Aliquota interna modal do ICMS na Bahia — 20,5% desde 10/02/2024
+ * (Lei 14.629/2023). Referencia do DIFAL; nao altera os presets acima.
+ */
+export const ALIQ_INTERNA_ICMS_BA = 20.5;
+
+/** Aliquotas interestaduais validas (Res. SF 22/89 e 13/12). */
+const ALIQUOTAS_INTERESTADUAIS = new Set([4, 7, 12]);
+
+export interface EstimativaDifal {
+  ufOrigem: string;
+  /** Aliquota interestadual usada como credito da origem (%). */
+  aliqInterestadual: number;
+  /** `true` quando a proposta nao destacou 4/7/12% e a aliquota veio da UF — ex.: Simples Nacional, que nao destaca ICMS. */
+  aliqInterestadualInferida: boolean;
+  aliqInterna: number;
+  /** Base de calculo — o proprio valor da operacao (base unica). */
+  base: number;
+  valor: number;
+}
+
+/**
+ * DIFAL devido pela TEN, como destinataria contribuinte, na entrada de
+ * mercadoria de outra UF para **uso/consumo ou ativo imobilizado** (EC 87/15,
+ * LC 190/22). Segue o que o SAP da TEN efetivamente recolhe — **base unica**:
+ *
+ *   DIFAL = V × (aliqInterna − aliqInter)
+ *
+ * Conferido nas notas de entrada da ZL0136 (CFOP 2556): SP a 7% recolhe
+ * 13,5% do valor, SP a 4% recolhe 16,5%, ES a 12% recolhe 8,5%. A Lei
+ * 7.014/96 (art. 17, XI, §6º) preve base dupla, que daria um DIFAL maior —
+ * a escolha entre as duas e do fiscal; aqui o objetivo e prever o desembolso
+ * real, entao vale o metodo que o ERP aplica.
+ *
+ * `valorOperacao` e o valor da nota do item (preco + IPI — o IPI integra a
+ * base quando o destino e consumo). O frete FOB tem CT-e proprio e fica de
+ * fora. Nao considera FCP nem beneficio de reducao de base (NCM especifico):
+ * e estimativa para comparar propostas, nao apuracao.
+ *
+ * `null` quando nao ha DIFAL: UF de origem desconhecida ou igual ao destino.
+ */
+export function estimarDifal(params: {
+  valorOperacao: number;
+  ufOrigem: string | null | undefined;
+  /** Aliquota de ICMS destacada na proposta (%); so vale se for 4, 7 ou 12. */
+  aliqIcmsDestacada?: number | null;
+  ufDestino?: string;
+  aliqInterna?: number;
+}): EstimativaDifal | null {
+  const origem = (params.ufOrigem ?? '').trim().toUpperCase();
+  const destino = (params.ufDestino ?? 'BA').trim().toUpperCase();
+  if (!origem || origem === destino) return null;
+
+  const destacada = params.aliqIcmsDestacada;
+  const inferida = destacada == null || !ALIQUOTAS_INTERESTADUAIS.has(destacada);
+  const aliqInterestadual = inferida ? aliquotaInterestadualPorUf(origem, destino) : destacada;
+  const aliqInterna = params.aliqInterna ?? ALIQ_INTERNA_ICMS_BA;
+
+  const v = Math.max(0, Number(params.valorOperacao) || 0);
+  const valor = Math.max(0, (v * (aliqInterna - aliqInterestadual)) / 100);
+  return { ufOrigem: origem, aliqInterestadual, aliqInterestadualInferida: inferida, aliqInterna, base: v, valor };
+}
+
+/** PIS 1,65% + COFINS 7,60% do regime nao cumulativo (lucro real). */
+export const ALIQ_CREDITO_PIS_COFINS = 9.25;
+
+export interface CreditosPossiveis {
+  /** ICMS destacado (ou estimado) — so recupera em industrializacao, ou em 48 meses no ativo. */
+  icms: number;
+  /** `true` quando a proposta nao destacou ICMS e o valor veio da UF (interna 20,5% na BA, interestadual fora). */
+  icmsEstimado: boolean;
+  /** IPI destacado — so recupera em industrializacao. */
+  ipi: number;
+  /** 9,25% sobre (valor − ICMS destacado) — industrializacao, consumo aplicado na producao e ativo. */
+  pisCofins: number;
+}
+
+/**
+ * Credito que cada tributo **geraria** numa compra — quanto a TEN recupera
+ * depende da finalidade (industrializacao, consumo, ativo), que o mapa nao
+ * decide: aqui so se mede o tamanho de cada credito.
+ *
+ * PIS/COFINS nao depende do que o fornecedor destacou: no nao cumulativo o
+ * credito e 9,25% sobre o valor da aquisicao sem o ICMS destacado (Lei
+ * 14.592/2023) — e o que as notas da ZL0136 mostram (CST 50). Vale tambem na
+ * compra de fornecedor do Simples.
+ */
+export function estimarCreditosPossiveis(params: {
+  valorItem: number;
+  valorIpi?: number;
+  ufOrigem: string | null | undefined;
+  aliqIcmsDestacada?: number | null;
+  ufDestino?: string;
+}): CreditosPossiveis {
+  const v = Math.max(0, Number(params.valorItem) || 0);
+  const origem = (params.ufOrigem ?? '').trim().toUpperCase();
+  const destino = (params.ufDestino ?? 'BA').trim().toUpperCase();
+
+  let aliqIcms = params.aliqIcmsDestacada ?? null;
+  const icmsEstimado = aliqIcms == null && !!origem;
+  if (aliqIcms == null && origem) {
+    aliqIcms = origem === destino ? ALIQ_INTERNA_ICMS_BA : aliquotaInterestadualPorUf(origem, destino);
+  }
+  const icms = (v * (aliqIcms ?? 0)) / 100;
+
+  return {
+    icms,
+    icmsEstimado,
+    ipi: Math.max(0, Number(params.valorIpi) || 0),
+    pisCofins: ((v - icms) * ALIQ_CREDITO_PIS_COFINS) / 100,
+  };
 }
 
 export const INPUTS_PADRAO: CalcImpostosInputs = {

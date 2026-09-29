@@ -141,6 +141,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   const podeRecebimento = canAccessForm(user, 'form_almoxarifado_recebimento');
   const podeBalcao = canAccessForm(user, 'form_almoxarifado_requisicao_balcao');
   const podeInventario = canAccessForm(user, 'form_almoxarifado_inventario');
+  const podeCatalogo = canAccessForm(user, 'form_almoxarifado_cadastro_itens');
 
   const cardsRecebimento = [
     {
@@ -172,8 +173,9 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
     },
   ];
 
-  // A requisição no balcão (FRM.ALM-0014) e o inventário cíclico (FRM.ALM-0015)
-  // são outros formulários, com rota e permissão próprias; o card só leva até eles.
+  // A requisição no balcão (FRM.ALM-0014), o inventário cíclico (FRM.ALM-0015)
+  // e o cadastro de itens (FRM.ALM-0016) são outros formulários, com rota e
+  // permissão próprias; o card só leva até eles.
   type CardHub = {
     id: Vista; rota?: string; codigo: string; titulo: string; desc: string;
     icon: typeof Truck; cor: string; badge: string;
@@ -199,6 +201,16 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       icon: ClipboardList,
       cor: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-400',
       badge: 'FRM.ALM-0015',
+    }] : []),
+    ...(podeCatalogo ? [{
+      id: 'hub' as Vista,
+      rota: '/formularios/almoxarifado-cadastro-itens',
+      codigo: 'CAT',
+      titulo: 'Cadastro de Itens',
+      desc: 'Catálogo de materiais consumíveis da ZL0024 com Níveis 1 e 2, fotos e especificações técnicas para compras.',
+      icon: Camera,
+      cor: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400',
+      badge: 'FRM.ALM-0016',
     }] : []),
   ];
 

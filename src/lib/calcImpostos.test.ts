@@ -10,6 +10,8 @@ import {
   gerarTextoMemoriaCalculo,
   PRESETS_CODIGOS_FISCAIS,
   INPUTS_PADRAO,
+  estimarDifal,
+  estimarCreditosPossiveis,
   type CalcImpostosInputs,
 } from './calcImpostos';
 
@@ -240,5 +242,63 @@ describe('Motor de Calculo Tributario (calcImpostos)', () => {
     expect(texto).toContain('ICMS Apurado');
     expect(texto).toContain('PIS Apurado');
     expect(texto).toContain('COFINS Apurado');
+  });
+});
+
+describe('estimarDifal', () => {
+  it('base única, como o SAP recolhe: SP a 7% paga 13,5% do valor (nota real da ZL0136)', () => {
+    const d = estimarDifal({ valorOperacao: 2534.40, ufOrigem: 'SP', aliqIcmsDestacada: 7 })!;
+    expect(d.valor).toBeCloseTo(342.14, 2);
+    expect(d.aliqInterestadualInferida).toBe(false);
+  });
+
+  it('importado a 4% respeita a alíquota destacada (16,5%)', () => {
+    const d = estimarDifal({ valorOperacao: 67.68, ufOrigem: 'sp', aliqIcmsDestacada: 4 })!;
+    expect(d.aliqInterestadual).toBe(4);
+    expect(d.valor).toBeCloseTo(11.17, 2);
+  });
+
+  it('sem 4/7/12% destacado, infere pela UF: Sul/Sudeste 7%, demais e ES 12%', () => {
+    expect(estimarDifal({ valorOperacao: 100, ufOrigem: 'SP', aliqIcmsDestacada: null })!.aliqInterestadual).toBe(7);
+    expect(estimarDifal({ valorOperacao: 100, ufOrigem: 'PE', aliqIcmsDestacada: null })!.aliqInterestadual).toBe(12);
+    expect(estimarDifal({ valorOperacao: 100, ufOrigem: 'ES', aliqIcmsDestacada: 0 })!.aliqInterestadual).toBe(12);
+    const mg = estimarDifal({ valorOperacao: 100, ufOrigem: 'MG', aliqIcmsDestacada: 18 })!;
+    expect(mg.aliqInterestadual).toBe(7);
+    expect(mg.aliqInterestadualInferida).toBe(true);
+    expect(mg.valor).toBeCloseTo(13.5, 6);
+  });
+
+  it('operação interna ou UF desconhecida não tem DIFAL', () => {
+    expect(estimarDifal({ valorOperacao: 100, ufOrigem: 'BA' })).toBeNull();
+    expect(estimarDifal({ valorOperacao: 100, ufOrigem: null })).toBeNull();
+  });
+});
+
+describe('estimarCreditosPossiveis', () => {
+  it('PIS/COFINS é 9,25% sobre o valor sem o ICMS destacado (nota real da ZL0136)', () => {
+    const c = estimarCreditosPossiveis({ valorItem: 2534.40, ufOrigem: 'SP', aliqIcmsDestacada: 7 });
+    expect(c.icms).toBeCloseTo(177.41, 2);
+    expect(c.pisCofins).toBeCloseTo(218.02, 2);
+    expect(c.icmsEstimado).toBe(false);
+  });
+
+  it('item da imagem: R$ 67,68 de SP a 4%', () => {
+    const c = estimarCreditosPossiveis({ valorItem: 67.68, ufOrigem: 'SP', aliqIcmsDestacada: 4 });
+    expect(c.icms).toBeCloseTo(2.71, 2);
+    expect(c.pisCofins).toBeCloseTo(6.01, 2);
+  });
+
+  it('sem ICMS destacado, estima pela UF: interna 20,5% na BA, interestadual fora', () => {
+    const ba = estimarCreditosPossiveis({ valorItem: 100, ufOrigem: 'BA', aliqIcmsDestacada: null });
+    expect(ba.icms).toBeCloseTo(20.5, 6);
+    expect(ba.icmsEstimado).toBe(true);
+    expect(estimarCreditosPossiveis({ valorItem: 100, ufOrigem: 'PE' }).icms).toBeCloseTo(12, 6);
+  });
+
+  it('sem UF e sem ICMS destacado, PIS/COFINS sai sobre o valor cheio', () => {
+    const c = estimarCreditosPossiveis({ valorItem: 100, ufOrigem: null, valorIpi: 5 });
+    expect(c.icms).toBe(0);
+    expect(c.ipi).toBe(5);
+    expect(c.pisCofins).toBeCloseTo(9.25, 6);
   });
 });

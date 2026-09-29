@@ -172,15 +172,16 @@ const MODULOS: ModuloFormulario[] = [
     icon: Boxes,
     desc: 'Recebimento físico de materiais (ficha cega, conferência contra o pedido, não conformidade) e requisição de materiais no balcão.',
     path: '/formularios/almoxarifado',
-    badge: '3 Formulários Ativos',
+    badge: '5 Formulários Ativos',
     badgeCor: 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300',
     corIcone: 'bg-gradient-to-br from-amber-500 to-amber-700 text-white shadow-amber-500/20 shadow-lg',
     corBordaHover: 'hover:border-amber-500/50 hover:shadow-amber-500/10',
     itensResumo: [
       'Ficha Cega de Volumes (RCV)',
       'Recebimento e Contagem (RCM)',
-      'Não Conformidade de Recebimento (NCR)',
       'Requisição no Balcão (FRM.ALM-0014)',
+      'Inventário Cíclico (FRM.ALM-0015)',
+      'Cadastro de Itens — Catálogo (FRM.ALM-0016)',
     ],
   },
 ];

@@ -14,6 +14,7 @@ import Header from './components/Header';
 import ErrorBoundary, { CHUNK_RELOAD_GUARD_KEY } from './components/ErrorBoundary';
 import { TourRegistryProvider } from './components/help/TourRegistryContext';
 import FeedbackButton from './components/feedback/FeedbackButton';
+import FilaOfflineFormularios from './components/offline/FilaOfflineFormularios';
 import ForcePasswordChangeModal from './components/auth/ForcePasswordChangeModal';
 import ResumoLoginGate from './components/solicitacoes/ResumoLoginGate';
 
@@ -63,6 +64,7 @@ const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
 const RecebimentoAlmox = lazy(() => import('./views/almoxarifado/RecebimentoAlmox'));
 const RequisicaoBalcao = lazy(() => import('./views/almoxarifado/RequisicaoBalcao'));
 const InventarioCiclico = lazy(() => import('./views/almoxarifado/InventarioCiclico'));
+const CadastroItensAlmox = lazy(() => import('./views/almoxarifado/CadastroItensAlmox'));
 const SsmaHub = lazy(() => import('./views/ssma/SsmaHub'));
 const SsmaRidView = lazy(() => import('./views/ssma/SsmaRidView'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
@@ -94,6 +96,9 @@ const RhSetores = lazy(() => import('./views/rh/RhSetores'));
 const RhTurnos = lazy(() => import('./views/rh/RhTurnos'));
 const RhTreinamentos = lazy(() => import('./views/rh/RhTreinamentos'));
 const RhMatrizTreinamentos = lazy(() => import('./views/rh/RhMatrizTreinamentos'));
+const RhPlanoTreinamentos = lazy(() => import('./views/rh/RhPlanoTreinamentos'));
+const RhCronogramaTreinamentos = lazy(() => import('./views/rh/RhCronogramaTreinamentos'));
+const RhRelatorioTreinamentos = lazy(() => import('./views/rh/RhRelatorioTreinamentos'));
 const RhPercentualHE = lazy(() => import('./views/rh/RhPercentualHE'));
 const RhAseRelatorio = lazy(() => import('./views/rh/RhAseRelatorio'));
 const CotacaoVinculos = lazy(() => import('./views/CotacaoVinculos'));
@@ -744,7 +749,7 @@ export default function App() {
         if (
           canAccessPage(user, 'formularios') &&
           (canAccessForm(user, 'form_almoxarifado_recebimento') || canAccessForm(user, 'form_almoxarifado_requisicao_balcao') ||
-            canAccessForm(user, 'form_almoxarifado_inventario'))
+            canAccessForm(user, 'form_almoxarifado_inventario') || canAccessForm(user, 'form_almoxarifado_cadastro_itens'))
         ) {
           return <RecebimentoAlmox user={user} onNavigate={handleNavigate} />;
         }
@@ -759,6 +764,12 @@ export default function App() {
       case '/formularios/almoxarifado-requisicao-balcao':
         if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_almoxarifado_requisicao_balcao')) {
           return <RequisicaoBalcao user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/almoxarifado-cadastro-itens':
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_almoxarifado_cadastro_itens')) {
+          return <CadastroItensAlmox user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -1315,6 +1326,18 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/rh/plano-treinamentos':
+        if (canAccessPage(user, 'rh_plano_treinamentos')) return <RhPlanoTreinamentos user={user} onNavigate={handleNavigate} />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/rh/cronograma-treinamentos':
+        if (canAccessPage(user, 'rh_cronograma_treinamentos')) return <RhCronogramaTreinamentos user={user} onNavigate={handleNavigate} />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/rh/relatorio-treinamentos':
+        if (canAccessPage(user, 'rh_relatorios_treinamentos')) return <RhRelatorioTreinamentos user={user} onNavigate={handleNavigate} />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       // Mesma tela de rotas do Facilities: o cadastro é um só (`rh_rotas`), e
       // os dois módulos precisam dele. Muda só para onde o "voltar" leva.
       case '/rh/rotas':
@@ -1445,6 +1468,7 @@ export default function App() {
         </main>
       </div>
       <FeedbackButton pagePath={currentPath} />
+      {user && <FilaOfflineFormularios usuarioId={user.id} emFormulario={currentPath.startsWith('/formularios') || currentPath.startsWith('/qualidade')} />}
       {activeUser && <ResumoLoginGate user={activeUser} onNavigate={handleNavigate} />}
     </div>
     </TourRegistryProvider>

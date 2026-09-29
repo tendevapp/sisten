@@ -148,6 +148,9 @@ export const PAGES: PageDef[] = [
   { id: 'rh_turnos_cad', group: 'RH', label: 'Turnos', path: '/rh/turnos', icon: Clock, defaultRoles: ['admin'] },
   { id: 'rh_treinamentos_cad', group: 'RH', label: 'Treinamentos', path: '/rh/treinamentos', icon: CalendarDays, defaultRoles: ['admin'] },
   { id: 'rh_matriz_treinamentos', group: 'RH', label: 'Matriz de Treinamentos', path: '/rh/matriz-treinamentos', icon: ClipboardCheck, defaultRoles: ['admin'] },
+  { id: 'rh_plano_treinamentos', group: 'RH', label: 'Plano de Treinamentos', path: '/rh/plano-treinamentos', icon: CalendarDays, defaultRoles: ['admin'] },
+  { id: 'rh_cronograma_treinamentos', group: 'RH', label: 'Cronograma de Treinamentos', path: '/rh/cronograma-treinamentos', icon: CalendarDays, defaultRoles: ['admin'] },
+  { id: 'rh_relatorios_treinamentos', group: 'RH', label: 'Indicadores de Treinamentos', path: '/rh/relatorio-treinamentos', icon: BarChart3, defaultRoles: ['admin'] },
   { id: 'rh_rotas_cad', group: 'RH', label: 'Rotas de Transporte', path: '/rh/rotas', icon: Route, defaultRoles: ['admin'] },
   { id: 'rh_percentual_he', group: 'RH', label: 'Percentual de Hora Extra', path: '/rh/percentual-he', icon: Percent, defaultRoles: ['admin'] },
 
@@ -285,6 +288,19 @@ export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
     descricao: 'Contagem cega dos itens 80/20 comparada com o saldo da ZL0024, com recontagem e alerta de divergência',
     path: '/formularios/almoxarifado-inventario',
     defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'],
+    setores: {
+      ids: ['2'],
+      keywords: ['almoxarifado', 'almox'],
+    },
+  },
+  {
+    id: 'form_almoxarifado_cadastro_itens',
+    grupoId: 'almoxarifado',
+    label: 'Cadastro de Itens (Catálogo)',
+    codigo: 'FRM.ALM-0016',
+    descricao: 'Catálogo de materiais consumíveis da ZL0024 com Níveis 1 e 2, fotos e especificações técnicas para compras',
+    path: '/formularios/almoxarifado-cadastro-itens',
+    defaultRoles: ['admin'],
     setores: {
       ids: ['2'],
       keywords: ['almoxarifado', 'almox'],

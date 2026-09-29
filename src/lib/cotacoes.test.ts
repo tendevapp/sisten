@@ -5,6 +5,7 @@ import {
   normalizarDescricao, normalizarProposta, validarProposta, conferirTotais,
   podeSalvar, deveAutoSelecionar, aplicarSugestoes, coberturaEscopo,
   repararJsonTruncado, gerarCodigoCotacao, proximoIndiceCotacao, nomeFornecedorCurto,
+  prefixoTituloRm, montarTituloProcesso, parsePeso,
 } from './cotacoes';
 import type {
   CotacaoPropostaDraft, CotacaoPropostaItemDraft, CotacaoProcessoItem,
@@ -559,3 +560,35 @@ describe('Código de cotação — COT-DDMMYY-INDICE', () => {
   });
 });
 
+
+describe('título do processo', () => {
+  it('prefixa as RMs do escopo, sem repetir', () => {
+    expect(prefixoTituloRm(['4500123', '4500123', null])).toBe('RM 4500123');
+    expect(prefixoTituloRm(['4500123', ' 4500124 '])).toBe('RMs 4500123, 4500124');
+    expect(prefixoTituloRm([null, ''])).toBeNull();
+  });
+
+  it('junta o complemento ao prefixo', () => {
+    expect(montarTituloProcesso('RM 4500123', ' Parafusos obra X ')).toBe('RM 4500123 — Parafusos obra X');
+    expect(montarTituloProcesso('RM 4500123', '  ')).toBe('RM 4500123');
+    expect(montarTituloProcesso(null, 'Avulsa')).toBe('Avulsa');
+    expect(montarTituloProcesso(null, '')).toBeNull();
+  });
+});
+
+describe('parsePeso', () => {
+  it('ponto é sempre decimal, inclusive com três casas', () => {
+    expect(parsePeso('0.065')).toBe(0.065);
+    expect(parsePeso('1.250')).toBe(1.25);
+    expect(parsePeso('3.988')).toBe(3.988);
+    expect(parsePeso('1200')).toBe(1200);
+    expect(parsePeso('12.5 kg')).toBe(12.5);
+  });
+
+  it('aceita vírgula no formato brasileiro e rejeita lixo', () => {
+    expect(parsePeso('0,35')).toBe(0.35);
+    expect(parsePeso('1.200,5')).toBe(1200.5);
+    expect(parsePeso('abc')).toBeNull();
+    expect(parsePeso(null)).toBeNull();
+  });
+});

@@ -30,6 +30,8 @@ export const CHECKLIST_ITENS = [
   { chave: 'item_08', numero: 8, descricao: 'Fotografia Externa do Tramo LE, ausente de danos, arranhões, marcas de rolos e cintas e excesso de poeira. / External photograph of the LE section.' },
   { chave: 'item_19', numero: 19, descricao: 'Fotografia da ovalização do top flange LD. / Photograph showing the ovalization of the top flange.' },
   { chave: 'item_20', numero: 20, descricao: 'Fotografia da ovalização do top flange LE. / Photograph showing the ovalization of the top flange.' },
+  { chave: 'item_21', numero: 21, descricao: 'Fotografia da ovalização do flange Inferior LD. / Photograph showing the ovalization of the Bottom flange LD.' },
+  { chave: 'item_22', numero: 22, descricao: 'Fotografia da ovalização do flange Inferior LE. / Photograph showing the ovalization of the Bottom flange LE.' },
 ] as const;
 
 export const CHECKLIST_OBSERVACOES = [
@@ -38,6 +40,29 @@ export const CHECKLIST_OBSERVACOES = [
   { chave: 'obs_03', numero: 3, descricao: 'CHECK FLANGES SEM MARCAS MECÂNICAS, ARRANHÕES, OXIDAÇÃO. / CHECK FLANGES WITHOUT MECHANICAL MARKS, SCRATCHES, OXIDATION.' },
   { chave: 'obs_04', numero: 4, descricao: 'CHECK ESCADAS E PLATAFORMAS SEM DANOS MECÂNICOS, ALINHADAS E ISENTAS DE IMPREGNAÇÕES. / CHECK STAIRS AND PLATFORMS WITHOUT MECHANICAL DAMAGE, ALIGNED AND FREE OF IMPREGNATIONS.' },
 ] as const;
+
+/**
+ * Itens e observações respondidos só com OK / N/A / NOK: sem botão de foto
+ * (as fotos já registradas em checklists antigos continuam aparecendo).
+ */
+const CHAVES_SEM_FOTO = new Set<string>(['obs_01', 'obs_02', 'obs_03', 'obs_04']);
+export const itemSemFoto = (chave: string): boolean => CHAVES_SEM_FOTO.has(chave);
+
+/**
+ * Itens incluídos depois de checklists já preenchidos: num checklist fechado,
+ * um deles sem resposta é omitido em vez de aparecer como pendência que
+ * ninguém pode mais responder.
+ */
+const CHAVES_INCLUIDAS_DEPOIS = new Set<string>(['item_21', 'item_22']);
+
+/** Itens a exibir/imprimir: todos no rascunho; nos demais, sem os incluídos depois e nunca respondidos. */
+export function itensVisiveis(
+  status: string | null | undefined,
+  respostas: Record<string, QuaChecklistResposta | null | undefined> | null | undefined,
+): typeof CHECKLIST_ITENS[number][] {
+  const editavel = !status || status === 'RASCUNHO';
+  return CHECKLIST_ITENS.filter(item => editavel || !CHAVES_INCLUIDAS_DEPOIS.has(item.chave) || !!respostas?.[item.chave]);
+}
 
 export const CHECKLIST_PAPEIS: { papel: QuaChecklistPapel; label: string }[] = [
   { papel: 'QUALIDADE', label: 'Qualidade / Quality' },
@@ -50,7 +75,8 @@ export const CHECKLIST_CAMPOS_CABECALHO = ['cliente', 'projeto', 'tramo_sequenci
 
 /** Valores de partida de um checklist novo — o inspetor pode trocar. */
 export const CHECKLIST_CLIENTE_PADRAO = 'GOLDWIND';
-export const CHECKLIST_SITE_PADRAO = 'TEN';
+export const CHECKLIST_PROJETO_PADRAO = 'GW5S120M-001';
+export const CHECKLIST_SITE_PADRAO = 'SANTA DIANA';
 export type ChecklistCampoCabecalho = typeof CHECKLIST_CAMPOS_CABECALHO[number];
 
 export type ChecklistObservacao = { resposta: QuaChecklistResposta | null; texto: string };

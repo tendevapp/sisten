@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-29',
+    resumo: 'Almoxarifado > Formulários — Cadastro de Itens e Catálogo de Consumíveis com Fotos (`CadastroItensAlmox.tsx`, `almoxCatalogoApi.ts`, `almoxCatalogoApi.test.ts`, `NewRequest.tsx`, `Attachments.tsx`, `RecebimentoAlmox.tsx`, `Formularios.tsx`, `pages.ts`, `App.tsx`, `20260929140000_create_alm_catalogo_itens.sql`, `diretrizes.ts`): 1. Novo formulário operacional FRM.ALM-0016 sob /formularios/almoxarifado-cadastro-itens trazendo materiais consumíveis com saldo positivo na ZL0024 (sap_zl0024_stk), cruzando com a taxonomia de Níveis 1 e 2 de cadastro_grupo_mercadoria e excluindo materiais de projeto (prefixo 100000...); 2. Captura e vínculo de fotos: suporte a câmera no mobile (capture="environment"), galeria de arquivos e Ctrl+V da área de transferência, com compressão obrigatória (Regra 1 AGENTS.md) e código de registro no formato CAT-DDMMYY-NN (Regra 2); 3. Integração com Solicitação de Compras (NewRequest.tsx): itens escolhidos com foto cadastrada no catálogo exibem miniatura com botão de visualização em alta resolução e CTA de 1 clique para vincular a foto aos anexos da solicitação; 4. Banco de Imagens em Compras (Attachments.tsx): modal "Buscar imagem" indexa fotos do catálogo do almoxarifado junto com o Book de EPIs e anexos anteriores; 5. Governança e Acessos: novo módulo nasce restrito a administradores por padrão (defaultRoles: ["admin"], Regra 3).',
+  },
+  {
+    data: '2026-09-29',
     resumo: 'RH > Matriz de Treinamentos por Cargo e Colaborador (`RhMatrizTreinamentos.tsx`, `rhMatrizTreinamentosApi.ts`, `rhMatrizTreinamentosImport.ts`, `rhMatrizTreinamentosViewModel.ts`, `diretrizes.ts`): 1. Implementação da visualização em matriz cruzando colaboradores e catálogo de treinamentos com paginação, filtros, busca e exportação para Excel; 2. Gestão de status de capacitação (apto, vencido, pendente, não aplicável) com cálculo de validade e importação de requisitos por cargo; 3. Qualidade: implementação de suporte e sincronização offline com service worker, fila de pendências locais e status de rede.',
   },
   {
@@ -1618,7 +1622,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               'PIS e COFINS Apurados: calculados sobre o preço da mercadoria (`Preco_com_Impostos * Aliq`).',
               'Preço Líquido (Dedução de Impostos): `Fator_Efetivo_ICMS = Fator_Reducao * Aliq_ICMS * (1 + Aliq_IPI)`; `Carga_Total_Por_Dentro = Fator_Efetivo_ICMS + Aliq_PIS + Aliq_COFINS`; `Preco_Liquido = (Preco_Bruto / (1 + Aliq_IPI)) * (1 - Carga_Total_Por_Dentro)`.',
               'Preço Líquido Unitário: `(Preco_Liquido / Quantidade) * Unidade_de_Preco`, com tratamento de segurança contra divisão por zero (assumindo quantidade mínima de 1).',
-              'Presets Fiscais (IVA): C1 (Geral interna 18%), C2 (Interestadual Sul/Sudeste 12%), C3 (Interestadual Norte/NE/CO 7%), C4 (Importados 4%), C5 (Industrializado c/ IPI 10%), A3 (Ativo Imobilizado com redução de base Convênio 52/91) e Isento/Simples.'
+              'Presets Fiscais (IVA): C1 (Geral interna 18%), C2 (Interestadual 12% — origem N/NE/CO e ES), C3 (Interestadual 7% — origem Sul/Sudeste exceto ES), C4 (Importados 4%), C5 (Industrializado c/ IPI 10%), A3 (Ativo Imobilizado com redução de base Convênio 52/91) e Isento/Simples.'
             ]
           },
           {

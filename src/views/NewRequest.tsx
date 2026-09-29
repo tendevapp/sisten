@@ -9,8 +9,13 @@ import {
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
   AlertCircle, Siren, Laptop2, Building2, Wrench, X, Scale, Clock,
   ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText, HelpCircle, Bug, Lightbulb, RotateCcw,
-  ReceiptText, Info, Layers, HardHat, ShieldCheck,
+  ReceiptText, Info, Layers, HardHat, ShieldCheck, Camera, Eye, Check,
 } from 'lucide-react';
+import {
+  buscarFotosCatalogoPorCodigosSap,
+  converterItemCatalogoEmAnexo,
+  type CatalogoItem,
+} from '../lib/almoxCatalogoApi';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus, RequestAttachment } from '../types';
@@ -387,6 +392,46 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         novos.forEach(c => epiConsultadosRef.current.delete(c));
       });
   }, [chaveCodigosSap]);
+
+  // Catálogo do Almoxarifado (FRM.ALM-0016): fotos cadastradas dos materiais consumíveis
+  const [catalogoPorCodigo, setCatalogoPorCodigo] = useState<Map<string, CatalogoItem>>(new Map());
+  const catalogoConsultadosRef = useRef<Set<string>>(new Set());
+  const [zoomFotoCatalogo, setZoomFotoCatalogo] = useState<{ url: string; titulo: string; codigo: string } | null>(null);
+
+  useEffect(() => {
+    const codigosLimpos = items
+      .map(it => it.sap_code?.trim())
+      .filter((c): c is string => Boolean(c) && !catalogoConsultadosRef.current.has(c));
+
+    if (codigosLimpos.length === 0) return;
+    codigosLimpos.forEach(c => catalogoConsultadosRef.current.add(c));
+
+    buscarFotosCatalogoPorCodigosSap(codigosLimpos)
+      .then(resultado => {
+        if (!resultado.size) return;
+        setCatalogoPorCodigo(prev => new Map([...prev, ...resultado]));
+      })
+      .catch(erro => {
+        console.warn('Falha ao consultar fotos do catálogo do almoxarifado:', erro);
+        codigosLimpos.forEach(c => catalogoConsultadosRef.current.delete(c));
+      });
+  }, [items]);
+
+  const vincularFotoCatalogoAoItem = (itemIndex: number, itemCat: CatalogoItem) => {
+    try {
+      const anexo = converterItemCatalogoEmAnexo(itemCat);
+      const itemAtual = items[itemIndex];
+      const jaTem = (itemAtual.reusedAttachments || []).some(
+        a => a.storage_path === anexo.storage_path || a.url === anexo.url
+      );
+      if (!jaTem) {
+        handleItemChange(itemIndex, 'reusedAttachments', [...(itemAtual.reusedAttachments || []), anexo]);
+        toast.success(`Foto do material ${itemCat.codigo_sap} vinculada aos anexos da solicitação.`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao vincular foto do catálogo.');
+    }
+  };
 
   useEffect(() => {
     const patches = new Map<string, string>();
@@ -2246,6 +2291,74 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                 </div>
                               </div>
                             )}
+                            {/* Imagem do Catálogo do Almoxarifado (FRM.ALM-0016) */}
+                            {catalogoPorCodigo.get(it.sap_code?.trim())?.imagem_path && (
+                              <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50/60 p-2.5 dark:border-blue-900/60 dark:bg-blue-950/30">
+                                <button
+                                  type="button"
+                                  onClick={() => setZoomFotoCatalogo({
+                                    url: catalogoPorCodigo.get(it.sap_code!.trim())!.url_imagem || '',
+                                    titulo: it.description || it.sap_code,
+                                    codigo: it.sap_code,
+                                  })}
+                                  className="relative h-14 w-14 shrink-0 rounded-lg overflow-hidden border border-blue-300 dark:border-blue-800 bg-white group cursor-pointer"
+                                  title="Clique para ampliar a foto do catálogo"
+                                >
+                                  <img
+                                    src={catalogoPorCodigo.get(it.sap_code!.trim())!.url_imagem || ''}
+                                    alt=""
+                                    className="h-full w-full object-cover transition group-hover:scale-105"
+                                  />
+                                  <span className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
+                                    <Eye className="h-3.5 w-3.5" />
+                                  </span>
+                                </button>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-600 text-white">
+                                      <Camera className="h-3 w-3" />
+                                      Catálogo Almoxarifado
+                                    </span>
+                                    {catalogoPorCodigo.get(it.sap_code!.trim())!.classificacao_nivel2 && (
+                                      <span className="text-[10px] font-bold text-blue-900 dark:text-blue-300">
+                                        {catalogoPorCodigo.get(it.sap_code!.trim())!.classificacao_nivel2}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-blue-950 dark:text-blue-200 mt-1 line-clamp-1">
+                                    {catalogoPorCodigo.get(it.sap_code!.trim())!.texto_tecnico || 'Item com foto cadastrada no catálogo de almoxarifado.'}
+                                  </p>
+                                  {(() => {
+                                    const cat = catalogoPorCodigo.get(it.sap_code!.trim())!;
+                                    const jaVinculado = (it.reusedAttachments || []).some(
+                                      a => a.storage_path === cat.imagem_path || a.url === cat.imagem_path
+                                    );
+                                    return (
+                                      <button
+                                        type="button"
+                                        disabled={jaVinculado}
+                                        onClick={() => vincularFotoCatalogoAoItem(index, cat)}
+                                        className={`mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer ${
+                                          jaVinculado ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-blue-700 hover:text-blue-900 dark:text-blue-300 underline'
+                                        }`}
+                                      >
+                                        {jaVinculado ? (
+                                          <>
+                                            <Check className="h-3 w-3" />
+                                            Foto vinculada aos anexos da solicitação
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Plus className="h-3 w-3" />
+                                            Vincular esta foto aos anexos da compra
+                                          </>
+                                        )}
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div data-tour="novasol-descricao-busca" className="space-y-2">
@@ -3585,6 +3698,45 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           }}
           onCancelar={() => setConfirmItensObsoletosEnvio(false)}
         />
+      )}
+
+      {zoomFotoCatalogo && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in"
+          onClick={() => setZoomFotoCatalogo(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="max-w-3xl max-h-[90vh] bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 bg-slate-950 flex items-center justify-between border-b border-slate-800">
+              <div>
+                <span className="font-mono text-xs text-blue-400 font-bold mr-2">
+                  SAP {zoomFotoCatalogo.codigo}
+                </span>
+                <span className="text-sm font-semibold text-white">
+                  {zoomFotoCatalogo.titulo}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setZoomFotoCatalogo(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-3 flex items-center justify-center bg-black/50 overflow-auto max-h-[75vh]">
+              <img
+                src={zoomFotoCatalogo.url}
+                alt={zoomFotoCatalogo.titulo}
+                className="max-h-[70vh] w-auto object-contain rounded-lg shadow-lg"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

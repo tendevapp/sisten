@@ -82,29 +82,29 @@ describe('alinharPesoComVinculo', () => {
     const alvo = item({ processo_item_id: 'pi-1', peso_unitario_kg: 3.2 });
     const { itens, pesoPorRi } = alinharPesoComVinculo([alvo], new Map());
     expect(itens[0]).toBe(alvo); // nada muda — é a própria referência
-    expect(pesoPorRi.get('pi-1')).toBe(3.2);
+    expect(pesoPorRi.get('pi-1|UN')).toBe(3.2);
   });
 
   it('RI já visto: sobrescreve o peso da proposta para bater com o que já foi fixado', () => {
     const alvo = item({ processo_item_id: 'pi-1', peso_unitario_kg: 5 });
-    const { itens, pesoPorRi } = alinharPesoComVinculo([alvo], new Map([['pi-1', 3.2]]));
+    const { itens, pesoPorRi } = alinharPesoComVinculo([alvo], new Map([['pi-1|UN', 3.2]]));
     expect(itens[0].peso_unitario_kg).toBe(3.2);
-    expect(pesoPorRi.get('pi-1')).toBe(3.2);
+    expect(pesoPorRi.get('pi-1|UN')).toBe(3.2);
   });
 
   it('não mexe em item sem vínculo (processo_item_id nulo)', () => {
     const alvo = item({ processo_item_id: null, peso_unitario_kg: 5 });
-    const { itens } = alinharPesoComVinculo([alvo], new Map([['pi-1', 3.2]]));
+    const { itens } = alinharPesoComVinculo([alvo], new Map([['pi-1|UN', 3.2]]));
     expect(itens[0]).toBe(alvo);
     expect(itens[0].peso_unitario_kg).toBe(5);
   });
 
   it('não muta o mapa recebido — devolve uma cópia atualizada', () => {
-    const original = new Map([['pi-1', 3.2]]);
+    const original = new Map([['pi-1|UN', 3.2]]);
     const alvo = item({ processo_item_id: 'pi-2', peso_unitario_kg: 7 });
     const { pesoPorRi } = alinharPesoComVinculo([alvo], original);
-    expect(original.has('pi-2')).toBe(false);
-    expect(pesoPorRi.get('pi-2')).toBe(7);
+    expect(original.has('pi-2|UN')).toBe(false);
+    expect(pesoPorRi.get('pi-2|UN')).toBe(7);
   });
 
   it('duas propostas com descrições diferentes do mesmo RI acabam com o mesmo peso', () => {
@@ -116,6 +116,23 @@ describe('alinharPesoComVinculo', () => {
 
     expect(passo1.itens[0].peso_unitario_kg).toBe(3);
     expect(passo2.itens[0].peso_unitario_kg).toBe(3);
+  });
+
+  it('PC, UN e UND são a mesma unidade: o peso alinha', () => {
+    const a = item({ processo_item_id: 'pi-1', unidade_medida: 'PC', peso_unitario_kg: 0.3 });
+    const b = item({ processo_item_id: 'pi-1', unidade_medida: 'und', peso_unitario_kg: 0.5 });
+    const passo1 = alinharPesoComVinculo([a], new Map());
+    expect(alinharPesoComVinculo([b], passo1.pesoPorRi).itens[0].peso_unitario_kg).toBe(0.3);
+  });
+
+  it('mesmo RI em embalagem diferente (PACOTE × UN) não herda o peso da outra', () => {
+    const pacote = item({ processo_item_id: 'pi-1', unidade_medida: 'PACOTE', peso_unitario_kg: 0.35 });
+    const unidade = item({ processo_item_id: 'pi-1', unidade_medida: 'UN', peso_unitario_kg: 0.0035 });
+    const passo1 = alinharPesoComVinculo([pacote], new Map());
+    const passo2 = alinharPesoComVinculo([unidade], passo1.pesoPorRi);
+    expect(passo2.itens[0].peso_unitario_kg).toBe(0.0035);
+    expect(passo2.pesoPorRi.get('pi-1|PACOTE')).toBe(0.35);
+    expect(passo2.pesoPorRi.get('pi-1|UN')).toBe(0.0035);
   });
 });
 

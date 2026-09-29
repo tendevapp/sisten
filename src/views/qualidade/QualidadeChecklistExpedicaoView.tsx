@@ -82,7 +82,7 @@ function fmtDataHora(value?: string | null): string {
 }
 
 function novoCabecalho(user: Profile): Record<HeaderKey, string> {
-  return { cliente: api.CHECKLIST_CLIENTE_PADRAO, projeto: '', tramo_sequencial: '', numero_serie: '', data_expedicao: api.hojeLocal(), site: api.CHECKLIST_SITE_PADRAO, inspetor_qualidade: user.name };
+  return { cliente: api.CHECKLIST_CLIENTE_PADRAO, projeto: api.CHECKLIST_PROJETO_PADRAO, tramo_sequencial: '', numero_serie: '', data_expedicao: api.hojeLocal(), site: api.CHECKLIST_SITE_PADRAO, inspetor_qualidade: user.name };
 }
 function respostasVazias(): Record<string, QuaChecklistResposta | null> {
   return Object.fromEntries(api.CHECKLIST_ITENS.map(item => [item.chave, null]));
@@ -417,6 +417,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
   };
 
   const faltas = useMemo(() => api.faltasParaFechar(respostas, observacoes), [respostas, observacoes]);
+  const itensDaTela = useMemo(() => api.itensVisiveis(aberto?.status, respostas), [aberto?.status, respostas]);
   const respondidos = api.CHECKLIST_ITENS.length + api.CHECKLIST_OBSERVACOES.length - faltas.itens.length - faltas.observacoes.length;
   const totalPerguntas = api.CHECKLIST_ITENS.length + api.CHECKLIST_OBSERVACOES.length;
 
@@ -678,8 +679,8 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
     const pdf = <button type="button" disabled={carregandoItem} onClick={() => verPdf(item.id)} className={botaoSecundario}><FileText className="h-4 w-4" /> Ver PDF</button>;
     if (item.status === 'RASCUNHO') {
       return podeEditar(item)
-        ? <button type="button" disabled={carregandoItem} onClick={() => abrir(item.id)} className={botaoPrimario}>{carregandoItem ? spinner : <ClipboardCheck className="h-4 w-4" />} Continuar</button>
-        : <button type="button" disabled={carregandoItem} onClick={() => abrir(item.id, 'formulario')} className={botaoSecundario}><Eye className="h-4 w-4" /> Ver respostas</button>;
+        ? <><button type="button" disabled={carregandoItem} onClick={() => abrir(item.id)} className={botaoPrimario}>{carregandoItem ? spinner : <ClipboardCheck className="h-4 w-4" />} Continuar</button>{pdf}</>
+        : <><button type="button" disabled={carregandoItem} onClick={() => abrir(item.id, 'formulario')} className={botaoSecundario}><Eye className="h-4 w-4" /> Ver respostas</button>{pdf}</>;
     }
     if (item.status === 'AGUARDANDO_ASSINATURAS' && podeColetar(item)) {
       return <><button type="button" disabled={carregandoItem} onClick={() => abrir(item.id, 'assinaturas')} className={botaoPrimario}>{carregandoItem ? spinner : <PenTool className="h-4 w-4" />} Coletar assinaturas</button>{pdf}</>;
@@ -735,20 +736,56 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
     </div> : <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">Nenhum checklist encontrado.</div>}
   </div>;
 
+  /**
+   * Checklist como está na tela agora (mesmo sem salvar) para o "Ver PDF" do
+   * rascunho: cabeçalho, respostas, fotos e assinaturas coletadas.
+   */
+  const rascunhoParaPdf = (): Checklist => {
+    const agora = new Date().toISOString();
+    const base = aberto || ({
+      id: idNovo, codigo_registro: '', status: 'RASCUNHO', etiqueta_secao: '', fotos: [], assinaturas: [],
+      criado_por: user.id, criado_por_nome: user.name, created_at: agora, updated_at: agora,
+    } as unknown as Checklist);
+    const coletadas = (Object.entries(pendentes) as [QuaChecklistPapel, AssinaturaPendente | undefined][])
+      .filter(([, pendente]) => !!pendente)
+      .map(([papel, pendente]) => ({
+        id: `pendente-${papel}`, checklist_id: base.id, papel, nome: pendente!.nome, tipo: pendente!.tipo,
+        path: '', mime_type: pendente!.arquivo.type, created_at: pendente!.assinadoEm, assinado_em: pendente!.assinadoEm, preview_url: pendente!.url,
+      }));
+    return {
+      ...base,
+      ...cabecalho,
+      // Sem código até sincronizar: o PDF sai marcado como rascunho.
+      codigo_registro: base.codigo_registro || 'RASCUNHO',
+      respostas,
+      observacoes,
+      validacao_nomes: nomes,
+      fotos: Object.values(fotos).flat().map(foto => ({ ...foto, preview_url: foto.localUrl || foto.preview_url })) as Checklist['fotos'],
+      assinaturas: [...assinaturasVisiveis.filter(item => !coletadas.some(c => c.papel === item.papel)), ...coletadas] as Checklist['assinaturas'],
+    };
+  };
+
+  /**
+   * Mostra a área de foto? Item sem foto só a exibe quando há foto antiga
+   * ou N/A (imagem "Not Available"); os demais, sempre que editável.
+   */
+  const areaDeFoto = (chave: string, naoAplicavel: boolean, editavel: boolean): boolean =>
+    api.itemSemFoto(chave) ? naoAplicavel || (fotos[chave] || []).length > 0 : editavel || naoAplicavel || (fotos[chave] || []).length > 0;
+
   /** Itens + observações; editável no rascunho, leitura nos demais estados. */
   const renderConteudo = (editavel: boolean) => <>
     <section className="space-y-3">
       <div className="flex items-end justify-between">
         <h2 className="font-display text-lg font-bold text-slate-900 dark:text-slate-50"><Bilingue inline pt="Verificação final" en="Final check" /></h2>
-        <span className="text-[11px] text-slate-400">{api.CHECKLIST_ITENS.length} itens fotográficos</span>
+        <span className="text-[11px] text-slate-400">{itensDaTela.length} itens</span>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
-        {api.CHECKLIST_ITENS.map(item => <article key={item.chave} className={`${cardClass} flex flex-col gap-3 p-4 ${respostas[item.chave] === 'NOK' ? 'border-red-200 dark:border-red-900/60' : ''}`}>
+        {itensDaTela.map(item => <article key={item.chave} className={`${cardClass} flex flex-col gap-3 p-4 ${respostas[item.chave] === 'NOK' ? 'border-red-200 dark:border-red-900/60' : ''}`}>
           <div className="flex gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-xs font-black text-white dark:bg-slate-100 dark:text-slate-900">{item.numero}</span>
             <div className="min-w-0 space-y-0.5"><Bilingue texto={item.descricao} ptClass="text-sm font-semibold leading-snug text-slate-900 dark:text-slate-50" enClass="text-[13px] leading-snug" /></div>
           </div>
-          <FotosItem imagemNa={respostas[item.chave] === 'NA' ? imagemNa : null} fotos={fotos[item.chave] || []} editavel={editavel} onAdd={files => adicionarFotos(item.chave, files)} onRemove={foto => removerFoto(item.chave, foto)} onOpen={indice => abrirFotos(item.chave, `Item ${item.numero}`, indice)} />
+          {areaDeFoto(item.chave, respostas[item.chave] === 'NA', editavel) && <FotosItem imagemNa={respostas[item.chave] === 'NA' ? imagemNa : null} fotos={fotos[item.chave] || []} editavel={editavel && !api.itemSemFoto(item.chave)} onAdd={files => adicionarFotos(item.chave, files)} onRemove={foto => removerFoto(item.chave, foto)} onOpen={indice => abrirFotos(item.chave, `Item ${item.numero}`, indice)} />}
           <RespostaBotoes disabled={!editavel} value={respostas[item.chave]} onChange={value => setRespostas(prev => ({ ...prev, [item.chave]: value }))} />
         </article>)}
       </div>
@@ -768,7 +805,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
             {editavel
               ? <textarea value={valor?.texto || ''} onChange={event => setObservacoes(prev => ({ ...prev, [item.chave]: { ...(prev[item.chave] || { resposta: null }), texto: event.target.value } }))} placeholder="Observação / Observation" rows={2} className={`${inputClass} text-xs`} />
               : valor?.texto && <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-950 dark:text-slate-300">{valor.texto}</p>}
-            {(editavel || valor?.resposta === 'NA' || (fotos[item.chave] || []).length > 0) && <FotosItem imagemNa={valor?.resposta === 'NA' ? imagemNa : null} fotos={fotos[item.chave] || []} editavel={editavel} onAdd={files => adicionarFotos(item.chave, files)} onRemove={foto => removerFoto(item.chave, foto)} onOpen={indice => abrirFotos(item.chave, `Observação ${item.numero}`, indice)} />}
+            {areaDeFoto(item.chave, valor?.resposta === 'NA', editavel) && <FotosItem imagemNa={valor?.resposta === 'NA' ? imagemNa : null} fotos={fotos[item.chave] || []} editavel={editavel && !api.itemSemFoto(item.chave)} onAdd={files => adicionarFotos(item.chave, files)} onRemove={foto => removerFoto(item.chave, foto)} onOpen={indice => abrirFotos(item.chave, `Observação ${item.numero}`, indice)} />}
           </article>;
         })}
       </div>
@@ -815,6 +852,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
             <h2 className="mt-1 font-display text-lg font-bold text-slate-900 dark:text-slate-50"><Bilingue inline pt="Cabeçalho" en="Header" /></h2>
             {editavel && <p className="text-xs text-slate-500">Os valores digitados ficam como sugestão nos próximos checklists.</p>}
           </div>
+          {editavel && <button type="button" onClick={() => setPdfAlvo(rascunhoParaPdf())} className={`${botaoSecundario} flex-none`}><FileText className="h-4 w-4" /> Ver PDF</button>}
           {aberto && aberto.status !== 'RASCUNHO' && <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setPdfAlvo(aberto)} className={botaoSecundario}><FileText className="h-4 w-4" /> Ver PDF</button>
             <button type="button" onClick={() => exportQualidadeChecklistExpedicaoPdf(aberto).catch((error: any) => toast.error(`Erro ao exportar: ${error.message || ''}`))} className={botaoSecundario}><FileDown className="h-4 w-4" /> Baixar</button>
@@ -866,6 +904,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
           <p className="text-xs text-slate-500">{respondidos} de {totalPerguntas} respondidos</p>
           {!sync.online && <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"><WifiOff className="h-3 w-3" /> Sem conexão — salva no aparelho</span>}
         </div>
+        <button type="button" onClick={() => setPdfAlvo(rascunhoParaPdf())} disabled={salvando} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200"><FileText className="h-4 w-4" /> Ver PDF</button>
         <button type="button" onClick={() => salvar(false)} disabled={salvando} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200"><Save className="h-4 w-4" /> Salvar rascunho</button>
         <button type="button" onClick={() => salvar(true)} disabled={salvando} className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-bold text-white shadow-sm disabled:opacity-60 ${totalAssinadas === 4 ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}>{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : totalAssinadas === 4 ? <CheckCircle2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />} {totalAssinadas === 4 ? 'Fechar e finalizar' : totalAssinadas ? `Fechar — faltam ${4 - totalAssinadas} assinaturas` : 'Fechar e assinar depois'}</button>
       </div>}

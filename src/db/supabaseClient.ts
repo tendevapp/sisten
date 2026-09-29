@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
+import { configurarFilaOffline, fetchOffline } from '../lib/offline/filaSupabase';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -12,9 +13,23 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+// `fetchOffline`: os formulários seguem funcionando sem rede — leituras saem
+// da última cópia guardada no aparelho e as gravações entram numa fila que
+// sobe quando a conexão volta (ver lib/offline/filaSupabase.ts). Fora das
+// tabelas dos formulários é o `fetch` de sempre.
 export const supabase: SupabaseClient<Database> = supabaseUrl && supabaseAnonKey
-  ? createClient<Database>(supabaseUrl, supabaseAnonKey)
+  ? createClient<Database>(supabaseUrl, supabaseAnonKey, { global: { fetch: fetchOffline } })
   : null as any;
+
+if (supabase) {
+  configurarFilaOffline({
+    urlSupabase: supabaseUrl.replace(/\/$/, ''),
+    chaveAnon: supabaseAnonKey,
+    fetchReal: (entrada, init) => fetch(entrada, init),
+    obterToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null,
+    renovarToken: async () => (await supabase.auth.refreshSession()).data.session?.access_token ?? null,
+  });
+}
 
 // Uma chave anônima nunca pode ser promovida a cliente de serviço. Quando a
 // service_role não está disponível (o esperado no browser), operações comuns

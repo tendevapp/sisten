@@ -23,7 +23,7 @@ import RevisaoPedidoCompra from '../components/cotacoes/RevisaoPedidoCompra';
 import { limparComprasMemoryCache } from './Compras';
 import { RASCUNHO_COTACAO_KEY, chaveRascunhoPropostas, normalizarProposta, aplicarSugestoes, normalizarDescricao, propostaSalvaParaDraft } from '../lib/cotacoes';
 import { aplicarVinculosIa, revisarDivergencias } from '../lib/vinculoCotacao';
-import { simularFreteCotacao, aplicarFreteTeorico, alinharPesoComVinculo } from '../lib/freteCotacao';
+import { simularFreteCotacao, aplicarFreteTeorico, alinharPesoComVinculo, chavePesoAlinhado } from '../lib/freteCotacao';
 import {
   criarProcessoCotacao, listarProcessosCotacao, buscarProcessoCotacao,
   extrairCotacao, sugerirVinculos, salvarProcessoCotacao, excluirPropostaCotacao,
@@ -93,7 +93,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
   const processoIdAtualRef = useRef<string | null>(null);
   useEffect(() => { processoIdAtualRef.current = processo?.id ?? null; }, [processo]);
 
-  // Peso canônico por RI (processo_item_id) desta sessão de análise — a
+  // Peso canônico por RI + unidade de medida (`chavePesoAlinhado`) desta sessão de análise — a
   // primeira estimativa vista para um item vira a referência para toda
   // cotação seguinte que citar o mesmo RI (ver `alinharPesoComVinculo`).
   // Precisa ser ref, não state: é bookkeeping interno que não deve disparar
@@ -105,8 +105,9 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     const mapa = new Map<string, number>();
     for (const draft of drafts) {
       for (const item of draft.itens) {
-        if (item.processo_item_id && item.peso_unitario_kg != null && !mapa.has(item.processo_item_id)) {
-          mapa.set(item.processo_item_id, item.peso_unitario_kg);
+        const chave = chavePesoAlinhado(item);
+        if (chave && item.peso_unitario_kg != null && !mapa.has(chave)) {
+          mapa.set(chave, item.peso_unitario_kg);
         }
       }
     }

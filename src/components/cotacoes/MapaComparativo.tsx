@@ -154,35 +154,111 @@ function Chip({ tom, children, title }: { tom: 'neutro' | 'ok' | 'aviso' | 'ruim
 }
 
 /**
- * Alíquota e valor de cada imposto destacado, na ordem em que pesam no bolso.
- * O valor é por unidade (mesma régua do preço grande da célula); o total do
- * item fica no title.
+ * Alíquota e valor de cada imposto destacado, na ordem em que pesam no bolso,
+ * seguidos do DIFAL estimado (fornecedor fora da BA) e do frete do item. O
+ * valor é por unidade (mesma régua do preço grande da célula); o total do
+ * item e a memória de cálculo ficam no title.
  */
-function ChipsImpostos({ celula }: { celula: CelulaMapa }) {
+function ChipsImpostos({ celula, freteEhTeorico }: { celula: CelulaMapa; freteEhTeorico: boolean }) {
   const { item, custo } = celula;
   const qtd = custo.quantidade != null && custo.quantidade > 0 ? custo.quantidade : null;
   const porUn = (total: number) => (qtd ? total / qtd : total);
-  const partes: { rotulo: string; total: number }[] = [];
+  const un = item.unidade_medida || 'un';
+  const partes: { rotulo: string; total: number; destaque?: 'difal' | 'frete' }[] = [];
   if (item.aliquota_ipi_pct != null) partes.push({ rotulo: `IPI ${item.aliquota_ipi_pct}%`, total: custo.impostos.ipi });
   if (item.aliquota_icms_pct != null) partes.push({ rotulo: `ICMS ${item.aliquota_icms_pct}%`, total: custo.impostos.icms });
   if (item.aliquota_pis_pct != null || item.aliquota_cofins_pct != null) {
     const soma = (item.aliquota_pis_pct ?? 0) + (item.aliquota_cofins_pct ?? 0);
     partes.push({ rotulo: `PIS/COF ${Number(soma.toFixed(2))}%`, total: custo.impostos.pisCofins });
   }
+  const difal = custo.difal;
+  if (difal && difal.valor > 0) {
+    partes.push({
+      rotulo: `DIFAL ${Number((difal.aliqInterna - difal.aliqInterestadual).toFixed(2))}%`,
+      total: difal.valor,
+      destaque: 'difal',
+    });
+  }
+  if (custo.freteRateado > 0) {
+    partes.push({ rotulo: freteEhTeorico ? 'Frete estim.' : 'Frete', total: custo.freteRateado, destaque: 'frete' });
+  }
   if (partes.length === 0) {
     return <span className="text-[10px] text-slate-400">sem impostos destacados</span>;
   }
   const detalhe = [
     ...partes.map(p => `${p.rotulo}: ${formatBRL(p.total)} no item`),
+    difal && difal.valor > 0
+      ? `DIFAL estimado — ${difal.ufOrigem}→BA: ${formatBRL(difal.base)} × (${difal.aliqInterna}% interna − ${difal.aliqInterestadual}% interestadual), base única como o SAP recolhe`
+        + `${difal.aliqInterestadualInferida ? ' (alíquota inferida pela UF, a proposta não destacou 4/7/12%)' : ''}.`
+        + ' Devido pela TEN em compra para uso/consumo ou ativo; não inclui FCP nem redução de base por NCM.'
+        + ' Só informativo — não entra no custo comparado.'
+      : null,
+    custo.freteRateado > 0
+      ? freteEhTeorico
+        ? 'Frete estimado pela tabela Bahia Sul, rateado pelo peso do item.'
+        : 'Frete informado na proposta, rateado pelo valor do item.'
+      : null,
     custo.ipi > 0 ? `IPI somado à comparação: ${formatBRL(custo.ipi)}` : null,
     custo.creditos > 0 ? `Créditos abatidos: ${formatBRL(custo.creditos)}` : null,
   ].filter(Boolean).join('\n');
   return (
     <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-slate-500 dark:text-slate-400" title={detalhe}>
       {partes.map(p => (
+        <span
+          key={p.rotulo}
+          className={`tabular-nums ${
+            p.destaque === 'difal' ? 'text-amber-700 dark:text-amber-400'
+              : p.destaque === 'frete' ? `text-indigo-600 dark:text-indigo-400${freteEhTeorico ? ' italic' : ''}`
+                : ''
+          }`}
+        >
+          {p.rotulo} <span className={`font-semibold ${p.destaque ? '' : 'text-slate-600 dark:text-slate-300'}`}>{formatBRL(porUn(p.total))}</span>
+          {qtd ? <span className="text-slate-400">/{un}</span> : null}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Crédito que cada tributo geraria no item, por unidade — só informação. O
+ * mapa não sabe a finalidade da compra, então mostra o tamanho de cada
+ * crédito e o title diz em que caso a TEN o recupera.
+ */
+function ChipsCreditos({ celula }: { celula: CelulaMapa }) {
+  const { item, custo } = celula;
+  const cred = custo.creditosPossiveis;
+  if (!cred) return null;
+  const qtd = custo.quantidade != null && custo.quantidade > 0 ? custo.quantidade : null;
+  const porUn = (total: number) => (qtd ? total / qtd : total);
+  const un = item.unidade_medida || 'un';
+  const partes = [
+    { rotulo: 'PIS/COF 9,25%', total: cred.pisCofins },
+    { rotulo: cred.icmsEstimado ? 'ICMS estim.' : 'ICMS', total: cred.icms },
+    { rotulo: 'IPI', total: cred.ipi },
+  ].filter(p => p.total > 0.005);
+  if (partes.length === 0) return null;
+
+  const detalhe = [
+    ...partes.map(p => `${p.rotulo}: ${formatBRL(p.total)} no item`),
+    '',
+    'Quando a TEN recupera:',
+    '• PIS/COFINS — industrialização, consumo aplicado na produção e ativo. Consumo administrativo não credita.',
+    '  Base: valor − ICMS destacado (Lei 14.592/2023); vale mesmo sem PIS/COFINS destacado e com fornecedor do Simples.',
+    '• ICMS — só industrialização (ativo: em 48 meses). Consumo não credita.',
+    cred.icmsEstimado ? '  A proposta não destacou ICMS — valor estimado pela UF; fornecedor do Simples só dá crédito do que destacar.' : null,
+    '• IPI — só industrialização.',
+    '',
+    'Informativo: não entra no custo comparado.',
+  ].filter(l => l != null).join('\n');
+
+  return (
+    <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-emerald-700 dark:text-emerald-400" title={detalhe}>
+      <span className="font-semibold">Crédito</span>
+      {partes.map(p => (
         <span key={p.rotulo} className="tabular-nums">
-          {p.rotulo} <span className="font-semibold text-slate-600 dark:text-slate-300">{formatBRL(porUn(p.total))}</span>
-          {qtd ? <span className="text-slate-400">/{item.unidade_medida || 'un'}</span> : null}
+          {p.rotulo} <span className="font-semibold">{formatBRL(porUn(p.total))}</span>
+          {qtd ? <span className="text-emerald-600/60 dark:text-emerald-500/60">/{un}</span> : null}
         </span>
       ))}
     </div>
@@ -416,11 +492,16 @@ function CabecalhoFornecedor({
           {resumo.melhorEm > 0 && <span className="font-semibold text-emerald-600 dark:text-emerald-400">melhor em {resumo.melhorEm}</span>}
           {delta != null && delta > 0.01 && <span className="text-rose-500">+{delta.toFixed(1)}%</span>}
         </div>
-        {(resumo.totalImpostos.ipi > 0 || resumo.totalImpostos.icms > 0 || resumo.totalImpostos.pisCofins > 0) && (
+        {(resumo.totalImpostos.ipi > 0 || resumo.totalImpostos.icms > 0 || resumo.totalImpostos.pisCofins > 0 || resumo.totalImpostos.difal > 0) && (
           <div className="flex flex-wrap gap-x-2 text-[10px] tabular-nums text-slate-400" title="Soma dos impostos destacados nos itens cotados. Só entram no total acima nas bases desembolso/custo líquido.">
             {resumo.totalImpostos.ipi > 0 && <span>IPI {formatBRL(resumo.totalImpostos.ipi)}</span>}
             {resumo.totalImpostos.icms > 0 && <span>ICMS {formatBRL(resumo.totalImpostos.icms)}</span>}
             {resumo.totalImpostos.pisCofins > 0 && <span>PIS/COF {formatBRL(resumo.totalImpostos.pisCofins)}</span>}
+            {resumo.totalImpostos.difal > 0 && (
+              <span className="text-amber-600 dark:text-amber-400" title="DIFAL estimado (fornecedor fora da BA: valor × (20,5% − interestadual), base única como o SAP recolhe). Só informativo — não entra em nenhum total nem na comparação.">
+                DIFAL {formatBRL(resumo.totalImpostos.difal)}
+              </span>
+            )}
           </div>
         )}
         {/* Régua visual da distância até o melhor total — só quando há uma
@@ -443,9 +524,10 @@ function CabecalhoFornecedor({
 // =====================================================================
 
 function Celula({
-  celula, marcado, onMarcar, selecionadoAgrupamento, onToggleAgrupamento,
+  celula, freteEhTeorico, marcado, onMarcar, selecionadoAgrupamento, onToggleAgrupamento,
 }: {
   celula: CelulaMapa;
+  freteEhTeorico: boolean;
   marcado: boolean;
   onMarcar: (v: boolean) => void;
   /** Selecionado para a ação flutuante de juntar/separar linhas — independente da decisão de compra. */
@@ -533,7 +615,8 @@ function Celula({
       </div>
 
       <div className="pl-[18px]">
-        <ChipsImpostos celula={celula} />
+        <ChipsImpostos celula={celula} freteEhTeorico={freteEhTeorico} />
+        <ChipsCreditos celula={celula} />
       </div>
 
       {celula.score < 1 && (
@@ -1336,6 +1419,7 @@ export default function MapaComparativo({
                           {celula ? (
                             <Celula
                               celula={celula}
+                              freteEhTeorico={r.freteEhTeorico}
                               marcado={selecionados.has(celula.item._key)}
                               onMarcar={v => alternarSelecao(celula, linha, v)}
                               selecionadoAgrupamento={selecaoAgrupamento.has(celula.item._key)}

@@ -7,7 +7,7 @@
 
 import { PDFDocument, PDFImage, PDFPage } from 'pdf-lib';
 import type { QuaChecklistExpedicao, QuaChecklistResposta } from '../../types';
-import { CHECKLIST_ITENS, CHECKLIST_OBSERVACOES, CHECKLIST_PAPEIS, urlImagemNaoAplicavel } from '../qualidadeChecklistExpedicao';
+import { CHECKLIST_ITENS, CHECKLIST_OBSERVACOES, CHECKLIST_PAPEIS, itemSemFoto, itensVisiveis, urlImagemNaoAplicavel } from '../qualidadeChecklistExpedicao';
 import { separarBilingue } from '../textoBilingue';
 import {
   BLACK, GREEN, HEAD_BG, MUTED, PH, PW, RED,
@@ -105,12 +105,12 @@ const COLUNA_RESPOSTA: Record<QuaChecklistResposta, number> = { OK: 3, NA: 4, NO
 
 function linhaVerificacao(
   page: PDFPage, f: Fontes, numero: string, blocos: Bloco[], resposta: QuaChecklistResposta | null | undefined,
-  imagens: PDFImage[], topo: number, altura: number,
+  imagens: PDFImage[], topo: number, altura: number, semFoto = false,
 ) {
   COLS.forEach((largura, indice) => retangulo(page, XS[indice], topo, largura, altura));
   celula(page, f, [{ text: numero, font: f.bold, size: 9 }], XS[0], topo, COLS[0], altura);
   if (imagens.length) mosaico(page, imagens, XS[1] + 3, topo + 3, COLS[1] - 6, altura - 6);
-  else celula(page, f, [{ text: 'Sem foto', font: f.italic, size: 6.8, color: MUTED }], XS[1], topo, COLS[1], altura);
+  else if (!semFoto) celula(page, f, [{ text: 'Sem foto', font: f.italic, size: 6.8, color: MUTED }], XS[1], topo, COLS[1], altura);
   celula(page, f, blocos, XS[2], topo, COLS[2], altura, { align: 'left', pad: 5 });
   if (!resposta) return;
   const coluna = COLUNA_RESPOSTA[resposta];
@@ -187,14 +187,14 @@ async function montarDocumento(checklist: QuaChecklistExpedicao): Promise<PDFDoc
         novaPagina();
         topo = cabecalhoColunas(page, f, topo, colunaDescricao[0], colunaDescricao[1]);
       }
-      linhaVerificacao(page, f, linha.numero, linha.blocos, linha.resposta, imagens, topo, altura);
+      linhaVerificacao(page, f, linha.numero, linha.blocos, linha.resposta, imagens, topo, altura, itemSemFoto(linha.chave));
       topo += altura;
     }
     topo += 6;
   };
 
   await secao(['VERIFICAÇÃO FINAL', 'FINAL CHECK'], ['DESCRIÇÃO DA VERIFICAÇÃO', 'VERIFICATION DESCRIPTION'],
-    CHECKLIST_ITENS.map(item => ({ chave: item.chave, numero: String(item.numero), blocos: blocosDescricao(item.descricao, f), resposta: checklist.respostas?.[item.chave] })));
+    itensVisiveis(checklist.status, checklist.respostas).map(item => ({ chave: item.chave, numero: String(item.numero), blocos: blocosDescricao(item.descricao, f), resposta: checklist.respostas?.[item.chave] })));
   await secao(['OBSERVAÇÕES FORA DA LISTAGEM', 'OBSERVATIONS OUTSIDE THE LISTING'], ['OBSERVAÇÃO', 'OBSERVATION'],
     CHECKLIST_OBSERVACOES.map(item => ({
       chave: item.chave,

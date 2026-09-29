@@ -10,6 +10,8 @@ import {
   type ChecklistInput,
   faltasParaFechar,
   filaAssinaturas,
+  itemSemFoto,
+  itensVisiveis,
   papeisPendentes,
   podeColetarAssinaturas,
 } from './qualidadeChecklistExpedicao';
@@ -20,9 +22,21 @@ const setores = [{ id: '11', name: 'Qualidade' }, { id: '14', name: 'Produção'
 const assinatura = (papel: QuaChecklistAssinatura['papel']) => ({ papel } as QuaChecklistAssinatura);
 
 describe('FRM.QUA-0030 - Checklist de Expedição', () => {
-  it('mapeia os dez itens fotográficos do Excel', () => {
-    expect(CHECKLIST_ITENS.map(item => item.numero)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 19, 20]);
+  it('mapeia os doze itens de verificação', () => {
+    expect(CHECKLIST_ITENS.map(item => item.numero)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 19, 20, 21, 22]);
     expect(CHECKLIST_ITENS.every(item => item.descricao.length > 20)).toBe(true);
+  });
+
+  it('só as observações não têm foto; todos os itens têm', () => {
+    expect(CHECKLIST_ITENS.filter(item => itemSemFoto(item.chave)).map(item => item.numero)).toEqual([]);
+    expect(CHECKLIST_OBSERVACOES.every(item => itemSemFoto(item.chave))).toBe(true);
+  });
+
+  it('checklist fechado antigo não mostra os itens 21 e 22 nunca respondidos', () => {
+    const respostas = Object.fromEntries(CHECKLIST_ITENS.filter(item => item.numero < 21).map(item => [item.chave, 'OK' as const]));
+    expect(itensVisiveis('RASCUNHO', respostas)).toHaveLength(12);
+    expect(itensVisiveis('FINALIZADO', respostas).map(item => item.numero)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 19, 20]);
+    expect(itensVisiveis('FINALIZADO', { ...respostas, item_21: 'NA' })).toHaveLength(11);
   });
 
   it('mapeia as quatro observações e as quatro validações', () => {

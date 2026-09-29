@@ -30,13 +30,13 @@ describe('inferirCodigoFiscal', () => {
     expect(inferirCodigoFiscal('BA')).toBe('C1');
   });
 
-  it('aplica 12% para Sul/Sudeste e 7% para o resto', () => {
-    expect(inferirCodigoFiscal('SP')).toBe('C2');
-    expect(inferirCodigoFiscal('RS')).toBe('C2');
-    expect(inferirCodigoFiscal('PE')).toBe('C3');
-    expect(inferirCodigoFiscal('GO')).toBe('C3');
-    // ES fica fora da regra de 12% mesmo sendo Sudeste.
-    expect(inferirCodigoFiscal('ES')).toBe('C3');
+  it('aplica 7% para Sul/Sudeste e 12% para o resto (Res. SF 22/89, destino BA)', () => {
+    expect(inferirCodigoFiscal('SP')).toBe('C3');
+    expect(inferirCodigoFiscal('RS')).toBe('C3');
+    expect(inferirCodigoFiscal('PE')).toBe('C2');
+    expect(inferirCodigoFiscal('GO')).toBe('C2');
+    // ES segue a regra do N/NE/CO mesmo sendo Sudeste.
+    expect(inferirCodigoFiscal('ES')).toBe('C2');
   });
 
   it('escolhe o preset com IPI em operação interna quando o item destaca IPI', () => {
@@ -52,8 +52,8 @@ describe('criteriosFiscaisItem', () => {
 
   it('o preset preenche o que o fornecedor não destacou', () => {
     const { codigoFiscal, inputs } = criteriosFiscaisItem(item(), { fornecedor_uf: 'SP' });
-    expect(codigoFiscal).toBe('C2');
-    expect(inputs.aliqIcms).toBe(12);
+    expect(codigoFiscal).toBe('C3');
+    expect(inputs.aliqIcms).toBe(7);
     expect(inputs.aliqPis).toBe(1.65);
     expect(inputs.aliqCofins).toBe(7.6);
   });
@@ -142,7 +142,7 @@ describe('aplicarCustoNoItem', () => {
     const custo = calcularCustoCompraItem(base, { fornecedor_uf: 'SP' });
     const gravado = aplicarCustoNoItem(base, custo);
 
-    expect(gravado.codigo_fiscal).toBe('C2');
+    expect(gravado.codigo_fiscal).toBe('C3');
     expect(gravado.preco_liquido_total).toBeCloseTo(custo.precoLiquido, 2);
     expect(gravado.custo_total_item).toBeCloseTo(custo.custoTotal, 2);
   });

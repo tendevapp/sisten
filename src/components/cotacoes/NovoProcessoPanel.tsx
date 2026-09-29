@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Confirma o escopo de RM/itens vindo da Central de Compras (via
- * sessionStorage) antes de criar o processo de cotação. Pede um título
- * opcional — o número é gerado automaticamente.
+ * sessionStorage) antes de criar o processo de cotação. O título já vem com
+ * o número da(s) RM(s) e aceita um texto complementar — o número do
+ * processo é gerado automaticamente.
  */
 
 import React, { useState } from 'react';
 import { PackageSearch, Loader2, ArrowRight } from 'lucide-react';
+import { montarTituloProcesso, prefixoTituloRm } from '../../lib/cotacoes';
 import type { CotacaoProcessoItemDraft } from '../../types';
 
 interface NovoProcessoPanelProps {
@@ -19,10 +21,13 @@ interface NovoProcessoPanelProps {
 }
 
 export default function NovoProcessoPanel({ itens, criando, onCriar, onCancelar }: NovoProcessoPanelProps) {
-  const [titulo, setTitulo] = useState('');
+  const [complemento, setComplemento] = useState('');
   const [observacoes, setObservacoes] = useState('');
 
   const rms = Array.from(new Set(itens.map(i => i.rm).filter(Boolean)));
+  // Com RM no escopo, o número dela já é o título — o comprador só acrescenta
+  // o que quiser. Sem RM (cotação avulsa), o campo é livre como sempre foi.
+  const prefixoRm = prefixoTituloRm(itens.map(i => i.rm));
 
   return (
     <div className="space-y-4">
@@ -45,13 +50,30 @@ export default function NovoProcessoPanel({ itens, criando, onCriar, onCancelar 
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Título (opcional)</label>
-            <input
-              value={titulo}
-              onChange={e => setTitulo(e.target.value)}
-              placeholder="Ex.: Parafusos e porcas — obra X"
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-            />
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {prefixoRm ? 'Título' : 'Título (opcional)'}
+            </label>
+            <div className="mt-1 flex w-full items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950">
+              {prefixoRm && (
+                <span
+                  className="max-w-[55%] shrink-0 truncate border-r border-slate-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 dark:border-slate-700 dark:bg-indigo-950/40 dark:text-indigo-300"
+                  title={`${prefixoRm} — preenchido pela RM do escopo`}
+                >
+                  {prefixoRm}
+                </span>
+              )}
+              <input
+                value={complemento}
+                onChange={e => setComplemento(e.target.value)}
+                placeholder={prefixoRm ? 'Texto complementar (opcional)' : 'Ex.: Parafusos e porcas — obra X'}
+                className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none dark:text-slate-100"
+              />
+            </div>
+            {prefixoRm && complemento.trim() && (
+              <p className="mt-1 truncate text-[11px] text-slate-400" title={montarTituloProcesso(prefixoRm, complemento) ?? undefined}>
+                Fica: {montarTituloProcesso(prefixoRm, complemento)}
+              </p>
+            )}
           </div>
           <div>
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Observações (opcional)</label>
@@ -99,7 +121,7 @@ export default function NovoProcessoPanel({ itens, criando, onCriar, onCancelar 
           </button>
           <button
             type="button"
-            onClick={() => onCriar(titulo.trim() || null, observacoes.trim() || null)}
+            onClick={() => onCriar(montarTituloProcesso(prefixoRm, complemento), observacoes.trim() || null)}
             disabled={criando}
             className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:pointer-events-none disabled:opacity-40"
           >

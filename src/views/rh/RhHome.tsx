@@ -107,6 +107,16 @@ const SECOES: Secao[] = [
         fonte: 'Matriz de conformidade RH',
       },
       {
+        id: 'plano_treinamentos', label: 'Plano de Treinamentos', icon: CalendarDays,
+        desc: 'Eventos programados e realizados, custos, responsáveis e participantes vinculados ao cadastro de treinamentos.',
+        cor: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-400', path: '/rh/plano-treinamentos', gateId: 'rh_plano_treinamentos', fonte: 'Plano RH 2026',
+      },
+      {
+        id: 'cronograma_treinamentos', label: 'Cronograma de Treinamentos', icon: CalendarDays,
+        desc: 'Previsão mensal de turmas e orçamento, editável e vinculada aos treinamentos cadastrados.',
+        cor: 'bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400', path: '/rh/cronograma-treinamentos', gateId: 'rh_cronograma_treinamentos', fonte: 'Cronograma RH 2026',
+      },
+      {
         id: 'rotas',
         label: 'Rotas de Transporte',
         icon: BusFront,
@@ -142,6 +152,11 @@ const SECOES: Secao[] = [
         cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400',
         path: '/formularios/rh-ase-hora-extra',
         fonte: 'Formulário ASE (FRM.RHU-0007)',
+      },
+      {
+        id: 'rel_treinamentos', label: 'Indicadores de Treinamentos', icon: BarChart3,
+        desc: 'Painel de programação, realização, participações e custo do plano de treinamentos.',
+        cor: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-400', path: '/rh/relatorio-treinamentos', gateId: 'rh_relatorios_treinamentos', fonte: 'Plano e participações RH',
       },
       {
         id: 'rel_ase_gerencial',

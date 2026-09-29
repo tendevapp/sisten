@@ -169,7 +169,8 @@ export async function subirEvidencia(
   const nome = arquivo.name;
   const tipo = preparado ? arquivo.mimeType : blob === arquivo ? arquivo.type : 'image/jpeg';
   const extensao = (nome.split('.').pop() || 'jpg').toLowerCase();
-  const path = `${codigo}/${Math.random().toString(36).slice(2, 9)}.${extensao}`;
+  // Sem código ainda (NC registrada offline, código só no envio): pasta provisória.
+  const path = `${codigo || "sem-codigo"}/${Math.random().toString(36).slice(2, 9)}.${extensao}`;
 
   const { error } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: tipo, upsert: false });
   if (error) throw new Error(`Falha no upload da evidência: ${error.message}`);
