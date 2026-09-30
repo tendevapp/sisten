@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale,
 } from 'lucide-react';
 import { Profile, Role, Sector } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
@@ -95,6 +95,7 @@ export const PAGES: PageDef[] = [
   { id: 'almox_estoque', group: 'ALMOXARIFADO', label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_movimentacoes', group: 'ALMOXARIFADO', label: 'Movimentações', path: '/almoxarifado/movimentacoes', icon: ArrowLeftRight, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_consumo_semanal', group: 'ALMOXARIFADO', label: 'Consumo Semanal', path: '/almoxarifado/consumo-semanal', icon: CalendarDays, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'almox_controle_estoque', group: 'ALMOXARIFADO', label: 'Controle de Estoque', path: '/almoxarifado/controle-estoque', icon: Scale, defaultRoles: ['admin'] },
   { id: 'almox_dashboards', group: 'ALMOXARIFADO', label: 'Dashboards', path: '/almoxarifado/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   // Projetos entra com UMA linha no menu: o hub. As sub-rotas
   // (/almoxarifado/projetos/bom, /recebimento, /premontagem, /producao,
@@ -506,6 +507,16 @@ export const FEATURE_FLAGS: PageDef[] = [
     id: 'almox_importar_planilhas',
     group: 'ALMOXARIFADO',
     label: 'Importar planilhas SAP (Estoque ZL0024 e Movimentações MB51)',
+    defaultRoles: [],
+  },
+  // Controle de Estoque separa CONSULTAR de EDITAR: quem abre a página vê a faixa
+  // da planilha e o mínimo SISTEN; alterar parâmetros globais e exceções por
+  // material exige esta flag (espelha public.has_page_access no RLS). Sem role
+  // padrão: o admin libera usuário a usuário.
+  {
+    id: 'almox_controle_estoque_editar',
+    group: 'ALMOXARIFADO',
+    label: 'Controle de Estoque: editar parâmetros e exceções',
     defaultRoles: [],
   },
   // Projetos separa CONSULTAR de LANÇAR. Quem abre o módulo vê a BOM, a

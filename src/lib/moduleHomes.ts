@@ -106,6 +106,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       almox_estoque: 'Posição de estoque, curva ABC e cobertura por depósito.',
       almox_movimentacoes: 'Entradas, saídas, giro e idade do estoque.',
       almox_consumo_semanal: 'Consumo de cada material ao longo das semanas.',
+      almox_controle_estoque: 'Faixa mínima e máxima da planilha, compras em aberto e mínimo recomendado por material.',
       almox_dashboards: 'Painéis consolidados de estoque e movimentação.',
       almox_projetos: 'Fabricação de torres: BOM, kits por tramo, autonomia e progresso das 69 torres.',
     },

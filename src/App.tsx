@@ -56,6 +56,7 @@ const Estoque = lazy(() => import('./views/Estoque'));
 const Movimentacoes = lazy(() => import('./views/Movimentacoes'));
 const Projetos = lazy(() => import('./views/projetos/Projetos'));
 const ConsumoSemanal = lazy(() => import('./views/ConsumoSemanal'));
+const ControleEstoque = lazy(() => import('./views/ControleEstoque'));
 const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards'));
 const Sobre = lazy(() => import('./views/Sobre'));
 const Formularios = lazy(() => import('./views/Formularios'));
@@ -1086,6 +1087,12 @@ export default function App() {
       case '/almoxarifado/movimentacoes/urgencia':
         if (canAccessPage(user, 'almox_movimentacoes')) {
           return <Movimentacoes user={user} abaInicial="urgencia" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/controle-estoque':
+        if (canAccessPage(user, 'almox_controle_estoque')) {
+          return <ControleEstoque user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

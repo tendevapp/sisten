@@ -1409,6 +1409,48 @@ export const DIRETRIZES: DiretrizesDominio[] = [
         ]
       },
       {
+        id: 'almoxarifado-controle-estoque',
+        nome: 'Controle de Estoque (faixa da planilha x mínimo SISTEN)',
+        arquivo: 'src/views/ControleEstoque.tsx, src/lib/controleEstoque.ts, src/lib/controleEstoqueApi.ts, src/lib/controleEstoqueExport.ts, src/components/almoxarifado/controleEstoque/, src/components/almoxarifado/EstoqueMinimoPanel.tsx',
+        secoes: [
+          {
+            titulo: 'Visão geral',
+            itens: [
+              'Reproduz a aba CONTROLE MINIMO da planilha "1. Controle de Stk V2.0.xlsm" sobre as bases SAP já importadas (ZL0024, MB51, ME5A e ZL0132). O XLSM é só fonte de regra: nada dele é importado como base operacional.',
+              'Uma linha por material. Depósitos, RMs e POs múltiplos aparecem no detalhamento e nunca duplicam os KPIs (a planilha tem 99 materiais repetidos e o XLOOKUP enxerga só a primeira RM/PO).',
+              'Abas: Visão geral (KPIs e gráficos), Faixa da planilha (tabela operacional e memória de cálculo), Mínimo SISTEN (método estatístico existente, sobre os mesmos materiais do recorte) e Entradas x saídas.'
+            ]
+          },
+          {
+            titulo: 'Regras de negócio — faixa da planilha',
+            itens: [
+              'Consumo = baixa direta (TMV 221/222, líquida de estorno) + produção. Produção = saída de origem das transferências 311 líquida do estorno 312 — o 311 tem duas pernas (-/+) que somam zero, então só a perna negativa conta (decisão de negócio), valorada pelo preço médio SAP. Consumo/dia = consumo ÷ dias úteis (segunda a sexta) da janela configurada.',
+              'Mínimo = ceil(consumo/dia × (lead time + intervalo de compra)); Máximo = floor(mínimo + consumo/dia × (lead time + intervalo de compra)); Comprar = max(máximo − saldo, 0); Valor = Comprar × preço médio SAP.',
+              'Status: CRÍTICO quando saldo < mínimo; ALERTA quando saldo < máximo; OK nos demais. Sem consumo/parâmetro calculável o status é "Sem dados" — falta de dado nunca vira zero plausível.',
+              'Padrões da planilha: lead time 15 dias e intervalo de compra 30 dias, editáveis por centro. O saldo usado na decisão exclui depósitos inativos; o histórico deles permanece no detalhamento.',
+              'Ciclo RM → PO → recebimento: todas as RMs abertas (ME5A), POs pendentes (ZL0132: não eliminado `eflag_e <> L` e não encerrado `crf <> X`; a ZL0132 não traz centro, então assume o centro único da ZL0024) e recebimentos 101/102 casados por material + pedido (MB51), com quantidade líquida e última data.',
+              'Mínimo recomendado SISTEN (`reposicao.ts`/`calcularSugestao`) é um resultado independente: usa lead time medido, frequência, variabilidade e percentil 90 do lote. Nunca sobrescreve a faixa da planilha nem o PMM SAP.'
+            ]
+          },
+          {
+            titulo: 'Exceções e auditoria',
+            itens: [
+              'Exceções manuais (mínimo/máximo, lead time, intervalo, quantidade por torre, tipo de gestão) ficam em `almox_controle_estoque_override` — uma ativa por material + centro, sempre com justificativa, autor e data; são inativadas, não apagadas. Substituem as células ocultas da planilha (L25, U1150:U1153, W1724).',
+              'Parâmetros globais em `almox_controle_estoque_config`. Toda alteração em config/override grava linha em `almox_controle_estoque_auditoria` (trigger).',
+              'Quantidade por torre só é automática quando projeto e código SAP dão valor único; com vários projetos a autonomia exige filtro de projeto ou exceção.'
+            ]
+          },
+          {
+            titulo: 'Acesso, exportação e tabelas',
+            itens: [
+              'Página `almox_controle_estoque` (restrita ao admin por padrão; demais usuários via Gestão de Acessos). Editar parâmetros e exceções exige a flag `almox_controle_estoque_editar`, espelhada no RLS por `has_page_access`.',
+              'Exportação XLSX (Resumo, Controle_Estoque, Movimentacoes, RMs_Pedidos, Parametros) usa exatamente o conjunto filtrado visível; códigos SAP saem como texto.',
+              'Fonte de leitura: `vw_almox_controle_estoque` (security_invoker), sobre `sap_zl0024_stk`, `sap_mb51_mov`/`vw_mb51_classificado`, `sap_me5a_rc`, `sap_zl0132_po` e BOM.'
+            ]
+          }
+        ]
+      },
+      {
         id: 'almoxarifado-consumo-semanal',
         nome: 'Perfil de Consumo Semanal',
         arquivo: 'src/views/ConsumoSemanal.tsx, src/lib/consumoSemanal.ts',

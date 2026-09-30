@@ -3360,3 +3360,164 @@ export type FinPepInput = Omit<FinPep, 'id' | 'created_at' | 'updated_at' | 'imp
   updated_at?: string;
   importado_em?: string;
 };
+
+// =====================================================================
+// Almoxarifado > Controle de Estoque
+// =====================================================================
+
+export interface ControleEstoqueDeposito {
+  deposito: string | null;
+  saldo: number;
+  valor: number;
+  preco_medio_sap: number | null;
+  inativo: boolean;
+}
+
+export interface ControleEstoqueMovimentoMensal {
+  mes: string;
+  entrada: number;
+  consumo: number;
+  valor_entrada: number;
+  valor_consumo: number;
+}
+
+export interface ControleEstoqueRm {
+  ri: string | null;
+  requisicao: string | null;
+  item: string | null;
+  data: string | null;
+  requisitante: string | null;
+  quantidade: number | null;
+  pedido: string | null;
+  deposito: string | null;
+}
+
+export interface ControleEstoquePedido {
+  ri: string | null;
+  requisicao: string | null;
+  pedido: string | null;
+  item: string | null;
+  data: string | null;
+  remessa_prevista: string | null;
+  data_migo: string | null;
+  fornecedor: string | null;
+  deposito: string | null;
+  quantidade_pedida: number | null;
+  quantidade_fornecida: number | null;
+  quantidade_pendente: number;
+  valor_brl: number | null;
+  quantidade_recebida_mb51: number | null;
+  ultima_data_recebimento: string | null;
+}
+
+export interface ControleEstoqueOpcaoTorre {
+  projeto: string | null;
+  quantidade_por_torre: number;
+}
+
+export interface ControleEstoqueItem {
+  material: string;
+  centro: string;
+  descricao: string | null;
+  categoria: string | null;
+  aplicacao: string | null;
+  tipo_material: string | null;
+  tipo_gestao: string | null;
+  umb: string | null;
+  curva_abc: string | null;
+  saldo_total: number;
+  saldo_reposicao: number;
+  valor_estoque: number;
+  preco_medio_sap: number | null;
+  quantidade_depositos: number;
+  depositos: ControleEstoqueDeposito[];
+  janela_inicio: string | null;
+  janela_fim: string | null;
+  dias_uteis: number | null;
+  lead_time_dias: number | null;
+  intervalo_compra_dias: number | null;
+  entrada_quantidade: number;
+  entrada_valor: number;
+  baixa_direta_quantidade: number;
+  baixa_direta_valor: number;
+  producao_quantidade: number;
+  producao_valor: number;
+  consumo_total: number;
+  consumo_valor: number;
+  movimentos_mensais: ControleEstoqueMovimentoMensal[];
+  rms_abertas: number;
+  rm_quantidade: number;
+  rms: ControleEstoqueRm[];
+  pos_abertas: number;
+  po_quantidade_pendente: number;
+  quantidade_recebida: number;
+  ultima_data_recebimento: string | null;
+  pedidos: ControleEstoquePedido[];
+  quantidade_por_torre: number | null;
+  quantidade_projetos: number;
+  opcoes_quantidade_por_torre: ControleEstoqueOpcaoTorre[];
+  estoque_minimo_override: number | null;
+  estoque_maximo_override: number | null;
+  override_id: string | null;
+  override_justificativa: string | null;
+  override_updated_at: string | null;
+  override_updated_by: string | null;
+  tem_override: boolean;
+  sisten_janela_inicio: string | null;
+  sisten_janela_fim: string | null;
+  sisten_consumo_total: number | null;
+  sisten_consumo_diario: number | null;
+  sisten_lote_p90: number | null;
+  sisten_adi: number | null;
+  sisten_cv2: number | null;
+  sisten_lead_dias: number | null;
+  sisten_lead_proprio: boolean | null;
+  estoque_importado_em: string | null;
+  movimentos_importados_em: string | null;
+  ultimo_movimento: string | null;
+  config_id: string | null;
+  config_updated_at: string | null;
+}
+
+export interface ControleEstoqueConfig {
+  id: string;
+  centro: string;
+  janela_inicio: string;
+  janela_fim: string | null;
+  lead_time_padrao_dias: number;
+  intervalo_compra_dias: number;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+export interface ControleEstoqueOverride {
+  id: string;
+  material: string;
+  centro: string;
+  tipo_gestao: string | null;
+  lead_time_dias: number | null;
+  intervalo_compra_dias: number | null;
+  estoque_minimo: number | null;
+  estoque_maximo: number | null;
+  quantidade_por_torre: number | null;
+  justificativa: string;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+export interface ControleEstoqueAuditoria {
+  id: number;
+  entidade: string;
+  registro_id: string;
+  acao: 'INSERT' | 'UPDATE';
+  dados_anteriores: Record<string, unknown> | null;
+  dados_novos: Record<string, unknown> | null;
+  alterado_por: string | null;
+  alterado_em: string;
+}
