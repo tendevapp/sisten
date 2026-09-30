@@ -13,6 +13,8 @@ import {
   emailDeLogin,
   ehEmailInterno,
   rotuloIdentificador,
+  ehNovoUsuario,
+  DIAS_LIMITE_NOVO_USUARIO,
 } from './loginSemEmail';
 
 describe('gerarUsuarioLogin', () => {
@@ -84,3 +86,49 @@ describe('exibição do identificador', () => {
     expect(rotuloIdentificador('jose@ten.ind.br')).toBe('jose@ten.ind.br');
   });
 });
+
+describe('ehNovoUsuario (regra da tag de novo usuário - máximo 8 dias)', () => {
+  const agora = new Date('2026-09-30T12:00:00Z');
+
+  it('valida que a constante DIAS_LIMITE_NOVO_USUARIO é 8 dias', () => {
+    expect(DIAS_LIMITE_NOVO_USUARIO).toBe(8);
+  });
+
+  it('retorna true para usuário cadastrado hoje (0 dias)', () => {
+    const hoje = new Date('2026-09-30T08:00:00Z').toISOString();
+    expect(ehNovoUsuario(hoje, agora)).toBe(true);
+  });
+
+  it('retorna true para usuário cadastrado há 4 dias', () => {
+    const quatroDiasAtras = new Date('2026-09-26T12:00:00Z').toISOString();
+    expect(ehNovoUsuario(quatroDiasAtras, agora)).toBe(true);
+  });
+
+  it('retorna true para usuário cadastrado exatamente há 8 dias (limite)', () => {
+    const oitoDiasAtras = new Date('2026-09-22T12:00:00Z').toISOString();
+    expect(ehNovoUsuario(oitoDiasAtras, agora)).toBe(true);
+  });
+
+  it('retorna false para usuário cadastrado há mais de 8 dias (tag deve ser removida)', () => {
+    const oitoDiasMeioAtras = new Date('2026-09-21T23:00:00Z').toISOString();
+    const noveDiasAtras = new Date('2026-09-21T12:00:00Z').toISOString();
+    const trintaDiasAtras = new Date('2026-08-31T12:00:00Z').toISOString();
+
+    expect(ehNovoUsuario(oitoDiasMeioAtras, agora)).toBe(false);
+    expect(ehNovoUsuario(noveDiasAtras, agora)).toBe(false);
+    expect(ehNovoUsuario(trintaDiasAtras, agora)).toBe(false);
+  });
+
+  it('retorna false para datas inválidas, nulas ou vazias', () => {
+    expect(ehNovoUsuario(null, agora)).toBe(false);
+    expect(ehNovoUsuario(undefined, agora)).toBe(false);
+    expect(ehNovoUsuario('', agora)).toBe(false);
+    expect(ehNovoUsuario('data-invalida', agora)).toBe(false);
+  });
+
+  it('retorna false para datas futuras', () => {
+    const amanha = new Date('2026-10-01T12:00:00Z').toISOString();
+    expect(ehNovoUsuario(amanha, agora)).toBe(false);
+  });
+});
+

@@ -54,6 +54,7 @@ import { canAccessForm } from '../../lib/pages';
 import type { Profile } from '../../types';
 import { extrairPalavrasChave, casarTokens } from '../../lib/buscaKeywords';
 import SearchKeywordsChips from '../../components/ui/SearchKeywordsChips';
+import { cadastrarItensComFotoNoCatalogo, type ItemParaCatalogar } from '../../lib/fotosRecebimentoCatalogo';
 
 interface Props {
   user: Profile;
@@ -231,6 +232,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
 
   const detalheModal = detalhe && (
     <ModalDetalhe
+      user={user}
       tipo={detalhe.tipo}
       row={detalhe.row}
       cargas={cargas}
@@ -1232,8 +1234,9 @@ const TOM_STATUS_NC: Record<string, TomChip> = {
 };
 
 function ModalDetalhe({
-  tipo, row, cargas, podeEditar, onEditar, onClose,
+  user, tipo, row, cargas, podeEditar, onEditar, onClose,
 }: {
+  user: Profile;
   tipo: 'carga' | 'conferencia' | 'nc';
   row: CargaRow | ConferenciaRow | NaoConformidadeRow;
   cargas: CargaRow[];
@@ -1245,6 +1248,33 @@ function ModalDetalhe({
   const toast = useToast();
   const codigo = (row as any).codigo as string;
   const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [catalogando, setCatalogando] = useState(false);
+
+  const itensComFoto = tipo === 'conferencia'
+    ? (row as ConferenciaRow).itens.filter((it) => (it.evidencias?.length ?? 0) > 0)
+    : [];
+
+  /** Registros anteriores à regra "foto → catálogo": leva as fotos dos itens que o catálogo ainda não tem. */
+  const levarAoCatalogo = async () => {
+    setCatalogando(true);
+    try {
+      const r = await cadastrarItensComFotoNoCatalogo(
+        itensComFoto.map((it) => ({
+          materialCode: it.material_code ?? '',
+          descricao: it.descricao ?? '',
+          unidade: it.unidade,
+          fotosGravadas: it.evidencias,
+        })),
+        user,
+      );
+      if (r.cadastrados.length) toast.success(`${r.cadastrados.length} item(ns) cadastrado(s) no Catálogo de Itens com a foto.`);
+      else if (!r.falhas.length) toast.info('Nada a cadastrar: os itens já têm foto no catálogo (ou são de projeto).');
+      if (r.jaTinham.length && r.cadastrados.length) toast.info(`${r.jaTinham.length} item(ns) já tinham foto no catálogo e foram mantidos.`);
+      if (r.falhas.length) toast.warning(`Falhou: ${r.falhas.map((f) => `${f.material} (${f.motivo})`).join('; ')}`);
+    } finally {
+      setCatalogando(false);
+    }
+  };
 
   /** PDF do registro aberto (carrega pdf-lib só quando pedem). */
   const exportarPdf = async () => {
@@ -1474,6 +1504,18 @@ function ModalDetalhe({
         <button onClick={onClose} className="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
           Fechar
         </button>
+        {itensComFoto.length > 0 && (
+          <button
+            onClick={() => void levarAoCatalogo()}
+            disabled={catalogando}
+            title="Cadastra no Catálogo de Itens os materiais desta conferência que têm foto e ainda não têm no catálogo"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border disabled:opacity-50"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+          >
+            {catalogando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+            {catalogando ? 'Cadastrando…' : 'Levar fotos ao catálogo'}
+          </button>
+        )}
         <button
           onClick={() => void exportarPdf()}
           disabled={gerandoPdf}
@@ -2203,6 +2245,21 @@ function ModalConferencia({
     return () => { if (debounceRascunhoRef.current != null) window.clearTimeout(debounceRascunhoRef.current); };
   }, [ed, rascId, data, cargaId, fornecedor, rm, deposito, fonte, observacao, ncResponsavel, ncSeveridade, linhas]);
 
+  /** Em segundo plano: a conferência já foi salva, o catálogo é consequência e nunca a derruba. */
+  const levarFotosAoCatalogo = (itensFoto: ItemParaCatalogar[]) => {
+    if (!itensFoto.length || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+    void cadastrarItensComFotoNoCatalogo(itensFoto, user)
+      .then((r) => {
+        if (r.cadastrados.length) {
+          toast.success(`${r.cadastrados.length} item(ns) cadastrado(s) no Catálogo de Itens com a foto do recebimento.`);
+        }
+        if (r.falhas.length) {
+          toast.warning(`Não cadastrei no catálogo: ${r.falhas.map((f) => f.material).join(', ')}. Dá para levar depois pelo detalhe da conferência.`);
+        }
+      })
+      .catch(() => { /* catálogo é secundário */ });
+  };
+
   const salvar = async () => {
     if (!linhas.length) { toast.error('Carregue o pedido ou adicione ao menos um item.'); return; }
     if (linhas.some((l) => !l.materialCode.trim())) { toast.error('Todo item precisa de um código de material.'); return; }
@@ -2236,6 +2293,11 @@ function ModalConferencia({
         });
       }
 
+      // Item que ganhou foto agora vira item do catálogo (com a imagem), mesmo sem saldo na ZL0024.
+      const paraCatalogo: ItemParaCatalogar[] = linhas
+        .filter((l) => l.fotos.length > 0)
+        .map((l) => ({ materialCode: l.materialCode, descricao: l.descricao, unidade: l.unidade, fotosNovas: l.fotos }));
+
       if (ed) {
         const { alteracoes, tem_nc, nc_codigo } = await editarConferencia(
           ed.id,
@@ -2253,6 +2315,7 @@ function ModalConferencia({
           itens,
           { id: user.id, nome: user.name },
         );
+        levarFotosAoCatalogo(paraCatalogo);
         [...fotosCab, ...linhas.flatMap((l) => l.fotos)].forEach((f) => URL.revokeObjectURL(f.previewUrl));
 
         let qtdChegadas = 0;
@@ -2318,6 +2381,7 @@ function ModalConferencia({
 
       if (debounceRascunhoRef.current != null) window.clearTimeout(debounceRascunhoRef.current);
       removerRascunhoConferencia(rascId);
+      levarFotosAoCatalogo(paraCatalogo);
       [...fotosCab, ...linhas.flatMap((l) => l.fotos)].forEach((f) => URL.revokeObjectURL(f.previewUrl));
 
       let qtdChegadas = 0;

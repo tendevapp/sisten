@@ -66,6 +66,9 @@ export const TERMO_FICHA_EPI: { paragrafos: TrechoTermo[][]; espacoAntes: number
 /** No lugar da assinatura das fichas em papel convertidas para o sistema (origem HISTORICO_PAPEL). */
 export const ROTULO_ASSINATURA_FICHA_FISICA = 'Ass. Ficha Física';
 
+/** Entrega lançada sem a assinatura do colaborador — sai no lugar da imagem até ele assinar. */
+export const ROTULO_ASSINATURA_PENDENTE = 'ASSINATURA PENDENTE';
+
 export type MotivoMed = 1 | 2 | 3 | 4;
 
 export const MOTIVOS_MED: Record<MotivoMed, string> = {
@@ -239,6 +242,10 @@ export interface LinhaFicha {
   epiBookId: string | null;
   descricaoSemBook: string | null;
   caSemBook: string | null;
+  /** Código SAP de um EPI que não está no Book (escolhido na busca do catálogo SAP). */
+  codigoSapSemBook: string | null;
+  /** O EPI não tem cadastro no Book de EPIs — a tela alerta e o CA é digitado à mão. */
+  foraDoBook: boolean;
   incluir: boolean;
   quantidade: number;
   motivo: MotivoMed;
@@ -323,6 +330,8 @@ export function montarLinhasFicha(params: {
       epiBookId: varianteInicial(variantes, requisito.epi_book_id, ultimas.get(chave)),
       descricaoSemBook: epi ? null : requisito.descricao_epi_origem,
       caSemBook: epi ? null : requisito.ca_origem,
+      codigoSapSemBook: null,
+      foraDoBook: !epi,
       incluir: !params.todosDesmarcados && requisito.classificacao !== 'CONDICIONAL_POR_EXPOSICAO',
       quantidade: 1,
       motivo: params.motivo,
@@ -350,6 +359,51 @@ export function linhaAvulsa(epi: SsmaBookEpi, book: SsmaBookEpi[], historico: It
     epiBookId: ultima?.epi_book_id && variantes.some(v => v.id === ultima.epi_book_id) ? ultima.epi_book_id : epi.id,
     descricaoSemBook: null,
     caSemBook: null,
+    codigoSapSemBook: null,
+    foraDoBook: false,
+    incluir: true,
+    quantidade: 1,
+    motivo,
+    foraDaMatriz: true,
+    pendentesDevolucao: pendentesDevolucaoPorGrupo(historico).get(chave) ?? [],
+    devolverAnteriores: null,
+  };
+}
+
+const semZerosSap = (codigo: string | null | undefined) => String(codigo ?? '').trim().replace(/^0+/, '');
+
+/** EPI do Book com este código SAP (o catálogo SAP e o Book usam o mesmo código de material). */
+export function epiDoBookPorCodigoSap(book: SsmaBookEpi[], codigoSap: string): SsmaBookEpi | null {
+  const alvo = semZerosSap(codigoSap);
+  if (!alvo) return null;
+  return book.find(b => b.ativo && semZerosSap(b.codigo_sap) === alvo) ?? null;
+}
+
+/**
+ * Linha de um material do catálogo SAP que NÃO está no Book de EPIs. Vai para a
+ * ficha com a descrição e o código do SAP e sem CA (digitado depois, à mão);
+ * `foraDoBook` faz a tela alertar e o SSMA saber que falta cadastrar no Book.
+ */
+export function linhaSapForaDoBook(
+  material: { codigo: string; descricao: string },
+  historico: ItemHistorico[],
+  motivo: MotivoMed,
+): LinhaFicha {
+  const descricao = material.descricao.trim() || material.codigo;
+  const chave = chaveGrupo(null, descricao);
+  return {
+    chave,
+    requisitoId: null,
+    classificacao: null,
+    condicaoUso: null,
+    categoria: null,
+    grupoEpi: descricao,
+    variantes: [],
+    epiBookId: null,
+    descricaoSemBook: descricao,
+    caSemBook: null,
+    codigoSapSemBook: material.codigo.trim(),
+    foraDoBook: true,
     incluir: true,
     quantidade: 1,
     motivo,
@@ -388,7 +442,7 @@ export function linhasParaPayload(linhas: LinhaFicha[]): ItemFichaPayload[] {
         categoria: linha.categoria,
         descricao: epi ? descricaoItemEpi(epi) : linha.descricaoSemBook || linha.grupoEpi,
         ca: epi?.ca || linha.caSemBook || null,
-        codigo_sap: epi?.codigo_sap ?? null,
+        codigo_sap: epi?.codigo_sap ?? linha.codigoSapSemBook ?? null,
         tamanho: epi?.tamanho ?? null,
         quantidade: linha.quantidade,
         motivo: linha.motivo,

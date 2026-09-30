@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-30',
+    resumo: 'Administração > Gestão de Usuários — Regra da Tag de Novo Usuário (`AdminPanel.tsx`, `loginSemEmail.ts`, `loginSemEmail.test.ts`, `diretrizes.ts`): 1. Definida a regra para a tag/selo de "Novo" no Diretório de Usuários: a tag é exibida exclusivamente para colaboradores cadastrados há no máximo 8 dias a partir de `created_at`; após esse período de 8 dias, a tag é removida automaticamente; 2. Implementada a constante `DIAS_LIMITE_NOVO_USUARIO = 8` e a função `ehNovoUsuario(createdAt)` em `loginSemEmail.ts`; 3. Atualizado o filtro rápido "Novos" e seu contador para refletir estritamente colaboradores dos últimos 8 dias; 4. Cobertura com testes unitários cobrindo colaboradores cadastrados hoje, dentro do limite de 8 dias, além do limite (> 8 dias) e casos de borda.',
+  },
+  {
+    data: '2026-09-30',
     resumo: 'Produção > Controle de Entrega — Correção useMemo no Modal e Novo Status "Em Branco Pendente" (`ModalDetalheTramoEntrega.tsx`, `TorresEntregaVisual.tsx`, `producaoEntrega.ts`, `producaoEntrega.test.ts`, migration `20260930090000_status_pendente_prod_tramos_entrega.sql`): 1. Corrigido erro de execução (ReferenceError: useMemo is not defined) em `ModalDetalheTramoEntrega.tsx` através da importação explícita de `useMemo` do React; 2. Criada a nova categoria e status "Em Branco Pendente" (`pendente`), com acabamento em cilindro perolado/branco metálico e etiqueta visual de status; 3. Atualizados todos os tramos a partir da torre 16 que estavam incorretamente em saw02 para "pendente" (268 tramos atualizados no banco Supabase), limpando a fila real de WIP e indicadores de gargalo da fábrica; 4. Adicionado badge contador de "Em Branco Pendente" na legenda oficial da fábrica e indicador "○ Pendente" nos cilindros; 5. Testes unitários atualizados com 100% de aprovação.',
   },
   {

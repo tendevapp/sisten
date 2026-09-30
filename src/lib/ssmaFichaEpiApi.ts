@@ -59,7 +59,10 @@ export interface SsmaFichaEpi {
   data_entrega: string;
   /** Só vem nas consultas de detalhe/PDF — a listagem não carrega a imagem. */
   assinatura_colaborador?: string;
-  assinado_em: string;
+  /** Nulo enquanto a assinatura está pendente. */
+  assinado_em: string | null;
+  /** Entrega lançada, mas o colaborador ainda não assinou (ver `assinarFichaEpi`). */
+  assinatura_pendente: boolean;
   /** HISTORICO_PAPEL = ficha manual convertida, sem imagem de assinatura. */
   origem: 'DIGITAL' | 'HISTORICO_PAPEL';
   observacoes: string | null;
@@ -84,7 +87,10 @@ export interface NovaFichaEpi {
   data_admissao: string | null;
   data_demissao: string | null;
   data_entrega: string;
-  assinatura_colaborador: string;
+  /** Imagem PNG (data URL). Ausente quando `assinatura_pendente`. */
+  assinatura_colaborador?: string | null;
+  /** Fecha a ficha sem assinatura; o colaborador assina depois. */
+  assinatura_pendente?: boolean;
   observacoes: string | null;
 }
 
@@ -93,7 +99,7 @@ const rpc = (nome: string, args: Record<string, unknown>) => (supabase.rpc as an
 
 const COLUNAS_FICHA_SEM_ASSINATURA =
   'id, codigo, pessoa_id, registro, nome, cargo_rh, setor, funcao_id, funcao_nome, data_admissao, data_demissao, ' +
-  'data_entrega, assinado_em, origem, observacoes, status, cancelamento_motivo, cancelado_por_nome, cancelado_em, ' +
+  'data_entrega, assinado_em, assinatura_pendente, origem, observacoes, status, cancelamento_motivo, cancelado_por_nome, cancelado_em, ' +
   'criado_por, criado_por_nome, created_at';
 const COLUNAS_ITENS = 'itens:ssma_fichas_epi_itens(*)';
 
@@ -206,6 +212,12 @@ export async function criarFichaEpi(ficha: NovaFichaEpi, itens: ItemFichaPayload
 
 export async function registrarDevolucaoEpi(itemId: string, data: string | null, observacao?: string): Promise<void> {
   const { error } = await rpc('ssma_ficha_epi_registrar_devolucao', { p_item_id: itemId, p_data: data, p_observacao: observacao ?? null });
+  if (error) throw error;
+}
+
+/** Coleta a assinatura de uma ficha lançada como pendente. Só vale uma vez. */
+export async function assinarFichaEpi(fichaId: string, assinatura: string): Promise<void> {
+  const { error } = await rpc('ssma_ficha_epi_assinar', { p_ficha_id: fichaId, p_assinatura: assinatura });
   if (error) throw error;
 }
 

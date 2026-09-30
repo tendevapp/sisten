@@ -3,8 +3,10 @@ import {
   analisarConsumo,
   colaboradoresSemFicha,
   diasEntre,
+  epiDoBookPorCodigoSap,
   intervalosDeReposicao,
   linhasParaPayload,
+  linhaSapForaDoBook,
   mediana,
   montarLinhasFicha,
   pendentesDevolucaoPorGrupo,
@@ -237,5 +239,32 @@ describe('análise de consumo', () => {
 
   it('lista ativos sem ficha', () => {
     expect(colaboradoresSemFicha([{ id: 'a' }, { id: 'b' }], ['a']).map(p => p.id)).toEqual(['b']);
+  });
+});
+
+describe('EPI fora do Book (catálogo SAP)', () => {
+  it('acha o EPI do Book pelo código SAP, ignorando zeros à esquerda', () => {
+    const book = [epi('b1', 'BOTINA', '40', { codigo_sap: '1352000' })];
+    expect(epiDoBookPorCodigoSap(book, '0001352000')?.id).toBe('b1');
+    expect(epiDoBookPorCodigoSap(book, '999')).toBeNull();
+    expect(epiDoBookPorCodigoSap(book, '')).toBeNull();
+  });
+
+  it('linha do SAP vai marcada como fora do Book, com código e descrição do SAP no payload', () => {
+    const linha = linhaSapForaDoBook({ codigo: '1400123', descricao: 'PROTETOR SOLAR FPS 50' }, [], 1);
+    expect(linha).toMatchObject({ foraDoBook: true, foraDaMatriz: true, incluir: true, epiBookId: null, codigoSapSemBook: '1400123' });
+    const [item] = linhasParaPayload([{ ...linha, caSemBook: '12345', quantidade: 2 }]);
+    expect(item).toMatchObject({
+      epi_book_id: null, requisito_id: null, grupo_epi: 'PROTETOR SOLAR FPS 50', descricao: 'PROTETOR SOLAR FPS 50',
+      codigo_sap: '1400123', ca: '12345', quantidade: 2, fora_da_matriz: true,
+    });
+  });
+
+  it('linha da matriz sem vínculo no Book também é sinalizada', () => {
+    const linhas = montarLinhasFicha({
+      requisitos: [requisito('r5', null, 'BASICO_OBRIGATORIO')], book: BOOK, historico: [], motivo: 1,
+    });
+    expect(linhas[0].foraDoBook).toBe(true);
+    expect(montarLinhasFicha({ requisitos: [requisito('r1', 'b40', 'BASICO_OBRIGATORIO')], book: BOOK, historico: [], motivo: 1 })[0].foraDoBook).toBe(false);
   });
 });

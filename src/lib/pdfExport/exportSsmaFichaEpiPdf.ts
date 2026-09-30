@@ -17,6 +17,7 @@ import {
   FICHA_EPI_FORMULARIO,
   MOTIVOS_MED,
   ROTULO_ASSINATURA_FICHA_FISICA,
+  ROTULO_ASSINATURA_PENDENTE,
   TERMO_FICHA_EPI,
   formatarDataBR,
   linhasGradeFichaEpi,
@@ -282,11 +283,13 @@ export async function gerarFichaEpiPdf(params: {
   const xLinha = M + (W - wLinha) / 2;
   const imgTermo = ctx.assinaturas.get(atual.id);
   const fisicaPorFicha = new Map(params.fichas.map(f => [f.id, f.origem === 'HISTORICO_PAPEL']));
+  const pendentePorFicha = new Map(params.fichas.map(f => [f.id, !!f.assinatura_pendente]));
   if (imgTermo) assinaturaNoRetangulo(page, imgTermo, xLinha, y + 1, wLinha, 34);
   else if (fisicaPorFicha.get(atual.id)) centralizado(page, ROTULO_ASSINATURA_FICHA_FISICA, xLinha, wLinha, y + 8, 9, fontBold, CINZA);
+  else if (pendentePorFicha.get(atual.id)) centralizado(page, ROTULO_ASSINATURA_PENDENTE, xLinha, wLinha, y + 8, 9, fontBold, VERMELHO);
   page.drawLine({ start: { x: xLinha, y }, end: { x: xLinha + wLinha, y }, thickness: TRACO, color: PRETO });
   centralizado(page, 'Assinatura do Funcionário', xLinha, wLinha, y - 12, 9, font);
-  if (imgTermo) centralizado(page, `Assinado digitalmente em ${formatarDataBR(atual.assinado_em.slice(0, 10))}`, xLinha, wLinha, y - 22, 6.5, font, CINZA);
+  if (imgTermo && atual.assinado_em) centralizado(page, `Assinado digitalmente em ${formatarDataBR(atual.assinado_em.slice(0, 10))}`, xLinha, wLinha, y - 22, 6.5, font, CINZA);
   y -= 30;
   caixa(page, M, yTermoTopo, W, yTermoTopo - y);
   y -= 4;
@@ -312,6 +315,7 @@ export async function gerarFichaEpiPdf(params: {
         const img = ctx.assinaturas.get(linha.fichaId);
         if (img) assinaturaNoRetangulo(page, img, XS[4] + 2, yl - ALTURA_LINHA + 1, LARGURAS[4] - 4, ALTURA_LINHA - 2);
         else if (fisicaPorFicha.get(linha.fichaId)) centralizado(page, ROTULO_ASSINATURA_FICHA_FISICA, XS[4], LARGURAS[4], yTexto, 6.5, fontBold, CINZA);
+        else if (pendentePorFicha.get(linha.fichaId)) centralizado(page, ROTULO_ASSINATURA_PENDENTE, XS[4], LARGURAS[4], yTexto, 6.5, fontBold, VERMELHO);
         centralizado(page, String(linha.motivo), XS[5], LARGURAS[5], yTexto, 7.5, font);
         if (linha.dataDevolucao) {
           centralizado(page, formatarDataBR(linha.dataDevolucao), XS[6], LARGURAS[6], yTexto, 6.5, font);

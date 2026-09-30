@@ -25,7 +25,7 @@ import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Mod
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import PageAccessModal from '../components/admin/PageAccessModal';
 import NovoUsuarioSemEmailModal from '../components/admin/NovoUsuarioSemEmailModal';
-import { ehEmailInterno, rotuloIdentificador } from '../lib/loginSemEmail';
+import { ehEmailInterno, rotuloIdentificador, ehNovoUsuario, DIAS_LIMITE_NOVO_USUARIO } from '../lib/loginSemEmail';
 import BulkPageAccessModal from '../components/admin/BulkPageAccessModal';
 import AdminResetPasswordModal from '../components/admin/AdminResetPasswordModal';
 import UserEditGovernanceModal from '../components/admin/UserEditGovernanceModal';
@@ -1092,14 +1092,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     }
   };
 
-  const isRecentlyCreated = (createdAt?: string) => {
-    if (!createdAt) return false;
-    const createdTime = new Date(createdAt).getTime();
-    if (isNaN(createdTime)) return false;
-    const now = new Date().getTime();
-    const diffDays = (now - createdTime) / (1000 * 60 * 60 * 24);
-    return diffDays >= 0 && diffDays <= 30;
-  };
+  const isRecentlyCreated = (createdAt?: string) => ehNovoUsuario(createdAt);
 
   const sectorMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -1680,7 +1673,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     ? 'bg-blue-600 text-white shadow-xs'
                     : 'bg-blue-50 text-blue-800 border border-blue-200/70 hover:bg-blue-100'
                 }`}
-                title="Filtrar colaboradores cadastrados nos últimos 30 dias"
+                title={`Filtrar colaboradores cadastrados nos últimos ${DIAS_LIMITE_NOVO_USUARIO} dias`}
               >
                 <Sparkles className="w-3.5 h-3.5 text-blue-500" />
                 Novos ({userStats.newUsers})

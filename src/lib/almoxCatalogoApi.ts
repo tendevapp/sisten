@@ -342,7 +342,7 @@ export async function listarItensCatalogo(): Promise<CatalogoItem[]> {
 }
 
 /** Registro ativo do catálogo para o material — só a tabela, sem o fallback do Book de EPIs. */
-async function buscarItemAtivoCatalogo(codigoSap: string): Promise<CatalogoItem | null> {
+export async function buscarItemAtivoCatalogo(codigoSap: string): Promise<CatalogoItem | null> {
   if (!supabase) return null;
   const { data, error } = await tabelaCatalogo()
     .select('*')

@@ -233,6 +233,7 @@ const RPCS: Record<string, ConfigRpc> = {
     },
   },
   ssma_ficha_epi_registrar_devolucao: { rotulo: 'Ficha de EPI — devolução', respostaProvisoria: () => null },
+  ssma_ficha_epi_assinar: { rotulo: 'Ficha de EPI — assinatura', respostaProvisoria: () => null },
 };
 
 // ---------------------------------------------------------------------

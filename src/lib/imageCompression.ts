@@ -39,6 +39,12 @@ export interface PreparedAttachment {
   sizeCompressed: number;
   /** Object URL para a miniatura. Quem consome é responsável por revogar. */
   previewUrl: string;
+  /**
+   * Foto como veio da câmera, sem o carimbo de data/hora. Só existe quando o
+   * blob foi alterado por cima da imagem (`prepararFotoCarimbada`) — serve a
+   * quem precisa da imagem limpa, como o catálogo de itens.
+   */
+  original?: File;
 }
 
 /** Erro de validação, com mensagem já em português pronta para a UI. */

@@ -75,6 +75,7 @@ export async function prepararFotoCarimbada(file: File, quando: Date = new Date(
       sizeOriginal: file.size,
       sizeCompressed: blob.size,
       previewUrl: URL.createObjectURL(blob),
+      original: file,
     };
   } finally {
     bitmap.close();

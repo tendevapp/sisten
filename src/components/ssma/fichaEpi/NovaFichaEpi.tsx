@@ -38,7 +38,9 @@ import {
   formatarDataBR,
   formatarQuantidade,
   hojeISO,
+  epiDoBookPorCodigoSap,
   linhaAvulsa,
+  linhaSapForaDoBook,
   linhasParaPayload,
   montarLinhasFicha,
   motivoPadrao,
@@ -50,6 +52,7 @@ import {
   type MotivoMed,
 } from '../../../lib/fichaEpi';
 import {
+  assinarFichaEpi,
   buscarColaboradoresFichaEpi,
   criarFichaEpi,
   historicoDasFichas,
@@ -60,6 +63,7 @@ import {
   type SsmaFichaEpi,
 } from '../../../lib/ssmaFichaEpiApi';
 import { gerarRequisicaoPendenteDaFicha, type EntradaRequisicaoDaFicha, type ResultadoRequisicaoDaFicha } from '../../../lib/fichaEpiRequisicao';
+import { buscarMateriais, type MaterialResultado } from '../../../lib/materiais';
 import FichaEpiPdfPreview from './FichaEpiPdfPreview';
 
 interface Props {
@@ -295,7 +299,10 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
   const [assinando, setAssinando] = useState(false);
   const [tentouAssinar, setTentouAssinar] = useState(false);
   const [salvando, setSalvando] = useState(false);
-  const [salva, setSalva] = useState<{ id: string; codigo: string } | null>(null);
+  const [salva, setSalva] = useState<{ id: string; codigo: string; pendente: boolean } | null>(null);
+  // Coleta da assinatura de uma ficha que foi fechada pendente.
+  const [assinandoDepois, setAssinandoDepois] = useState(false);
+  const [gravandoAssinatura, setGravandoAssinatura] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [previewPdf, setPreviewPdf] = useState<SsmaFichaEpi[] | null>(null);
   // Saída de estoque gerada pela ficha (pendente de confirmação no almoxarifado).
@@ -425,6 +432,46 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
     }).slice(0, 8);
   }, [book, buscaEpi]);
 
+  // Busca no catálogo SAP (código ou descrição) para o EPI que não está no Book.
+  // Servidor, com atraso: o catálogo tem centenas de milhares de itens.
+  const [resultadosSap, setResultadosSap] = useState<MaterialResultado[]>([]);
+  const [buscandoSap, setBuscandoSap] = useState(false);
+  useEffect(() => {
+    const termo = buscaEpi.trim();
+    if (termo.length < 3) {
+      setResultadosSap([]);
+      setBuscandoSap(false);
+      return;
+    }
+    let ativo = true;
+    setBuscandoSap(true);
+    const t = setTimeout(async () => {
+      try {
+        const achados = await buscarMateriais(termo, { limite: 8 });
+        // O que já está no Book aparece na busca do Book — aqui só o que falta cadastrar.
+        if (ativo) setResultadosSap(achados.filter(m => !epiDoBookPorCodigoSap(book, m.materialCode)));
+      } catch {
+        if (ativo) setResultadosSap([]);
+      } finally {
+        if (ativo) setBuscandoSap(false);
+      }
+    }, 350);
+    return () => { ativo = false; clearTimeout(t); };
+  }, [buscaEpi, book]);
+
+  const adicionarEpiSap = (m: MaterialResultado) => {
+    const existente = linhas.find(l => l.codigoSapSemBook && l.codigoSapSemBook === m.materialCode.trim());
+    if (existente) {
+      atualizarLinha(existente.chave, { incluir: true });
+      toast.info(`${m.description} já está na lista e foi marcado.`);
+    } else {
+      const motivo = linhas[0]?.motivo ?? motivoPadrao(ultimaFicha?.funcao_id, funcaoId);
+      setLinhas(atual => [...atual, linhaSapForaDoBook({ codigo: m.materialCode, descricao: m.description }, historico, motivo)]);
+      toast.warning(`${m.description} (SAP ${m.materialCode}) não está cadastrado no Book de EPIs. Foi incluído pelo catálogo SAP, sem CA — informe o CA na linha e peça o cadastro ao SSMA.`);
+    }
+    setBuscaEpi('');
+  };
+
   const adicionarEpi = (epi: SsmaBookEpi) => {
     const chave = chaveGrupo(epi.categoria, epi.grupo_epi);
     const existente = linhas.find(l => l.chave === chave);
@@ -485,7 +532,37 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
     }
   };
 
-  const salvar = async (assinatura: string) => {
+  /** Fecha a ficha sem a assinatura: o EPI já foi entregue e o colaborador assina depois. */
+  const fecharSemAssinatura = () => {
+    setTentouAssinar(true);
+    const erro = validar();
+    if (erro) {
+      toast.error(erro);
+      document.querySelector('[data-devolucao-pendente="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (!window.confirm(
+      `Fechar a ficha SEM a assinatura de ${pessoa?.nome}?\n\nEla fica PENDENTE DE ASSINATURA (aparece em "Fichas emitidas") até o colaborador assinar.`,
+    )) return;
+    void salvar(null);
+  };
+
+  const gravarAssinaturaPendente = async (assinatura: string) => {
+    if (!salva) return;
+    setGravandoAssinatura(true);
+    try {
+      await assinarFichaEpi(salva.id, assinatura);
+      setSalva({ ...salva, pendente: false });
+      setAssinandoDepois(false);
+      toast.success(`Ficha ${salva.codigo} assinada.`);
+    } catch (erro) {
+      toast.error(mensagemErroFichaEpi(erro));
+    } finally {
+      setGravandoAssinatura(false);
+    }
+  };
+
+  const salvar = async (assinatura: string | null) => {
     if (!pessoa || !funcaoSelecionada) return;
     setSalvando(true);
     try {
@@ -502,10 +579,12 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
         data_demissao: dataDemissao || null,
         data_entrega: dataEntrega,
         assinatura_colaborador: assinatura,
+        assinatura_pendente: assinatura === null,
         observacoes: observacoes.trim() || null,
       }, itensPayload);
-      setSalva(resultado);
-      toast.success(`Ficha ${resultado.codigo} salva com a assinatura do colaborador.`);
+      setSalva({ ...resultado, pendente: assinatura === null });
+      if (assinatura === null) toast.warning(`Ficha ${resultado.codigo} salva PENDENTE DE ASSINATURA — colete a assinatura do colaborador depois.`);
+      else toast.success(`Ficha ${resultado.codigo} salva com a assinatura do colaborador.`);
       const entrada: EntradaRequisicaoDaFicha = {
         fichaCodigo: resultado.codigo,
         pessoa,
@@ -556,6 +635,15 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           {pessoa.nome} recebeu {formatarQuantidade(unidades)} {unidades === 1 ? 'unidade' : 'unidades'} de {incluidas.length} {incluidas.length === 1 ? 'EPI' : 'EPIs'} em {formatarDataBR(dataEntrega)}.
         </p>
+        {salva.pendente && (
+          <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-left text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            <p className="font-bold"><AlertTriangle className="mr-1 inline h-3.5 w-3.5" /> Ficha PENDENTE DE ASSINATURA</p>
+            <p className="mt-0.5">O EPI foi lançado, mas {pessoa.nome} ainda não assinou o termo. Ela continua pendente em “Fichas emitidas” até a assinatura ser coletada.</p>
+            <button type="button" onClick={() => setAssinandoDepois(true)} className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-amber-400 px-2 py-1 font-bold hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/40">
+              <PenTool className="h-3.5 w-3.5" /> Coletar assinatura agora
+            </button>
+          </div>
+        )}
         <RequisicaoGerada
           requisicao={requisicao}
           onTentarNovamente={entradaRequisicao ? () => void gerarRequisicao(entradaRequisicao) : undefined}
@@ -576,6 +664,13 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
           </button>
         </div>
         {previewPdf && <FichaEpiPdfPreview fichas={previewPdf} onClose={() => setPreviewPdf(null)} />}
+        <SignaturePadModal
+          isOpen={assinandoDepois}
+          onClose={() => !gravandoAssinatura && setAssinandoDepois(false)}
+          onSave={gravarAssinaturaPendente}
+          title={`Assinatura de ${pessoa.nome}`}
+          subtitle="Declaro que recebi os EPIs relacionados, nos termos do FRM.SEG-0008"
+        />
       </section>
     );
   }
@@ -733,11 +828,29 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
                           <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{linha.grupoEpi}</p>
                           {classe && <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${classe.cor}`}>{classe.rotulo}</span>}
                           {linha.foraDaMatriz && <span className="rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-300">Fora da matriz</span>}
+                          {linha.foraDoBook && <span className="rounded-full border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-300">Não cadastrado no Book</span>}
                         </div>
                         {linha.condicaoUso && <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">{linha.condicaoUso}</p>}
-                        <p className="mt-0.5 text-[11px] text-slate-500">
-                          CA {variante?.ca || linha.caSemBook || '—'}{variante?.codigo_sap ? ` · SAP ${variante.codigo_sap}` : ''}
-                        </p>
+                        {linha.foraDoBook && !variante ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                            <label className="inline-flex items-center gap-1">
+                              CA
+                              <input
+                                value={linha.caSemBook ?? ''}
+                                onChange={e => atualizarLinha(linha.chave, { caSemBook: e.target.value || null })}
+                                placeholder="nº do CA"
+                                className="w-24 rounded-md border border-amber-300 bg-white px-1.5 py-0.5 text-xs text-slate-900 outline-none focus:border-amber-500 dark:border-amber-800 dark:bg-slate-900 dark:text-slate-100"
+                                aria-label={`CA de ${linha.grupoEpi}`}
+                              />
+                            </label>
+                            {linha.codigoSapSemBook && <span>SAP {linha.codigoSapSemBook}</span>}
+                            <span className="text-amber-700 dark:text-amber-400">Peça o cadastro no Book ao SSMA.</span>
+                          </div>
+                        ) : (
+                          <p className="mt-0.5 text-[11px] text-slate-500">
+                            CA {variante?.ca || linha.caSemBook || '—'}{variante?.codigo_sap ? ` · SAP ${variante.codigo_sap}` : ''}
+                          </p>
+                        )}
                         <UltimaEntrega ultima={ultima} dias={dias} pendentes={linha.pendentesDevolucao.length} />
                         {exigeRespostaDevolucao(linha) && (
                           <PerguntaDevolucao
@@ -802,10 +915,11 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
           <div className="relative mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
             <label className="flex items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 dark:border-slate-700">
               <Plus className="h-4 w-4 text-slate-400" />
-              <input value={buscaEpi} onChange={e => setBuscaEpi(e.target.value)} placeholder="Adicionar outro EPI do Book (nome, CA ou código SAP)" className="w-full bg-transparent py-2 text-sm outline-none" />
+              <input value={buscaEpi} onChange={e => setBuscaEpi(e.target.value)} placeholder="Adicionar outro EPI: nome, CA ou código SAP do Book — ou descrição/código do catálogo SAP" className="w-full bg-transparent py-2 text-sm outline-none" />
+              {buscandoSap && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />}
             </label>
-            {resultadosEpi.length > 0 && (
-              <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            {(resultadosEpi.length > 0 || resultadosSap.length > 0) && (
+              <ul className="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
                 {resultadosEpi.map(epi => (
                   <li key={epi.id}>
                     <button type="button" onClick={() => adicionarEpi(epi)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
@@ -814,6 +928,21 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
                     </button>
                   </li>
                 ))}
+                {resultadosSap.length > 0 && (
+                  <>
+                    <li className="border-t border-slate-100 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-800 dark:border-slate-800 dark:bg-amber-950/40 dark:text-amber-300">
+                      <AlertTriangle className="mr-1 inline h-3 w-3" /> Catálogo SAP — NÃO cadastrados no Book de EPIs
+                    </li>
+                    {resultadosSap.map(m => (
+                      <li key={m.materialCode}>
+                        <button type="button" onClick={() => adicionarEpiSap(m)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-amber-50 dark:hover:bg-amber-950/30">
+                          <span className="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{m.description}</span>
+                          <span className="shrink-0 font-mono text-xs text-slate-500">SAP {m.materialCode}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </>
+                )}
               </ul>
             )}
           </div>
@@ -841,9 +970,14 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
                 </span>
               )}
             </p>
-            <button type="button" disabled={salvando || !incluidas.length} onClick={iniciarAssinatura} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60">
-              {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenTool className="h-4 w-4" />} Coletar assinatura e salvar
-            </button>
+            <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+              <button type="button" disabled={salvando || !incluidas.length} onClick={iniciarAssinatura} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60">
+                {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenTool className="h-4 w-4" />} Coletar assinatura e salvar
+              </button>
+              <button type="button" disabled={salvando || !incluidas.length} onClick={fecharSemAssinatura} className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-400 px-4 py-2 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-60 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950/40">
+                Salvar sem assinatura (assinar depois)
+              </button>
+            </div>
           </div>
           <p className="mt-2 flex items-center gap-1 text-[11px] text-slate-400">
             <ShieldCheck className="h-3 w-3" /> Lançada por {user.name}. Depois de assinada, a ficha só aceita devolução ou cancelamento.

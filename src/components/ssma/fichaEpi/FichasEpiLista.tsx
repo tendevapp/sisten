@@ -32,6 +32,9 @@ function Situacao({ ficha }: { ficha: SsmaFichaEpi }) {
   if (ficha.status === 'CANCELADA') {
     return <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">Cancelada</span>;
   }
+  if (ficha.assinatura_pendente) {
+    return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">Assinatura pendente</span>;
+  }
   if (devolvidos === ficha.itens.length && devolvidos > 0) {
     return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">Devolvida</span>;
   }
@@ -48,6 +51,10 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
   const [fichas, setFichas] = useState<SsmaFichaEpi[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [aberta, setAberta] = useState<SsmaFichaEpi | null>(null);
+  const [soPendentesAssinatura, setSoPendentesAssinatura] = useState(false);
+
+  const pendentesAssinatura = fichas.filter(f => f.assinatura_pendente && f.status === 'ATIVA');
+  const listadas = soPendentesAssinatura ? pendentesAssinatura : fichas;
 
   const carregar = async (termo: string) => {
     setCarregando(true);
@@ -73,7 +80,22 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
         {carregando && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
       </label>
 
-      {!carregando && fichas.length === 0 ? (
+      {pendentesAssinatura.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <span>
+            <strong>{pendentesAssinatura.length}</strong> {pendentesAssinatura.length === 1 ? 'ficha pendente' : 'fichas pendentes'} de assinatura do colaborador.
+          </span>
+          <button
+            type="button"
+            onClick={() => setSoPendentesAssinatura(v => !v)}
+            className="rounded-md border border-amber-400 px-2 py-1 font-bold hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/40"
+          >
+            {soPendentesAssinatura ? 'Mostrar todas' : 'Ver só as pendentes'}
+          </button>
+        </div>
+      )}
+
+      {!carregando && listadas.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 px-6 py-14 text-center dark:border-slate-700">
           <ClipboardList className="mx-auto h-9 w-9 text-slate-400" />
           <h2 className="mt-3 text-sm font-bold text-slate-800 dark:text-slate-100">{busca ? 'Nenhuma ficha encontrada' : 'Nenhuma ficha lançada ainda'}</h2>
@@ -82,7 +104,7 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
       ) : (
         <>
           <TableCards>
-            {fichas.map(f => {
+            {listadas.map(f => {
               const { unidades } = resumoItens(f);
               return (
                 <TableCardRow key={f.id} onClick={() => setAberta(f)} accent={f.status === 'CANCELADA' ? '#dc2626' : undefined}>
@@ -117,7 +139,7 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {fichas.map(f => {
+                  {listadas.map(f => {
                     const { unidades } = resumoItens(f);
                     return (
                       <tr

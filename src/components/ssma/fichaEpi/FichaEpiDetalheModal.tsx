@@ -14,12 +14,14 @@ import type { Profile } from '../../../types';
 import FichaEpiDocumento from './FichaEpiDocumento';
 import { formatarDataBR, hojeISO, type LinhaGradeFichaEpi } from '../../../lib/fichaEpi';
 import {
+  assinarFichaEpi,
   cancelarFichaEpi,
   listarFichasDoColaborador,
   mensagemErroFichaEpi,
   registrarDevolucaoEpi,
   type SsmaFichaEpi,
 } from '../../../lib/ssmaFichaEpiApi';
+import SignaturePadModal from '../../portaria/SignaturePadModal';
 import FichaEpiPdfPreview from './FichaEpiPdfPreview';
 
 interface Props {
@@ -43,6 +45,7 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
   const [devolucao, setDevolucao] = useState<{ linha: LinhaGradeFichaEpi; data: string; observacao: string } | null>(null);
   const [cancelando, setCancelando] = useState<string | null>(null);
   const [processando, setProcessando] = useState(false);
+  const [assinando, setAssinando] = useState(false);
 
   const carregar = async () => {
     setCarregando(true);
@@ -96,6 +99,24 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
     }
   };
 
+  const pendenteAssinatura = !!fichaAberta && fichaAberta.status === 'ATIVA' && !!fichaAberta.assinatura_pendente;
+
+  const coletarAssinatura = async (assinatura: string) => {
+    if (!fichaAberta) return;
+    setProcessando(true);
+    try {
+      await assinarFichaEpi(fichaAberta.id, assinatura);
+      toast.success(`Ficha ${fichaAberta.codigo} assinada.`);
+      setAssinando(false);
+      await carregar();
+      onAlterada();
+    } catch (erro) {
+      toast.error(mensagemErroFichaEpi(erro));
+    } finally {
+      setProcessando(false);
+    }
+  };
+
   const confirmarCancelamento = async () => {
     if (!fichaAberta || !cancelando?.trim()) {
       toast.error('Informe o motivo do cancelamento.');
@@ -140,6 +161,16 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
           <div className="flex justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-emerald-600" /></div>
         ) : (
           <>
+            {pendenteAssinatura && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                <span>
+                  <strong>Ficha pendente de assinatura.</strong> O EPI foi entregue, mas {fichaAberta?.nome} ainda não assinou o termo.
+                </span>
+                <button type="button" onClick={() => setAssinando(true)} className={`${botao} bg-amber-600 text-white hover:bg-amber-700`}>
+                  <PenTool className="h-4 w-4" /> Coletar assinatura
+                </button>
+              </div>
+            )}
             <div className="my-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3">
                 {fichaAberta && (
@@ -190,6 +221,14 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
         {previewPdf && (
           <FichaEpiPdfPreview fichas={previewPdf} mostrarAssinaturaInicial={mostrarAssinatura} onClose={() => setPreviewPdf(null)} />
         )}
+
+        <SignaturePadModal
+          isOpen={assinando}
+          onClose={() => !processando && setAssinando(false)}
+          onSave={coletarAssinatura}
+          title={`Assinatura de ${fichaAberta?.nome ?? 'colaborador'}`}
+          subtitle="Declaro que recebi os EPIs relacionados, nos termos do FRM.SEG-0008"
+        />
 
         {devolucao && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4">

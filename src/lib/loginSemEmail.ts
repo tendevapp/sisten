@@ -88,3 +88,28 @@ export function rotuloIdentificador(email: string | null | undefined): string {
   if (!ehEmailInterno(e)) return e;
   return e.slice(0, e.lastIndexOf('@')).toLowerCase();
 }
+
+/**
+ * Janela máxima em dias para considerar um usuário recém-cadastrado no sistema.
+ * Regra: a tag/selo de "Novo" e o filtro de novos colaboradores aplicam-se apenas
+ * a quem se cadastrou há no máximo 8 dias; após esse período, a tag é removida.
+ */
+export const DIAS_LIMITE_NOVO_USUARIO = 8;
+
+/**
+ * Determina se o usuário se cadastrou há no máximo `diasLimite` dias (padrão: 8 dias).
+ * Após esse período, retorna `false`, removendo a tag de novo usuário.
+ */
+export function ehNovoUsuario(
+  createdAt?: string | null,
+  agora: Date = new Date(),
+  diasLimite: number = DIAS_LIMITE_NOVO_USUARIO,
+): boolean {
+  if (!createdAt) return false;
+  const createdTime = new Date(createdAt).getTime();
+  if (isNaN(createdTime)) return false;
+  const now = agora.getTime();
+  const diffDays = (now - createdTime) / (1000 * 60 * 60 * 24);
+  return diffDays >= 0 && diffDays <= diasLimite;
+}
+

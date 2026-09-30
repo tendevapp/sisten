@@ -34,6 +34,7 @@ import {
 } from '../../lib/almoxCatalogoApi';
 import type { Profile } from '../../types';
 import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../../lib/buscaKeywords';
+import FotosRecebimentoSugeridas from '../../components/almoxarifado/FotosRecebimentoSugeridas';
 import SearchKeywordsChips from '../../components/ui/SearchKeywordsChips';
 
 interface CadastroItensAlmoxProps {
@@ -1388,6 +1389,16 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                   )}
                 </div>
 
+                <FotosRecebimentoSugeridas
+                  codigoSap={itemSelecionado.codigo_sap}
+                  desabilitado={salvando}
+                  onEscolher={(file) => {
+                    if (fotoPreviewUrl && fotoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(fotoPreviewUrl);
+                    setFotoArquivo(file);
+                    setFotoPreviewUrl(URL.createObjectURL(file));
+                  }}
+                />
+
                 {/* Botões de Ação para Captura */}
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   {/* Botão Câmera (Mobile / Web) */}
@@ -1899,6 +1910,16 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         </div>
                       </div>
                     )}
+
+                    <FotosRecebimentoSugeridas
+                      codigoSap={itemSapSelecionado.codigo_sap}
+                      desabilitado={salvandoSap}
+                      onEscolher={(file) => {
+                        if (fotoPreviewUrlSap && fotoPreviewUrlSap.startsWith('blob:')) URL.revokeObjectURL(fotoPreviewUrlSap);
+                        setFotoArquivoSap(file);
+                        setFotoPreviewUrlSap(URL.createObjectURL(file));
+                      }}
+                    />
 
                     {/* Observações Internas (Opcional) */}
                     <div className="space-y-1 pt-1">
