@@ -53,6 +53,7 @@ import {
 import { listarRhPessoas, listarRhTurnos } from '../../lib/rhApi';
 import { hojeISO } from '../../lib/recebimentoAlmox';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { CHAVE_ABRIR_REQUISICAO_BALCAO } from '../../lib/fichaEpiRequisicao';
 import type { EstoqueItem, Profile, RhPessoa, RhTurno } from '../../types';
 
 interface Props {
@@ -91,8 +92,9 @@ function gravarPreferencias(p: Preferencias): void {
 
 const DESTINO_PADRAO_TRANSFERENCIA = '0105';
 
-type FiltroExportacao = 'nao_exportadas' | 'exportadas' | 'todas';
+type FiltroExportacao = 'aguardando' | 'nao_exportadas' | 'exportadas' | 'todas';
 const ROTULO_FILTRO_EXPORTACAO: Record<FiltroExportacao, string> = {
+  aguardando: 'Aguardando confirmação',
   nao_exportadas: 'Não exportadas',
   exportadas: 'Exportadas',
   todas: 'Todas',
@@ -167,7 +169,8 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     const t = semAcento(busca.trim());
     return requisicoes.filter((r) => {
       if (soPendentes && r.doc_sap) return false;
-      if (filtroExportacao === 'nao_exportadas' && r.exportacao_id) return false;
+      if (filtroExportacao === 'aguardando' && !r.pendente_confirmacao) return false;
+      if (filtroExportacao === 'nao_exportadas' && (r.exportacao_id || r.pendente_confirmacao)) return false;
       if (filtroExportacao === 'exportadas' && !r.exportacao_id) return false;
       if (!t) return true;
       const alvo = semAcento([
@@ -191,16 +194,37 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const hoje = hojeISO();
   const qtdHoje = requisicoes.filter((r) => r.data === hoje).length;
   const qtdPendentes = requisicoes.filter((r) => !r.doc_sap).length;
-  const qtdNaoExportadas = requisicoes.filter((r) => !r.exportacao_id).length;
+  const qtdAguardando = requisicoes.filter((r) => r.pendente_confirmacao).length;
+  const qtdNaoExportadas = requisicoes.filter((r) => !r.exportacao_id && !r.pendente_confirmacao).length;
   const contagemFiltro: Record<FiltroExportacao, number> = {
+    aguardando: qtdAguardando,
     nao_exportadas: qtdNaoExportadas,
-    exportadas: requisicoes.length - qtdNaoExportadas,
+    exportadas: requisicoes.filter((r) => r.exportacao_id).length,
     todas: requisicoes.length,
   };
+
+  // A ficha de EPI deixa o código da requisição que gerou: ao chegar aqui, abre
+  // direto para o almoxarife conferir o PEP e confirmar.
+  useEffect(() => {
+    if (loading) return;
+    let codigo: string | null = null;
+    try { codigo = sessionStorage.getItem(CHAVE_ABRIR_REQUISICAO_BALCAO); } catch { /* sem storage */ }
+    if (!codigo) return;
+    try { sessionStorage.removeItem(CHAVE_ABRIR_REQUISICAO_BALCAO); } catch { /* sem storage */ }
+    const alvo = requisicoes.find((r) => r.codigo === codigo);
+    setFiltroExportacao(alvo?.pendente_confirmacao ? 'aguardando' : 'todas');
+    if (alvo) setForm({ registro: alvo });
+    else toast.info(`Requisição ${codigo} não encontrada na lista — atualize a tela.`);
+  }, [loading, requisicoes, toast]);
 
   const exportar = async () => {
     const sel = requisicoes.filter((r) => selecionadas.has(r.id));
     if (sel.length === 0) return;
+    const aguardando = sel.filter((r) => r.pendente_confirmacao);
+    if (aguardando.length > 0) {
+      toast.error(`Pendente de confirmação, não pode exportar: ${aguardando.map((r) => r.codigo).join(', ')}. Abra, confirme o PEP e libere.`);
+      return;
+    }
     const jaExportadas = sel.filter((r) => r.exportacao_id).length;
     if (jaExportadas > 0
         && !window.confirm(`${jaExportadas} das selecionadas já foram exportadas. Exportar de novo mesmo assim?`)) return;
@@ -273,7 +297,8 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     });
   };
 
-  const idsFiltradas = useMemo(() => filtradas.map((r) => r.id), [filtradas]);
+  // Pendente de confirmação não se seleciona: não pode ir para a planilha do SAP.
+  const idsFiltradas = useMemo(() => filtradas.filter((r) => !r.pendente_confirmacao).map((r) => r.id), [filtradas]);
   const todasFiltradasSelecionadas = idsFiltradas.length > 0 && idsFiltradas.every((id) => selecionadas.has(id));
   const alternarSelecionarTodas = () => {
     alternarSelecao(idsFiltradas, !todasFiltradasSelecionadas);
@@ -374,8 +399,15 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Indicador rotulo="Requisições hoje" valor={qtdHoje} />
+        <Indicador
+          rotulo="Aguardando confirmação"
+          valor={qtdAguardando}
+          destaque={qtdAguardando > 0}
+          onClick={() => setFiltroExportacao('aguardando')}
+          ativo={filtroExportacao === 'aguardando'}
+        />
         <Indicador
           rotulo="Não exportadas"
           valor={qtdNaoExportadas}
@@ -484,8 +516,8 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
       ) : (
         <div className="space-y-5">
           {porDia.map(([data, lista]) => {
-            const idsDia = lista.map((r) => r.id);
-            const todasMarcadas = idsDia.every((id) => selecionadas.has(id));
+            const idsDia = lista.filter((r) => !r.pendente_confirmacao).map((r) => r.id);
+            const todasMarcadas = idsDia.length > 0 && idsDia.every((id) => selecionadas.has(id));
             return (
               <section key={data} className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-1" style={{ borderColor: 'var(--hairline)' }}>
@@ -505,7 +537,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
                     key={r.id}
                     r={r}
                     selecionada={selecionadas.has(r.id)}
-                    podeEditar={podeEditarFormulario(user, r)}
+                    podeEditar={podeEditarFormulario(user, r) || !!r.pendente_confirmacao}
                     onSelecionar={(v) => alternarSelecao([r.id], v)}
                     onAbrir={() => setDetalhe(r)}
                     onEditar={() => void editar(r)}
@@ -546,7 +578,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
       {detalhe && (
         <ModalDetalhe
           r={detalhe}
-          podeEditar={podeEditarFormulario(user, detalhe)}
+          podeEditar={podeEditarFormulario(user, detalhe) || !!detalhe.pendente_confirmacao}
           exportacao={exportacoes.find((e) => e.id === detalhe.exportacao_id) ?? null}
           onReabrir={() => void reabrir([detalhe.id], detalhe.codigo)}
           onClose={() => setDetalhe(null)}
@@ -660,6 +692,19 @@ function ChipExportada() {
   );
 }
 
+/** Gerada por outro formulário (ex.: Ficha de EPI) e ainda não liberada pelo almoxarifado. */
+function ChipPendenteConfirmacao({ origemRef }: { origemRef?: string | null }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+      style={{ background: 'color-mix(in srgb, var(--status-serious) 16%, transparent)', color: 'var(--status-serious)' }}
+      title="Não entra na exportação até o almoxarifado confirmar o PEP e liberar"
+    >
+      <AlertTriangle className="h-3 w-3" /> Pendente de confirmação{origemRef ? ` · ${origemRef}` : ''}
+    </span>
+  );
+}
+
 function CartaoRequisicao({
   r, selecionada, podeEditar, onSelecionar, onAbrir, onEditar, onExcluir,
 }: {
@@ -688,15 +733,18 @@ function CartaoRequisicao({
         <input
           type="checkbox"
           aria-label={`Selecionar ${r.codigo}`}
-          checked={selecionada}
+          checked={selecionada && !r.pendente_confirmacao}
+          disabled={!!r.pendente_confirmacao}
+          title={r.pendente_confirmacao ? 'Pendente de confirmação: abra e libere antes de exportar' : undefined}
           onChange={(e) => onSelecionar(e.target.checked)}
-          className="h-4 w-4 cursor-pointer"
+          className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
         />
       </div>
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{r.codigo}</span>
           <ChipTipo tipo={r.tipo_movimento} />
+          {r.pendente_confirmacao && <ChipPendenteConfirmacao origemRef={r.origem_ref} />}
           <ChipDocSap doc={r.doc_sap} />
           {r.exportacao_id && <ChipExportada />}
           {temSemSaldo && (
@@ -766,7 +814,9 @@ function CartaoRequisicao({
           <button onClick={acao(onAbrir)} className="text-[11px] font-bold hover:underline" style={{ color: 'var(--ink-muted)' }}>Detalhes</button>
           {podeEditar && (
             <>
-              <button onClick={acao(onEditar)} className="text-[11px] font-bold hover:underline" style={{ color: 'var(--brand)' }}>Editar</button>
+              <button onClick={acao(onEditar)} className="text-[11px] font-bold hover:underline" style={{ color: r.pendente_confirmacao ? 'var(--status-serious)' : 'var(--brand)' }}>
+                {r.pendente_confirmacao ? 'Conferir e confirmar' : 'Editar'}
+              </button>
               <button onClick={acao(onExcluir)} className="text-[11px] font-bold hover:underline" style={{ color: 'var(--status-critical)' }}>Excluir</button>
             </>
           )}
@@ -1021,7 +1071,10 @@ function ModalRequisicao({
 
   const alertas = alertasRequisicao(todasLinhas);
 
-  const salvar = async (continuar: boolean) => {
+  const pendenteConfirmacao = !!registro?.pendente_confirmacao;
+
+  /** `confirmar`: só vale em requisição pendente — libera para exportação. */
+  const salvar = async (continuar: boolean, confirmar = false) => {
     setTentouSalvar(true);
     if (erros.length > 0) {
       toast.error(erros[0]);
@@ -1048,6 +1101,7 @@ function ModalRequisicao({
             aplicacao: pepPrincipal.nome,
             observacao: observacao || null,
             criado_por_nome: user.name,
+            confirmar: pendenteConfirmacao && confirmar ? true : undefined,
           },
           todasLinhas.map((l) => ({
             material: l.material,
@@ -1060,7 +1114,11 @@ function ModalRequisicao({
           })),
         );
         gravarPreferencias({ tipo, turno, destino: '' });
-        toast.success(registro ? `${codigo} atualizada.` : `${codigo} registrada.`);
+        toast.success(
+          pendenteConfirmacao && confirmar
+            ? `${codigo} confirmada — liberada para exportação.`
+            : registro ? `${codigo} atualizada.` : `${codigo} registrada.`,
+        );
       } else {
         // Transferência: envios individuais
         if (registro) {
@@ -1200,6 +1258,22 @@ function ModalRequisicao({
       </ModalHeader>
       <ModalBody>
         <div className="space-y-5">
+          {pendenteConfirmacao && (
+            <div
+              className="rounded-lg border px-3 py-2.5 text-xs"
+              style={{ borderColor: 'var(--status-serious)', background: 'color-mix(in srgb, var(--status-serious) 10%, transparent)', color: 'var(--ink-primary)' }}
+            >
+              <p className="font-bold" style={{ color: 'var(--status-serious)' }}>
+                <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />
+                Pendente de confirmação{registro?.origem_ref ? ` — gerada pela ficha ${registro.origem_ref}` : ''}
+              </p>
+              <p className="mt-0.5">
+                Confira os itens, o depósito e, principalmente, o <strong>PEP</strong> (sugerido pelo setor do colaborador).
+                Só depois de <strong>Confirmar e liberar</strong> ela entra na exportação para o SAP.
+              </p>
+            </div>
+          )}
+
           {/* Movimento */}
           <div className="grid gap-3 sm:grid-cols-3">
             <Campo rotulo="Tipo de movimento" obrigatorio>
@@ -1462,15 +1536,38 @@ function ModalRequisicao({
               Salvar e nova
             </button>
           )}
-          <button
-            onClick={() => void salvar(false)}
-            disabled={salvando}
-            className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
-            style={{ background: 'var(--brand)' }}
-          >
-            {salvando && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Salvar
-          </button>
+          {pendenteConfirmacao ? (
+            <>
+              <button
+                onClick={() => void salvar(false)}
+                disabled={salvando}
+                className="rounded-lg border px-4 py-2 text-xs font-bold disabled:opacity-50"
+                style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+                title="Grava os ajustes e continua pendente"
+              >
+                Salvar sem liberar
+              </button>
+              <button
+                onClick={() => void salvar(false, true)}
+                disabled={salvando}
+                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+                style={{ background: 'var(--brand)' }}
+              >
+                {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Confirmar e liberar para exportação
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => void salvar(false)}
+              disabled={salvando}
+              className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+              style={{ background: 'var(--brand)' }}
+            >
+              {salvando && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Salvar
+            </button>
+          )}
         </div>
       </ModalFooter>
     </Modal>
@@ -1872,6 +1969,7 @@ function ModalDetalhe({
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-mono text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>{r.codigo}</h2>
           <ChipTipo tipo={r.tipo_movimento} />
+          {r.pendente_confirmacao && <ChipPendenteConfirmacao origemRef={r.origem_ref} />}
           <ChipDocSap doc={r.doc_sap} />
           {r.exportacao_id && <ChipExportada />}
           {temSemSaldo && (
@@ -1950,6 +2048,8 @@ function ModalDetalhe({
             )}
             <Linha rotulo="Observação" valor={r.observacao} />
             <Linha rotulo="Doc. SAP" valor={r.doc_sap ? `${r.doc_sap} · ${r.doc_sap_por ?? ''} em ${formatDateTimeBR(r.doc_sap_em)}` : null} />
+            <Linha rotulo="Origem" valor={r.origem === 'ficha_epi' ? `Ficha de EPI ${r.origem_ref ?? ''}`.trim() : null} />
+            <Linha rotulo="Confirmação" valor={r.confirmada_em ? `${r.confirmada_por ?? '—'} em ${formatDateTimeBR(r.confirmada_em)}` : r.pendente_confirmacao ? 'Pendente — não entra na exportação' : null} />
             <Linha rotulo="Registrado por" valor={`${r.criado_por_nome ?? '—'} em ${formatDateTimeBR(r.created_at)}`} />
             <Linha
               rotulo="Exportação"
@@ -2031,12 +2131,20 @@ function ModalDetalhe({
           {podeEditar && (
             <>
               <button onClick={onExcluir} className="rounded-lg px-3 py-2 text-xs font-bold" style={{ color: 'var(--status-critical)' }}>Excluir</button>
-              <button onClick={onEditar} className="rounded-lg border px-4 py-2 text-xs font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Editar</button>
+              {r.pendente_confirmacao ? (
+                <button onClick={onEditar} className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white" style={{ background: 'var(--brand)' }}>
+                  <Check className="h-3.5 w-3.5" /> Conferir e confirmar
+                </button>
+              ) : (
+                <button onClick={onEditar} className="rounded-lg border px-4 py-2 text-xs font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Editar</button>
+              )}
             </>
           )}
-          <button onClick={onDocSap} className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white" style={{ background: 'var(--brand)' }}>
-            <FileCheck2 className="h-3.5 w-3.5" /> {r.doc_sap ? 'Alterar doc. SAP' : 'Informar doc. SAP'}
-          </button>
+          {!r.pendente_confirmacao && (
+            <button onClick={onDocSap} className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white" style={{ background: 'var(--brand)' }}>
+              <FileCheck2 className="h-3.5 w-3.5" /> {r.doc_sap ? 'Alterar doc. SAP' : 'Informar doc. SAP'}
+            </button>
+          )}
         </div>
       </ModalFooter>
     </Modal>

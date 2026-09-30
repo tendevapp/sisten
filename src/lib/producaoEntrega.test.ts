@@ -121,6 +121,30 @@ describe('producaoEntrega - Controle de Entrega e Tomada de Decisão', () => {
     expect(kpis.contagemCategorias.expedido).toBe(9);
     expect(kpis.contagemCategorias.white).toBe(2);
     expect(kpis.contagemCategorias.patio).toBe(4);
+    expect(kpis.contagemCategorias.pendente).toBe(0);
+  });
+
+  it('suporta categoria "pendente" (Em Branco Pendente) sem poluir WIP ou gargalos', () => {
+    const tramos: TramoEntrega[] = [
+      criarTramo(16, 'T1', 3218, 'pendente', 'PENDENTE', 0),
+      criarTramo(16, 'T2', 3219, 'pendente', 'PENDENTE', 0),
+      criarTramo(16, 'T3', 3220, 'pendente', 'PENDENTE', 0),
+      criarTramo(16, 'T4', 3221, 'saw02', 'SAW02', 3),
+      criarTramo(16, 'T5', 3222, 'pendente', 'PENDENTE', 0),
+    ];
+
+    const [torre16] = agruparTramosPorTorre(tramos);
+    expect(torre16.status_conjunto).toBe('em_fabricacao');
+    expect(torre16.tramos_prontos).toBe(0);
+    expect(torre16.maior_tempo_espera).toBe(3);
+    expect(torre16.tramo_gargalo?.tramo).toBe('T4');
+
+    const kpis = calcularIndicadoresDecisao(tramos, [torre16]);
+    expect(kpis.contagemCategorias.pendente).toBe(4);
+    expect(kpis.contagemCategorias.saw02).toBe(1);
+    // Tramo pendente não infla o WIP
+    expect(kpis.mediaDiasEsperaWip).toBe(3);
+    expect(kpis.tramosCriticos.length).toBe(0);
   });
 });
 

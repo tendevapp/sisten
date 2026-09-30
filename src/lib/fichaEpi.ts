@@ -285,12 +285,17 @@ function varianteInicial(variantes: SsmaBookEpi[], preferidaId: string | null, u
  * Lista inicial da ficha a partir da matriz da função. Básicos e específicos
  * entram marcados; os condicionais por exposição aparecem desmarcados, para o
  * técnico decidir. Requisitos que caem no mesmo EPI viram uma linha só.
+ *
+ * `todosDesmarcados`: o colaborador já tem ficha ativa — a nova ficha é uma
+ * entrega complementar, então nada vem marcado e quem lança escolhe só o que
+ * está entregando agora.
  */
 export function montarLinhasFicha(params: {
   requisitos: SsmaEpiPorFuncao[];
   book: SsmaBookEpi[];
   historico: ItemHistorico[];
   motivo: MotivoMed;
+  todosDesmarcados?: boolean;
 }): LinhaFicha[] {
   const ultimas = ultimaEntregaPorGrupo(params.historico);
   const pendentes = pendentesDevolucaoPorGrupo(params.historico);
@@ -318,7 +323,7 @@ export function montarLinhasFicha(params: {
       epiBookId: varianteInicial(variantes, requisito.epi_book_id, ultimas.get(chave)),
       descricaoSemBook: epi ? null : requisito.descricao_epi_origem,
       caSemBook: epi ? null : requisito.ca_origem,
-      incluir: requisito.classificacao !== 'CONDICIONAL_POR_EXPOSICAO',
+      incluir: !params.todosDesmarcados && requisito.classificacao !== 'CONDICIONAL_POR_EXPOSICAO',
       quantidade: 1,
       motivo: params.motivo,
       foraDaMatriz: false,

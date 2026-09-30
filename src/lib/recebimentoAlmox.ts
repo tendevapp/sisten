@@ -246,6 +246,24 @@ export function posAbertosDoFornecedor(records: LinhaCacheSAP[], termo: string):
     .sort((a, b) => a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true }));
 }
 
+/**
+ * Notas fiscais da ficha cega. A coluna `nota_fiscal` é um texto só; várias NFs
+ * ficam separadas por vírgula ("123, 456"). Registros antigos (uma NF solta)
+ * continuam válidos — viram uma lista de um item.
+ */
+export function separarNotasFiscais(texto: string | null | undefined): string[] {
+  const vistas = new Set<string>();
+  for (const parte of String(texto ?? '').split(/[,;\n]+/)) {
+    const nf = parte.trim().toUpperCase();
+    if (nf) vistas.add(nf);
+  }
+  return [...vistas];
+}
+
+export function juntarNotasFiscais(notas: string[]): string {
+  return separarNotasFiscais(notas.join(',')).join(', ');
+}
+
 /** Uma linha de PO achada pela busca por descrição do item. */
 export interface ItemPoEncontrado extends ItemPoAberto {
   /** PO da linha, sem zeros à esquerda. */

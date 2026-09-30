@@ -14,10 +14,16 @@ import NovaFichaEpi from '../../components/ssma/fichaEpi/NovaFichaEpi';
 import FichasEpiLista from '../../components/ssma/fichaEpi/FichasEpiLista';
 import AnaliseConsumoEpi from '../../components/ssma/fichaEpi/AnaliseConsumoEpi';
 import type { ColaboradorFichaEpi } from '../../lib/ssmaFichaEpiApi';
+import { CHAVE_ABRIR_REQUISICAO_BALCAO } from '../../lib/fichaEpiRequisicao';
+import { canAccessForm } from '../../lib/pages';
 
 interface Props {
   user: Profile;
   onBack: () => void;
+  /** A mesma tela é aberta pelo SSMA e pelo Almoxarifado. */
+  voltarRotulo?: string;
+  /** Para abrir a requisição de saída de estoque gerada pela ficha, no balcão do almoxarifado. */
+  onNavigate?: (path: string) => void;
 }
 
 type Aba = 'nova' | 'fichas' | 'analise';
@@ -28,7 +34,7 @@ const ABAS: { id: Aba; rotulo: string; icone: typeof Plus }[] = [
   { id: 'analise', rotulo: 'Análise de consumo', icone: BarChart3 },
 ];
 
-export default function SsmaFichaEpiView({ user, onBack }: Props) {
+export default function SsmaFichaEpiView({ user, onBack, voltarRotulo = 'Voltar ao SSMA', onNavigate }: Props) {
   const [aba, setAba] = useState<Aba>('nova');
   const [pessoaParaLancar, setPessoaParaLancar] = useState<ColaboradorFichaEpi | null>(null);
   const [buscaFichas, setBuscaFichas] = useState('');
@@ -41,6 +47,15 @@ export default function SsmaFichaEpiView({ user, onBack }: Props) {
     setAba('nova');
   };
 
+  // Só quem acessa o balcão é levado até a requisição pendente; os demais
+  // veem apenas o aviso de que ela foi gerada.
+  const abrirRequisicaoBalcao = onNavigate && canAccessForm(user, 'form_almoxarifado_requisicao_balcao')
+    ? (codigo: string) => {
+        try { sessionStorage.setItem(CHAVE_ABRIR_REQUISICAO_BALCAO, codigo); } catch { /* sem storage: abre a lista */ }
+        onNavigate('/formularios/almoxarifado-requisicao-balcao');
+      }
+    : undefined;
+
   const verFichasDe = (pessoa: ColaboradorFichaEpi) => {
     setBuscaFichas(pessoa.registro);
     setAba('fichas');
@@ -49,7 +64,7 @@ export default function SsmaFichaEpiView({ user, onBack }: Props) {
   return (
     <div className="mx-auto max-w-7xl space-y-5 pb-16">
       <button type="button" onClick={onBack} className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-400">
-        <ChevronLeft className="h-4 w-4" /> Voltar ao SSMA
+        <ChevronLeft className="h-4 w-4" /> {voltarRotulo}
       </button>
 
       <header className="flex items-start gap-3.5">
@@ -87,7 +102,7 @@ export default function SsmaFichaEpiView({ user, onBack }: Props) {
 
       {/* A nova ficha fica montada para não perder o preenchimento ao consultar outra aba. */}
       <div hidden={aba !== 'nova'}>
-        <NovaFichaEpi key={chaveNova} user={user} pessoaInicial={pessoaParaLancar} onVerFichas={verFichasDe} />
+        <NovaFichaEpi key={chaveNova} user={user} pessoaInicial={pessoaParaLancar} onVerFichas={verFichasDe} onAbrirRequisicaoBalcao={abrirRequisicaoBalcao} />
       </div>
       {aba === 'fichas' && <FichasEpiLista key={buscaFichas} user={user} buscaInicial={buscaFichas} />}
       {aba === 'analise' && <AnaliseConsumoEpi onLancarFicha={lancarPara} />}

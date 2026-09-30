@@ -188,7 +188,7 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral', 
       setActiveTab('visao_geral');
       return null;
     }
-    return <SsmaFichaEpiView user={user} onBack={() => setActiveTab('visao_geral')} />;
+    return <SsmaFichaEpiView user={user} onBack={() => setActiveTab('visao_geral')} onNavigate={handleChildNavigate} />;
   }
 
   if (activeTab === 'book_epis' && mostrarCadastros) {

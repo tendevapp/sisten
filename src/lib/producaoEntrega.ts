@@ -20,7 +20,8 @@ export type CategoriaEtapa =
   | 'internos'
   | 'saw03'
   | 'saw02'
-  | 'nav01';
+  | 'nav01'
+  | 'pendente';
 
 export interface TramoEntrega {
   id: string;
@@ -139,6 +140,16 @@ export const CONFIG_CATEGORIAS: Record<CategoriaEtapa, ConfiguracaoCategoria> = 
     gradienteCilindro: 'linear-gradient(90deg, #fb923c 0%, #fed7aa 45%, #ea580c 100%)',
     hexPrimario: '#fdba74',
     descricao: 'Processamento inicial NAV1',
+  },
+  pendente: {
+    id: 'pendente',
+    rotulo: 'Em Branco Pendente',
+    bgClasse: 'bg-white text-slate-800 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-700',
+    borderClasse: 'border-slate-300 dark:border-slate-600',
+    textoClasse: 'text-slate-900 font-bold dark:text-slate-100',
+    gradienteCilindro: 'linear-gradient(90deg, #f1f5f9 0%, #ffffff 45%, #e2e8f0 100%)',
+    hexPrimario: '#ffffff',
+    descricao: 'Tramo em branco / pendente de fabricação',
   },
 };
 
@@ -336,7 +347,7 @@ export function agruparTramosPorTorre(tramos: TramoEntrega[]): TorreEntregaAgrup
         prontos++;
       }
 
-      if (t.etapa_categoria !== 'expedido' && t.dias_espera > maxEspera) {
+      if (t.etapa_categoria !== 'expedido' && t.etapa_categoria !== 'pendente' && t.dias_espera > maxEspera) {
         maxEspera = t.dias_espera;
         gargalo = t;
       }
@@ -389,6 +400,7 @@ export function calcularIndicadoresDecisao(
     saw03: 0,
     saw02: 0,
     nav01: 0,
+    pendente: 0,
   };
 
   let somaEsperaWip = 0;
@@ -398,14 +410,14 @@ export function calcularIndicadoresDecisao(
     if (contagem[t.etapa_categoria] !== undefined) {
       contagem[t.etapa_categoria]++;
     }
-    if (t.etapa_categoria !== 'expedido') {
+    if (t.etapa_categoria !== 'expedido' && t.etapa_categoria !== 'pendente') {
       somaEsperaWip += t.dias_espera;
       totalWip++;
     }
   }
 
   const tramosCriticos = tramos
-    .filter(t => t.etapa_categoria !== 'expedido' && t.dias_espera >= 4)
+    .filter(t => t.etapa_categoria !== 'expedido' && t.etapa_categoria !== 'pendente' && t.dias_espera >= 4)
     .sort((a, b) => b.dias_espera - a.dias_espera);
 
   return {

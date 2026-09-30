@@ -66,6 +66,7 @@ const RecebimentoAlmox = lazy(() => import('./views/almoxarifado/RecebimentoAlmo
 const RequisicaoBalcao = lazy(() => import('./views/almoxarifado/RequisicaoBalcao'));
 const InventarioCiclico = lazy(() => import('./views/almoxarifado/InventarioCiclico'));
 const CadastroItensAlmox = lazy(() => import('./views/almoxarifado/CadastroItensAlmox'));
+const SsmaFichaEpiView = lazy(() => import('./views/ssma/SsmaFichaEpiView'));
 const SsmaHub = lazy(() => import('./views/ssma/SsmaHub'));
 const SsmaRidView = lazy(() => import('./views/ssma/SsmaRidView'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
@@ -753,7 +754,8 @@ export default function App() {
         if (
           canAccessPage(user, 'formularios') &&
           (canAccessForm(user, 'form_almoxarifado_recebimento') || canAccessForm(user, 'form_almoxarifado_requisicao_balcao') ||
-            canAccessForm(user, 'form_almoxarifado_inventario') || canAccessForm(user, 'form_almoxarifado_cadastro_itens'))
+            canAccessForm(user, 'form_almoxarifado_inventario') || canAccessForm(user, 'form_almoxarifado_cadastro_itens') ||
+            canAccessForm(user, 'form_almoxarifado_ficha_epi'))
         ) {
           return <RecebimentoAlmox user={user} onNavigate={handleNavigate} />;
         }
@@ -768,6 +770,19 @@ export default function App() {
       case '/formularios/almoxarifado-requisicao-balcao':
         if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_almoxarifado_requisicao_balcao')) {
           return <RequisicaoBalcao user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/almoxarifado-ficha-epi':
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_almoxarifado_ficha_epi')) {
+          return (
+            <SsmaFichaEpiView
+              user={user}
+              voltarRotulo="Voltar ao Almoxarifado"
+              onNavigate={handleNavigate}
+              onBack={() => handleNavigate('/formularios/almoxarifado')}
+            />
+          );
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

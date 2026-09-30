@@ -13,7 +13,8 @@
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 import type { EstoqueItem } from '../types';
-import type { PepAplicacao, TipoMovimentoBalcao } from './requisicaoBalcao';
+import { ORIGEM_FICHA_EPI, type PepAplicacao, type TipoMovimentoBalcao } from './requisicaoBalcao';
+import { ehRespostaOffline } from './offline/configFormularios';
 
 /** As tabelas ainda não estão em `database.types.ts` — mesmo atalho de `almoxarifadoRmApi`. */
 const dbReq = () => (supabase.from as any)('alm_req_balcao');
@@ -79,6 +80,13 @@ export interface ReqBalcaoRow {
   updated_at: string | null;
   /** Lote de exportação vigente; nulo = ainda na fila "Não exportadas". */
   exportacao_id: string | null;
+  /** Gerada por outro formulário e ainda não confirmada pelo almoxarifado: não exporta. */
+  pendente_confirmacao?: boolean | null;
+  /** De onde veio (ex.: 'ficha_epi') e a referência (código da ficha). */
+  origem?: string | null;
+  origem_ref?: string | null;
+  confirmada_por?: string | null;
+  confirmada_em?: string | null;
   itens: ReqBalcaoItemRow[];
 }
 
@@ -144,6 +152,8 @@ export interface ReqBalcaoInput {
   aplicacao?: string | null;
   observacao: string | null;
   criado_por_nome: string;
+  /** Edição de requisição pendente: confirma e libera para exportação. */
+  confirmar?: boolean;
 }
 
 /** Requisições não excluídas, da mais recente para a mais antiga, com os itens. */
@@ -185,6 +195,70 @@ export async function salvarRequisicaoBalcao(
   } as any);
   if (error) throw new Error(error.message);
   return (data as any)?.codigo ?? '';
+}
+
+export interface RequisicaoPendenteInput {
+  data: string;
+  colaborador_id: string | null;
+  colaborador_nome: string;
+  colaborador_registro: string | null;
+  /** PEP sugerido pelo setor; o almoxarifado confirma ou troca. */
+  pep: PepAplicacao;
+  observacao: string | null;
+  /** Código da ficha que originou a saída (ex.: EPI-300926-01). */
+  origemRef: string;
+  criadoPorNome: string;
+  itens: { material: string; quantidade: number; descricao: string; unidade: string; deposito: string }[];
+}
+
+export interface RequisicaoPendenteCriada {
+  /** Vazio quando gravada offline: o código nasce quando a fila sobe. */
+  codigo: string;
+  offline: boolean;
+  /** `false` = o banco não conhece a pendência (migration não aplicada): a requisição saiu como comum. */
+  pendente: boolean;
+}
+
+/**
+ * Cria a saída de estoque da Ficha de EPI já preenchida e PENDENTE de
+ * confirmação — não entra na exportação até o almoxarifado abrir, conferir o
+ * PEP e liberar.
+ */
+export async function criarRequisicaoPendenteDeFicha(input: RequisicaoPendenteInput): Promise<RequisicaoPendenteCriada> {
+  const depositoOrigem = input.itens[0]?.deposito ?? '';
+  const { data, error } = await supabase.rpc('alm_req_balcao_salvar' as any, {
+    p_id: null,
+    p_req: {
+      data: input.data,
+      turno: null,
+      tipo_movimento: 'saida',
+      deposito_origem: depositoOrigem,
+      deposito_destino: null,
+      colaborador_id: input.colaborador_id,
+      colaborador_nome: input.colaborador_nome,
+      colaborador_registro: input.colaborador_registro,
+      aplicacao_pep: input.pep.wbs,
+      aplicacao: input.pep.nome,
+      observacao: input.observacao,
+      criado_por_nome: input.criadoPorNome,
+      pendente_confirmacao: true,
+      origem: ORIGEM_FICHA_EPI,
+      origem_ref: input.origemRef,
+    },
+    p_itens: input.itens.map((i) => ({
+      material: i.material,
+      quantidade: i.quantidade,
+      aplicacao_pep: input.pep.wbs,
+      aplicacao: input.pep.nome,
+      descricao: i.descricao,
+      unidade: i.unidade,
+      deposito: i.deposito,
+    })),
+  } as any);
+  if (error) throw new Error(error.message);
+  if (ehRespostaOffline(data)) return { codigo: '', offline: true, pendente: true };
+  const row = data as { codigo?: string; pendente_confirmacao?: boolean } | null;
+  return { codigo: row?.codigo ?? '', offline: false, pendente: row?.pendente_confirmacao === true };
 }
 
 /** Grava o nº do documento SAP em várias requisições; documento vazio desfaz. */

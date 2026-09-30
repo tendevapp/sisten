@@ -59,6 +59,7 @@ import {
   type ColaboradorFichaEpi,
   type SsmaFichaEpi,
 } from '../../../lib/ssmaFichaEpiApi';
+import { gerarRequisicaoPendenteDaFicha, type EntradaRequisicaoDaFicha, type ResultadoRequisicaoDaFicha } from '../../../lib/fichaEpiRequisicao';
 import FichaEpiPdfPreview from './FichaEpiPdfPreview';
 
 interface Props {
@@ -66,7 +67,17 @@ interface Props {
   /** Colaborador já escolhido (ex.: vindo da lista "sem ficha" da análise). */
   pessoaInicial?: ColaboradorFichaEpi | null;
   onVerFichas: (pessoa: ColaboradorFichaEpi) => void;
+  /**
+   * Quando informado, a ficha concluída abre a requisição de saída de estoque
+   * (pendente) que ela gerou. Só é passado a quem tem acesso ao balcão.
+   */
+  onAbrirRequisicaoBalcao?: (codigo: string) => void;
 }
+
+type EstadoRequisicao =
+  | { estado: 'gerando' }
+  | { estado: 'pronta'; resultado: ResultadoRequisicaoDaFicha }
+  | { estado: 'erro'; mensagem: string };
 
 type OrigemFuncao = 'ultima_ficha' | 'exata' | 'nivel' | 'aproximada' | 'manual' | null;
 
@@ -179,11 +190,83 @@ function PerguntaDevolucao({ linha, dataEntrega, responsavel, destacarPendente, 
   );
 }
 
+/** Situação da saída de estoque que a ficha gera no balcão do almoxarifado. */
+function RequisicaoGerada({ requisicao, onTentarNovamente, onAbrir }: {
+  requisicao: EstadoRequisicao | null;
+  onTentarNovamente?: () => void;
+  onAbrir?: (codigo: string) => void;
+}) {
+  if (!requisicao) return null;
+  const caixa = 'mt-4 rounded-xl border px-3 py-2.5 text-left text-xs';
+
+  if (requisicao.estado === 'gerando') {
+    return (
+      <p className={`${caixa} flex items-center gap-2 border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300`}>
+        <Loader2 className="h-4 w-4 animate-spin" /> Gerando a saída de estoque no balcão do almoxarifado…
+      </p>
+    );
+  }
+
+  if (requisicao.estado === 'erro') {
+    return (
+      <div className={`${caixa} border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200`}>
+        <p className="font-bold"><AlertTriangle className="mr-1 inline h-3.5 w-3.5" /> A ficha foi salva, mas a saída de estoque não foi gerada.</p>
+        <p className="mt-0.5">{requisicao.mensagem}</p>
+        {onTentarNovamente && (
+          <button type="button" onClick={onTentarNovamente} className="mt-1.5 rounded-md border border-amber-400 px-2 py-1 font-bold hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/40">
+            Tentar gerar de novo
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const r = requisicao.resultado;
+  const aviso = r.semCodigo.length > 0 && (
+    <p className="mt-1 opacity-80">Sem código SAP na ficha (lançar à mão): {r.semCodigo.join('; ')}.</p>
+  );
+
+  if (r.situacao === 'sem_itens') {
+    return (
+      <div className={`${caixa} border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300`}>
+        Nenhum item da ficha tem código SAP — não há saída de estoque a gerar automaticamente.
+        {aviso}
+      </div>
+    );
+  }
+
+  if (r.situacao === 'offline') {
+    return (
+      <div className={`${caixa} border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200`}>
+        Sem rede: a saída de estoque (PEP sugerido: {r.pepSugerido}) fica na fila e será criada, pendente de confirmação, quando a conexão voltar.
+        {aviso}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${caixa} border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200`}>
+      <p className="font-bold">
+        Saída de estoque {r.codigo} criada como <span className="uppercase">pendente de confirmação</span>.
+      </p>
+      <p className="mt-0.5">
+        PEP sugerido pelo setor: <strong>{r.pepSugerido}</strong>. O almoxarifado abre a requisição, confirma o PEP e libera para exportar ao SAP.
+      </p>
+      {aviso}
+      {onAbrir && (
+        <button type="button" onClick={() => onAbrir(r.codigo)} className="mt-1.5 rounded-md border border-emerald-400 px-2 py-1 font-bold hover:bg-emerald-100 dark:border-emerald-700 dark:hover:bg-emerald-900/40">
+          Abrir requisição no balcão
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Rotulo({ children }: { children: React.ReactNode }) {
   return <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{children}</span>;
 }
 
-export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas }: Props) {
+export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrirRequisicaoBalcao }: Props) {
   const toast = useToast();
   const [funcoes, setFuncoes] = useState<SsmaEpiFuncao[]>([]);
   const [book, setBook] = useState<SsmaBookEpi[]>([]);
@@ -215,6 +298,9 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas }: Props
   const [salva, setSalva] = useState<{ id: string; codigo: string } | null>(null);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [previewPdf, setPreviewPdf] = useState<SsmaFichaEpi[] | null>(null);
+  // Saída de estoque gerada pela ficha (pendente de confirmação no almoxarifado).
+  const [requisicao, setRequisicao] = useState<EstadoRequisicao | null>(null);
+  const [entradaRequisicao, setEntradaRequisicao] = useState<EntradaRequisicaoDaFicha | null>(null);
   const buscaRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -298,6 +384,7 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas }: Props
         book,
         historico: historicoDasFichas(anteriores),
         motivo: motivoPadrao(ultima?.funcao_id, id),
+        todosDesmarcados: !!ultima,
       }));
     } catch (erro) {
       toast.error(mensagemErroFichaEpi(erro));
@@ -313,6 +400,8 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas }: Props
     setFuncaoId('');
     setOrigemFuncao(null);
     setSalva(null);
+    setRequisicao(null);
+    setEntradaRequisicao(null);
     setObservacoes('');
     setDataEntrega(hojeISO());
     setTimeout(() => buscaRef.current?.focus(), 0);
@@ -349,6 +438,8 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas }: Props
     setBuscaEpi('');
   };
 
+  const fichasAtivas = fichasAnteriores.filter(f => f.status === 'ATIVA').length;
+  const todasMarcadas = linhas.length > 0 && linhas.every(l => l.incluir);
   const incluidas = linhas.filter(l => l.incluir && l.quantidade > 0);
   const unidades = incluidas.reduce((s, l) => s + l.quantidade, 0);
   const semRespostaDevolucao = linhasSemRespostaDevolucao(linhas).length;
@@ -377,10 +468,28 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas }: Props
     setAssinando(true);
   };
 
+  const gerarRequisicao = async (entrada: EntradaRequisicaoDaFicha) => {
+    setRequisicao({ estado: 'gerando' });
+    try {
+      const resultado = await gerarRequisicaoPendenteDaFicha(entrada);
+      setRequisicao({ estado: 'pronta', resultado });
+      if (resultado.situacao === 'criada') {
+        if (!resultado.pendente) {
+          toast.error('A requisição foi criada, mas sem o status "pendente de confirmação" (migration do balcão não aplicada). Não exporte antes de conferir.');
+        } else if (onAbrirRequisicaoBalcao) {
+          onAbrirRequisicaoBalcao(resultado.codigo);
+        }
+      }
+    } catch (erro) {
+      setRequisicao({ estado: 'erro', mensagem: erro instanceof Error ? erro.message : mensagemErroFichaEpi(erro) });
+    }
+  };
+
   const salvar = async (assinatura: string) => {
     if (!pessoa || !funcaoSelecionada) return;
     setSalvando(true);
     try {
+      const itensPayload = linhasParaPayload(linhas);
       const resultado = await criarFichaEpi({
         pessoa_id: pessoa.id,
         registro: pessoa.registro,
@@ -394,9 +503,18 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas }: Props
         data_entrega: dataEntrega,
         assinatura_colaborador: assinatura,
         observacoes: observacoes.trim() || null,
-      }, linhasParaPayload(linhas));
+      }, itensPayload);
       setSalva(resultado);
       toast.success(`Ficha ${resultado.codigo} salva com a assinatura do colaborador.`);
+      const entrada: EntradaRequisicaoDaFicha = {
+        fichaCodigo: resultado.codigo,
+        pessoa,
+        dataEntrega,
+        itens: itensPayload,
+        usuarioNome: user.name,
+      };
+      setEntradaRequisicao(entrada);
+      void gerarRequisicao(entrada);
     } catch (erro) {
       toast.error(mensagemErroFichaEpi(erro));
     } finally {
@@ -438,6 +556,11 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas }: Props
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           {pessoa.nome} recebeu {formatarQuantidade(unidades)} {unidades === 1 ? 'unidade' : 'unidades'} de {incluidas.length} {incluidas.length === 1 ? 'EPI' : 'EPIs'} em {formatarDataBR(dataEntrega)}.
         </p>
+        <RequisicaoGerada
+          requisicao={requisicao}
+          onTentarNovamente={entradaRequisicao ? () => void gerarRequisicao(entradaRequisicao) : undefined}
+          onAbrir={onAbrirRequisicaoBalcao}
+        />
         <div className="mt-5 flex flex-wrap justify-center gap-2">
           <button type="button" disabled={gerandoPdf} onClick={() => baixarPdf(false)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60">
             {gerandoPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />} PDF desta entrega
@@ -567,6 +690,21 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas }: Props
               </label>
             )}
           </div>
+
+          {ultimaFicha && linhas.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
+              <span>
+                {pessoa?.nome} já tem {fichasAtivas} ficha(s) ativa(s). Os itens vêm <strong>desmarcados</strong> — marque só o que está sendo entregue agora.
+              </span>
+              <button
+                type="button"
+                onClick={() => setLinhas(atual => atual.map(l => ({ ...l, incluir: !todasMarcadas })))}
+                className="shrink-0 rounded-md border border-sky-300 px-2 py-1 font-bold hover:bg-sky-100 dark:border-sky-800 dark:hover:bg-sky-900/50"
+              >
+                {todasMarcadas ? 'Desmarcar todos' : 'Marcar todos'}
+              </button>
+            </div>
+          )}
 
           {carregandoLinhas ? (
             <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-emerald-600" /></div>

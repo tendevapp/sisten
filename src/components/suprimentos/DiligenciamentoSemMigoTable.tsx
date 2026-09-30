@@ -1318,7 +1318,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                               onSalvarPrevisao={salvarPrevisaoManual}
                               onSalvarFaturamento={salvarFaturamento}
                               onSalvarTransportadora={salvarTransportadora}
-                              valorObservacao={obsLocal[item.ri] ?? item.observacao ?? reg?.obs_comprador ?? ''}
+                              valorObservacao={obsLocal[item.ri] ?? item.observacao ?? regPorRi.get(item.riPo)?.obs_comprador ?? ''}
                               onSalvarObservacao={salvarObservacao}
                               onCobrar={(doc, nome, code) => setCobrancaPo({ docCompra: doc, fornecedorNome: nome, fornecedorCode: code })}
                             />
@@ -1343,7 +1343,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                   onSalvarPrevisao={salvarPrevisaoManual}
                   onSalvarFaturamento={salvarFaturamento}
                   onSalvarTransportadora={salvarTransportadora}
-                  valorObservacao={obsLocal[item.ri] ?? item.observacao ?? reg?.obs_comprador ?? ''}
+                  valorObservacao={obsLocal[item.ri] ?? item.observacao ?? regPorRi.get(item.riPo)?.obs_comprador ?? ''}
                   onSalvarObservacao={salvarObservacao}
                   onCobrar={(doc, nome, code) => setCobrancaPo({ docCompra: doc, fornecedorNome: nome, fornecedorCode: code })}
                 />
@@ -1407,7 +1407,7 @@ function ResumoStat({ rotulo, valor, cor }: { rotulo: string; valor: string; cor
 
 /** Barra de ação em lote — aparece quando há itens selecionados. */
 function BarraLote({
-  quantidade, opcoes, transp, setTransp, fat, setFat, prev, setPrev, aplicando, onAplicar, onLimpar,
+  quantidade, opcoes, transp, setTransp, fat, setFat, prev, setPrev, obs, setObs, aplicando, onAplicar, onLimpar,
   enviandoColeta, onEnviarColeta,
 }: {
   quantidade: number;

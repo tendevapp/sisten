@@ -19,7 +19,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, Loader2,
+  AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, FileDown, HardHat, Loader2,
   ClipboardList, PackageCheck, PackageMinus, Plus, RefreshCw, Search, Truck, X,
 } from 'lucide-react';
 import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
@@ -35,7 +35,7 @@ import {
 } from '../../lib/imageCompression';
 import { prepararFotoCarimbada } from '../../lib/carimboFoto';
 import {
-  EPSILON_QTD, PREFIXO_RECEB, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarItensComPo, buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
+  EPSILON_QTD, PREFIXO_RECEB, juntarNotasFiscais, separarNotasFiscais, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarItensComPo, buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
   entregaParcialAnterior, listarFornecedoresDoCache, pendentePedido, podeExcluirNaoConformidade, posAbertosDoFornecedor,
   resumoConferencia, tipoNcSugerido, validarNovaNcAvulsa,
   type AnexoRecebimento, type DestinoPrevisto, type FontePedido, type ItemPoEncontrado, type LinhaConferencia, type PoAberto,
@@ -144,6 +144,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   const podeBalcao = canAccessForm(user, 'form_almoxarifado_requisicao_balcao');
   const podeInventario = canAccessForm(user, 'form_almoxarifado_inventario');
   const podeCatalogo = canAccessForm(user, 'form_almoxarifado_cadastro_itens');
+  const podeFichaEpi = canAccessForm(user, 'form_almoxarifado_ficha_epi');
 
   const cardsRecebimento = [
     {
@@ -203,6 +204,16 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       icon: ClipboardList,
       cor: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-400',
       badge: 'FRM.ALM-0015',
+    }] : []),
+    ...(podeFichaEpi ? [{
+      id: 'hub' as Vista,
+      rota: '/formularios/almoxarifado-ficha-epi',
+      codigo: 'EPI',
+      titulo: 'Ficha de EPI',
+      desc: 'Entrega de EPI pela matriz da função, com assinatura do colaborador. Mesma ficha do SSMA: o histórico é um só.',
+      icon: HardHat,
+      cor: 'bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400',
+      badge: 'FRM.SEG-0008',
     }] : []),
     ...(podeCatalogo ? [{
       id: 'hub' as Vista,
@@ -1231,7 +1242,26 @@ function ModalDetalhe({
   onClose: () => void;
 }) {
   const lb = useLightbox();
+  const toast = useToast();
   const codigo = (row as any).codigo as string;
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+
+  /** PDF do registro aberto (carrega pdf-lib só quando pedem). */
+  const exportarPdf = async () => {
+    setGerandoPdf(true);
+    try {
+      const pdf = await import('../../lib/pdfExport/exportRecebimentoAlmoxPdf');
+      if (tipo === 'carga') await pdf.exportFichaCegaPdf(row as CargaRow);
+      else if (tipo === 'conferencia') {
+        const c = row as ConferenciaRow;
+        await pdf.exportConferenciaPdf(c, { cargaCodigo: cargas.find((x) => x.id === c.carga_id)?.codigo });
+      } else await pdf.exportNaoConformidadePdf(row as NaoConformidadeRow);
+    } catch (err: any) {
+      toast.error(err?.message || 'Não foi possível gerar o PDF.');
+    } finally {
+      setGerandoPdf(false);
+    }
+  };
 
   const geralPaths = ((row as any).evidencias as AnexoRecebimento[] | undefined)?.map((e) => e.path) ?? [];
 
@@ -1253,7 +1283,7 @@ function ModalDetalhe({
                 <DetLinha rotulo="Placa" valor={c.veiculo_placa} />
                 <DetLinha rotulo="Motorista" valor={c.motorista} />
                 <DetLinha rotulo="CT-e / canhoto" valor={c.doc_transporte} />
-                <DetLinha rotulo="Nota fiscal" valor={c.nota_fiscal} />
+                <DetLinha rotulo="Notas fiscais" valor={separarNotasFiscais(c.nota_fiscal).join(' · ')} />
                 <DetLinha rotulo="PO" valor={c.nro_pedido} />
                 <DetLinha rotulo="Volumes contados" valor={c.qtd_volumes_contada} />
                 <DetLinha rotulo="Volumes declarados" valor={c.qtd_volumes_declarada} />
@@ -1444,6 +1474,15 @@ function ModalDetalhe({
         <button onClick={onClose} className="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
           Fechar
         </button>
+        <button
+          onClick={() => void exportarPdf()}
+          disabled={gerandoPdf}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border disabled:opacity-50"
+          style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+        >
+          {gerandoPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+          {gerandoPdf ? 'Gerando…' : 'Exportar PDF'}
+        </button>
         {podeEditar && (
           <button onClick={onEditar} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white" style={{ background: 'var(--brand)' }}>
             Editar
@@ -1521,6 +1560,64 @@ const MAX_FOTOS_FICHA = 24;
 const UP = (s: string) => s.toUpperCase();
 const SO_DIGITOS = (s: string) => s.replace(/\D/g, '');
 
+/**
+ * Várias NFs numa mesma ficha: cada número vira um chip. Enter, vírgula ou sair
+ * do campo confirma; colar "123, 456" já separa. O que estiver digitado e
+ * ainda não confirmado sobe junto no `onChange` do pai via `pendente`.
+ */
+function CampoNotasFiscais({
+  notas, setNotas, pendente, setPendente,
+}: {
+  notas: string[];
+  setNotas: (v: string[]) => void;
+  pendente: string;
+  setPendente: (v: string) => void;
+}) {
+  const confirmar = () => {
+    const novas = separarNotasFiscais(pendente);
+    if (novas.length) setNotas(separarNotasFiscais([...notas, ...novas].join(',')));
+    setPendente('');
+  };
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border p-1.5" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+        {notas.map((nf) => (
+          <span
+            key={nf}
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold"
+            style={{ background: 'color-mix(in srgb, var(--brand) 12%, transparent)', color: 'var(--brand)' }}
+          >
+            NF {nf}
+            <button type="button" onClick={() => setNotas(notas.filter((x) => x !== nf))} className="cursor-pointer" aria-label={`Remover NF ${nf}`}>
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          value={pendente}
+          onChange={(e) => {
+            const v = UP(e.target.value);
+            // vírgula/ponto e vírgula/colagem com vários números confirmam na hora
+            if (/[,;\n]/.test(v)) {
+              const novas = separarNotasFiscais(v);
+              if (novas.length) setNotas(separarNotasFiscais([...notas, ...novas].join(',')));
+              setPendente('');
+            } else setPendente(v);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); confirmar(); }
+            else if (e.key === 'Backspace' && !pendente && notas.length) setNotas(notas.slice(0, -1));
+          }}
+          onBlur={confirmar}
+          className="min-w-[8rem] flex-1 bg-transparent px-1.5 py-1 text-xs font-medium uppercase outline-none"
+          style={{ color: 'var(--ink-primary)' }}
+          placeholder={notas.length ? 'Outra NF…' : 'Nº da NF — Enter para adicionar mais'}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ModalFichaCega({
   user, transportadoras, registro, onClose, onSalvo,
 }: {
@@ -1539,7 +1636,8 @@ function ModalFichaCega({
   const [placa, setPlaca] = useState(ed?.veiculo_placa ?? '');
   const [motorista, setMotorista] = useState(ed?.motorista ?? '');
   const [docTransporte, setDocTransporte] = useState(ed?.doc_transporte ?? '');
-  const [notaFiscal, setNotaFiscal] = useState(ed?.nota_fiscal ?? '');
+  const [notasFiscais, setNotasFiscais] = useState<string[]>(() => separarNotasFiscais(ed?.nota_fiscal));
+  const [nfPendente, setNfPendente] = useState('');
   const [nroPedido, setNroPedido] = useState(ed?.nro_pedido ?? '');
   const [declarada, setDeclarada] = useState(numTxt(ed?.qtd_volumes_declarada));
   const [contada, setContada] = useState(ed ? String(ed.qtd_volumes_contada) : '');
@@ -1581,7 +1679,7 @@ function ModalFichaCega({
         veiculo_placa: placa.trim().toUpperCase() || null,
         motorista: motorista.trim() || null,
         doc_transporte: docTransporte.trim() || null,
-        nota_fiscal: notaFiscal.trim() || null,
+        nota_fiscal: juntarNotasFiscais([...notasFiscais, nfPendente]) || null,
         nro_pedido: nroPedido.trim() || null,
         qtd_volumes_declarada: declaradaNum,
         qtd_volumes_contada: Math.round(contadaNum),
@@ -1649,7 +1747,9 @@ function ModalFichaCega({
             <Campo rotulo="Placa do veículo"><input value={placa} onChange={(e) => setPlaca(UP(e.target.value))} className={`${inputCls} uppercase`} /></Campo>
             <Campo rotulo="Motorista"><input value={motorista} onChange={(e) => setMotorista(UP(e.target.value))} className={`${inputCls} uppercase`} /></Campo>
             <Campo rotulo="CT-e / romaneio / canhoto"><input value={docTransporte} onChange={(e) => setDocTransporte(UP(e.target.value))} className={`${inputCls} uppercase`} /></Campo>
-            <Campo rotulo="Nota fiscal (se em mãos)"><input value={notaFiscal} onChange={(e) => setNotaFiscal(UP(e.target.value))} className={`${inputCls} uppercase`} /></Campo>
+            <Campo rotulo="Notas fiscais (se em mãos) — pode ser mais de uma">
+              <CampoNotasFiscais notas={notasFiscais} setNotas={setNotasFiscais} pendente={nfPendente} setPendente={setNfPendente} />
+            </Campo>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
@@ -2281,7 +2381,7 @@ function ModalConferencia({
 
           <Campo rotulo="Pedidos (PO) — adicione um por vez">
             <div className="mb-2 flex w-full rounded-lg border p-0.5 text-[11px] font-bold sm:w-auto sm:inline-flex" style={{ borderColor: 'var(--hairline)' }}>
-              {([['po', 'Por número do PO'], ['fornecedor', 'Por fornecedor'], ['item', 'Por item']] as const).map(([id, rot]) => (
+              {([['item', 'Por item'], ['po', 'Por número do PO'], ['fornecedor', 'Por fornecedor']] as const).map(([id, rot]) => (
                 <button
                   key={id}
                   type="button"

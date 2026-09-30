@@ -16,7 +16,9 @@ import {
   pendentePedido,
   podeExcluirNaoConformidade,
   posAbertosDoFornecedor,
+  juntarNotasFiscais,
   resumoConferencia,
+  separarNotasFiscais,
   tipoItemDaLista,
   tipoNcSugerido,
   validarNovaNcAvulsa,
@@ -218,6 +220,24 @@ describe('posAbertosDoFornecedor', () => {
 
   it('termo vazio devolve nada', () => {
     expect(posAbertosDoFornecedor([cache()], '  ')).toEqual([]);
+  });
+});
+
+describe('notas fiscais da ficha cega', () => {
+  it('separa por vírgula, ponto e vírgula ou quebra de linha, sem repetir', () => {
+    expect(separarNotasFiscais('123, 456;789\n123')).toEqual(['123', '456', '789']);
+  });
+
+  it('registro antigo com uma NF só continua sendo uma lista de um item', () => {
+    expect(separarNotasFiscais('000123')).toEqual(['000123']);
+    expect(separarNotasFiscais(null)).toEqual([]);
+    expect(separarNotasFiscais('  ')).toEqual([]);
+  });
+
+  it('junta em maiúsculas e ida-e-volta não muda a lista', () => {
+    const texto = juntarNotasFiscais(['12a', ' 34 ', '12A']);
+    expect(texto).toBe('12A, 34');
+    expect(separarNotasFiscais(texto)).toEqual(['12A', '34']);
   });
 });
 

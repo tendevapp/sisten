@@ -294,6 +294,21 @@ export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
     },
   },
   {
+    // Espelho da Ficha de EPI do SSMA (mesma tela e mesmos dados): o almoxarifado
+    // entrega o EPI e lança a ficha daqui, sem depender do acesso ao hub SSMA.
+    id: 'form_almoxarifado_ficha_epi',
+    grupoId: 'almoxarifado',
+    label: 'Ficha de EPI',
+    codigo: 'FRM.SEG-0008',
+    descricao: 'Entrega de EPI pela matriz da função, com assinatura do colaborador e histórico de retiradas (espelho do SSMA)',
+    path: '/formularios/almoxarifado-ficha-epi',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['2'],
+      keywords: ['almoxarifado', 'almox'],
+    },
+  },
+  {
     id: 'form_almoxarifado_cadastro_itens',
     grupoId: 'almoxarifado',
     label: 'Cadastro de Itens (Catálogo)',

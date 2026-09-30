@@ -119,6 +119,13 @@ describe('montarLinhasFicha', () => {
     expect(linhas.find(l => l.requisitoId === 'r2')?.incluir).toBe(true);
   });
 
+  it('traz tudo desmarcado quando o colaborador já tem ficha ativa', () => {
+    const linhas = montarLinhasFicha({ requisitos, book: BOOK, historico: [], motivo: 1, todosDesmarcados: true });
+    expect(linhas).toHaveLength(4);
+    expect(linhas.every(l => !l.incluir)).toBe(true);
+    expect(linhasParaPayload(linhas)).toEqual([]);
+  });
+
   it('repete o tamanho da última entrega', () => {
     const linhas = montarLinhasFicha({
       requisitos, book: BOOK, motivo: 2,

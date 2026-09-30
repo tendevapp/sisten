@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
@@ -52,6 +52,8 @@ const SUGESTOES_AGUARDANDO = [
   'Aguardando liberação de UT nas virolas',
   'Aguardando ajuste e solda do marco de porta',
   'Solda SAW em execução no posto 2',
+  'Aguardando início de fabricação',
+  'Pendente de fabricação (em branco)',
 ];
 
 const ETAPAS_POR_CATEGORIA: Record<CategoriaEtapa, string[]> = {
@@ -70,6 +72,7 @@ const ETAPAS_POR_CATEGORIA: Record<CategoriaEtapa, string[]> = {
   saw02: ['MARCO PORTA', 'SAW02'],
   saw03: ['SAW03'],
   nav01: ['NAV01'],
+  pendente: ['PENDENTE', 'EM BRANCO PENDENTE', 'EM BRANCO'],
 };
 
 export default function ModalDetalheTramoEntrega({
@@ -119,6 +122,9 @@ export default function ModalDetalheTramoEntrega({
       setDiasEspera(0);
     } else if (novaCat === 'patio' && !statusAguardando) {
       setStatusAguardando('Liberado no pátio, aguardando carreta');
+    } else if (novaCat === 'pendente') {
+      setStatusAguardando('Aguardando início de fabricação');
+      setDiasEspera(0);
     }
   };
 
@@ -353,7 +359,7 @@ export default function ModalDetalheTramoEntrega({
               Processo / Categoria de Acabamento
             </label>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {(['expedido', 'patio', 'white', 'internos', 'saw02', 'saw03', 'nav01'] as CategoriaEtapa[]).map(catKey => {
+              {(['expedido', 'patio', 'white', 'internos', 'saw02', 'saw03', 'nav01', 'pendente'] as CategoriaEtapa[]).map(catKey => {
                 const conf = CONFIG_CATEGORIAS[catKey];
                 const selecionado = categoria === catKey;
                 return (

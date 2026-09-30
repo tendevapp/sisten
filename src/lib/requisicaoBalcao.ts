@@ -286,6 +286,105 @@ export function ultimaAplicacaoPorColaborador(
 }
 
 // ===========================================================================
+// Requisição gerada pela Ficha de EPI (pendente de confirmação)
+// ===========================================================================
+
+/** Centros de custo de EPI da lista fixa `alm_balcao_aplicacoes`. */
+export const PEP_EPI_PRODUCAO = 'TEN001134003000';
+export const PEP_EPI_DEMAIS_SETORES = 'TEN001201090000';
+
+/** Depósito do almoxarifado central — usado quando o material não tem saldo em nenhum. */
+export const DEPOSITO_PADRAO_BALCAO = '0004';
+
+/** Origem gravada em `alm_req_balcao.origem` para as requisições vindas da ficha. */
+export const ORIGEM_FICHA_EPI = 'ficha_epi';
+
+const AREAS_DE_PRODUCAO = ['producao', 'calderaria', 'solda', 'jato', 'pintura', 'lixamento', 'usinagem', 'montagem'];
+
+/**
+ * Sugestão de PEP pelo setor do colaborador: área de produção → "EPI - PRODUÇÃO";
+ * qualquer outra → "EPI - DEMAIS SETORES". É só sugestão — quem confirma no
+ * almoxarifado escolhe o PEP. `null` quando o PEP não está na lista carregada.
+ */
+export function sugerirPepEpi(setor: string | null | undefined, peps: PepAplicacao[]): PepAplicacao | null {
+  const s = normalizar(setor ?? '');
+  const producao = AREAS_DE_PRODUCAO.some((k) => s.includes(k));
+  const wbs = producao ? PEP_EPI_PRODUCAO : PEP_EPI_DEMAIS_SETORES;
+  return peps.find((p) => p.wbs === wbs) ?? null;
+}
+
+/** Item da ficha do jeito que a requisição precisa. */
+export interface ItemFichaParaRequisicao {
+  codigo_sap: string | null;
+  descricao: string;
+  quantidade: number;
+  tamanho?: string | null;
+}
+
+export interface ItemRequisicaoEpi {
+  material: string;
+  quantidade: number;
+  descricao: string;
+  unidade: string;
+  deposito: string;
+}
+
+const semZeros = (v: string) => v.trim().replace(/^0+/, '');
+
+/**
+ * Converte os itens da ficha em itens da requisição. O material é o código SAP
+ * do Book; o depósito é o que tem o saldo (o que cobre a quantidade, senão o de
+ * maior saldo), ou o padrão quando o material nem aparece na ZL0024 — nesse caso
+ * a linha vai com alerta de "sem saldo", para o almoxarife conferir.
+ * Item sem código SAP não vira linha: volta em `semCodigo` para ser lançado à mão.
+ */
+export function itensRequisicaoDaFicha(
+  itens: ItemFichaParaRequisicao[],
+  estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
+  depositoInativo: (dep: string) => boolean = () => false,
+): { itens: ItemRequisicaoEpi[]; semCodigo: string[] } {
+  // material normalizado → onde ele existe
+  const ondeTem = new Map<string, { deposito: string; material: MaterialDisponivel }[]>();
+  for (const [deposito, mapa] of estoquePorDeposito) {
+    for (const material of mapa.values()) {
+      const k = semZeros(material.material);
+      const lista = ondeTem.get(k) ?? [];
+      lista.push({ deposito, material });
+      ondeTem.set(k, lista);
+    }
+  }
+
+  const linhas = new Map<string, ItemRequisicaoEpi>();
+  const semCodigo: string[] = [];
+  for (const it of itens) {
+    const codigo = (it.codigo_sap ?? '').trim();
+    if (!codigo) { semCodigo.push(it.descricao); continue; }
+
+    const candidatos = ondeTem.get(semZeros(codigo)) ?? [];
+    const melhor = [...candidatos].sort((a, b) =>
+      Number(b.material.saldo >= it.quantidade) - Number(a.material.saldo >= it.quantidade)
+      || Number(depositoInativo(a.deposito)) - Number(depositoInativo(b.deposito))
+      || b.material.saldo - a.material.saldo)[0];
+
+    const deposito = melhor?.deposito ?? DEPOSITO_PADRAO_BALCAO;
+    const material = melhor?.material.material ?? codigo;
+    const chave = `${material}|${deposito}`;
+    const existente = linhas.get(chave);
+    if (existente) existente.quantidade += it.quantidade;
+    else {
+      linhas.set(chave, {
+        material,
+        quantidade: it.quantidade,
+        descricao: melhor?.material.descricao || it.descricao,
+        unidade: melhor?.material.unidade || 'UN',
+        deposito,
+      });
+    }
+  }
+  return { itens: [...linhas.values()], semCodigo };
+}
+
+// ===========================================================================
 // Gerenciamento de Grupos (PEP em Saída / Destino em Transferência)
 // ===========================================================================
 

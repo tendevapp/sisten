@@ -402,7 +402,15 @@ export default function TorresEntregaVisual({
                             </div>
 
                             {/* Linha 3: Tempo de Espera (Aging) */}
-                            {tramo && tramo.etapa_categoria !== 'expedido' ? (
+                            {tramo && tramo.etapa_categoria === 'expedido' ? (
+                              <div className="mt-1.5 text-[9px] font-bold opacity-80">
+                                ✓ Expedido
+                              </div>
+                            ) : tramo && tramo.etapa_categoria === 'pendente' ? (
+                              <div className="mt-1.5 text-[9px] font-bold text-slate-600 dark:text-slate-300">
+                                ○ Pendente
+                              </div>
+                            ) : tramo ? (
                               <div className="mt-1.5 flex items-center justify-center">
                                 <span
                                   className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold shadow-sm ${
@@ -418,9 +426,7 @@ export default function TorresEntregaVisual({
                                 </span>
                               </div>
                             ) : (
-                              <div className="mt-1.5 text-[9px] font-bold opacity-80">
-                                ✓ Expedido
-                              </div>
+                              <div className="mt-1.5 text-[9px] font-bold opacity-50">—</div>
                             )}
 
                             {/* Tooltip rápida em hover */}
@@ -491,6 +497,13 @@ export default function TorresEntregaVisual({
                   <span className="h-3 w-3 rounded-full bg-[#ea580c]" />
                   <strong className="text-sm font-black">{indicadores.contagemCategorias.nav01}</strong>
                   <span className="text-xs font-semibold">Nav01</span>
+                </div>
+
+                {/* Em Branco Pendente */}
+                <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                  <span className="h-3 w-3 rounded-full border border-slate-400 bg-white shadow-inner" />
+                  <strong className="text-sm font-black">{indicadores.contagemCategorias.pendente}</strong>
+                  <span className="text-xs font-semibold">Em Branco Pendente</span>
                 </div>
               </div>
 
