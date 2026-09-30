@@ -322,7 +322,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
             </span>
           </p>
         </div>
-        <CenaInicio />
+        <CenaInicio admin={user.roles.includes('admin')} />
       </header>
 
       {/* Indicadores relevantes ao usuário */}

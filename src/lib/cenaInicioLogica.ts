@@ -85,3 +85,34 @@ export function propagarGantt(barras: BarraGantt[], id: string, delta: number, l
   if (d === 0) return barras;
   return barras.map(b => (movem.has(b.id) ? { ...b, inicio: b.inicio + d } : b));
 }
+
+export type FaixaEstoque = 'critico' | 'atencao' | 'ok';
+
+/** Semáforo do tanque de estoque: vermelho abaixo de 25%, amarelo até 50%, verde acima. */
+export function faixaEstoque(nivel: number): FaixaEstoque {
+  const n = limitar(nivel, 0, 1);
+  if (n < 0.25) return 'critico';
+  if (n < 0.5) return 'atencao';
+  return 'ok';
+}
+
+/** A medida está dentro da tolerância (inclusive nos limites) do valor nominal? */
+export function medidaDentro(medida: number, nominal: number, tolerancia: number): boolean {
+  return Math.abs(medida - nominal) <= tolerancia + 1e-9;
+}
+
+/**
+ * Ordem de aperto em estrela de um flange com `n` parafusos: sempre o oposto do
+ * que acabou de apertar, girando em saltos de um quarto de volta — é o que
+ * distribui a carga por igual. Para 12: 0,6,3,9,1,7,4,10,2,8,5,11.
+ * Com `n` ímpar não há "oposto": devolve a ordem sequencial.
+ */
+export function ordemTorque(n: number): number[] {
+  if (n % 2 !== 0) return Array.from({ length: n }, (_, i) => i);
+  const meio = n / 2;
+  const q = Math.floor(n / 4);
+  const inicios: number[] = [];
+  for (let k = 0; k < q; k++) inicios.push(k, k + q);
+  for (let j = 2 * q; j < meio; j++) inicios.push(j);
+  return inicios.flatMap(j => [j, j + meio]);
+}

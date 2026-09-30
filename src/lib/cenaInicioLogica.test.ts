@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { faseDoDia, misturarCor, propagarGantt, type BarraGantt } from './cenaInicioLogica';
+import { faixaEstoque, faseDoDia, medidaDentro, misturarCor, ordemTorque, propagarGantt, type BarraGantt } from './cenaInicioLogica';
 
 describe('faseDoDia', () => {
   it('meio-dia é dia pleno e meia-noite é noite fechada', () => {
@@ -81,5 +81,46 @@ describe('propagarGantt', () => {
     const base = cadeia();
     propagarGantt(base, 'a', 2, 20);
     expect(base[0].inicio).toBe(0);
+  });
+});
+
+describe('faixaEstoque', () => {
+  it('semáforo por nível, com limites em 25% e 50%', () => {
+    expect(faixaEstoque(0)).toBe('critico');
+    expect(faixaEstoque(0.249)).toBe('critico');
+    expect(faixaEstoque(0.25)).toBe('atencao');
+    expect(faixaEstoque(0.499)).toBe('atencao');
+    expect(faixaEstoque(0.5)).toBe('ok');
+    expect(faixaEstoque(1)).toBe('ok');
+  });
+  it('limita níveis fora de 0..1', () => {
+    expect(faixaEstoque(-3)).toBe('critico');
+    expect(faixaEstoque(7)).toBe('ok');
+  });
+});
+
+describe('medidaDentro', () => {
+  it('aceita os limites da tolerância e recusa além deles', () => {
+    expect(medidaDentro(24, 24, 0.5)).toBe(true);
+    expect(medidaDentro(24.5, 24, 0.5)).toBe(true);
+    expect(medidaDentro(23.5, 24, 0.5)).toBe(true);
+    expect(medidaDentro(24.51, 24, 0.5)).toBe(false);
+    expect(medidaDentro(23.4, 24, 0.5)).toBe(false);
+  });
+});
+
+describe('ordemTorque', () => {
+  it('12 parafusos: a estrela de sempre', () => {
+    expect(ordemTorque(12)).toEqual([0, 6, 3, 9, 1, 7, 4, 10, 2, 8, 5, 11]);
+  });
+  it('é uma permutação e cada par é de parafusos opostos', () => {
+    for (const n of [4, 6, 8, 12, 16, 24]) {
+      const ordem = ordemTorque(n);
+      expect([...ordem].sort((a, b) => a - b)).toEqual(Array.from({ length: n }, (_, i) => i));
+      for (let i = 0; i < n; i += 2) expect(Math.abs(ordem[i] - ordem[i + 1])).toBe(n / 2);
+    }
+  });
+  it('ímpar cai na ordem sequencial', () => {
+    expect(ordemTorque(5)).toEqual([0, 1, 2, 3, 4]);
   });
 });

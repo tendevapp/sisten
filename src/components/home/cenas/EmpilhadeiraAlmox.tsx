@@ -225,9 +225,9 @@ export default function EmpilhadeiraAlmox() {
         {/* Plataforma de conferência + leitor */}
         <rect x="266" y={CHAO - PLAT} width="44" height={PLAT} rx="2" className="fill-slate-500 dark:fill-slate-400" />
         {naDoca && (
-          <g transform={`translate(${DOCA_X} ${CHAO - PLAT})`} className="cena-assenta">
+          <g transform={`translate(${DOCA_X} ${CHAO - PLAT})`}><g className="cena-assenta">
             <Caixa />
-          </g>
+          </g></g>
         )}
         <g ref={bipeRef} style={{ opacity: 0 }}>
           <line x1={DOCA_X - 16} x2={DOCA_X + 16} y1={CHAO - PLAT - 18} y2={CHAO - PLAT - 18} stroke="#ef4444" strokeWidth="1.6" strokeLinecap="round" />

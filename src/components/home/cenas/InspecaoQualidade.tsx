@@ -199,24 +199,24 @@ export default function InspecaoQualidade() {
               <g key={i} transform={`translate(${d.x} ${d.y})`}>
                 <Defeito tipo={d.tipo} />
                 <circle r="14" fill="none" stroke="#dc2626" strokeWidth="1.6" strokeDasharray="3 2" />
-                <g transform="translate(6 -18) rotate(-12)" className="cena-assenta">
+                <g transform="translate(6 -18) rotate(-12)"><g className="cena-assenta">
                   <rect x="-13" y="-6.5" width="26" height="13" rx="2.5" fill="#fff" stroke="#dc2626" strokeWidth="1.6" className="dark:fill-slate-900" />
                   <text x="0" y="3.4" textAnchor="middle" fontSize="9" fontWeight="800" fill="#dc2626" fontFamily="system-ui, sans-serif">
                     NCR
                   </text>
-                </g>
+                </g></g>
               </g>
             ),
         )}
 
         {/* Selo final */}
         {selo && (
-          <g transform="translate(160 108) rotate(-8)" className="cena-assenta">
+          <g transform="translate(160 108) rotate(-8)"><g className="cena-assenta">
             <rect x="-68" y="-16" width="136" height="32" rx="6" fill="#fff" fillOpacity="0.92" stroke="#16a34a" strokeWidth="3" className="dark:fill-slate-900" />
             <text x="0" y="6" textAnchor="middle" fontSize="14" fontWeight="800" fill="#16a34a" fontFamily="system-ui, sans-serif" letterSpacing="0.6">
               INSPECIONADO
             </text>
-          </g>
+          </g></g>
         )}
 
         {/* Lupa */}
