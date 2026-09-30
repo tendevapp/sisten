@@ -16,6 +16,7 @@ import { corrigirTextoTreinamento, diaSemanaPtBr, mapearPlanilhaTreinamentos, no
 import { useToast } from '../../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import ProgressoImportacao from '../../components/ui/ProgressoImportacao';
 
 interface Props {
   user: Profile;
@@ -312,7 +313,7 @@ export default function RhTreinamentos({ user, onNavigate }: Props) {
               </button>
             </div>
           </div>
-          {importando && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-emerald-100 dark:bg-emerald-950"><div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${progresso}%` }} /></div>}
+          {importando && <ProgressoImportacao className="mt-3" tamanho="compacto" pct={progresso} mensagem="Gravando os treinamentos…" />}
           <div className="mt-3 overflow-x-auto rounded-xl border border-emerald-100 bg-white dark:border-emerald-900 dark:bg-slate-900">
             <table className="min-w-[720px] w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800"><tr><th className="px-3 py-2">Data</th><th className="px-3 py-2">Treinamento</th><th className="px-3 py-2">Horário</th><th className="px-3 py-2">Classificação</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-800">{preview.itens.slice(0, 5).map((item, index) => <tr key={`${item.data_treinamento}-${index}`}><td className="px-3 py-2">{formatarData(item.data_treinamento)}</td><td className="whitespace-pre-line px-3 py-2 font-medium">{item.treinamento}</td><td className="px-3 py-2">{item.turma_horario || '—'}</td><td className="px-3 py-2">{item.tipo_treinamento || '—'}</td></tr>)}</tbody></table>
           </div>

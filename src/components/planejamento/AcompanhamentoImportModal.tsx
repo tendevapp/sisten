@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Loader2, Upload, X } from 'lucide-react';
 import { importarAcompanhamento } from '../../lib/planejamentoAcompanhamentoApi';
+import ProgressoImportacao from '../ui/ProgressoImportacao';
 
 interface Props {
   onClose: () => void;
@@ -55,7 +56,7 @@ export default function AcompanhamentoImportModal({ onClose, onDone }: Props) {
           </label>
         </div>
 
-        {(busy || progress.value > 0) && <div className="mt-5" role="status" aria-live="polite"><div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-slate-600 dark:text-slate-300"><span className="truncate">{progress.label}</span><span className="shrink-0 tabular-nums">{progress.value}%</span></div><div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.value} aria-label="Progresso da importação"><div className={`h-full rounded-full transition-all duration-300 ${error ? 'bg-rose-500' : 'bg-violet-600'}`} style={{ width: `${progress.value}%` }} /></div></div>}
+        {(busy || progress.value > 0) && <div className="mt-5" role="status" aria-live="polite"><ProgressoImportacao pct={progress.value} mensagem={progress.label} /></div>}
         {error && <p className="mt-4 break-words rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">{error}</p>}
 
         <div className="mt-5 flex flex-wrap justify-end gap-2">

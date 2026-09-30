@@ -17,6 +17,7 @@ import * as XLSX from 'xlsx';
 import { Upload, Loader2, CheckCircle2, AlertCircle, X } from 'lucide-react';
 import type { SAPImportLog } from '../../types';
 import Modal, { ModalBody, ModalFooter } from '../ui/Modal';
+import ProgressoImportacao from '../ui/ProgressoImportacao';
 
 interface Props {
   /** Rótulo curto da transação, ex.: "ZL0024". Aparece no botão e no título. */
@@ -156,18 +157,11 @@ export default function PlanilhaSapUploadButton({
 
           <ModalBody className="space-y-4">
             {ocupado && (
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {status === 'lendo' ? 'Lendo a planilha…' : 'Enviando os dados…'}
-                </p>
-                <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 transition-all duration-200"
-                    style={{ width: `${status === 'lendo' ? 5 : Math.max(5, progress)}%` }}
-                  />
-                </div>
-              </div>
+              <ProgressoImportacao
+                tamanho="compacto"
+                pct={status === 'lendo' ? 0 : progress}
+                mensagem={status === 'lendo' ? 'Lendo a planilha…' : 'Enviando os dados…'}
+              />
             )}
 
             {status === 'ok' && log && (

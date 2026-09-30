@@ -4,8 +4,9 @@
  */
 
 import React, { useState } from 'react';
-import { Upload, X, FileSpreadsheet, Check, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Upload, X, FileSpreadsheet, Check, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import ProgressoImportacao from '../ui/ProgressoImportacao';
 import { localDb } from '../../db/localDb';
 import { SAPImportLog } from '../../types';
 
@@ -146,20 +147,8 @@ export default function BahiaSulUploadModal({
 
         {/* Progress bar */}
         {isProcessing && (
-          <div className="space-y-2 py-2">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-600">
-              <span className="flex items-center gap-1.5">
-                <RefreshCw className="h-3.5 w-3.5 animate-spin text-amber-600" />
-                {message}
-              </span>
-              <span className="tabular-nums text-amber-600">{progress}%</span>
-            </div>
-            <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-              <div
-                className="h-full bg-amber-500 rounded-full transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+          <div className="py-2">
+            <ProgressoImportacao pct={progress} mensagem={message} />
           </div>
         )}
 

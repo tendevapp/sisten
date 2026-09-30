@@ -3906,6 +3906,61 @@ class LocalDatabase {
     return raw.map(r => this.normalizeRequisicaoRow(r));
   }
 
+  // Chave de uma linha de PO na ZL0132: RM+item, pedido e ITEM DO PEDIDO (Itm).
+  // O mesmo PO pode atender o mesmo item de RM em duas linhas (mesmo material a
+  // preços diferentes), então (ri, doc_compra) sozinho não identifica a linha —
+  // espelha a constraint pedidosforn_ri_doc_item_unique.
+  private chaveLinhaPedido(ri: any, doc: any, itm: any): string {
+    return `${ri ?? ''}_${doc ?? ''}_${String(itm ?? '').trim()}`;
+  }
+
+  // Junta duas linhas de PO do mesmo item de RM: soma quantidades e valores e
+  // calcula o preço médio ponderado pela quantidade, por unidade (preço / "por"),
+  // para não misturar linhas cotadas por 1, 100 ou 1000.
+  private consolidarLinhasPedido(a: any, b: any): any {
+    const num = (v: any): number | null => (v === undefined || v === null || v === '' ? null : Number(v));
+    const soma = (x: any, y: any): number | null => {
+      const nx = num(x);
+      const ny = num(y);
+      return nx === null && ny === null ? null : (nx ?? 0) + (ny ?? 0);
+    };
+    const porDe = (l: any): number => {
+      const n = Number(String(l.por ?? '').replace(',', '.'));
+      return Number.isFinite(n) && n > 0 ? n : 1;
+    };
+    const qa = num(a.qtd_pedido) ?? 0;
+    const qb = num(b.qtd_pedido) ?? 0;
+    const pa = num(a.preco_liquido_unit);
+    const pb = num(b.preco_liquido_unit);
+    const porA = porDe(a);
+    const porB = porDe(b);
+    const qtdTotal = qa + qb;
+    const mesmoPor = porA === porB;
+
+    let preco: number | null = pa ?? pb;
+    if (qtdTotal > 0 && pa !== null && pb !== null) {
+      const porUnidade = ((pa / porA) * qa + (pb / porB) * qb) / qtdTotal;
+      preco = Math.round(porUnidade * (mesmoPor ? porA : 1) * 1e6) / 1e6;
+    }
+
+    // Entregue só quando todas as linhas têm MIGO; parcial segue pendente.
+    const migo = a.data_migo && b.data_migo
+      ? (String(a.data_migo) > String(b.data_migo) ? a.data_migo : b.data_migo)
+      : null;
+
+    return {
+      ...a,
+      qtd_pedido: soma(a.qtd_pedido, b.qtd_pedido),
+      qtd_fornecida: soma(a.qtd_fornecida, b.qtd_fornecida),
+      valor_em_brl: soma(a.valor_em_brl, b.valor_em_brl),
+      valor_liquido: soma(a.valor_liquido, b.valor_liquido),
+      preco_liquido_unit: preco,
+      por: mesmoPor ? a.por : '1',
+      data_migo: migo,
+      dt_remessa: String(a.dt_remessa || '') >= String(b.dt_remessa || '') ? a.dt_remessa : b.dt_remessa,
+    };
+  }
+
   private normalizePedidoRow(p: any): SAPPedido {
     return {
       ...p,
@@ -4509,7 +4564,14 @@ class LocalDatabase {
       if (eflag === 'L') {
         if (ri && doc) eliminatedCompositeKeys.add(ri + '_' + doc);
       } else {
-        if (ri && doc) pedsFornByRiDoc.set(ri + '_' + doc, pf);
+        // Mesmo PO pode ter várias linhas (Itm) para o mesmo item de RM:
+        // consolida somando quantidade/valor, com preço médio ponderado —
+        // mesma regra da mv_pedidos_por_ri no servidor.
+        if (ri && doc) {
+          const k = ri + '_' + doc;
+          const anterior = pedsFornByRiDoc.get(k);
+          pedsFornByRiDoc.set(k, anterior ? this.consolidarLinhasPedido(anterior, pf) : pf);
+        }
         // Manter o registro mais recente por RI (data_doc DESC)
         if (ri) {
           const existing = pedsFornByRi.get(ri);
@@ -4520,10 +4582,14 @@ class LocalDatabase {
       }
     });
 
+    // Linha eliminada só derruba o par RI+PO quando NÃO sobrou linha ativa nele
+    // (o PO pode ter um Itm cancelado e outro vivo para o mesmo item de RM).
+    pedsFornByRiDoc.forEach((_, k) => eliminatedCompositeKeys.delete(k));
+
     const currentDate = new Date('2026-07-05T06:31:00-07:00'); // current mock time from metadata
 
     return reqs.map(r => {
-      // raw.documento_compra vem de `vw_sap_requisicoes_enriquecidas` (JOIN com sap_zl0132_po via mv_pedido_atual_por_ri).
+      // raw.documento_compra vem de `vw_sap_requisicoes_enriquecidas` (JOIN com sap_zl0132_po via mv_pedidos_por_ri).
       // É a fonte correta. Fallback para modo offline/semente: cache local da pedidosforn.
       const raw = r as any;
       const rawDocCompra = String(raw.documento_compra || '').trim();
@@ -5996,7 +6062,7 @@ class LocalDatabase {
       if (p.ri) {
         currentMap.set(p.ri, p);
         if (p.documento_compra) {
-          currentMap.set(p.ri + '_' + p.documento_compra, p);
+          currentMap.set(this.chaveLinhaPedido(p.ri, p.documento_compra, (p as any).itm_liberacao), p);
         }
       }
     });
@@ -6092,7 +6158,7 @@ class LocalDatabase {
       }
 
       const docCompraVal = record.doc_compra || '';
-      const compositeKey = ri + '_' + docCompraVal;
+      const compositeKey = this.chaveLinhaPedido(ri, docCompraVal, record.itm_liberacao);
       const existing = currentMap.get(compositeKey) || currentMap.get(ri);
 
       if (newPedidosMap.has(compositeKey)) {
@@ -6103,10 +6169,13 @@ class LocalDatabase {
         const existingElim = existingInBatch.eflag_e === 'L';
 
         // Quando o SAP cancela a linha do PO e a recria, o ZL0132 traz duas
-        // linhas com o mesmo (ReqC+item, Doc.compra) — uma com E='L', outra
-        // ativa — e a tabela só guarda uma (índice único ri+doc_compra). A linha
-        // ATIVA sempre vence a excluída; só quando as duas têm o mesmo status é
-        // que a data do documento desempata (comportamento anterior).
+        // linhas com o mesmo (ReqC+item, Doc.compra, Itm do pedido) — uma com
+        // E='L', outra ativa — e a tabela só guarda uma (índice único
+        // ri+doc_compra+itm_liberacao). A linha ATIVA sempre vence a excluída;
+        // só quando as duas têm o mesmo status é que a data do documento
+        // desempata (comportamento anterior). Itens de pedido DIFERENTES do
+        // mesmo PO e da mesma RM (mesmo material comprado a preços distintos)
+        // não caem aqui: a chave inclui o Itm, então as duas linhas entram.
         const shouldReplace = existingElim !== currentElim
           ? (existingElim && !currentElim)
           : (currentDataDoc > existingDataDoc);
@@ -6164,9 +6233,9 @@ class LocalDatabase {
     });
 
     const newPedidosArray = Array.from(newPedidosMap.values());
-    const mergedPedidosMap = new Map(current.map(p => [p.ri + '_' + (p.documento_compra || ''), p]));
+    const mergedPedidosMap = new Map(current.map(p => [this.chaveLinhaPedido(p.ri, p.documento_compra, (p as any).itm_liberacao), p]));
     newPedidosArray.forEach(p => {
-      mergedPedidosMap.set(p.ri + '_' + p.documento_compra, p);
+      mergedPedidosMap.set(this.chaveLinhaPedido(p.ri, p.documento_compra, p.campos_extras?.itm_liberacao), p);
     });
     const finalPedidosArray = Array.from(mergedPedidosMap.values());
     this.setStorageItem(this.pedidosKey, finalPedidosArray);
@@ -6178,7 +6247,7 @@ class LocalDatabase {
       const dbRows = newPedidosArray.map(p => {
         const extr = p.campos_extras || {};
         const docCompraVal = p.documento_compra || extr.doc_compra || '';
-        const compositeKey = p.ri + '_' + docCompraVal;
+        const compositeKey = this.chaveLinhaPedido(p.ri, docCompraVal, extr.itm_liberacao);
         let existing = currentMap.get(compositeKey);
         if (!existing || (existing.id && usedIdsInBatch.has(existing.id))) {
           existing = currentMap.get(p.ri);
@@ -6270,7 +6339,7 @@ class LocalDatabase {
 
       const totalBatches = Math.ceil(dbRows.length / 50) || 1;
       for (let i = 0; i < dbRows.length; i += 50) {
-        const { error } = await supabase.from('sap_zl0132_po').upsert(dbRows.slice(i, i + 50), { onConflict: 'ri,doc_compra' });
+        const { error } = await supabase.from('sap_zl0132_po').upsert(dbRows.slice(i, i + 50), { onConflict: 'ri,doc_compra,itm_liberacao' });
         if (error) throw error;
         const batchIndex = Math.floor(i / 50) + 1;
         onProgress?.(10 + Math.round((batchIndex / totalBatches) * 75));
@@ -6477,7 +6546,7 @@ class LocalDatabase {
           const promises = group.map(batch =>
             supabase
               .from('sap_zl0132_po')
-              .select('id, ri, doc_compra, campos_extras, qtd_pedido')
+              .select('id, ri, doc_compra, itm_liberacao, campos_extras, qtd_pedido')
               .in('ri', batch)
           );
           
@@ -6495,7 +6564,7 @@ class LocalDatabase {
             if (r.ri) {
               existingMap.set(r.ri, r);
               if (r.doc_compra) {
-                existingMap.set(r.ri + '_' + r.doc_compra, r);
+                existingMap.set(this.chaveLinhaPedido(r.ri, r.doc_compra, r.itm_liberacao), r);
               }
             }
           });
@@ -6563,7 +6632,7 @@ class LocalDatabase {
       }
 
       const docCompraVal = record.doc_compra || docCompra || '';
-      const compositeKey = ri + '_' + docCompraVal;
+      const compositeKey = this.chaveLinhaPedido(ri, docCompraVal, record.itm_liberacao);
       const existing = existingMap.get(compositeKey) || existingMap.get(ri);
 
       if (newPedidosMap.has(compositeKey)) {
@@ -6576,7 +6645,7 @@ class LocalDatabase {
         // Linha ativa sempre vence a excluída (E='L'); só com o mesmo status é
         // que a data do documento desempata. Ver comentário em importZL0132Raw:
         // PO cancelado e recriado gera duas linhas ZL0132 com o mesmo
-        // (ReqC+item, Doc.compra) e a tabela só guarda uma.
+        // (ReqC+item, Doc.compra, Itm) e a tabela só guarda uma.
         const shouldReplace = existingElim !== currentElim
           ? (existingElim && !currentElim)
           : (currentDataDoc > existingDataDoc);
@@ -6643,7 +6712,7 @@ class LocalDatabase {
     const dbRowsToUpsert = Array.from(newPedidosMap.values()).map(p => {
       const extr = p.campos_extras || {};
       const docCompraVal = p.record?.doc_compra || extr.doc_compra || '';
-      const compositeKey = p.ri + '_' + docCompraVal;
+      const compositeKey = this.chaveLinhaPedido(p.ri, docCompraVal, extr.itm_liberacao);
       let existing = existingMap.get(compositeKey);
       if (!existing || (existing.id && usedIdsInBatch.has(existing.id))) {
         existing = existingMap.get(p.ri);
@@ -6743,7 +6812,7 @@ class LocalDatabase {
         );
         const { error } = await supabase
           .from('sap_zl0132_po')
-          .upsert(dbRowsToUpsert.slice(i, i + 300), { onConflict: 'ri,doc_compra' });
+          .upsert(dbRowsToUpsert.slice(i, i + 300), { onConflict: 'ri,doc_compra,itm_liberacao' });
         if (error) throw error;
       }
 

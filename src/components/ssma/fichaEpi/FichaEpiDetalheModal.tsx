@@ -45,7 +45,8 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
   const [devolucao, setDevolucao] = useState<{ linha: LinhaGradeFichaEpi; data: string; observacao: string } | null>(null);
   const [cancelando, setCancelando] = useState<string | null>(null);
   const [processando, setProcessando] = useState(false);
-  const [assinando, setAssinando] = useState(false);
+  // 'uma' = só a ficha aberta; 'todas' = todas as pendentes do colaborador com a mesma assinatura.
+  const [assinando, setAssinando] = useState<false | 'uma' | 'todas'>(false);
 
   const carregar = async () => {
     setCarregando(true);
@@ -101,17 +102,29 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
 
   const pendenteAssinatura = !!fichaAberta && fichaAberta.status === 'ATIVA' && !!fichaAberta.assinatura_pendente;
 
+  /** Fichas ativas do colaborador ainda sem assinatura (o histórico feito à mão entra assim). */
+  const pendentesDoColaborador = fichas.filter(f => f.status === 'ATIVA' && f.assinatura_pendente);
+
   const coletarAssinatura = async (assinatura: string) => {
-    if (!fichaAberta) return;
+    const alvo = assinando === 'todas' ? pendentesDoColaborador : fichaAberta ? [fichaAberta] : [];
+    if (!alvo.length) return;
     setProcessando(true);
     try {
-      await assinarFichaEpi(fichaAberta.id, assinatura);
-      toast.success(`Ficha ${fichaAberta.codigo} assinada.`);
+      // Uma RPC por ficha (cada uma trava depois de assinada). Segue nas demais se uma falhar e diz quais.
+      const falhas: string[] = [];
+      for (const ficha of alvo) {
+        try {
+          await assinarFichaEpi(ficha.id, assinatura);
+        } catch (erro) {
+          falhas.push(`${ficha.codigo} (${mensagemErroFichaEpi(erro)})`);
+        }
+      }
+      const assinadas = alvo.length - falhas.length;
+      if (assinadas) toast.success(assinadas === 1 ? `Ficha ${alvo[0].codigo} assinada.` : `${assinadas} fichas assinadas.`);
+      if (falhas.length) toast.error(`Não assinou: ${falhas.join('; ')}`);
       setAssinando(false);
       await carregar();
       onAlterada();
-    } catch (erro) {
-      toast.error(mensagemErroFichaEpi(erro));
     } finally {
       setProcessando(false);
     }
@@ -161,14 +174,26 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
           <div className="flex justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-emerald-600" /></div>
         ) : (
           <>
-            {pendenteAssinatura && (
+            {(pendenteAssinatura || pendentesDoColaborador.length > 0) && (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
                 <span>
-                  <strong>Ficha pendente de assinatura.</strong> O EPI foi entregue, mas {fichaAberta?.nome} ainda não assinou o termo.
+                  {pendenteAssinatura
+                    ? <><strong>Ficha pendente de assinatura.</strong> O EPI foi entregue, mas {fichaAberta?.nome} ainda não assinou o termo.</>
+                    : <><strong>{pendentesDoColaborador.length} {pendentesDoColaborador.length === 1 ? 'ficha pendente' : 'fichas pendentes'} de assinatura</strong> deste colaborador.</>}
+                  {pendentesDoColaborador.length > 1 && pendenteAssinatura && <> Há mais {pendentesDoColaborador.length - 1} pendente(s) do mesmo colaborador.</>}
                 </span>
-                <button type="button" onClick={() => setAssinando(true)} className={`${botao} bg-amber-600 text-white hover:bg-amber-700`}>
-                  <PenTool className="h-4 w-4" /> Coletar assinatura
-                </button>
+                <span className="flex flex-wrap gap-2">
+                  {pendenteAssinatura && (
+                    <button type="button" onClick={() => setAssinando('uma')} className={`${botao} bg-amber-600 text-white hover:bg-amber-700`}>
+                      <PenTool className="h-4 w-4" /> Assinar só esta
+                    </button>
+                  )}
+                  {pendentesDoColaborador.length > 0 && (pendentesDoColaborador.length > 1 || !pendenteAssinatura) && (
+                    <button type="button" onClick={() => setAssinando('todas')} className={`${botao} border border-amber-500 bg-white text-amber-800 hover:bg-amber-100 dark:bg-transparent dark:text-amber-200`}>
+                      <PenTool className="h-4 w-4" /> Assinar todas ({pendentesDoColaborador.length}) de uma vez
+                    </button>
+                  )}
+                </span>
               </div>
             )}
             <div className="my-3 flex flex-wrap items-center justify-between gap-3">
@@ -223,11 +248,13 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
         )}
 
         <SignaturePadModal
-          isOpen={assinando}
+          isOpen={assinando !== false}
           onClose={() => !processando && setAssinando(false)}
           onSave={coletarAssinatura}
-          title={`Assinatura de ${fichaAberta?.nome ?? 'colaborador'}`}
-          subtitle="Declaro que recebi os EPIs relacionados, nos termos do FRM.SEG-0008"
+          title={`Assinatura de ${fichaAberta?.nome ?? fichas[0]?.nome ?? 'colaborador'}`}
+          subtitle={assinando === 'todas'
+            ? `Declaro que recebi os EPIs relacionados nas ${pendentesDoColaborador.length} fichas pendentes, nos termos do FRM.SEG-0008`
+            : 'Declaro que recebi os EPIs relacionados, nos termos do FRM.SEG-0008'}
         />
 
         {devolucao && (

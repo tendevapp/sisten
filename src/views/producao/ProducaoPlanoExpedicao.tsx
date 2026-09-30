@@ -27,6 +27,9 @@ const STATUS: Record<StatusPlanoExpedicao, { label: string; classe: string }> = 
   expedido: { label: 'Expedido', classe: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-250' },
 };
 
+const OPCOES_TRAMOS: Array<PlanoExpedicaoProducao['tramo']> = ['T5', 'T4', 'T3', 'T2', 'T1'];
+const OPCOES_SEMANAS = Array.from({ length: 53 }, (_, indice) => indice + 1);
+
 function Marcador({ marcado, label }: { marcado: boolean; label: string }) {
   return marcado
     ? <CircleCheck aria-label={label} className="mx-auto h-5 w-5 stroke-[2.75] text-blue-650" />
@@ -181,6 +184,28 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
     status,
   });
 
+  const mudarSemana = (linhaId: string, semana: number) => {
+    setLinhas(atuais => atuais.map(item => item.id === linhaId ? { ...item, semana } : item));
+    void salvar(linhaId, { semana });
+  };
+
+  const mudarTramo = (linhaId: string, tramo: PlanoExpedicaoProducao['tramo']) => {
+    setLinhas(atuais => atuais.map(item => item.id === linhaId ? { ...item, tramo } : item));
+    void salvar(linhaId, { tramo });
+  };
+
+  const mudarTorre = (linhaId: string, torreNumero: number) => {
+    if (torreNumero > 0) {
+      setLinhas(atuais => atuais.map(item => item.id === linhaId ? { ...item, torre_numero: torreNumero } : item));
+      void salvar(linhaId, { torre_numero: torreNumero });
+    } else {
+      const salva = linhasSalvasRef.current.get(linhaId);
+      if (salva) {
+        setLinhas(atuais => atuais.map(item => item.id === linhaId ? { ...item, torre_numero: salva.torre_numero } : item));
+      }
+    }
+  };
+
   const alterarData = (linhaId: string, campo: 'data_carregamento' | 'data_expedicao', valorBruto: string) => {
     const valor = valorBruto ? valorBruto.slice(0, 10) : null;
     setLinhas(atuais => atuais.map(item => item.id === linhaId ? { ...item, [campo]: valor } : item));
@@ -238,7 +263,7 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
           <section className="max-h-[calc(100vh-230px)] min-h-[420px] overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <table className="min-w-[1190px] w-full border-separate border-spacing-0 text-left text-xs"><thead className="sticky top-0 z-20 shadow-xs"><tr className="bg-[#173d6c] text-[10px] font-bold uppercase tracking-wide text-white"><th className="sticky top-0 z-20 w-8 border-b border-[#0f2c4f] bg-[#173d6c] p-2" aria-label="Mês" /><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Week</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Torre</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Tramo</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">ID</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5 text-center">NF Fat.</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5 text-center">NF-GW</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5 text-center">NF Exp.</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Carregamento</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Expedição</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Status</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Observação</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5" aria-label="Salvamento" /></tr></thead><tbody>{mesesDados.map(([mes, itens]) => itens.map((linha, indice) => { const bloqueada = salvando === linha.id; const inicioSemana = indice > 0 && itens[indice - 1].semana !== linha.semana; return <tr key={linha.id} className={`transition-colors hover:bg-blue-50/50 dark:hover:bg-blue-950/10 [&>td]:border-b [&>td]:border-slate-200 dark:[&>td]:border-slate-800 ${inicioSemana ? '[&>td]:border-t-2 [&>td]:border-t-[#173d6c]' : ''} ${linha.status === 'expedido' ? 'bg-emerald-50/70 dark:bg-emerald-950/20' : inicioSemana || indice % 2 === 0 ? 'bg-slate-50/80 dark:bg-slate-900' : 'bg-white dark:bg-slate-900'}`}>
               {indice === 0 && <td rowSpan={itens.length} className="border-b border-r border-slate-300 bg-slate-100 p-1 text-center align-middle text-[10px] font-bold tracking-wider text-slate-700 [writing-mode:vertical-rl] [transform:rotate(180deg)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">{mes}</td>}
-              <td className="p-2.5 font-bold text-[#173d6c] dark:text-blue-300">W{linha.semana}</td><td className="p-2.5 font-semibold">{linha.torre_numero}</td><td className="p-2.5 font-semibold">{linha.tramo}</td>
+              <td className="p-1"><select aria-label={`Semana da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.semana} disabled={bloqueada} onChange={e => mudarSemana(linha.id, Number(e.target.value))} className="h-8 rounded-md border border-transparent bg-transparent px-1.5 text-xs font-bold text-[#173d6c] hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:text-blue-300 dark:hover:border-slate-700 dark:focus:bg-slate-950">{OPCOES_SEMANAS.map(sem => <option key={sem} value={sem} className="text-slate-800 dark:bg-slate-900 dark:text-slate-100">W{sem}</option>)}</select></td><td className="p-1"><input aria-label={`Torre do tramo ${linha.tramo} ID ${linha.identificador ?? ''}`} type="number" min={1} max={999} value={linha.torre_numero || ''} disabled={bloqueada} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, torre_numero: e.target.value ? Number(e.target.value) : ('' as any) } : item))} onBlur={e => mudarTorre(linha.id, Number(e.target.value))} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} inputMode="numeric" className="w-14 rounded border border-transparent bg-transparent px-1.5 py-1 text-xs font-semibold text-slate-800 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:text-slate-100 dark:hover:border-slate-700 dark:focus:bg-slate-950" /></td><td className="p-1"><select aria-label={`Tramo da torre ${linha.torre_numero}`} value={linha.tramo} disabled={bloqueada} onChange={e => mudarTramo(linha.id, e.target.value as PlanoExpedicaoProducao['tramo'])} className="h-8 rounded-md border border-transparent bg-transparent px-1.5 text-xs font-semibold text-slate-800 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:text-slate-100 dark:hover:border-slate-700 dark:focus:bg-slate-950">{OPCOES_TRAMOS.map(tr => <option key={tr} value={tr} className="text-slate-800 dark:bg-slate-900 dark:text-slate-100">{tr}</option>)}</select></td>
               <td className="p-1"><input aria-label={`ID da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.identificador ?? ''} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, identificador: e.target.value ? Number(e.target.value) : null } : item))} onBlur={e => void salvar(linha.id, { identificador: e.target.value ? Number(e.target.value) : null })} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} inputMode="numeric" className="w-16 rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
               <td className="p-2.5"><BotaoNf checked={linha.nf_faturamento_emitida} disabled={bloqueada} label="NF de faturamento emitida" onChange={valor => void salvar(linha.id, { nf_faturamento_emitida: valor })} /></td><td className="p-2.5"><BotaoNf checked={linha.nf_gw_emitida} disabled={bloqueada} label="NF GW emitida" onChange={valor => void salvar(linha.id, { nf_gw_emitida: valor })} /></td><td className="p-2.5"><BotaoNf checked={linha.nf_expedicao_emitida} disabled={bloqueada} label="NF de expedição emitida" onChange={valor => void salvar(linha.id, { nf_expedicao_emitida: valor })} /></td>
               <td className="p-1"><input aria-label={`Data de carregamento da torre ${linha.torre_numero} ${linha.tramo}`} type="date" value={dataParaInput(linha.data_carregamento)} onChange={e => alterarData(linha.id, 'data_carregamento', e.target.value)} onBlur={e => alterarData(linha.id, 'data_carregamento', e.target.value)} className="rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>

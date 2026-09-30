@@ -20,6 +20,7 @@ import * as XLSX from 'xlsx';
 import { AlertTriangle, Check, FileSpreadsheet, Loader2, Upload } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
+import ProgressoImportacao from '../ui/ProgressoImportacao';
 import { parseLinhasImportacaoFaturamento, type LinhaImportadaFaturamento } from '../../lib/finFaturamentoImportacao';
 import * as api from '../../lib/finFaturamentoGwjacoApi';
 import type { Profile, FinFatGwjaco } from '../../types';
@@ -265,11 +266,11 @@ export default function ImportarFaturamentoGwjaco({ linhasExistentes, user, onIm
             )}
 
             {fase === 'gravando' && (
-              <div className="space-y-3 py-10 text-center">
-                <Loader2 className="mx-auto h-6 w-6 animate-spin text-emerald-600" />
-                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                  Gravando {progresso.feito} de {progresso.total}…
-                </p>
+              <div className="py-8">
+                <ProgressoImportacao
+                  pct={progresso.total > 0 ? (progresso.feito / progresso.total) * 100 : 0}
+                  mensagem={`Gravando ${progresso.feito} de ${progresso.total}…`}
+                />
               </div>
             )}
 

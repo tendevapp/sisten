@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-30',
+    resumo: 'Produção > Plano de Expedição GW — Edição Inline de Semanas, Torres e Tramos (`ProducaoPlanoExpedicao.tsx`, `diretrizes.ts`): 1. Permitida a edição inline das colunas de Semana (W1 a W53), Torre (input numérico > 0) e Tramo (T5 a T1) no modo Dados do Plano de Expedição (/producao/expedicao/dados); 2. Implementados controles reativos com atualização otimista instantânea e persistência via `atualizarPlanoExpedicao`, reordenando automaticamente as linhas e agrupamentos por semana e torre; 3. Exemplo operacional corrigido: registro de T1 da Torre 2 (ID 3158) carregado em 18/09/2026 reclassificado da W38 para a W37.',
+  },
+  {
+    data: '2026-09-30',
     resumo: 'Administração > Gestão de Usuários — Regra da Tag de Novo Usuário (`AdminPanel.tsx`, `loginSemEmail.ts`, `loginSemEmail.test.ts`, `diretrizes.ts`): 1. Definida a regra para a tag/selo de "Novo" no Diretório de Usuários: a tag é exibida exclusivamente para colaboradores cadastrados há no máximo 8 dias a partir de `created_at`; após esse período de 8 dias, a tag é removida automaticamente; 2. Implementada a constante `DIAS_LIMITE_NOVO_USUARIO = 8` e a função `ehNovoUsuario(createdAt)` em `loginSemEmail.ts`; 3. Atualizado o filtro rápido "Novos" e seu contador para refletir estritamente colaboradores dos últimos 8 dias; 4. Cobertura com testes unitários cobrindo colaboradores cadastrados hoje, dentro do limite de 8 dias, além do limite (> 8 dias) e casos de borda.',
   },
   {

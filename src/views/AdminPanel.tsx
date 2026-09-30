@@ -23,6 +23,7 @@ import { useToast } from '../components/ui/Toast';
 import { formatDateBR } from '../lib/format';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
+import ProgressoImportacao from '../components/ui/ProgressoImportacao';
 import PageAccessModal from '../components/admin/PageAccessModal';
 import NovoUsuarioSemEmailModal from '../components/admin/NovoUsuarioSemEmailModal';
 import { ehEmailInterno, rotuloIdentificador, ehNovoUsuario, DIAS_LIMITE_NOVO_USUARIO } from '../lib/loginSemEmail';
@@ -2776,16 +2777,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   )}
 
                   {zl0169Status === 'saving' && (
-                    <div className="rounded-lg bg-blue-50 p-3 text-xs font-semibold text-blue-800 border border-blue-100 space-y-1.5">
-                      <div className="flex items-center">
-                        <RefreshCw className="mr-2 h-4 w-4 shrink-0 text-blue-600 animate-spin" />
-                        <span>{zl0169ProgressMsg || 'Salvando catálogo ZL0169 no Supabase...'}</span>
-                      </div>
-                      {zl0169Progress > 0 && (
-                        <div className="w-full bg-blue-200/60 rounded-full h-1.5 overflow-hidden">
-                          <div className="bg-blue-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${zl0169Progress}%` }} />
-                        </div>
-                      )}
+                    <div className="rounded-lg bg-blue-50 p-3 border border-blue-100 dark:bg-slate-900 dark:border-slate-700">
+                      <ProgressoImportacao pct={zl0169Progress} mensagem={zl0169ProgressMsg || 'Salvando catálogo ZL0169 no Supabase...'} />
                     </div>
                   )}
 
@@ -2859,16 +2852,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   )}
 
                   {zl0162Status === 'saving' && (
-                    <div className="rounded-lg bg-blue-50 p-3 text-xs font-semibold text-blue-800 border border-blue-100 space-y-1.5">
-                      <div className="flex items-center">
-                        <RefreshCw className="mr-2 h-4 w-4 shrink-0 text-blue-600 animate-spin" />
-                        <span>{zl0162ProgressMsg || 'Atualizando textos técnicos ZL0162 no Supabase...'}</span>
-                      </div>
-                      {zl0162Progress > 0 && (
-                        <div className="w-full bg-blue-200/60 rounded-full h-1.5 overflow-hidden">
-                          <div className="bg-blue-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${zl0162Progress}%` }} />
-                        </div>
-                      )}
+                    <div className="rounded-lg bg-blue-50 p-3 border border-blue-100 dark:bg-slate-900 dark:border-slate-700">
+                      <ProgressoImportacao pct={zl0162Progress} mensagem={zl0162ProgressMsg || 'Atualizando textos técnicos ZL0162 no Supabase...'} />
                     </div>
                   )}
 
@@ -3814,18 +3799,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
 
             {sapLogStatus === 'saving' && (
-              <div className="space-y-2 py-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                  <RefreshCw className="h-4 w-4 animate-spin text-emerald-600" />
-                  <span>{sapLogMessage || 'Processando carga do SAP e recalculando metas de entrega...'}</span>
-                  <span className="ml-auto tabular-nums text-emerald-600">{sapProgress}%</span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-emerald-500 transition-all duration-300 ease-out"
-                    style={{ width: `${sapProgress}%` }}
-                  />
-                </div>
+              <div className="py-2">
+                <ProgressoImportacao pct={sapProgress} mensagem={sapLogMessage || 'Processando carga do SAP e recalculando metas de entrega...'} />
               </div>
             )}
 
