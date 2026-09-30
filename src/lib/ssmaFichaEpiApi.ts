@@ -134,6 +134,32 @@ export async function listarColaboradoresAtivos(): Promise<ColaboradorFichaEpi[]
   return (data || []) as ColaboradorFichaEpi[];
 }
 
+/** Cadastro atual do colaborador no RH (a ficha guarda só uma foto do dia da entrega). */
+export interface CadastroRhColaborador {
+  id: string;
+  registro: string;
+  nome: string;
+  cargo: string | null;
+  ativo: boolean;
+  situacao: string | null;
+  tipo_vinculo: string | null;
+  macroarea: string | null;
+  area: string | null;
+  subsetor: string | null;
+  lideranca: string | null;
+  turno: string | null;
+}
+
+export async function buscarCadastroRhColaborador(pessoaId: string): Promise<CadastroRhColaborador | null> {
+  const { data, error } = await supabase
+    .from('rh_pessoas')
+    .select('id, registro, nome, cargo, ativo, situacao, tipo_vinculo, macroarea, area, subsetor, lideranca, turno')
+    .eq('id', pessoaId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as CadastroRhColaborador | null) ?? null;
+}
+
 export function setorDoColaborador(pessoa: Pick<ColaboradorFichaEpi, 'area' | 'subsetor'>): string | null {
   const partes = [pessoa.area, pessoa.subsetor].map(p => p?.trim()).filter(Boolean);
   return partes.length ? [...new Set(partes)].join(' / ') : null;

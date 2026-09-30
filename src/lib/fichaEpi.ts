@@ -519,6 +519,52 @@ export function linhasGradeFichaEpi(fichas: FichaParaGrade[]): LinhaGradeFichaEp
     })));
 }
 
+/** Totais da ficha completa de um colaborador (todas as entregas juntas). */
+export interface ResumoFichasColaborador {
+  fichasAtivas: number;
+  fichasCanceladas: number;
+  assinaturasPendentes: number;
+  epis: number;
+  unidades: number;
+  /** Itens entregues e ainda não devolvidos (unidades). */
+  emUso: number;
+  devolvidos: number;
+  perdas: number;
+  primeiraEntrega: string | null;
+  ultimaEntrega: string | null;
+  dataAdmissao: string | null;
+  dataDemissao: string | null;
+}
+
+interface FichaParaResumo extends FichaParaGrade {
+  assinatura_pendente: boolean;
+  data_admissao: string | null;
+  data_demissao: string | null;
+  itens: Array<FichaParaGrade['itens'][number] & { grupo_epi: string; categoria: string | null }>;
+}
+
+export function resumirFichasColaborador(fichas: FichaParaResumo[]): ResumoFichasColaborador {
+  const ativas = fichas.filter(f => f.status !== 'CANCELADA');
+  const itens = ativas.flatMap(f => f.itens);
+  const soma = (lista: typeof itens) => lista.reduce((s, i) => s + Number(i.quantidade), 0);
+  const datas = ativas.map(f => f.data_entrega).sort();
+  const recentes = [...fichas].sort((a, b) => b.data_entrega.localeCompare(a.data_entrega));
+  return {
+    fichasAtivas: ativas.length,
+    fichasCanceladas: fichas.length - ativas.length,
+    assinaturasPendentes: ativas.filter(f => f.assinatura_pendente).length,
+    epis: new Set(itens.map(i => chaveGrupo(i.categoria, i.grupo_epi))).size,
+    unidades: soma(itens),
+    emUso: soma(itens.filter(i => !i.data_devolucao)),
+    devolvidos: soma(itens.filter(i => i.data_devolucao)),
+    perdas: soma(itens.filter(i => i.motivo === 3)),
+    primeiraEntrega: datas[0] ?? null,
+    ultimaEntrega: datas[datas.length - 1] ?? null,
+    dataAdmissao: recentes.find(f => f.data_admissao)?.data_admissao ?? null,
+    dataDemissao: recentes.find(f => f.data_demissao)?.data_demissao ?? null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Análise de consumo
 // ---------------------------------------------------------------------------

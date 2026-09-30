@@ -15,12 +15,15 @@ import FichaEpiDocumento from './FichaEpiDocumento';
 import { formatarDataBR, hojeISO, type LinhaGradeFichaEpi } from '../../../lib/fichaEpi';
 import {
   assinarFichaEpi,
+  buscarCadastroRhColaborador,
   cancelarFichaEpi,
   listarFichasDoColaborador,
   mensagemErroFichaEpi,
   registrarDevolucaoEpi,
+  type CadastroRhColaborador,
   type SsmaFichaEpi,
 } from '../../../lib/ssmaFichaEpiApi';
+import FichaEpiColaboradorResumo from './FichaEpiColaboradorResumo';
 import SignaturePadModal from '../../portaria/SignaturePadModal';
 import FichaEpiPdfPreview from './FichaEpiPdfPreview';
 
@@ -48,10 +51,18 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
   // 'uma' = só a ficha aberta; 'todas' = todas as pendentes do colaborador com a mesma assinatura.
   const [assinando, setAssinando] = useState<false | 'uma' | 'todas'>(false);
 
+  const [cadastro, setCadastro] = useState<CadastroRhColaborador | null>(null);
+
   const carregar = async () => {
     setCarregando(true);
     try {
-      setFichas(await listarFichasDoColaborador(pessoaId, true));
+      const [lista, rh] = await Promise.all([
+        listarFichasDoColaborador(pessoaId, true),
+        // O cadastro do RH só enriquece o painel; sem ele a ficha abre normalmente.
+        buscarCadastroRhColaborador(pessoaId).catch(() => null),
+      ]);
+      setFichas(lista);
+      setCadastro(rh);
     } catch (erro) {
       toast.error(mensagemErroFichaEpi(erro));
     } finally {
@@ -202,7 +213,7 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
                   <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800" role="group" aria-label="Conteúdo exibido">
                     {(['entrega', 'completa'] as const).map(op => (
                       <button key={op} type="button" onClick={() => setEscopo(op)} aria-pressed={escopo === op} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${escopo === op ? 'bg-white text-emerald-700 shadow-sm dark:bg-slate-900 dark:text-emerald-400' : 'text-slate-500'}`}>
-                        {op === 'entrega' ? 'Esta entrega' : `Ficha completa (${fichas.filter(f => f.status === 'ATIVA').length})`}
+                        {op === 'entrega' ? 'Esta entrega' : `Ficha completa do colaborador (${fichas.filter(f => f.status === 'ATIVA').length})`}
                       </button>
                     ))}
                   </div>
@@ -223,6 +234,8 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
                 </button>
               </div>
             </div>
+
+            {escopo === 'completa' && fichas.length > 0 && <FichaEpiColaboradorResumo fichas={fichas} cadastro={cadastro} />}
 
             {exibidas.length ? (
               <FichaEpiDocumento

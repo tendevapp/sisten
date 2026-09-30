@@ -21,7 +21,7 @@ const statusVisual = {
   SEM_DADOS: { label: 'Sem dados', cor: 'var(--ink-muted)', fundo: 'var(--surface-sunken)' },
 } as const;
 
-const StatusBadge = ({ status }: { status: keyof typeof statusVisual }) => {
+export const StatusBadge = ({ status }: { status: keyof typeof statusVisual }) => {
   const visual = statusVisual[status];
   return <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide" style={{ color: visual.cor, background: visual.fundo }}>{visual.label}</span>;
 };

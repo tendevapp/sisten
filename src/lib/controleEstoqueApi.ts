@@ -12,6 +12,7 @@ import type {
   Profile,
 } from '../types';
 import { calcularFaixaDoItem, type StatusControleEstoque } from './controleEstoque';
+import { casarTokens, extrairPalavrasChave } from './buscaKeywords';
 
 type UsuarioAutor = Pick<Profile, 'id'>;
 
@@ -249,9 +250,10 @@ export function criarPayloadInativacaoOverride(user: UsuarioAutor) {
  * resultado.
  */
 export function filtrarControleEstoque(itens: ControleEstoqueItem[], filtros: FiltrosControleEstoque): ControleEstoqueItem[] {
-  const busca = filtros.busca?.trim().toLocaleLowerCase('pt-BR');
+  // Palavras-chave em qualquer ordem, sem acento, com "frases" entre aspas.
+  const tokens = extrairPalavrasChave(filtros.busca);
   return itens.filter(item => {
-    if (busca && !`${item.material} ${item.descricao ?? ''}`.toLocaleLowerCase('pt-BR').includes(busca)) return false;
+    if (tokens.length > 0 && !casarTokens([item.material, item.descricao, item.categoria, item.aplicacao], tokens)) return false;
     if (filtros.centro && item.centro !== filtros.centro) return false;
     if (filtros.categoria && item.categoria !== filtros.categoria) return false;
     if (filtros.aplicacao && item.aplicacao !== filtros.aplicacao) return false;

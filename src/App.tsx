@@ -1096,6 +1096,12 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/almoxarifado/controle-estoque/dossie':
+        if (canAccessPage(user, 'almox_controle_estoque')) {
+          return <ControleEstoque user={user} abaInicial="dossie" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/almoxarifado/consumo-semanal':
         if (canAccessPage(user, 'almox_consumo_semanal')) {
           return <ConsumoSemanal user={user} />;

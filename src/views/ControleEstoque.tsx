@@ -15,7 +15,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle, Download, Gauge, LayoutDashboard, RefreshCw, Scale, Settings2, TrendingUp, ClipboardCheck,
+  AlertCircle, BookOpen, Download, Gauge, LayoutDashboard, RefreshCw, Scale, Settings2, TrendingUp, ClipboardCheck,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import type { ControleEstoqueConfig, ControleEstoqueItem, EstoqueReposicao, Profile } from '../types';
@@ -27,6 +27,7 @@ import {
   type FiltrosControleEstoque,
 } from '../lib/controleEstoqueApi';
 import { exportarControleEstoqueExcel } from '../lib/controleEstoqueExport';
+import { montarDossie } from '../lib/controleEstoqueDossie';
 import { calcularSugestao, type Recomendacao } from '../lib/reposicao';
 import { canAccessPage } from '../lib/pages';
 import { formatBRL, formatQtd } from '../lib/almoxarifado';
@@ -35,16 +36,19 @@ import ControleEstoqueResumo from '../components/almoxarifado/controleEstoque/Co
 import ControleEstoqueFiltros, {
   type OpcoesFiltrosControleEstoque,
 } from '../components/almoxarifado/controleEstoque/ControleEstoqueFiltros';
+import ControleEstoqueDossie from '../components/almoxarifado/controleEstoque/ControleEstoqueDossie';
 import ControleEstoqueTabela from '../components/almoxarifado/controleEstoque/ControleEstoqueTabela';
 import ControleEstoqueDetalhe from '../components/almoxarifado/controleEstoque/ControleEstoqueDetalhe';
 import ControleEstoqueParametrosModal from '../components/almoxarifado/controleEstoque/ControleEstoqueParametrosModal';
 import EstoqueMinimoPanel from '../components/almoxarifado/EstoqueMinimoPanel';
 import { TableEmpty } from '../components/ui/DataTable';
 
-type Aba = 'geral' | 'faixa' | 'sisten' | 'fluxo';
+export type AbaControleEstoque = 'geral' | 'faixa' | 'sisten' | 'fluxo' | 'dossie';
+type Aba = AbaControleEstoque;
 
 const ABAS: { id: Aba; rotulo: string; icone: typeof Gauge; pergunta: string }[] = [
   { id: 'geral', rotulo: 'Visão geral', icone: LayoutDashboard, pergunta: 'Como está o estoque frente à faixa mínima e máxima?' },
+  { id: 'dossie', rotulo: 'Dossiê', icone: BookOpen, pergunta: 'Qual é a história de cada material: estoque, faixa, RM, pedido e chegada?' },
   { id: 'faixa', rotulo: 'Faixa da planilha', icone: Gauge, pergunta: 'O que comprar, com a regra da planilha de controle?' },
   { id: 'sisten', rotulo: 'Mínimo SISTEN', icone: ClipboardCheck, pergunta: 'O que o método estatístico do SISTEN recomenda para os mesmos materiais?' },
   { id: 'fluxo', rotulo: 'Entradas x saídas', icone: TrendingUp, pergunta: 'O que entrou e o que foi consumido, mês a mês?' },
@@ -67,12 +71,14 @@ const rotuloMes = (iso: string) => {
 
 interface Props {
   user: Profile;
+  /** Aba de entrada, para links diretos por rota. */
+  abaInicial?: Aba;
 }
 
-export default function ControleEstoque({ user }: Props) {
+export default function ControleEstoque({ user, abaInicial = 'geral' }: Props) {
   const podeEditar = canAccessPage(user, 'almox_controle_estoque_editar');
 
-  const [aba, setAba] = useState<Aba>('geral');
+  const [aba, setAba] = useState<Aba>(abaInicial);
   const [itens, setItens] = useState<ControleEstoqueItem[]>([]);
   const [configs, setConfigs] = useState<ControleEstoqueConfig[]>([]);
   const [reposicao, setReposicao] = useState<EstoqueReposicao[]>([]);
@@ -112,7 +118,8 @@ export default function ControleEstoque({ user }: Props) {
     const q = (window.location.hash || '').split('?')[1];
     const tab = new URLSearchParams(q || '').get('tab') as Aba | null;
     if (tab && ABAS.some(a => a.id === tab)) setAba(tab);
-  }, []);
+    else setAba(abaInicial);
+  }, [abaInicial]);
 
   const trocarAba = useCallback((nova: Aba) => {
     setAba(nova);
@@ -130,11 +137,9 @@ export default function ControleEstoque({ user }: Props) {
   );
 
   const opcoes = useMemo<OpcoesFiltrosControleEstoque>(() => ({
-    centros: unicos(itens.map(i => i.centro)),
     depositos: unicos(itens.flatMap(i => i.depositos.map(d => d.deposito))),
     categorias: unicos(itens.map(i => i.categoria)),
     aplicacoes: unicos(itens.map(i => i.aplicacao)),
-    tiposGestao: unicos(itens.map(i => i.tipo_gestao)),
     projetos: unicos(itens.flatMap(i => i.opcoes_quantidade_por_torre.map(o => o.projeto))),
   }), [itens]);
 
@@ -149,6 +154,11 @@ export default function ControleEstoque({ user }: Props) {
     const materiais = new Set(filtrados.map(i => i.material));
     return reposicao.filter(r => materiais.has(r.material)).map(calcularSugestao);
   }, [reposicao, filtrados]);
+
+  const dossie = useMemo(() => montarDossie(
+    linhas,
+    new Map(sugestoes.map(s => [s.material, s.minimoSugerido] as const)),
+  ), [linhas, sugestoes]);
 
   const leadMediano = useMemo(() => {
     const proprios = reposicao.filter(r => r.lead_proprio && r.lead_dias).map(r => r.lead_dias!);
@@ -326,6 +336,14 @@ export default function ControleEstoque({ user }: Props) {
               leadMediano={leadMediano}
               recomendacaoFiltro={recomendacaoFiltro}
               onRecomendacaoChange={setRecomendacaoFiltro}
+            />
+          )}
+
+          {aba === 'dossie' && (
+            <ControleEstoqueDossie
+              linhas={dossie}
+              loading={loading}
+              onSelecionar={chave => setDetalhe(linhas.find(l => chave.startsWith(`${l.item.centro}-${l.item.material}-`)) ?? null)}
             />
           )}
 

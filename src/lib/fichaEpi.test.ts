@@ -16,6 +16,7 @@ import {
   mediana,
   montarLinhasFicha,
   pendentesDevolucaoPorGrupo,
+  resumirFichasColaborador,
   linhasSemRespostaDevolucao,
   motivoPadrao,
   sugerirFuncaoPorCargo,
@@ -336,6 +337,29 @@ describe('detalhe de consumo do colaborador', () => {
   it('sem amostras suficientes na função não há referência nem troca precoce', () => {
     const ana = detalharColaborador('ana', [consumo('ana', 'LUVA', '2026-01-01', 1), consumo('ana', 'LUVA', '2026-01-05', 2)])!;
     expect(ana.porEpi[0]).toMatchObject({ duracaoMedianaDias: 4, referenciaFuncaoDias: null, precoces: 0, reposicaoPrevista: '2026-01-09' });
+  });
+});
+
+describe('resumo da ficha completa do colaborador', () => {
+  const item = (id: string, grupo: string, qtd: number, motivo: MotivoMed, devolucao: string | null = null) => ({
+    id, ordem: 1, ca: null, quantidade: qtd, descricao: grupo, motivo, data_devolucao: devolucao,
+    devolucao_registrada_por_nome: null, grupo_epi: grupo, categoria: 'CAT',
+  });
+  const ficha = (id: string, data: string, itens: ReturnType<typeof item>[], extra: Record<string, unknown> = {}) => ({
+    id, data_entrega: data, status: 'ATIVA', created_at: `${data}T10:00:00Z`, assinatura_pendente: false,
+    data_admissao: null, data_demissao: null, itens, ...extra,
+  });
+
+  it('soma só as fichas ativas e separa em uso, devolvido, perda e pendência', () => {
+    const resumo = resumirFichasColaborador([
+      ficha('a', '2026-01-10', [item('1', 'LUVA', 2, 1), item('2', 'BOTINA', 1, 1, '2026-03-01')], { data_admissao: '2025-12-01' }),
+      ficha('b', '2026-03-05', [item('3', 'LUVA', 1, 3)], { assinatura_pendente: true }),
+      ficha('c', '2026-04-01', [item('4', 'CAPACETE', 5, 1)], { status: 'CANCELADA' }),
+    ]);
+    expect(resumo).toMatchObject({
+      fichasAtivas: 2, fichasCanceladas: 1, assinaturasPendentes: 1, epis: 2, unidades: 4,
+      emUso: 3, devolvidos: 1, perdas: 1, primeiraEntrega: '2026-01-10', ultimaEntrega: '2026-03-05', dataAdmissao: '2025-12-01',
+    });
   });
 });
 

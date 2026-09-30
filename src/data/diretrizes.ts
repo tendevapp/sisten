@@ -1418,7 +1418,8 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             itens: [
               'Reproduz a aba CONTROLE MINIMO da planilha "1. Controle de Stk V2.0.xlsm" sobre as bases SAP já importadas (ZL0024, MB51, ME5A e ZL0132). O XLSM é só fonte de regra: nada dele é importado como base operacional.',
               'Uma linha por material. Depósitos, RMs e POs múltiplos aparecem no detalhamento e nunca duplicam os KPIs (a planilha tem 99 materiais repetidos e o XLOOKUP enxerga só a primeira RM/PO).',
-              'Abas: Visão geral (KPIs e gráficos), Faixa da planilha (tabela operacional e memória de cálculo), Mínimo SISTEN (método estatístico existente, sobre os mesmos materiais do recorte) e Entradas x saídas.'
+              'Abas: Visão geral (KPIs e gráficos), Faixa da planilha (tabela operacional e memória de cálculo), Mínimo SISTEN (método estatístico existente, sobre os mesmos materiais do recorte), Entradas x saídas e Dossiê (também em `/almoxarifado/controle-estoque/dossie`).',
+              'Dossiê: uma linha por RM aberta contando a história do material — estoque, faixa (Stk Mínimo = mínimo da planilha; PR (RM) = quantidade a comprar), Sft STK/PR (mínimo SISTEN e 2× esse valor, a relação da planilha), status, cobertura, RM, requisitante, pedido e chegada (MB51 101/102 por material + pedido). Material sem RM ocupa uma linha; pedido em aberto sem RM entra como linha própria. Exporta XLSX do recorte visível.'
             ]
           },
           {

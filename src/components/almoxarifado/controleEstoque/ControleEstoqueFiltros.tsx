@@ -3,11 +3,9 @@ import { Filter, RotateCcw, Search } from 'lucide-react';
 import type { FiltrosControleEstoque } from '../../../lib/controleEstoqueApi';
 
 export interface OpcoesFiltrosControleEstoque {
-  centros: string[];
   depositos: string[];
   categorias: string[];
   aplicacoes: string[];
-  tiposGestao: string[];
   projetos: string[];
 }
 
@@ -31,19 +29,15 @@ export default function ControleEstoqueFiltros({ filtros, opcoes, onChange, onLi
         <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
           <Filter className="h-3.5 w-3.5" /> Filtros
         </span>
-        <label className="relative shrink-0 w-64">
+        <label className="relative shrink-0 w-80">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
           <input
             value={filtros.busca ?? ''}
             onChange={event => atualizar('busca', event.target.value)}
-            placeholder="Material ou descrição"
+            placeholder="Palavras-chave (material, descrição, categoria)"
             className={`${selectClass} w-full pl-8 font-normal`}
           />
         </label>
-        <select value={filtros.centro ?? ''} onChange={event => atualizar('centro', event.target.value || undefined)} className={selectClass}>
-          <option value="">Centro: todos</option>
-          {opcoes.centros.map(valor => <option key={valor} value={valor}>{valor}</option>)}
-        </select>
         <select value={filtros.deposito ?? ''} onChange={event => atualizar('deposito', event.target.value || undefined)} className={selectClass}>
           <option value="">Depósito: todos</option>
           {opcoes.depositos.map(valor => <option key={valor} value={valor}>{valor}</option>)}
@@ -55,10 +49,6 @@ export default function ControleEstoqueFiltros({ filtros, opcoes, onChange, onLi
         <select value={filtros.aplicacao ?? ''} onChange={event => atualizar('aplicacao', event.target.value || undefined)} className={selectClass}>
           <option value="">Aplicação: todas</option>
           {opcoes.aplicacoes.map(valor => <option key={valor} value={valor}>{valor}</option>)}
-        </select>
-        <select value={filtros.tipoGestao ?? ''} onChange={event => atualizar('tipoGestao', event.target.value || undefined)} className={selectClass}>
-          <option value="">Gestão: todas</option>
-          {opcoes.tiposGestao.map(valor => <option key={valor} value={valor}>{valor}</option>)}
         </select>
         <select value={filtros.status ?? ''} onChange={event => atualizar('status', (event.target.value || undefined) as FiltrosControleEstoque['status'])} className={selectClass}>
           <option value="">Status: todos</option>

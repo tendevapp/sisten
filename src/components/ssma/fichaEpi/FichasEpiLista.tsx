@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ClipboardList, Loader2, Search } from 'lucide-react';
+import { ClipboardList, FileUser, Loader2, Search } from 'lucide-react';
 import { TableCardRow, TableCards, TableDesktop } from '../../ui/DataTable';
 import { useToast } from '../../ui/Toast';
 import type { Profile } from '../../../types';
@@ -45,12 +45,26 @@ function Situacao({ ficha }: { ficha: SsmaFichaEpi }) {
   );
 }
 
+/** Abre a ficha completa do colaborador (todas as entregas + dados do RH) sem abrir a linha. */
+function BotaoFichaCompleta({ onAbrir }: { onAbrir: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={e => { e.stopPropagation(); onAbrir(); }}
+      onKeyDown={e => e.stopPropagation()}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-emerald-200 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+    >
+      <FileUser className="h-3.5 w-3.5" /> Ficha completa
+    </button>
+  );
+}
+
 export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
   const toast = useToast();
   const [busca, setBusca] = useState(buscaInicial);
   const [fichas, setFichas] = useState<SsmaFichaEpi[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [aberta, setAberta] = useState<SsmaFichaEpi | null>(null);
+  const [aberta, setAberta] = useState<{ ficha: SsmaFichaEpi; completa: boolean } | null>(null);
   const [soPendentesAssinatura, setSoPendentesAssinatura] = useState(false);
 
   const pendentesAssinatura = fichas.filter(f => f.assinatura_pendente && f.status === 'ATIVA');
@@ -107,7 +121,7 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
             {listadas.map(f => {
               const { unidades } = resumoItens(f);
               return (
-                <TableCardRow key={f.id} onClick={() => setAberta(f)} accent={f.status === 'CANCELADA' ? '#dc2626' : undefined}>
+                <TableCardRow key={f.id} onClick={() => setAberta({ ficha: f, completa: false })} accent={f.status === 'CANCELADA' ? '#dc2626' : undefined}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{f.nome}</p>
@@ -118,6 +132,7 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
                   <p className="text-xs text-slate-600 dark:text-slate-300">
                     <span className="font-mono">{f.codigo}</span> · {formatarDataBR(f.data_entrega)} · {f.itens.length} EPIs / {formatarQuantidade(unidades)} un.
                   </p>
+                  <BotaoFichaCompleta onAbrir={() => setAberta({ ficha: f, completa: true })} />
                 </TableCardRow>
               );
             })}
@@ -135,7 +150,8 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
                     <th className="px-3 py-3 text-right font-bold">EPIs</th>
                     <th className="px-3 py-3 text-right font-bold">Unidades</th>
                     <th className="px-3 py-3 font-bold">Lançada por</th>
-                    <th className="px-4 py-3 text-right font-bold">Situação</th>
+                    <th className="px-3 py-3 text-right font-bold">Situação</th>
+                    <th className="px-4 py-3 text-right font-bold">Ficha do colaborador</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -146,8 +162,8 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
                         key={f.id}
                         role="button"
                         tabIndex={0}
-                        onClick={() => setAberta(f)}
-                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAberta(f); } }}
+                        onClick={() => setAberta({ ficha: f, completa: false })}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAberta({ ficha: f, completa: false }); } }}
                         className={`cursor-pointer transition-colors hover:bg-emerald-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500 dark:hover:bg-emerald-950/20 ${f.status === 'CANCELADA' ? 'opacity-60' : ''}`}
                       >
                         <td className="px-4 py-3 font-mono font-bold text-emerald-700 dark:text-emerald-400">{f.codigo}</td>
@@ -160,7 +176,8 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
                         <td className="px-3 py-3 text-right tabular-nums">{f.itens.length}</td>
                         <td className="px-3 py-3 text-right tabular-nums">{formatarQuantidade(unidades)}</td>
                         <td className="px-3 py-3 text-slate-500">{f.criado_por_nome || '—'}</td>
-                        <td className="px-4 py-3 text-right"><Situacao ficha={f} /></td>
+                        <td className="px-3 py-3 text-right"><Situacao ficha={f} /></td>
+                        <td className="px-4 py-3 text-right"><BotaoFichaCompleta onAbrir={() => setAberta({ ficha: f, completa: true })} /></td>
                       </tr>
                     );
                   })}
@@ -174,8 +191,8 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
       {aberta && (
         <FichaEpiDetalheModal
           user={user}
-          pessoaId={aberta.pessoa_id}
-          fichaId={aberta.id}
+          pessoaId={aberta.ficha.pessoa_id}
+          fichaId={aberta.completa ? null : aberta.ficha.id}
           onClose={() => setAberta(null)}
           onAlterada={() => carregar(busca)}
         />
