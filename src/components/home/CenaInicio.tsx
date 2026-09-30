@@ -18,6 +18,12 @@ const CENAS: Record<CenaId, React.LazyExoticComponent<React.ComponentType>> = {
   bateria: lazy(() => import('./cenas/TurbinaBateria')),
   calandra: lazy(() => import('./cenas/Calandra')),
   pintura: lazy(() => import('./cenas/PinturaCilindros')),
+  ponte: lazy(() => import('./cenas/PonteRolante')),
+  solda: lazy(() => import('./cenas/SoldaFaiscas')),
+  inspecao: lazy(() => import('./cenas/InspecaoQualidade')),
+  empilhadeira: lazy(() => import('./cenas/EmpilhadeiraAlmox')),
+  amanhecer: lazy(() => import('./cenas/TorreAmanhecer')),
+  gantt: lazy(() => import('./cenas/GanttVivo')),
 };
 
 export default function CenaInicio() {

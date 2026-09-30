@@ -325,63 +325,9 @@ describe('almoxCatalogoApi - Catálogo de Itens do Almoxarifado', () => {
     expect(resultadoEpi[0].ca_epi).toBe('9999');
   });
 
-  it('deve salvar e listar itens do catálogo localmente sem disparar chamadas REST para alm_catalogo_itens', async () => {
-    const {
-      salvarItensCatalogoLocal,
-      listarItensCatalogo,
-      buscarFotoCatalogoPorCodigoSap,
-      buscarFotosCatalogoPorCodigosSap,
-      salvarListaFixaCatalogoLocal,
-      obterListaFixaCatalogoLocal,
-    } = await import('./almoxCatalogoApi');
-
-    // Limpa estado local de teste
+  it('mantém a lista fixa da tela (cache da ZL0024) no aparelho', async () => {
+    const { salvarListaFixaCatalogoLocal, obterListaFixaCatalogoLocal } = await import('./almoxCatalogoApi');
     localStorage.clear();
-
-    const mockItem: CatalogoItem = {
-      id: 'cat-test-1',
-      codigo_registro: 'CAT-290926-05',
-      codigo_sap: '200099',
-      descricao: 'ABAFADOR DE RUIDO',
-      texto_tecnico: 'PROTETOR AUDITIVO TIPO CONCHA',
-      grp_mercad: 'M11',
-      grupo_mercadorias: 'EPI E UNIFORMES',
-      classificacao_nivel1: 'CONSUMÍVEL',
-      classificacao_nivel2: 'EPI - Segurança',
-      umb: 'UN',
-      saldo_zl0024: 15,
-      imagem_path: 'almox-catalogo/material-200099.jpg',
-      imagem_nome: 'abafador.jpg',
-      imagem_mime: 'image/jpeg',
-      imagem_tamanho: 50000,
-      observacao: null,
-      ativo: true,
-      criado_por: 'u1',
-      criado_por_nome: 'Testador',
-      atualizado_por: null,
-      atualizado_por_nome: null,
-      created_at: '2026-09-29T12:00:00Z',
-      updated_at: '2026-09-29T12:00:00Z',
-      url_imagem: 'https://fake-storage/abafador.jpg',
-    };
-
-    salvarItensCatalogoLocal([mockItem]);
-
-    // 1. listarItensCatalogo deve ler de local sem erro
-    const itens = await listarItensCatalogo();
-    expect(itens).toHaveLength(1);
-    expect(itens[0].codigo_sap).toBe('200099');
-    expect(itens[0].codigo_registro).toBe('CAT-290926-05');
-
-    // 2. buscarFotoCatalogoPorCodigoSap encontra no catálogo local
-    const foto = await buscarFotoCatalogoPorCodigoSap('200099');
-    expect(foto).toBeDefined();
-    expect(foto?.codigo_sap).toBe('200099');
-    expect(foto?.imagem_path).toBe('almox-catalogo/material-200099.jpg');
-
-    // 3. buscarFotosCatalogoPorCodigosSap encontra em lote
-    const mapa = await buscarFotosCatalogoPorCodigosSap(['200099']);
-    expect(mapa.has('200099')).toBe(true);
 
     // 4. Salvar e recuperar lista fixa do catálogo
     salvarListaFixaCatalogoLocal([

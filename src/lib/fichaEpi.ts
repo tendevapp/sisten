@@ -63,6 +63,9 @@ export const TERMO_FICHA_EPI: { paragrafos: TrechoTermo[][]; espacoAntes: number
 // Legenda M.E.D. do formulário
 // ---------------------------------------------------------------------------
 
+/** No lugar da assinatura das fichas em papel convertidas para o sistema (origem HISTORICO_PAPEL). */
+export const ROTULO_ASSINATURA_FICHA_FISICA = 'Ass. Ficha Física';
+
 export type MotivoMed = 1 | 2 | 3 | 4;
 
 export const MOTIVOS_MED: Record<MotivoMed, string> = {

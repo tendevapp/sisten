@@ -14,6 +14,7 @@
  */
 
 import { isProjetoItem } from './rastreio';
+import { casarTokens } from './buscaKeywords';
 
 /** Prefixos dos registros — regra 2 do CLAUDE.md, índice reinicia POR DIA. */
 export const PREFIXO_RECEB = {
@@ -243,6 +244,56 @@ export function posAbertosDoFornecedor(records: LinhaCacheSAP[], termo: string):
       itens: [...po.itens].sort((a, b) => Number(b.pendente > 0) - Number(a.pendente > 0)),
     }))
     .sort((a, b) => a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true }));
+}
+
+/** Uma linha de PO achada pela busca por descrição do item. */
+export interface ItemPoEncontrado extends ItemPoAberto {
+  /** PO da linha, sem zeros à esquerda. */
+  numero: string;
+  fornecedor: string;
+}
+
+/**
+ * Busca linhas do cache ZL0132 por palavras-chave (AND) na descrição ou no
+ * código do material. **Só entram linhas que já têm PO** — requisição ainda
+ * sem pedido não vira resultado, porque não há o que receber. Aceita `tokens`
+ * já extraídos (`extrairPalavrasChave`); sem tokens devolve vazio.
+ *
+ * Ordem: saldo pendente primeiro (é o que se espera receber), depois PO e
+ * descrição. Linha com PO e saldo zerado continua na lista — o cache pode
+ * estar defasado em relação ao que chegou na doca.
+ */
+export function buscarItensComPo(records: LinhaCacheSAP[], tokens: string[]): ItemPoEncontrado[] {
+  if (!tokens.length) return [];
+
+  const achados: ItemPoEncontrado[] = [];
+  for (const r of records) {
+    const numero = String(r.documento_compra ?? '').trim().replace(/^0+/, '');
+    if (!numero) continue;
+    const materialCode = String(r.material_code ?? '');
+    const descricao = r.texto_breve ?? '';
+    if (!casarTokens([descricao, materialCode], tokens)) continue;
+
+    const qtdPedido = typeof r.qtd_po === 'number' ? r.qtd_po : null;
+    const qtdJaFornecida = typeof r.qtd_fornecida_po === 'number' ? r.qtd_fornecida_po : null;
+    achados.push({
+      numero,
+      fornecedor: String(r.fornecedor_name ?? '').trim(),
+      linhaRef: r.ri_po || null,
+      materialCode,
+      descricao,
+      unidade: r.unidade_medida ?? '',
+      rm: r.requisicao_de_compra ?? null,
+      qtdPedido,
+      qtdJaFornecida,
+      pendente: pendentePedido(qtdPedido, qtdJaFornecida),
+    });
+  }
+
+  return achados.sort((a, b) =>
+    Number(b.pendente > EPSILON_QTD) - Number(a.pendente > EPSILON_QTD)
+    || a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true })
+    || a.descricao.localeCompare(b.descricao, 'pt-BR'));
 }
 
 /** `projeto` (material 100000…), `consumo`, ou `misto` quando a lista tem os dois. */

@@ -12,7 +12,7 @@ const ASSINATURA =
 const ficha = (id: string, data: string, ca: string, descricao: string): SsmaFichaEpi => ({
   id, codigo: `EPI-${id}`, pessoa_id: 'p1', registro: '123', nome: 'JOSÉ DA SILVA', cargo_rh: 'LIXADOR',
   setor: 'PRODUÇÃO\nLIXAMENTO', funcao_id: 'f1', funcao_nome: 'LIXADOR', data_admissao: '2026-01-02', data_demissao: null,
-  data_entrega: data, assinatura_colaborador: ASSINATURA, assinado_em: `${data}T10:00:00Z`, observacoes: null,
+  data_entrega: data, assinatura_colaborador: ASSINATURA, assinado_em: `${data}T10:00:00Z`, origem: 'DIGITAL', observacoes: null,
   status: 'ATIVA', cancelamento_motivo: null, cancelado_por_nome: null, cancelado_em: null, criado_por: 'u1',
   criado_por_nome: 'TST', created_at: `${data}T10:00:00Z`,
   itens: [{
@@ -45,5 +45,16 @@ describe('PDF da ficha de EPI', () => {
     }
     const unica = await gerarFichaEpiPdf({ fichas: [fichas[0]], mostrarAssinatura: true });
     expect(unica.nomeArquivo).toBe('ficha-epi-EPI-a-jose_da_silva.pdf');
+  });
+
+  it('gera o PDF de ficha em papel convertida (sem imagem de assinatura)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('sem logo no teste')) as any;
+
+    const fisica: SsmaFichaEpi = { ...ficha('h', '2026-03-02', '8084', 'LUVA'), origem: 'HISTORICO_PAPEL', assinatura_colaborador: undefined };
+    for (const mostrarAssinatura of [true, false]) {
+      const pdf = await gerarFichaEpiPdf({ fichas: [fisica, ficha('d', '2026-09-01', '999', 'BOTINA')], mostrarAssinatura });
+      expect(pdf.bytes.byteLength).toBeGreaterThan(1000);
+    }
   });
 });

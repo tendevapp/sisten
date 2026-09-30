@@ -35,10 +35,10 @@ import {
 } from '../../lib/imageCompression';
 import { prepararFotoCarimbada } from '../../lib/carimboFoto';
 import {
-  PREFIXO_RECEB, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
+  EPSILON_QTD, PREFIXO_RECEB, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarItensComPo, buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
   entregaParcialAnterior, listarFornecedoresDoCache, pendentePedido, podeExcluirNaoConformidade, posAbertosDoFornecedor,
   resumoConferencia, tipoNcSugerido, validarNovaNcAvulsa,
-  type AnexoRecebimento, type DestinoPrevisto, type FontePedido, type LinhaConferencia, type PoAberto,
+  type AnexoRecebimento, type DestinoPrevisto, type FontePedido, type ItemPoEncontrado, type LinhaConferencia, type PoAberto,
   type LinhaCacheSAP, type TipoDivergencia, type TipoEmbalagem,
 } from '../../lib/recebimentoAlmox';
 import {
@@ -53,6 +53,7 @@ import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { canAccessForm } from '../../lib/pages';
 import type { Profile } from '../../types';
 import { extrairPalavrasChave, casarTokens } from '../../lib/buscaKeywords';
+import SearchKeywordsChips from '../../components/ui/SearchKeywordsChips';
 
 interface Props {
   user: Profile;
@@ -1743,6 +1744,34 @@ function flagsDoEstado(e: EstadoLinha): { conferido: boolean; parcial: boolean; 
   };
 }
 
+/** Teto de resultados renderizados na busca por item (o cache tem milhares de linhas). */
+const LIMITE_BUSCA_ITEM = 60;
+
+/** Linha nova da conferência a partir de uma linha do PO (busca por PO, fornecedor ou item). */
+function linhaDoPedido(
+  l: Pick<LinhaPedidoPO, 'linhaRef' | 'materialCode' | 'descricao' | 'unidade' | 'qtdPedido' | 'qtdJaFornecida'>,
+  nroPedido: string,
+): LinhaUI {
+  return {
+    linhaRef: l.linhaRef,
+    nroPedido,
+    materialCode: l.materialCode,
+    descricao: l.descricao,
+    unidade: l.unidade,
+    qtdPedido: l.qtdPedido,
+    qtdJaFornecida: l.qtdJaFornecida,
+    qtdRecebida: pendentePedido(l.qtdPedido, l.qtdJaFornecida),
+    conferido: false,
+    itemManual: false,
+    avaria: false,
+    parcial: false,
+    estado: null,
+    observacao: '',
+    evidencias: [],
+    fotos: [],
+  };
+}
+
 /** Paleta de cabeçalho por PO — cores calmas e distintas entre si, sem colidir
  *  com a escala de status (verde/laranja/vermelho). */
 const COR_PO = ['#2563eb', '#0d9488', '#7c3aed', '#db2777', '#0369a1', '#65a30d'];
@@ -1890,7 +1919,9 @@ function ModalConferencia({
   /** Campo de busca: o PO a puxar agora. Vários POs viram várias buscas. */
   const [poBusca, setPoBusca] = useState('');
   /** Puxar por número do PO ou procurar pelos POs abertos de um fornecedor. */
-  const [modoBusca, setModoBusca] = useState<'po' | 'fornecedor'>('po');
+  const [modoBusca, setModoBusca] = useState<'po' | 'fornecedor' | 'item'>('po');
+  /** Palavras-chave da busca por descrição do item (AND, padrão do Catálogo SAP). */
+  const [chipsItem, setChipsItem] = useState<string[]>([]);
   const [fornBusca, setFornBusca] = useState('');
   const [fornPos, setFornPos] = useState<PoAberto[] | null>(null);
   /** Cache ZL0132 do aparelho — fonte da busca por fornecedor (sem rede). */
@@ -1957,24 +1988,7 @@ function ModalConferencia({
       const jaTem = new Set(linhas.map((l) => l.linhaRef).filter(Boolean));
       const novas = res.linhas
         .filter((l) => !l.linhaRef || !jaTem.has(l.linhaRef))
-        .map<LinhaUI>((l) => ({
-          linhaRef: l.linhaRef,
-          nroPedido: alvo,
-          materialCode: l.materialCode,
-          descricao: l.descricao,
-          unidade: l.unidade,
-          qtdPedido: l.qtdPedido,
-          qtdJaFornecida: l.qtdJaFornecida,
-          qtdRecebida: pendentePedido(l.qtdPedido, l.qtdJaFornecida),
-          conferido: false,
-          itemManual: false,
-          avaria: false,
-          parcial: false,
-          estado: null,
-          observacao: '',
-          evidencias: [],
-          fotos: [],
-        }));
+        .map((l) => linhaDoPedido(l, alvo));
       setLinhas((a) => [...a, ...novas]);
       if (res.linhas[0].rm && !rm) setRm(res.linhas[0].rm);
       setPoBusca('');
@@ -1995,6 +2009,26 @@ function ModalConferencia({
   };
 
   const buscarPedido = () => adicionarPedido(poBusca);
+
+  /** Traz só a linha achada na busca por item, sem puxar o PO inteiro. */
+  const adicionarItemEncontrado = (it: ItemPoEncontrado) => {
+    if (it.linhaRef && linhas.some((l) => l.linhaRef === it.linhaRef)) {
+      toast.info('Esse item já está na conferência.');
+      return;
+    }
+    setLinhas((a) => [...a, linhaDoPedido(it, it.numero)]);
+    if (it.fornecedor && !fornecedor) setFornecedor(it.fornecedor);
+    if (it.rm && !rm) setRm(it.rm);
+    setFonte('cache_sap');
+    toast.success(`PO ${it.numero}: item ${it.materialCode} adicionado.`);
+  };
+
+  /** Resultado da busca por descrição do item — só linhas com PO, do cache. */
+  const tokensItem = useMemo(() => extrairPalavrasChave(chipsItem.join(' ')), [chipsItem]);
+  const itensEncontrados = useMemo(
+    () => buscarItensComPo(sapCache, tokensItem),
+    [sapCache, tokensItem],
+  );
 
   /** Monta o painel de POs abertos do fornecedor a partir do cache local. */
   const buscarFornecedor = () => {
@@ -2247,7 +2281,7 @@ function ModalConferencia({
 
           <Campo rotulo="Pedidos (PO) — adicione um por vez">
             <div className="mb-2 flex w-full rounded-lg border p-0.5 text-[11px] font-bold sm:w-auto sm:inline-flex" style={{ borderColor: 'var(--hairline)' }}>
-              {([['po', 'Por número do PO'], ['fornecedor', 'Por fornecedor']] as const).map(([id, rot]) => (
+              {([['po', 'Por número do PO'], ['fornecedor', 'Por fornecedor'], ['item', 'Por item']] as const).map(([id, rot]) => (
                 <button
                   key={id}
                   type="button"
@@ -2293,6 +2327,74 @@ function ModalConferencia({
                   {buscando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Adicionar PO
                 </button>
               </div>
+            ) : modoBusca === 'item' ? (
+              <>
+                <SearchKeywordsChips
+                  chips={chipsItem}
+                  onChangeChips={setChipsItem}
+                  accent="brand"
+                  compact
+                  placeholder="Palavras da descrição — ex.: parafuso sextavado m16"
+                />
+                {!chipsItem.length && (
+                  <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                    Cada palavra vira um termo e todas precisam bater. Só aparecem itens que já têm PO.
+                  </p>
+                )}
+                {chipsItem.length > 0 && !sapCache.length && (
+                  <p className="mt-2 rounded-lg border border-dashed px-3 py-3 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                    O cache do SAP está vazio neste aparelho — use a busca por número do PO.
+                  </p>
+                )}
+                {chipsItem.length > 0 && sapCache.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {!itensEncontrados.length ? (
+                      <p className="rounded-lg border border-dashed px-3 py-3 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                        Nenhum item com PO bate com essas palavras.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-[11px] font-bold tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+                          {itensEncontrados.length} item(ns) com PO
+                          {itensEncontrados.length > LIMITE_BUSCA_ITEM && ` — mostrando os ${LIMITE_BUSCA_ITEM} primeiros; acrescente palavras para afinar`}
+                        </p>
+                        <div className="max-h-80 space-y-1.5 overflow-y-auto pr-0.5">
+                          {itensEncontrados.slice(0, LIMITE_BUSCA_ITEM).map((it) => {
+                            const jaNaConf = !!it.linhaRef && linhas.some((l) => l.linhaRef === it.linhaRef);
+                            const recebido = it.pendente <= EPSILON_QTD;
+                            return (
+                              <div
+                                key={`${it.numero}-${it.linhaRef ?? it.materialCode}`}
+                                className="flex items-start justify-between gap-2 rounded-lg border p-2 text-[11px]"
+                                style={{ borderColor: 'var(--hairline)', opacity: recebido ? 0.65 : 1 }}
+                              >
+                                <span className="min-w-0">
+                                  <span className="block font-bold" style={{ color: 'var(--ink-primary)' }}>{it.descricao || it.materialCode}</span>
+                                  <span className="block" style={{ color: 'var(--ink-muted)' }}>
+                                    PO {it.numero} · cód. {it.materialCode}{it.fornecedor ? ` · ${it.fornecedor}` : ''}
+                                  </span>
+                                  <span className="block tabular-nums" style={{ color: recebido ? 'var(--ink-muted)' : 'var(--status-serious)' }}>
+                                    {recebido ? 'já recebido no SAP' : `pendente ${formatQtd(it.pendente)} ${it.unidade}`}
+                                  </span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => adicionarItemEncontrado(it)}
+                                  disabled={jaNaConf}
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer text-white disabled:opacity-60"
+                                  style={{ background: jaNaConf ? 'var(--status-good)' : 'var(--brand)' }}
+                                >
+                                  {jaNaConf ? <><Check className="h-3.5 w-3.5" /> na conferência</> : <><Plus className="h-3.5 w-3.5" /> Adicionar item</>}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 <div className="flex flex-col gap-2 sm:flex-row">

@@ -60,6 +60,8 @@ export interface SsmaFichaEpi {
   /** Só vem nas consultas de detalhe/PDF — a listagem não carrega a imagem. */
   assinatura_colaborador?: string;
   assinado_em: string;
+  /** HISTORICO_PAPEL = ficha manual convertida, sem imagem de assinatura. */
+  origem: 'DIGITAL' | 'HISTORICO_PAPEL';
   observacoes: string | null;
   status: 'ATIVA' | 'CANCELADA';
   cancelamento_motivo: string | null;
@@ -91,7 +93,7 @@ const rpc = (nome: string, args: Record<string, unknown>) => (supabase.rpc as an
 
 const COLUNAS_FICHA_SEM_ASSINATURA =
   'id, codigo, pessoa_id, registro, nome, cargo_rh, setor, funcao_id, funcao_nome, data_admissao, data_demissao, ' +
-  'data_entrega, assinado_em, observacoes, status, cancelamento_motivo, cancelado_por_nome, cancelado_em, ' +
+  'data_entrega, assinado_em, origem, observacoes, status, cancelamento_motivo, cancelado_por_nome, cancelado_em, ' +
   'criado_por, criado_por_nome, created_at';
 const COLUNAS_ITENS = 'itens:ssma_fichas_epi_itens(*)';
 

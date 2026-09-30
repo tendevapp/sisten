@@ -11,7 +11,20 @@
  * `?cena=calandra` na URL força uma cena — serve para conferir todas.
  */
 
-export const CENAS = ['eolica', 'laser', 'guindaste', 'bateria', 'calandra', 'pintura'] as const;
+export const CENAS = [
+  'eolica',
+  'laser',
+  'guindaste',
+  'bateria',
+  'calandra',
+  'pintura',
+  'ponte',
+  'solda',
+  'inspecao',
+  'empilhadeira',
+  'amanhecer',
+  'gantt',
+] as const;
 export type CenaId = (typeof CENAS)[number];
 
 const CHAVE_CENA_SESSAO = 'sisten_cena_inicio';

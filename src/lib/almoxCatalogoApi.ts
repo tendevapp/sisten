@@ -14,7 +14,6 @@ import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 import { comprimirImagemUpload } from './imageCompression';
 import { isProjetoItem } from './demandas';
-import { gerarCodigoFormulario, proximoIndiceCodigo } from './codigosFormulario';
 import { SSMA_BOOK_EPIS_BUCKET } from './ssmaBookEpisApi';
 import { buscarMateriais, normalizarTermo, ehCodigoSapInativo } from './materiais';
 import type { EstoqueItem, CadastroGrupoMercadoria, RequestAttachment, Profile } from '../types';
@@ -22,6 +21,9 @@ import type { EstoqueItem, CadastroGrupoMercadoria, RequestAttachment, Profile }
 export const PREFIXO_CAT_ITEM = 'CAT';
 export const BUCKET_CATALOGO = 'request-attachments';
 export const PASTA_CATALOGO = 'almox-catalogo';
+/** Tabela do catálogo compartilhado (migration 20260929140000). */
+export const TABELA_CATALOGO = 'alm_catalogo_itens';
+/** Onde o catálogo morava antes da tabela — só lido para migrar o que ficou no aparelho. */
 export const CHAVE_CATALOGO_ITENS = 'sisten_almox_catalogo_itens';
 export const CHAVE_CATALOGO_LISTA_FIXA = 'sisten_almox_catalogo_lista_fixa';
 
@@ -118,8 +120,11 @@ export interface SalvarItemCatalogoPayload {
   removerFoto?: boolean;
 }
 
+const tabelaCatalogo = () => (supabase.from as any)(TABELA_CATALOGO);
+
 /**
- * Recupera itens salvos no catalogo local do almoxarifado.
+ * Itens que o catálogo guardava no localStorage antes da tabela existir.
+ * Só `migrarCatalogoLocalLegado` lê isto.
  */
 export function obterItensCatalogoLocal(): CatalogoItem[] {
   try {
@@ -132,9 +137,7 @@ export function obterItensCatalogoLocal(): CatalogoItem[] {
   }
 }
 
-/**
- * Salva itens no catalogo local do almoxarifado.
- */
+/** Grava a cópia local legada — usado só por testes e pela migração. */
 export function salvarItensCatalogoLocal(itens: CatalogoItem[]): void {
   try {
     if (typeof localStorage !== 'undefined') {
@@ -329,13 +332,25 @@ export function converterItemCatalogoEmAnexo(item: CatalogoItem): RequestAttachm
  * Não realiza requisições REST para a tabela remota inexistente alm_catalogo_itens.
  */
 export async function listarItensCatalogo(): Promise<CatalogoItem[]> {
-  try {
-    const itens = obterItensCatalogoLocal().filter(it => it.ativo !== false);
-    return itens.sort((a, b) => a.codigo_sap.localeCompare(b.codigo_sap, 'pt-BR'));
-  } catch (err) {
-    console.warn('[almoxCatalogoApi] Falha ao listar itens do catalogo local:', err);
+  if (!supabase) return [];
+  const { data, error } = await tabelaCatalogo().select('*').eq('ativo', true).order('codigo_sap');
+  if (error) {
+    console.error('[almoxCatalogoApi] Falha ao listar o catálogo:', error);
     return [];
   }
+  return (data ?? []) as CatalogoItem[];
+}
+
+/** Registro ativo do catálogo para o material — só a tabela, sem o fallback do Book de EPIs. */
+async function buscarItemAtivoCatalogo(codigoSap: string): Promise<CatalogoItem | null> {
+  if (!supabase) return null;
+  const { data, error } = await tabelaCatalogo()
+    .select('*')
+    .eq('codigo_sap', codigoSap)
+    .eq('ativo', true)
+    .maybeSingle();
+  if (error) throw new Error(`Falha ao consultar o catálogo: ${error.message}`);
+  return (data as CatalogoItem | null) ?? null;
 }
 
 /**
@@ -347,9 +362,8 @@ export async function buscarFotoCatalogoPorCodigoSap(codigoSap: string): Promise
   if (!limpo) return null;
 
   try {
-    // 1. Procura no catálogo local
-    const itens = obterItensCatalogoLocal();
-    const item = itens.find(i => i.codigo_sap === limpo && i.ativo !== false);
+    // 1. Procura no catálogo
+    const item = await buscarItemAtivoCatalogo(limpo);
     if (item && item.imagem_path) {
       if (!item.url_imagem) {
         item.url_imagem = await obterUrlFotoCatalogo(item.imagem_path);
@@ -416,13 +430,19 @@ export async function buscarFotosCatalogoPorCodigosSap(
   if (codigos.length === 0) return mapa;
 
   try {
-    // 1. Consulta o catálogo local
-    const itensLocais = obterItensCatalogoLocal();
-    for (const item of itensLocais) {
-      if (item.ativo !== false && item.imagem_path && codigos.includes(item.codigo_sap)) {
-        if (!item.url_imagem) {
-          item.url_imagem = await obterUrlFotoCatalogo(item.imagem_path);
-        }
+    // 1. Consulta o catálogo
+    if (supabase) {
+      const { data, error } = await tabelaCatalogo()
+        .select('*')
+        .in('codigo_sap', codigos)
+        .eq('ativo', true)
+        .not('imagem_path', 'is', null);
+      if (error) throw error;
+      const itens = (data ?? []) as CatalogoItem[];
+      const urls = await obterUrlsFotosCatalogoLote(itens.map(i => ({ path: i.imagem_path as string, bucket: BUCKET_CATALOGO })));
+      for (const item of itens) {
+        const path = item.imagem_path as string;
+        item.url_imagem = urls.get(path.startsWith('/') ? path.slice(1) : path) ?? urls.get(path) ?? null;
         mapa.set(item.codigo_sap, item);
       }
     }
@@ -1027,6 +1047,8 @@ export async function pesquisarCatalogoSapOnline(
  * e atualiza com fotos do catálogo e do Book de EPIs. Novos itens podem ser adicionados livremente.
  */
 export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<DadosCatalogoCompleto> {
+  await migrarCatalogoLocalLegado().catch(err => console.warn('[almoxCatalogoApi] Migração do catálogo local falhou:', err));
+
   const [grupos, itensCatalogo, mapaEpis] = await Promise.all([
     carregarGruposMercadoria(),
     listarItensCatalogo(),
@@ -1064,11 +1086,14 @@ export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<Da
     const temFotoCat = Boolean(cat?.imagem_path);
     const temFotoEpi = !temFotoCat && Boolean(epi?.imagem_path);
 
+    // O registro e a URL vêm sempre da tabela/Book de EPIs: o que a lista
+    // fixa guardou pode ter sido trocado por outro usuário, e a URL assinada
+    // guardada expira em 24 h.
     return {
       ...it,
-      item_catalogo: cat || it.item_catalogo,
+      item_catalogo: cat ?? null,
       tem_foto: temFotoCat || temFotoEpi,
-      url_foto: cat?.url_imagem || epi?.url_imagem || it.url_foto || null,
+      url_foto: cat?.url_imagem || epi?.url_imagem || null,
       origem_foto: temFotoCat ? 'catalogo' : (temFotoEpi ? 'book_epi' : it.origem_foto),
       ca_epi: epi?.ca || it.ca_epi,
     };
@@ -1188,129 +1213,46 @@ export function extensaoDaImagem(enviado: Blob, original: File): string {
   return porNome && porNome !== original.name?.toLowerCase() ? porNome : 'jpg';
 }
 
-/**
- * Salva ou atualiza um item no catálogo do almoxarifado, comprimindo a foto
- * antes de subir para o Storage (cumprindo a Regra 1 e a Regra 2 do AGENTS.md).
- * Salva localmente com persistência em localStorage, sem erros 404 no Supabase.
- */
-export async function salvarItemCatalogo(
+/** Colunas que o cliente grava — id, código e datas são do banco. */
+type LinhaCatalogo = Omit<CatalogoItem, 'id' | 'codigo_registro' | 'created_at' | 'updated_at' | 'url_imagem'>;
+
+function linhaDoPayload(
   payload: SalvarItemCatalogoPayload,
-  user: Profile
-): Promise<CatalogoItem> {
-  if (!payload.codigo_sap) {
-    throw new Error('Código SAP é obrigatório para cadastrar no catálogo.');
-  }
-
-  const codigoSap = payload.codigo_sap.trim();
-  const hoje = new Date().toISOString().slice(0, 10);
-
-  // Consulta se o item já existe para manter código ou substituir imagem
-  const itemExistente = await buscarFotoCatalogoPorCodigoSap(codigoSap);
-
-  let codigoRegistro = itemExistente?.codigo_registro;
-  if (!codigoRegistro || codigoRegistro.startsWith('EPI-')) {
-    // Busca códigos existentes para calcular o próximo índice sequencial (Regra 2)
-    const itens = await listarItensCatalogo();
-    const codigosExistentes = itens.map(i => i.codigo_registro).filter(Boolean);
-    const indice = proximoIndiceCodigo(PREFIXO_CAT_ITEM, codigosExistentes);
-    codigoRegistro = gerarCodigoFormulario(PREFIXO_CAT_ITEM, hoje, indice);
-  }
-
-  let imagemPath = itemExistente?.imagem_path ?? null;
-  let imagemNome = itemExistente?.imagem_nome ?? null;
-  let imagemMime = itemExistente?.imagem_mime ?? null;
-  let imagemTamanho = itemExistente?.imagem_tamanho ?? null;
-
-  // Remoção de foto solicitada
-  if (payload.removerFoto && itemExistente?.imagem_path) {
-    await removerFotoDoStorage(itemExistente.imagem_path);
-    imagemPath = null;
-    imagemNome = null;
-    imagemMime = null;
-    imagemTamanho = null;
-  }
-
-  // Upload de nova foto
-  if (payload.fotoArquivo) {
-    // 1. Compressão OBRIGATÓRIA (Regra 1 do AGENTS.md)
-    const arquivoComprimido = await comprimirImagemUpload(payload.fotoArquivo);
-
-    // Comprimida, a foto volta como Blob JPEG (sem `name`); sem compressão
-    // (HEIC fora do Safari, ou já pequena) volta o File original.
-    const ext = extensaoDaImagem(arquivoComprimido, payload.fotoArquivo);
-    const nomeLimpo = `material-${codigoSap}-${Date.now()}.${ext}`;
-    const storagePath = `${PASTA_CATALOGO}/${nomeLimpo}`;
-
-    // Remove foto anterior se houver
-    if (itemExistente?.imagem_path && itemExistente.imagem_path !== storagePath) {
-      await removerFotoDoStorage(itemExistente.imagem_path).catch(() => {});
-    }
-
-    // Upload para o Storage
-    if (supabase) {
-      const { error: uploadError } = await supabase.storage
-        .from(BUCKET_CATALOGO)
-        .upload(storagePath, arquivoComprimido, {
-          contentType: arquivoComprimido.type || 'image/jpeg',
-          // Caminho único (leva o timestamp): não há o que sobrescrever, e o
-          // bucket não tem política de UPDATE — upsert seria barrado pelo RLS.
-          upsert: false,
-        });
-
-      if (uploadError) {
-        throw new Error(`Falha no upload da foto: ${uploadError.message}`);
-      }
-    }
-
-    imagemPath = storagePath;
-    imagemNome = payload.fotoArquivo.name || nomeLimpo;
-    imagemMime = arquivoComprimido.type || 'image/jpeg';
-    imagemTamanho = arquivoComprimido.size;
-  }
-
-  const itemId = itemExistente?.id && !itemExistente.id.startsWith('epi-')
-    ? itemExistente.id
-    : `cat-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
-  const itemSalvo: CatalogoItem = {
-    id: itemId,
-    codigo_registro: codigoRegistro,
-    codigo_sap: codigoSap,
-    descricao: payload.descricao.trim(),
-    texto_tecnico: payload.texto_tecnico?.trim() || null,
-    grp_mercad: payload.grp_mercad?.trim() || null,
-    grupo_mercadorias: payload.grupo_mercadorias?.trim() || null,
-    classificacao_nivel1: payload.classificacao_nivel1?.trim() || 'CONSUMÍVEL',
-    classificacao_nivel2: payload.classificacao_nivel2?.trim() || null,
-    umb: payload.umb?.trim() || 'UN',
-    saldo_zl0024: payload.saldo_zl0024 ?? 0,
-    imagem_path: imagemPath,
-    imagem_nome: imagemNome,
-    imagem_mime: imagemMime,
-    imagem_tamanho: imagemTamanho,
-    observacao: payload.observacao?.trim() || null,
+  existente: CatalogoItem | null,
+  imagem: Pick<CatalogoItem, 'imagem_path' | 'imagem_nome' | 'imagem_mime' | 'imagem_tamanho'>,
+  user: Profile,
+): LinhaCatalogo {
+  // Campo que o payload não trouxe mantém o gravado — "remover foto" manda
+  // só código e descrição, e não pode apagar texto técnico nem observação.
+  const texto = (campo: keyof SalvarItemCatalogoPayload & keyof CatalogoItem): string | null => {
+    const v = payload[campo];
+    if (v === undefined) return (existente?.[campo] as string | null | undefined) ?? null;
+    return typeof v === 'string' ? v.trim() || null : null;
+  };
+  return {
+    codigo_sap: payload.codigo_sap.trim(),
+    descricao: payload.descricao.trim() || existente?.descricao || payload.codigo_sap.trim(),
+    texto_tecnico: texto('texto_tecnico'),
+    grp_mercad: texto('grp_mercad'),
+    grupo_mercadorias: texto('grupo_mercadorias'),
+    classificacao_nivel1: texto('classificacao_nivel1') || 'CONSUMÍVEL',
+    classificacao_nivel2: texto('classificacao_nivel2'),
+    umb: texto('umb') || 'UN',
+    saldo_zl0024: payload.saldo_zl0024 !== undefined ? payload.saldo_zl0024 ?? 0 : existente?.saldo_zl0024 ?? 0,
+    ...imagem,
+    observacao: texto('observacao'),
     ativo: true,
-    criado_por: itemExistente?.criado_por || user.id,
-    criado_por_nome: itemExistente?.criado_por_nome || user.name,
+    criado_por: existente?.criado_por || user.id,
+    criado_por_nome: existente?.criado_por_nome || user.name,
     atualizado_por: user.id,
     atualizado_por_nome: user.name,
-    created_at: itemExistente?.created_at || new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   };
+}
 
-  // Salva no catálogo local
-  const itensLocais = obterItensCatalogoLocal();
-  const index = itensLocais.findIndex(i => i.codigo_sap === codigoSap);
-  if (index >= 0) {
-    itensLocais[index] = itemSalvo;
-  } else {
-    itensLocais.push(itemSalvo);
-  }
-  salvarItensCatalogoLocal(itensLocais);
-
-  // Também atualiza/insere na lista fixa local para que o item permaneça fixo no catálogo
+/** Mantém a lista da tela (cache local derivado da ZL0024) em dia com o item salvo. */
+function refletirNaListaFixa(itemSalvo: CatalogoItem): void {
   const listaFixa = obterListaFixaCatalogoLocal();
-  const idxFixa = listaFixa.findIndex(i => i.codigo_sap === codigoSap);
+  const idxFixa = listaFixa.findIndex(i => i.codigo_sap === itemSalvo.codigo_sap);
   const itemConsumivel: ItemConsumivelZl0024 = {
     codigo_sap: itemSalvo.codigo_sap,
     descricao: itemSalvo.descricao,
@@ -1339,11 +1281,146 @@ export async function salvarItemCatalogo(
     listaFixa.unshift(itemConsumivel);
   }
   salvarListaFixaCatalogoLocal(listaFixa);
+}
+
+/**
+ * Salva ou atualiza o item do catálogo (`alm_catalogo_itens`), comprimindo a
+ * foto antes de subir ao Storage (regra 1 do CLAUDE.md). O código
+ * `CAT-DDMMYY-NN` é gerado pelo banco na inclusão (regra 2).
+ *
+ * Ordem: sobe a foto nova, grava o registro e só então apaga a foto
+ * anterior — se a gravação falhar, remove a foto recém-enviada e o registro
+ * antigo continua apontando para uma imagem que existe.
+ */
+export async function salvarItemCatalogo(
+  payload: SalvarItemCatalogoPayload,
+  user: Profile
+): Promise<CatalogoItem> {
+  if (!payload.codigo_sap) {
+    throw new Error('Código SAP é obrigatório para cadastrar no catálogo.');
+  }
+  if (!supabase) throw new Error('Sem conexão com o banco de dados.');
+
+  const codigoSap = payload.codigo_sap.trim();
+  const itemExistente = await buscarItemAtivoCatalogo(codigoSap);
+
+  let imagem = {
+    imagem_path: itemExistente?.imagem_path ?? null,
+    imagem_nome: itemExistente?.imagem_nome ?? null,
+    imagem_mime: itemExistente?.imagem_mime ?? null,
+    imagem_tamanho: itemExistente?.imagem_tamanho ?? null,
+  };
+  if (payload.removerFoto) {
+    imagem = { imagem_path: null, imagem_nome: null, imagem_mime: null, imagem_tamanho: null };
+  }
+
+  let pathEnviado: string | null = null;
+  if (payload.fotoArquivo) {
+    const arquivoComprimido = await comprimirImagemUpload(payload.fotoArquivo);
+    // Comprimida, a foto volta como Blob JPEG (sem `name`); sem compressão
+    // (HEIC fora do Safari, ou já pequena) volta o File original.
+    const ext = extensaoDaImagem(arquivoComprimido, payload.fotoArquivo);
+    const nomeLimpo = `material-${codigoSap}-${Date.now()}.${ext}`;
+    const storagePath = `${PASTA_CATALOGO}/${nomeLimpo}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET_CATALOGO)
+      .upload(storagePath, arquivoComprimido, {
+        contentType: arquivoComprimido.type || 'image/jpeg',
+        // Caminho único (leva o timestamp): não há o que sobrescrever, e o
+        // bucket não tem política de UPDATE — upsert seria barrado pelo RLS.
+        upsert: false,
+      });
+    if (uploadError) throw new Error(`Falha no upload da foto: ${uploadError.message}`);
+
+    pathEnviado = storagePath;
+    imagem = {
+      imagem_path: storagePath,
+      imagem_nome: payload.fotoArquivo.name || nomeLimpo,
+      imagem_mime: arquivoComprimido.type || 'image/jpeg',
+      imagem_tamanho: arquivoComprimido.size,
+    };
+  }
+
+  const linha = linhaDoPayload(payload, itemExistente, imagem, user);
+  const { data, error } = itemExistente
+    ? await tabelaCatalogo().update(linha).eq('id', itemExistente.id).select('*').single()
+    : await tabelaCatalogo().insert(linha).select('*').single();
+
+  if (error || !data) {
+    if (pathEnviado) await removerFotoDoStorage(pathEnviado);
+    const duplicado = error?.code === '23505';
+    throw new Error(duplicado
+      ? 'Outro usuário acabou de cadastrar este material no catálogo. Recarregue a lista e tente de novo.'
+      : `Falha ao salvar no catálogo: ${error?.message ?? 'resposta vazia'}`);
+  }
+
+  const itemSalvo = data as CatalogoItem;
+  const pathAnterior = itemExistente?.imagem_path;
+  if (pathAnterior && pathAnterior !== itemSalvo.imagem_path) {
+    await removerFotoDoStorage(pathAnterior);
+  }
+
+  refletirNaListaFixa(itemSalvo);
 
   if (itemSalvo.imagem_path) {
     itemSalvo.url_imagem = await obterUrlFotoCatalogo(itemSalvo.imagem_path);
   }
   return itemSalvo;
+}
+
+/**
+ * Leva para a tabela o que ficou no localStorage de quem cadastrou antes da
+ * tabela existir. Roda ao abrir o catálogo; o que subir sai do aparelho, o
+ * que falhar (sem rede) fica para a próxima abertura.
+ *
+ * A foto não é migrada: até aqui nenhum upload do catálogo tinha dado certo
+ * (a pasta `almox-catalogo/` estava vazia no Storage), então todo
+ * `imagem_path` guardado no aparelho aponta para arquivo inexistente.
+ */
+export async function migrarCatalogoLocalLegado(): Promise<number> {
+  const locais = obterItensCatalogoLocal().filter(i => i.ativo !== false && i.codigo_sap);
+  if (locais.length === 0 || !supabase) return 0;
+
+  const { data: jaNoBanco, error } = await tabelaCatalogo()
+    .select('codigo_sap')
+    .in('codigo_sap', locais.map(i => i.codigo_sap))
+    .eq('ativo', true);
+  if (error) return 0;
+  const existentes = new Set((jaNoBanco ?? []).map((r: { codigo_sap: string }) => r.codigo_sap));
+
+  const pendentes: CatalogoItem[] = [];
+  let migrados = 0;
+  for (const item of locais) {
+    if (existentes.has(item.codigo_sap)) continue;
+    const { error: erroInsert } = await tabelaCatalogo().insert({
+      codigo_sap: item.codigo_sap,
+      descricao: item.descricao || item.codigo_sap,
+      texto_tecnico: item.texto_tecnico,
+      grp_mercad: item.grp_mercad,
+      grupo_mercadorias: item.grupo_mercadorias,
+      classificacao_nivel1: item.classificacao_nivel1,
+      classificacao_nivel2: item.classificacao_nivel2,
+      umb: item.umb,
+      saldo_zl0024: item.saldo_zl0024,
+      observacao: item.observacao,
+      ativo: true,
+      criado_por: item.criado_por,
+      criado_por_nome: item.criado_por_nome,
+      atualizado_por: item.atualizado_por,
+      atualizado_por_nome: item.atualizado_por_nome,
+    });
+    // 23505: outro aparelho já migrou o mesmo material — nada a fazer.
+    if (!erroInsert) migrados += 1;
+    else if (erroInsert.code !== '23505') pendentes.push(item);
+  }
+
+  if (pendentes.length > 0) {
+    salvarItensCatalogoLocal(pendentes);
+  } else if (typeof localStorage !== 'undefined') {
+    try { localStorage.removeItem(CHAVE_CATALOGO_ITENS); } catch { /* ignora */ }
+  }
+  return migrados;
 }
 
 /**
@@ -1360,26 +1437,27 @@ async function removerFotoDoStorage(storagePath: string): Promise<void> {
 }
 
 /**
- * Desativa/remove um item do catálogo local.
+ * Tira o item do catálogo: desativa o registro (o histórico fica) e apaga a
+ * foto do Storage.
  */
 export async function excluirItemCatalogo(id: string, user: Profile): Promise<void> {
-  if (!id) return;
+  if (!id || !supabase) return;
 
-  const itensLocais = obterItensCatalogoLocal();
-  const index = itensLocais.findIndex(i => i.id === id);
-  if (index >= 0) {
-    const item = itensLocais[index];
-    if (item.imagem_path) {
-      await removerFotoDoStorage(item.imagem_path).catch(() => {});
-    }
-    itensLocais[index] = {
-      ...item,
+  const { data: atual, error: erroBusca } = await tabelaCatalogo()
+    .select('imagem_path')
+    .eq('id', id)
+    .maybeSingle();
+  if (erroBusca) throw new Error(`Falha ao consultar o catálogo: ${erroBusca.message}`);
+
+  const { error } = await tabelaCatalogo()
+    .update({
       ativo: false,
       imagem_path: null,
       atualizado_por: user.id,
       atualizado_por_nome: user.name,
-      updated_at: new Date().toISOString(),
-    };
-    salvarItensCatalogoLocal(itensLocais);
-  }
+    })
+    .eq('id', id);
+  if (error) throw new Error(`Falha ao remover do catálogo: ${error.message}`);
+
+  if (atual?.imagem_path) await removerFotoDoStorage(atual.imagem_path);
 }

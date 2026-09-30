@@ -1,94 +1,107 @@
 -- =====================================================================
--- ALMOXARIFADO — Catálogo e Cadastro de Itens com Fotos
--- Formulário operacional: FRM.ALM-0016
--- Permite registrar fotos e especificações técnicas de materiais
--- consumíveis da ZL0024 para exibição na Solicitação de Compras.
+-- Almoxarifado > Catálogo de Itens (FRM.ALM-0016).
+--
+-- O vínculo foto × material ficava só no localStorage de quem cadastrou:
+-- a foto subia ao Storage, mas nenhum outro usuário ou aparelho sabia a que
+-- material ela pertencia. Esta tabela é o catálogo compartilhado.
+--
+-- As fotos continuam no bucket `request-attachments`, pasta `almox-catalogo/`
+-- (já tem leitura/inclusão/remoção para autenticados e é de onde Compras
+-- abre a imagem como anexo). Esta versão substitui a primeira deste arquivo,
+-- que nunca foi aplicada e criava um bucket próprio sem uso no código.
+--
+-- Um registro ativo por material (`codigo_sap`); excluir é desativar
+-- (`ativo = false`), e o material pode voltar ao catálogo com registro novo.
+--
+-- Código `CAT-DDMMYY-NN` (regra 2 do CLAUDE.md), índice reiniciando POR DIA,
+-- gerado no banco pelo trigger abaixo quando o cliente não manda — assim
+-- dois aparelhos cadastrando ao mesmo tempo não disputam o mesmo número.
+--
+-- Cadastro compartilhado do almoxarifado: qualquer usuário autenticado lê,
+-- inclui e atualiza (troca de foto é o uso normal). Não há DELETE.
 -- =====================================================================
 
 create table if not exists public.alm_catalogo_itens (
   id uuid primary key default gen_random_uuid(),
-  codigo_registro text not null,
+  codigo_registro text not null unique,
   codigo_sap text not null,
   descricao text not null,
   texto_tecnico text,
   grp_mercad text,
   grupo_mercadorias text,
-  classificacao_nivel1 text default 'CONSUMÍVEL',
+  classificacao_nivel1 text,
   classificacao_nivel2 text,
   umb text,
-  saldo_zl0024 numeric default 0,
+  saldo_zl0024 numeric,
   imagem_path text,
   imagem_nome text,
   imagem_mime text,
   imagem_tamanho integer,
   observacao text,
   ativo boolean not null default true,
-  criado_por text not null default coalesce((auth.uid())::text, 'SISTEN'),
+  criado_por text,
   criado_por_nome text,
   atualizado_por text,
   atualizado_por_nome text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint alm_catalogo_itens_codigo_sap_key unique (codigo_sap)
+  updated_at timestamptz not null default now()
 );
 
-create index if not exists alm_catalogo_itens_sap_idx on public.alm_catalogo_itens (codigo_sap);
-create index if not exists alm_catalogo_itens_grp_idx on public.alm_catalogo_itens (grp_mercad);
-create index if not exists alm_catalogo_itens_nivel1_idx on public.alm_catalogo_itens (classificacao_nivel1);
-create index if not exists alm_catalogo_itens_nivel2_idx on public.alm_catalogo_itens (classificacao_nivel2);
-create index if not exists alm_catalogo_itens_ativo_idx on public.alm_catalogo_itens (ativo) where ativo;
+create unique index if not exists uq_alm_catalogo_itens_sap_ativo
+  on public.alm_catalogo_itens (codigo_sap) where ativo;
 
--- Permissões na tabela
-revoke all on table public.alm_catalogo_itens from anon;
-grant select, insert, update, delete on table public.alm_catalogo_itens to authenticated;
+-- ---------------------------------------------------------------------
+-- Código e updated_at
+-- ---------------------------------------------------------------------
+create or replace function public.alm_catalogo_itens_antes_gravar()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_ddmmyy text;
+  v_max int;
+begin
+  if tg_op = 'INSERT' and coalesce(trim(new.codigo_registro), '') = '' then
+    -- Serializa a geração do dia: sem isso, dois inserts simultâneos leem o
+    -- mesmo máximo e o segundo cai no unique.
+    perform pg_advisory_xact_lock(hashtext('alm_catalogo_itens_codigo'));
+    v_ddmmyy := to_char((now() at time zone 'America/Bahia')::date, 'DDMMYY');
+    select coalesce(max((regexp_match(codigo_registro, '^CAT-\d{6}-(\d+)$'))[1]::int), 0)
+      into v_max
+      from public.alm_catalogo_itens
+     where codigo_registro like 'CAT-' || v_ddmmyy || '-%';
+    new.codigo_registro := 'CAT-' || v_ddmmyy || '-' || lpad((v_max + 1)::text, 2, '0');
+  end if;
+  new.updated_at := now();
+  return new;
+end;
+$$;
 
+drop trigger if exists trg_alm_catalogo_itens_antes_gravar on public.alm_catalogo_itens;
+create trigger trg_alm_catalogo_itens_antes_gravar
+  before insert or update on public.alm_catalogo_itens
+  for each row execute function public.alm_catalogo_itens_antes_gravar();
+
+-- ---------------------------------------------------------------------
+-- RLS
+-- ---------------------------------------------------------------------
 alter table public.alm_catalogo_itens enable row level security;
 
--- Política de leitura: qualquer usuário autenticado pode consultar o catálogo (inclusive Compras)
-drop policy if exists alm_catalogo_itens_select on public.alm_catalogo_itens;
-create policy alm_catalogo_itens_select on public.alm_catalogo_itens
+drop policy if exists alm_catalogo_itens_sel on public.alm_catalogo_itens;
+create policy alm_catalogo_itens_sel on public.alm_catalogo_itens
   for select to authenticated using (true);
 
--- Política de inserção: autenticado
-drop policy if exists alm_catalogo_itens_insert on public.alm_catalogo_itens;
-create policy alm_catalogo_itens_insert on public.alm_catalogo_itens
-  for insert to authenticated with check (true);
+drop policy if exists alm_catalogo_itens_ins on public.alm_catalogo_itens;
+create policy alm_catalogo_itens_ins on public.alm_catalogo_itens
+  for insert to authenticated with check (auth.uid() is not null);
 
--- Política de atualização: autenticado
-drop policy if exists alm_catalogo_itens_update on public.alm_catalogo_itens;
-create policy alm_catalogo_itens_update on public.alm_catalogo_itens
-  for update to authenticated using (true) with check (true);
+drop policy if exists alm_catalogo_itens_upd on public.alm_catalogo_itens;
+create policy alm_catalogo_itens_upd on public.alm_catalogo_itens
+  for update to authenticated using (true) with check (auth.uid() is not null);
 
--- Política de exclusão: autenticado
-drop policy if exists alm_catalogo_itens_delete on public.alm_catalogo_itens;
-create policy alm_catalogo_itens_delete on public.alm_catalogo_itens
-  for delete to authenticated using (true);
-
--- Bucket de fotos do catálogo caso deseje usar bucket dedicado
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('alm-catalogo', 'alm-catalogo', false, 10485760,
-        array['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'])
-on conflict (id) do nothing;
-
-drop policy if exists "alm_catalogo_objects_read" on storage.objects;
-create policy "alm_catalogo_objects_read" on storage.objects
-  for select to authenticated
-  using (bucket_id = 'alm-catalogo');
-
-drop policy if exists "alm_catalogo_objects_insert" on storage.objects;
-create policy "alm_catalogo_objects_insert" on storage.objects
-  for insert to authenticated
-  with check (bucket_id = 'alm-catalogo');
-
-drop policy if exists "alm_catalogo_objects_update" on storage.objects;
-create policy "alm_catalogo_objects_update" on storage.objects
-  for update to authenticated
-  using (bucket_id = 'alm-catalogo')
-  with check (bucket_id = 'alm-catalogo');
-
-drop policy if exists "alm_catalogo_objects_delete" on storage.objects;
-create policy "alm_catalogo_objects_delete" on storage.objects
-  for delete to authenticated
-  using (bucket_id = 'alm-catalogo');
+revoke all on public.alm_catalogo_itens from anon;
+revoke delete on public.alm_catalogo_itens from authenticated;
+grant select, insert, update on public.alm_catalogo_itens to authenticated;
 
 notify pgrst, 'reload schema';

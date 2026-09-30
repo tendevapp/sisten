@@ -4,8 +4,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { extrairPalavrasChave } from './buscaKeywords';
 import {
   cargaDivergente,
+  buscarItensComPo,
   buscarPedidosParaNc,
   classificarDivergencia,
   entregaParcialAnterior,
@@ -216,6 +218,46 @@ describe('posAbertosDoFornecedor', () => {
 
   it('termo vazio devolve nada', () => {
     expect(posAbertosDoFornecedor([cache()], '  ')).toEqual([]);
+  });
+});
+
+describe('buscarItensComPo', () => {
+  it('só traz linhas que têm PO — requisição sem pedido fica de fora', () => {
+    const recs = [
+      cache({ documento_compra: '4600000001', ri_po: 'a', texto_breve: 'Parafuso sextavado M12' }),
+      cache({ documento_compra: '', ri_po: 'b', texto_breve: 'Parafuso sextavado M16' }),
+      cache({ documento_compra: null, ri_po: 'c', texto_breve: 'Parafuso sextavado M20' }),
+    ];
+    const r = buscarItensComPo(recs, extrairPalavrasChave('parafuso'));
+    expect(r.map((i) => i.linhaRef)).toEqual(['a']);
+  });
+
+  it('exige todas as palavras (AND), sem acento e em qualquer ordem', () => {
+    const recs = [
+      cache({ documento_compra: '1', ri_po: 'a', texto_breve: 'VÁLVULA ESFERA 2 POL' }),
+      cache({ documento_compra: '2', ri_po: 'b', texto_breve: 'Válvula gaveta 2 pol' }),
+    ];
+    expect(buscarItensComPo(recs, extrairPalavrasChave('esfera valvula')).map((i) => i.linhaRef)).toEqual(['a']);
+  });
+
+  it('também casa pelo código do material', () => {
+    const recs = [cache({ documento_compra: '1', ri_po: 'a', material_code: '20000999' })];
+    expect(buscarItensComPo(recs, extrairPalavrasChave('20000999'))).toHaveLength(1);
+  });
+
+  it('tira zeros à esquerda do PO e ordena saldo pendente primeiro', () => {
+    const recs = [
+      cache({ documento_compra: '0004600000001', ri_po: 'zerado', qtd_po: 10, qtd_fornecida_po: 10 }),
+      cache({ documento_compra: '4600000009', ri_po: 'aberto', qtd_po: 10, qtd_fornecida_po: 2 }),
+    ];
+    const r = buscarItensComPo(recs, ['parafuso']);
+    expect(r.map((i) => i.linhaRef)).toEqual(['aberto', 'zerado']);
+    expect(r[1].numero).toBe('4600000001');
+    expect(r[0].pendente).toBe(8);
+  });
+
+  it('sem palavras devolve vazio', () => {
+    expect(buscarItensComPo([cache({ documento_compra: '1' })], [])).toEqual([]);
   });
 });
 

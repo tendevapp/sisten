@@ -11,6 +11,7 @@ import { Undo2 } from 'lucide-react';
 import {
   FICHA_EPI_FORMULARIO,
   MOTIVOS_MED,
+  ROTULO_ASSINATURA_FICHA_FISICA,
   TERMO_FICHA_EPI,
   formatarDataBR,
   linhasGradeFichaEpi,
@@ -52,6 +53,8 @@ export default function FichaEpiDocumento({ fichas, mostrarAssinatura, onRegistr
   const unicaCancelada = fichas.length === 1 && fichas[0].status === 'CANCELADA';
   const linhas = linhasGradeFichaEpi(unicaCancelada ? fichas.map(f => ({ ...f, status: 'ATIVA' })) : fichas);
   const assinaturaPorFicha = new Map(fichas.map(f => [f.id, f.assinatura_colaborador]));
+  // Ficha em papel convertida: não há imagem, o rótulo diz onde está a assinatura (não é dado sensível).
+  const fichaFisica = new Map(fichas.map(f => [f.id, f.origem === 'HISTORICO_PAPEL']));
   const primeiro = (campo: 'data_admissao' | 'data_demissao') => recentes.find(f => f[campo])?.[campo] ?? null;
   const vazias = Math.max(0, LINHAS_MINIMAS - linhas.length);
 
@@ -101,7 +104,9 @@ export default function FichaEpiDocumento({ fichas, mostrarAssinatura, onRegistr
           ))}
           <div className="mx-auto mt-4 w-2/3 pb-2 text-center">
             <div className="flex h-12 items-end justify-center">
-              {mostrarAssinatura && <Assinatura src={assinaturaPorFicha.get(atual.id)} className="max-h-12" />}
+              {fichaFisica.get(atual.id)
+                ? <span className="pb-1 text-[11px] font-semibold text-slate-600">{ROTULO_ASSINATURA_FICHA_FISICA}</span>
+                : mostrarAssinatura && <Assinatura src={assinaturaPorFicha.get(atual.id)} className="max-h-12" />}
             </div>
             <div className="border-t border-black pt-0.5 text-[12px]">Assinatura do Funcionário</div>
             {mostrarAssinatura && assinaturaPorFicha.get(atual.id) && (
@@ -134,7 +139,11 @@ export default function FichaEpiDocumento({ fichas, mostrarAssinatura, onRegistr
                 <td className={borda}>{linha.quantidade}</td>
                 <td className={`${borda} px-1 text-left`}>{linha.descricao}</td>
                 <td className={borda}>{formatarDataBR(linha.dataEntrega)}</td>
-                <td className={borda}>{mostrarAssinatura && <Assinatura src={assinaturaPorFicha.get(linha.fichaId)} className="max-h-8" />}</td>
+                <td className={borda}>
+                  {fichaFisica.get(linha.fichaId)
+                    ? <span className="text-[9px] font-semibold text-slate-600">{ROTULO_ASSINATURA_FICHA_FISICA}</span>
+                    : mostrarAssinatura && <Assinatura src={assinaturaPorFicha.get(linha.fichaId)} className="max-h-8" />}
+                </td>
                 <td className={borda} title={MOTIVOS_MED[linha.motivo]}>{linha.motivo}</td>
                 <td className={borda}>{formatarDataBR(linha.dataDevolucao)}</td>
                 <td className={`${borda} px-1`}>
