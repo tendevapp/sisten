@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-30',
+    resumo: 'SSMA > Ficha de EPI — Análise de Consumo e Detalhamento por Colaborador (`AnaliseConsumoEpi.tsx`, `ConsumoColaboradorModal.tsx`, `fichaEpi.ts`, `fichaEpi.test.ts`, `ssmaFichaEpiApi.ts`, `diretrizes.ts`): 1. Implementado modal analítico `ConsumoColaboradorModal` para drilldown de consumo individual de EPIs com filtros, busca e badges visuais de trocas precoces; 2. Na API e modelo analítico (`fichaEpi.ts`, `ssmaFichaEpiApi.ts`), adicionada a função `detalharColaborador` cruzando datas de entrega, códigos e descrições SAP (`materials`), cálculo de duração mediana e previsão de reposição; 3. Cobertura com testes unitários em `fichaEpi.test.ts` (35 testes passando com 100% de sucesso).',
+  },
+  {
+    data: '2026-09-30',
     resumo: 'Produção > Plano de Expedição GW — Edição Inline de Semanas, Torres e Tramos (`ProducaoPlanoExpedicao.tsx`, `diretrizes.ts`): 1. Permitida a edição inline das colunas de Semana (W1 a W53), Torre (input numérico > 0) e Tramo (T5 a T1) no modo Dados do Plano de Expedição (/producao/expedicao/dados); 2. Implementados controles reativos com atualização otimista instantânea e persistência via `atualizarPlanoExpedicao`, reordenando automaticamente as linhas e agrupamentos por semana e torre; 3. Exemplo operacional corrigido: registro de T1 da Torre 2 (ID 3158) carregado em 18/09/2026 reclassificado da W38 para a W37.',
   },
   {

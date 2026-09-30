@@ -232,13 +232,26 @@ export async function listarConsumoEpi(): Promise<LinhaConsumo[]> {
   const pagina = 1000;
   for (let inicio = 0; ; inicio += pagina) {
     const { data, error } = await (supabase.from as any)('ssma_fichas_epi_consumo')
-      .select('item_id, ficha_id, pessoa_id, registro, nome, setor, funcao_id, funcao_nome, data_entrega, grupo_epi, categoria, quantidade, motivo, fora_da_matriz, data_devolucao')
+      .select('item_id, ficha_id, pessoa_id, registro, nome, setor, funcao_id, funcao_nome, data_entrega, grupo_epi, categoria, codigo_sap, descricao, quantidade, motivo, fora_da_matriz, data_devolucao')
       .order('data_entrega')
       .order('item_id')
       .range(inicio, inicio + pagina - 1);
     if (error) throw error;
-    linhas.push(...(data || []).map((l: LinhaConsumo) => ({ ...l, quantidade: Number(l.quantidade) })));
+    linhas.push(...(data || []).map(({ descricao, ...l }: LinhaConsumo & { descricao: string | null }) => ({
+      ...l, quantidade: Number(l.quantidade), descricao_sap: descricao ?? null,
+    })));
     if (!data || data.length < pagina) break;
   }
-  return linhas;
+
+  // Descrição oficial do material no SAP; sem ela, fica a descrição do item da ficha.
+  const codigos = [...new Set(linhas.map(l => l.codigo_sap?.trim()).filter((c): c is string => !!c))];
+  const descricoesSap = new Map<string, string>();
+  for (let i = 0; i < codigos.length; i += 200) {
+    const { data, error } = await (supabase.from as any)('materials')
+      .select('material_code, description')
+      .in('material_code', codigos.slice(i, i + 200));
+    if (error) break; // sem a tabela do SAP a análise segue com a descrição da ficha
+    for (const m of data || []) if (m.description) descricoesSap.set(String(m.material_code).trim(), String(m.description).trim());
+  }
+  return linhas.map(l => ({ ...l, descricao_sap: descricoesSap.get(l.codigo_sap?.trim() ?? '') ?? l.descricao_sap }));
 }

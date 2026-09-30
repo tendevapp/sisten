@@ -2,11 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   analisarConsumo,
   colaboradoresSemFicha,
+  detalharColaborador,
   diasEntre,
   epiDoBookPorCodigoSap,
+  filtrarConsumo,
+  filtrosConsumoAtivos,
+  filtrosConsumoVazios,
+  SEM_SETOR,
   intervalosDeReposicao,
   linhasParaPayload,
   linhaSapForaDoBook,
+  materiaisSapPorGrupo,
   mediana,
   montarLinhasFicha,
   pendentesDevolucaoPorGrupo,
@@ -17,6 +23,7 @@ import {
   type LinhaConsumo,
   type MotivoMed,
 } from './fichaEpi';
+import { extrairPalavrasChave } from './buscaKeywords';
 import type { SsmaBookEpi } from './ssmaBookEpisApi';
 import type { SsmaEpiFuncao, SsmaEpiPorFuncao } from './ssmaEpiPorFuncaoApi';
 
@@ -185,7 +192,7 @@ let seq = 0;
 const consumo = (pessoa: string, grupo: string, data: string, motivo: MotivoMed, extra: Partial<LinhaConsumo> = {}): LinhaConsumo => ({
   item_id: `i${++seq}`, ficha_id: `${pessoa}-${data}`, pessoa_id: pessoa, registro: pessoa, nome: pessoa.toUpperCase(),
   setor: 'PRODUCAO', funcao_id: 'f-sold', funcao_nome: 'SOLDADOR', data_entrega: data, grupo_epi: grupo,
-  categoria: 'CAT', quantidade: 1, motivo, fora_da_matriz: false, data_devolucao: null, ...extra,
+  categoria: 'CAT', codigo_sap: null, descricao_sap: null, quantidade: 1, motivo, fora_da_matriz: false, data_devolucao: null, ...extra,
 });
 
 describe('análise de consumo', () => {
@@ -239,6 +246,96 @@ describe('análise de consumo', () => {
 
   it('lista ativos sem ficha', () => {
     expect(colaboradoresSemFicha([{ id: 'a' }, { id: 'b' }], ['a']).map(p => p.id)).toEqual(['b']);
+  });
+});
+
+describe('filtros cruzados do consumo', () => {
+  const base = [
+    consumo('ana', 'LUVA', '2026-01-01', 1, { funcao_id: 'f-sold', setor: 'PRODUCAO' }),
+    consumo('ana', 'BOTINA', '2026-01-01', 1, { funcao_id: 'f-sold', setor: 'PRODUCAO' }),
+    consumo('bia', 'LUVA', '2026-02-01', 2, { funcao_id: 'f-lix', funcao_nome: 'LIXADOR', setor: null }),
+    consumo('caio', 'CAPACETE', '2026-03-01', 3, { funcao_id: 'f-lix', funcao_nome: 'LIXADOR', setor: 'PRODUCAO' }),
+  ];
+
+  it('combina filtros com E entre eles e OU dentro de cada um', () => {
+    const f = { ...filtrosConsumoVazios(), funcoes: new Set(['f-lix']), epis: new Set(['CAT|LUVA', 'CAT|CAPACETE']) };
+    expect(filtrarConsumo(base, f).map(l => l.pessoa_id)).toEqual(['bia', 'caio']);
+    expect(filtrarConsumo(base, { ...f, motivos: new Set(['3']) }).map(l => l.pessoa_id)).toEqual(['caio']);
+  });
+
+  it('trata setor vazio como "Sem setor" e respeita o período', () => {
+    expect(filtrarConsumo(base, { ...filtrosConsumoVazios(), setores: new Set([SEM_SETOR]) }).map(l => l.pessoa_id)).toEqual(['bia']);
+    expect(filtrarConsumo(base, filtrosConsumoVazios('2026-02-15')).map(l => l.pessoa_id)).toEqual(['caio']);
+  });
+
+  it('busca por todas as palavras, sem acento e em vários campos', () => {
+    expect(filtrarConsumo(base, { ...filtrosConsumoVazios(), palavras: extrairPalavrasChave('lixador luva') }).map(l => l.pessoa_id)).toEqual(['bia']);
+    expect(filtrarConsumo(base, { ...filtrosConsumoVazios(), palavras: extrairPalavrasChave('ANA') }).length).toBe(2);
+  });
+
+  it('ignorar uma dimensão devolve as opções que os outros filtros permitem', () => {
+    const f = { ...filtrosConsumoVazios(), funcoes: new Set(['f-lix']), epis: new Set(['CAT|LUVA']) };
+    // Para listar os EPIs, o filtro de EPI sai e a função continua valendo.
+    expect(new Set(filtrarConsumo(base, f, 'epis').map(l => l.grupo_epi))).toEqual(new Set(['LUVA', 'CAPACETE']));
+  });
+
+  it('busca pelo código e pela descrição SAP e agrupa os materiais de cada EPI', () => {
+    const linhas = [
+      consumo('ana', 'LUVA', '2026-01-01', 1, { codigo_sap: '1001', descricao_sap: 'LUVA VAQUETA P' }),
+      consumo('bia', 'LUVA', '2026-01-02', 1, { codigo_sap: '1002', descricao_sap: 'LUVA VAQUETA G', quantidade: 3 }),
+      consumo('caio', 'BOTINA', '2026-01-03', 1, { codigo_sap: '2001', descricao_sap: 'BOTINA COURO' }),
+    ];
+    expect(filtrarConsumo(linhas, { ...filtrosConsumoVazios(), palavras: extrairPalavrasChave('1002') }).map(l => l.pessoa_id)).toEqual(['bia']);
+    expect(filtrarConsumo(linhas, { ...filtrosConsumoVazios(), palavras: extrairPalavrasChave('vaqueta') }).length).toBe(2);
+    expect(materiaisSapPorGrupo(linhas).get('CAT|LUVA')).toEqual([
+      { codigo: '1002', descricao: 'LUVA VAQUETA G', unidades: 3 },
+      { codigo: '1001', descricao: 'LUVA VAQUETA P', unidades: 1 },
+    ]);
+    expect(analisarConsumo(linhas).porEpi[0].materiaisSap.map(m => m.codigo)).toEqual(['1002', '1001']);
+    expect(detalharColaborador('bia', linhas)!.porEpi[0].materiaisSap[0].codigo).toBe('1002');
+  });
+
+  it('conta filtros ativos', () => {
+    expect(filtrosConsumoAtivos(filtrosConsumoVazios('2026-01-01'), '2026-01-01')).toBe(0);
+    expect(filtrosConsumoAtivos({ ...filtrosConsumoVazios(), epis: new Set(['a', 'b']), palavras: ['x'] }, null)).toBe(3);
+  });
+});
+
+describe('detalhe de consumo do colaborador', () => {
+  const historico = [
+    consumo('ana', 'LUVA', '2026-01-01', 1),
+    consumo('ana', 'LUVA', '2026-01-31', 2),
+    consumo('ana', 'LUVA', '2026-03-02', 2),
+    consumo('ana', 'LUVA', '2026-04-01', 2),
+    consumo('bia', 'LUVA', '2026-01-01', 1),
+    consumo('bia', 'LUVA', '2026-01-08', 3, { quantidade: 2 }),
+    consumo('bia', 'BOTINA', '2026-01-01', 1),
+  ];
+
+  it('devolve null quando o colaborador não tem entregas', () => {
+    expect(detalharColaborador('zé', historico)).toBeNull();
+  });
+
+  it('mostra duração do colaborador × mediana da função e marca a troca precoce', () => {
+    const bia = detalharColaborador('bia', historico)!;
+    expect(bia.resumo).toMatchObject({ unidades: 4, tiposEpi: 2, perdas: 2, trocasPrecoces: 1, primeiraEntrega: '2026-01-01', ultimaEntrega: '2026-01-08', duracaoMedianaDias: 7 });
+
+    const luva = bia.porEpi.find(e => e.grupoEpi === 'LUVA')!;
+    expect(luva).toMatchObject({ unidades: 3, entregas: 2, perdas: 2, duracaoMedianaDias: 7, referenciaFuncaoDias: 30, precoces: 1, reposicaoPrevista: '2026-02-07' });
+    // Sem reposição medida (só uma entrega) → sem duração nem previsão pela própria história.
+    expect(bia.porEpi.find(e => e.grupoEpi === 'BOTINA')).toMatchObject({ duracaoMedianaDias: null, referenciaFuncaoDias: null, reposicaoPrevista: null });
+
+    // Da mais recente para a mais antiga, com os dias desde a entrega anterior do mesmo EPI.
+    expect(bia.entregas.map(e => [e.data, e.grupoEpi, e.diasDesdeAnterior, e.precoce])).toEqual([
+      ['2026-01-08', 'LUVA', 7, true],
+      ['2026-01-01', 'BOTINA', null, false],
+      ['2026-01-01', 'LUVA', null, false],
+    ]);
+  });
+
+  it('sem amostras suficientes na função não há referência nem troca precoce', () => {
+    const ana = detalharColaborador('ana', [consumo('ana', 'LUVA', '2026-01-01', 1), consumo('ana', 'LUVA', '2026-01-05', 2)])!;
+    expect(ana.porEpi[0]).toMatchObject({ duracaoMedianaDias: 4, referenciaFuncaoDias: null, precoces: 0, reposicaoPrevista: '2026-01-09' });
   });
 });
 

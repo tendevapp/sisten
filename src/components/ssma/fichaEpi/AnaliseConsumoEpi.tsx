@@ -13,28 +13,44 @@ import {
   AlertTriangle,
   BarChart3,
   Boxes,
+  Briefcase,
+  Building2,
   CalendarRange,
   Clock,
   FileText,
+  HardHat,
   Loader2,
   PackageX,
   ShieldQuestion,
   Timer,
   UserRoundX,
   Users,
+  X,
 } from 'lucide-react';
 import KpiCard from '../../charts/KpiCard';
 import ChartCard from '../../charts/ChartCard';
 import ChartTooltip from '../../charts/ChartTooltip';
 import { estimateCategoryChartWidth, useChartConfig } from '../../charts/chartDefaults';
 import { useToast } from '../../ui/Toast';
+import MultiSelectFilter from '../../ui/MultiSelectFilter';
+import SearchKeywordsChips from '../../ui/SearchKeywordsChips';
+import ConsumoColaboradorModal from './ConsumoColaboradorModal';
 import {
   AMOSTRAS_MINIMAS_DURACAO,
   analisarConsumo,
+  chaveGrupo,
   colaboradoresSemFicha,
+  filtrarConsumo,
+  filtrosConsumoAtivos,
+  filtrosConsumoVazios,
   formatarDataBR,
   formatarQuantidade,
   hojeISO,
+  materiaisSapPorGrupo,
+  MOTIVOS_MED,
+  SEM_SETOR,
+  type DimensaoFiltroConsumo,
+  type FiltrosConsumo,
   type LinhaConsumo,
 } from '../../../lib/fichaEpi';
 import {
@@ -93,9 +109,14 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
   const [pessoas, setPessoas] = useState<ColaboradorFichaEpi[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [periodo, setPeriodo] = useState('365');
-  const [funcaoId, setFuncaoId] = useState('');
-  const [setor, setSetor] = useState('');
+  const [filtros, setFiltros] = useState<FiltrosConsumo>(() => filtrosConsumoVazios(inicioDoPeriodo('365')));
   const [verTodosColab, setVerTodosColab] = useState(false);
+  const [verTodosEpis, setVerTodosEpis] = useState(false);
+  const [pessoaAberta, setPessoaAberta] = useState<string | null>(null);
+
+  const alterar = (parcial: Partial<FiltrosConsumo>) => setFiltros(f => ({ ...f, ...parcial }));
+  const trocarPeriodo = (valor: string) => { setPeriodo(valor); alterar({ inicio: inicioDoPeriodo(valor) }); };
+  const limpar = () => { setPeriodo('365'); setFiltros(filtrosConsumoVazios(inicioDoPeriodo('365'))); };
 
   useEffect(() => {
     Promise.all([listarConsumoEpi(), listarColaboradoresAtivos()])
@@ -104,19 +125,41 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
       .finally(() => setCarregando(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const funcoes = useMemo(
-    () => [...new Map(todas.map(l => [l.funcao_id, l.funcao_nome])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR')),
-    [todas],
-  );
-  const setores = useMemo(() => [...new Set(todas.map(l => l.setor || 'Sem setor'))].sort(), [todas]);
+  const filtradas = useMemo(() => filtrarConsumo(todas, filtros), [todas, filtros]);
 
-  const filtradas = useMemo(() => {
-    const inicio = inicioDoPeriodo(periodo);
-    return todas.filter(l =>
-      (!inicio || l.data_entrega >= inicio)
-      && (!funcaoId || l.funcao_id === funcaoId)
-      && (!setor || (l.setor || 'Sem setor') === setor));
-  }, [todas, periodo, funcaoId, setor]);
+  // Opções de cada filtro saem das linhas filtradas pelos DEMAIS filtros: escolher
+  // uma função deixa só os EPIs, setores e colaboradores dela, e assim por diante.
+  // O que já está marcado continua na lista para poder ser desmarcado.
+  const opcoes = useMemo(() => {
+    const dimensao = (ignorar: DimensaoFiltroConsumo) => filtrarConsumo(todas, filtros, ignorar);
+    const unir = (valores: Map<string, string>, marcados: Set<string>, rotuloDe: (id: string) => string) => {
+      const mapa = new Map(valores);
+      marcados.forEach(id => { if (!mapa.has(id)) mapa.set(id, rotuloDe(id)); });
+      return [...mapa.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+    };
+    // "GRUPO · 1352000, 1352001 (+2)": buscar pelo código SAP no filtro também acha o EPI.
+    const materiais = materiaisSapPorGrupo(todas);
+    const rotuloEpi = (l: LinhaConsumo) => {
+      const chave = chaveGrupo(l.categoria, l.grupo_epi);
+      const codigos = (materiais.get(chave) ?? []).map(m => m.codigo);
+      const extra = codigos.length > 3 ? ` (+${codigos.length - 3})` : '';
+      return codigos.length ? `${l.grupo_epi} · ${codigos.slice(0, 3).join(', ')}${extra}` : l.grupo_epi;
+    };
+    const rotulos = {
+      funcoes: new Map(todas.map(l => [l.funcao_id, l.funcao_nome])),
+      epis: new Map(todas.map(l => [chaveGrupo(l.categoria, l.grupo_epi), rotuloEpi(l)])),
+      pessoas: new Map(todas.map(l => [l.pessoa_id, `${l.nome} · ${l.registro}`])),
+    };
+    return {
+      funcoes: unir(new Map(dimensao('funcoes').map(l => [l.funcao_id, l.funcao_nome])), filtros.funcoes, id => rotulos.funcoes.get(id) ?? id),
+      setores: unir(new Map(dimensao('setores').map(l => { const s = l.setor?.trim() || SEM_SETOR; return [s, s]; })), filtros.setores, id => id),
+      epis: unir(new Map(dimensao('epis').map(l => [chaveGrupo(l.categoria, l.grupo_epi), rotuloEpi(l)])), filtros.epis, id => rotulos.epis.get(id) ?? id),
+      pessoas: unir(new Map(dimensao('pessoas').map(l => [l.pessoa_id, `${l.nome} · ${l.registro}`])), filtros.pessoas, id => rotulos.pessoas.get(id) ?? id),
+      motivos: unir(new Map(dimensao('motivos').map(l => [String(l.motivo), `${l.motivo}. ${MOTIVOS_MED[l.motivo]}`])), filtros.motivos, id => id),
+    };
+  }, [todas, filtros]);
+  const rotuloDe = (lista: [string, string][]) => { const m = new Map(lista); return (id: string) => m.get(id) ?? id; };
+  const filtrosAtivos = filtrosConsumoAtivos(filtros, filtros.inicio) + (periodo !== '365' ? 1 : 0);
 
   const analise = useMemo(() => analisarConsumo(filtradas, todas), [filtradas, todas]);
   const semFicha = useMemo(() => colaboradoresSemFicha(pessoas, todas.map(l => l.pessoa_id)), [pessoas, todas]);
@@ -137,27 +180,48 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
   }
 
   const { resumo } = analise;
-  const topEpis = analise.porEpi.slice(0, 12).map(e => ({ nome: e.grupoEpi, valor: e.unidades, perdas: e.perdas, colaboradores: e.colaboradores, duracao: e.duracaoMedianaDias }));
+  const topEpis = analise.porEpi.slice(0, 12).map(e => ({ nome: e.grupoEpi, valor: e.unidades, perdas: e.perdas, colaboradores: e.colaboradores, duracao: e.duracaoMedianaDias, sap: e.materiaisSap.map(m => `${m.codigo}${m.descricao ? ` · ${m.descricao}` : ''}`) }));
   const serieMensal = analise.porMes.map(m => ({ mes: rotuloMes(m.mes), reposicao: m.unidades - m.perdas, perdas: m.perdas }));
   const colaboradores = verTodosColab ? analise.porColaborador : analise.porColaborador.slice(0, 15);
 
   return (
     <div className="space-y-5">
       {/* Filtros */}
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <CalendarRange className="h-4 w-4 text-slate-400" />
-        <select value={periodo} onChange={e => setPeriodo(e.target.value)} className={selectCls} aria-label="Período">
-          {PERIODOS.map(p => <option key={p.valor} value={p.valor}>{p.rotulo}</option>)}
-        </select>
-        <select value={funcaoId} onChange={e => setFuncaoId(e.target.value)} className={selectCls} aria-label="Função">
-          <option value="">Todas as funções</option>
-          {funcoes.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
-        </select>
-        <select value={setor} onChange={e => setSetor(e.target.value)} className={selectCls} aria-label="Setor">
-          <option value="">Todos os setores</option>
-          {setores.map(s => <option key={s}>{s}</option>)}
-        </select>
+      <div className="space-y-2.5 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <SearchKeywordsChips
+          chips={filtros.palavras}
+          onChangeChips={palavras => alterar({ palavras })}
+          accent="brand"
+          compact
+          placeholder="Palavras-chave — colaborador, registro, função, EPI, código ou descrição SAP (Enter adiciona)"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <CalendarRange className="h-4 w-4 text-slate-400" />
+          <select value={periodo} onChange={e => trocarPeriodo(e.target.value)} className={selectCls} aria-label="Período">
+            {PERIODOS.map(p => <option key={p.valor} value={p.valor}>{p.rotulo}</option>)}
+          </select>
+          <MultiSelectFilter label="EPI" allLabel="Todos" icon={HardHat} options={opcoes.epis.map(([id]) => id)} renderOption={rotuloDe(opcoes.epis)} selected={filtros.epis} onChange={epis => alterar({ epis })} searchable className="min-w-[190px]" panelClassName="w-80" />
+          <MultiSelectFilter label="Colaborador" allLabel="Todos" icon={Users} options={opcoes.pessoas.map(([id]) => id)} renderOption={rotuloDe(opcoes.pessoas)} selected={filtros.pessoas} onChange={pessoas => alterar({ pessoas })} searchable className="min-w-[190px]" panelClassName="w-80" />
+          <MultiSelectFilter label="Função" allLabel="Todas" icon={Briefcase} options={opcoes.funcoes.map(([id]) => id)} renderOption={rotuloDe(opcoes.funcoes)} selected={filtros.funcoes} onChange={funcoes => alterar({ funcoes })} searchable className="min-w-[170px]" panelClassName="w-80" />
+          <MultiSelectFilter label="Setor" allLabel="Todos" icon={Building2} options={opcoes.setores.map(([id]) => id)} renderOption={rotuloDe(opcoes.setores)} selected={filtros.setores} onChange={setores => alterar({ setores })} className="min-w-[160px]" panelClassName="w-72" />
+          <MultiSelectFilter label="Motivo" allLabel="Todos" icon={PackageX} options={opcoes.motivos.map(([id]) => id)} renderOption={rotuloDe(opcoes.motivos)} selected={filtros.motivos} onChange={motivos => alterar({ motivos })} searchable={false} className="min-w-[160px]" panelClassName="w-80" />
+          {filtrosAtivos > 0 && (
+            <button type="button" onClick={limpar} className="ml-auto inline-flex items-center gap-1 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-[#0056c6] dark:hover:bg-slate-800">
+              <X className="h-3.5 w-3.5" />Limpar filtros ({filtrosAtivos})
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-slate-500">
+          Os filtros se combinam: cada lista mostra só o que existe com os outros já escolhidos. Fora do período, o histórico continua sendo usado para calcular as durações.
+        </p>
       </div>
+
+      {!filtradas.length && (
+        <div className="rounded-2xl border border-dashed border-slate-300 px-6 py-10 text-center text-xs text-slate-500 dark:border-slate-700">
+          Nenhuma entrega com esses filtros.{' '}
+          <button type="button" onClick={limpar} className="font-bold text-[#0056c6] hover:underline">Limpar filtros</button>
+        </div>
+      )}
 
       {/* Indicadores */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
@@ -186,6 +250,7 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
                       { label: 'Perdas (motivo 3)', value: formatarQuantidade(payload[0].payload.perdas) },
                       { label: 'Colaboradores', value: payload[0].payload.colaboradores },
                       { label: 'Duração mediana', value: fmtDias(payload[0].payload.duracao) },
+                      ...(payload[0].payload.sap as string[]).slice(0, 3).map((s, i) => ({ label: i === 0 ? 'SAP' : '', value: s })),
                     ]}
                   />
                 ) : null}
@@ -214,6 +279,44 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
           </ResponsiveContainer>
         </ChartCard>
       </div>
+
+      {/* Consumo por EPI, com o material SAP */}
+      <Secao titulo="Consumo por EPI" descricao="Cada EPI com os materiais SAP entregues (código e descrição do cadastro SAP). Um EPI pode reunir vários códigos, como tamanhos." icone={Boxes}>
+        {analise.porEpi.length === 0 ? (
+          <p className="px-4 py-8 text-center text-xs text-slate-500">Nenhum EPI entregue com esses filtros.</p>
+        ) : (
+          <>
+            <div className="max-h-[420px] overflow-auto">
+              <table className="w-full min-w-[760px] text-left text-xs">
+                <thead className="sticky top-0 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                  <tr><th className={`${thCls} pl-4`}>EPI</th><th className={thCls}>Código · descrição SAP</th><th className={`${thCls} text-right`}>Unid.</th><th className={`${thCls} text-right`}>Colab.</th><th className={`${thCls} text-right`}>Perdas</th><th className={`${thCls} pr-4 text-right`}>Duração mediana</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {(verTodosEpis ? analise.porEpi : analise.porEpi.slice(0, 15)).map(e => (
+                    <tr key={e.chave} className="align-top text-slate-700 dark:text-slate-200">
+                      <td className="px-3 py-2 pl-4 font-semibold">{e.grupoEpi}</td>
+                      <td className="px-3 py-2">
+                        {e.materiaisSap.length === 0 ? <span className="text-slate-400">—</span> : e.materiaisSap.map(m => (
+                          <p key={m.codigo} className="leading-snug"><span className="font-mono font-semibold">{m.codigo}</span>{m.descricao ? <span className="text-slate-500"> · {m.descricao}</span> : null}<span className="text-slate-400"> ({formatarQuantidade(m.unidades)} un.)</span></p>
+                        ))}
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{formatarQuantidade(e.unidades)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{e.colaboradores}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${e.perdas ? 'font-bold text-red-600 dark:text-red-400' : ''}`}>{formatarQuantidade(e.perdas)}</td>
+                      <td className="px-3 py-2 pr-4 text-right tabular-nums">{fmtDias(e.duracaoMedianaDias)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {analise.porEpi.length > 15 && (
+              <button type="button" onClick={() => setVerTodosEpis(v => !v)} className="w-full border-t border-slate-100 py-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50/60 dark:border-slate-800 dark:text-emerald-400 dark:hover:bg-emerald-950/20">
+                {verTodosEpis ? 'Mostrar só os 15 mais entregues' : `Ver todos os ${analise.porEpi.length} EPIs`}
+              </button>
+            )}
+          </>
+        )}
+      </Secao>
 
       {/* Duração por função */}
       <Secao titulo="Quanto dura cada EPI, por função" descricao={`Dias entre duas entregas do mesmo EPI ao mesmo colaborador, quando a segunda é reposição (motivos 2 e 3). Referência confiável a partir de ${AMOSTRAS_MINIMAS_DURACAO} reposições.`} icone={Clock}>
@@ -252,7 +355,10 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {colaboradores.map(p => (
                 <tr key={p.pessoaId} className="text-slate-700 dark:text-slate-200">
-                  <td className="px-3 py-2 pl-4"><p className="font-semibold">{p.nome}</p><p className="font-mono text-[11px] text-slate-500">{p.registro}</p></td>
+                  <td className="px-3 py-2 pl-4">
+                    <button type="button" onClick={() => setPessoaAberta(p.pessoaId)} title="Abrir detalhamento e durações" className="text-left font-semibold text-[#0056c6] underline-offset-2 hover:underline dark:text-sky-400">{p.nome}</button>
+                    <p className="font-mono text-[11px] text-slate-500">{p.registro}</p>
+                  </td>
                   <td className="px-3 py-2 text-slate-500">{p.funcaoNome}</td>
                   <td className="px-3 py-2 text-right font-bold tabular-nums">{formatarQuantidade(p.unidades)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{p.tiposEpi}</td>
@@ -348,6 +454,17 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
           </ul>
         )}
       </Secao>
+
+      {pessoaAberta && (
+        <ConsumoColaboradorModal
+          pessoaId={pessoaAberta}
+          historico={todas}
+          onClose={() => setPessoaAberta(null)}
+          onLancarFicha={pessoas.some(p => p.id === pessoaAberta)
+            ? () => { const p = pessoas.find(x => x.id === pessoaAberta); setPessoaAberta(null); if (p) onLancarFicha(p); }
+            : undefined}
+        />
+      )}
     </div>
   );
 }

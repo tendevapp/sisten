@@ -7,6 +7,7 @@
  * arquivo decide, e os testes cobrem as decisões.
  */
 
+import { casarTokens } from './buscaKeywords';
 import type { SsmaBookEpi } from './ssmaBookEpisApi';
 import type { SsmaEpiFuncao, SsmaEpiPorFuncao } from './ssmaEpiPorFuncaoApi';
 import type { ClassificacaoEpiFuncao } from './epiPorFuncaoImportacao';
@@ -535,16 +536,45 @@ export interface LinhaConsumo {
   data_entrega: string;
   grupo_epi: string;
   categoria: string | null;
+  /** Código do material no SAP gravado no item da ficha. */
+  codigo_sap: string | null;
+  /** Descrição do material no SAP (`materials`); a API preenche com a do item na falta. */
+  descricao_sap: string | null;
   quantidade: number;
   motivo: MotivoMed;
   fora_da_matriz: boolean;
   data_devolucao: string | null;
 }
 
+/** Um material SAP dentro de um EPI (o grupo agrupa tamanhos/variações). */
+export interface MaterialSapConsumo {
+  codigo: string;
+  descricao: string | null;
+  unidades: number;
+}
+
+/** Materiais SAP distintos de cada EPI (chave de `chaveGrupo`), do mais entregue ao menos. */
+export function materiaisSapPorGrupo(linhas: LinhaConsumo[]): Map<string, MaterialSapConsumo[]> {
+  const porGrupo = new Map<string, Map<string, MaterialSapConsumo>>();
+  for (const l of linhas) {
+    const codigo = l.codigo_sap?.trim();
+    if (!codigo) continue;
+    const chave = chaveGrupo(l.categoria, l.grupo_epi);
+    const materiais = porGrupo.get(chave) ?? new Map<string, MaterialSapConsumo>();
+    const atual = materiais.get(codigo) ?? { codigo, descricao: l.descricao_sap, unidades: 0 };
+    atual.unidades += Number(l.quantidade);
+    if (!atual.descricao) atual.descricao = l.descricao_sap;
+    materiais.set(codigo, atual);
+    porGrupo.set(chave, materiais);
+  }
+  return new Map([...porGrupo].map(([chave, materiais]) => [chave, [...materiais.values()].sort((a, b) => b.unidades - a.unidades || a.codigo.localeCompare(b.codigo))]));
+}
+
 export interface ConsumoPorEpi {
   chave: string;
   grupoEpi: string;
   categoria: string | null;
+  materiaisSap: MaterialSapConsumo[];
   unidades: number;
   entregas: number;
   colaboradores: number;
@@ -714,7 +744,7 @@ export function analisarConsumo(linhas: LinhaConsumo[], historicoCompleto: Linha
   for (const linha of linhas) {
     const chave = chaveGrupo(linha.categoria, linha.grupo_epi);
     somar(porEpiMapa, chave, () => ({
-      chave, grupoEpi: linha.grupo_epi, categoria: linha.categoria, unidades: 0, entregas: 0, colaboradores: 0,
+      chave, grupoEpi: linha.grupo_epi, categoria: linha.categoria, materiaisSap: [], unidades: 0, entregas: 0, colaboradores: 0,
       perdas: 0, duracaoMedianaDias: null, amostrasDuracao: 0, _pessoas: new Set<string>(), _fichas: new Set<string>(),
     }), item => {
       item.unidades += Number(linha.quantidade);
@@ -723,9 +753,10 @@ export function analisarConsumo(linhas: LinhaConsumo[], historicoCompleto: Linha
       if (linha.motivo === 3) item.perdas += Number(linha.quantidade);
     });
   }
+  const materiaisPorEpi = materiaisSapPorGrupo(linhas);
   const porEpi: ConsumoPorEpi[] = [...porEpiMapa.values()].map(({ _pessoas, _fichas, ...item }) => {
     const dias = intervalosPeriodo.filter(i => i.chave === item.chave).map(i => i.dias);
-    return { ...item, entregas: _fichas.size, colaboradores: _pessoas.size, duracaoMedianaDias: mediana(dias), amostrasDuracao: dias.length };
+    return { ...item, materiaisSap: materiaisPorEpi.get(item.chave) ?? [], entregas: _fichas.size, colaboradores: _pessoas.size, duracaoMedianaDias: mediana(dias), amostrasDuracao: dias.length };
   }).sort((a, b) => b.unidades - a.unidades);
 
   // Por colaborador
@@ -805,4 +836,211 @@ export function analisarConsumo(linhas: LinhaConsumo[], historicoCompleto: Linha
 export function colaboradoresSemFicha<T extends { id: string }>(pessoasAtivas: T[], pessoasComFicha: Iterable<string>): T[] {
   const comFicha = new Set(pessoasComFicha);
   return pessoasAtivas.filter(p => !comFicha.has(p.id));
+}
+
+// ---------------------------------------------------------------------------
+// Filtros cruzados da análise de consumo
+// ---------------------------------------------------------------------------
+
+export const SEM_SETOR = 'Sem setor';
+
+export interface FiltrosConsumo {
+  /** Data mínima de entrega (ISO), ou null para todo o histórico. */
+  inicio: string | null;
+  funcoes: Set<string>;
+  setores: Set<string>;
+  /** Chaves de `chaveGrupo` (categoria|grupo). */
+  epis: Set<string>;
+  pessoas: Set<string>;
+  /** Motivos M.E.D. como texto ('1'..'4'). */
+  motivos: Set<string>;
+  /** Palavras-chave (chips, todas precisam bater): colaborador, registro, função, EPI, código ou descrição SAP. */
+  palavras: string[];
+}
+
+export type DimensaoFiltroConsumo = 'funcoes' | 'setores' | 'epis' | 'pessoas' | 'motivos';
+
+export function filtrosConsumoVazios(inicio: string | null = null): FiltrosConsumo {
+  return { inicio, funcoes: new Set(), setores: new Set(), epis: new Set(), pessoas: new Set(), motivos: new Set(), palavras: [] };
+}
+
+/**
+ * Aplica os filtros em conjunto (E entre filtros, OU dentro de cada um).
+ * `ignorar` deixa uma dimensão de fora — é assim que as opções de cada filtro
+ * refletem os demais: o filtro de EPI só lista EPIs que existem para a função,
+ * o setor e o período já escolhidos.
+ */
+export function filtrarConsumo(linhas: LinhaConsumo[], f: FiltrosConsumo, ignorar?: DimensaoFiltroConsumo): LinhaConsumo[] {
+  return linhas.filter(l => {
+    if (f.inicio && l.data_entrega < f.inicio) return false;
+    if (ignorar !== 'funcoes' && f.funcoes.size && !f.funcoes.has(l.funcao_id)) return false;
+    if (ignorar !== 'setores' && f.setores.size && !f.setores.has(l.setor?.trim() || SEM_SETOR)) return false;
+    if (ignorar !== 'epis' && f.epis.size && !f.epis.has(chaveGrupo(l.categoria, l.grupo_epi))) return false;
+    if (ignorar !== 'pessoas' && f.pessoas.size && !f.pessoas.has(l.pessoa_id)) return false;
+    if (ignorar !== 'motivos' && f.motivos.size && !f.motivos.has(String(l.motivo))) return false;
+    if (f.palavras.length && !casarTokens([l.nome, l.registro, l.funcao_nome, l.grupo_epi, l.categoria, l.codigo_sap, l.descricao_sap], f.palavras)) return false;
+    return true;
+  });
+}
+
+/** Quantos filtros estão fora do estado inicial (para o botão "Limpar"). */
+export function filtrosConsumoAtivos(f: FiltrosConsumo, inicioPadrao: string | null): number {
+  return f.funcoes.size + f.setores.size + f.epis.size + f.pessoas.size + f.motivos.size
+    + f.palavras.length + (f.inicio !== inicioPadrao ? 1 : 0);
+}
+
+// ---------------------------------------------------------------------------
+// Detalhe de um colaborador
+// ---------------------------------------------------------------------------
+
+export interface EntregaDetalhe {
+  itemId: string;
+  fichaId: string;
+  data: string;
+  chave: string;
+  grupoEpi: string;
+  quantidade: number;
+  motivo: MotivoMed;
+  foraDaMatriz: boolean;
+  dataDevolucao: string | null;
+  codigoSap: string | null;
+  descricaoSap: string | null;
+  /** Dias desde a entrega anterior do mesmo EPI (null na primeira). */
+  diasDesdeAnterior: number | null;
+  /** Reposição feita em menos da metade da duração mediana da função. */
+  precoce: boolean;
+}
+
+export interface DetalheEpiColaborador {
+  chave: string;
+  grupoEpi: string;
+  materiaisSap: MaterialSapConsumo[];
+  unidades: number;
+  entregas: number;
+  perdas: number;
+  ultimaEntrega: string;
+  /** Mediana dos intervalos de reposição deste colaborador para o EPI. */
+  duracaoMedianaDias: number | null;
+  amostras: number;
+  /** Mediana da função para o EPI, quando há amostras suficientes. */
+  referenciaFuncaoDias: number | null;
+  precoces: number;
+  /** Última entrega + duração de referência (função; senão a do colaborador). */
+  reposicaoPrevista: string | null;
+}
+
+export interface DetalheColaborador {
+  pessoaId: string;
+  nome: string;
+  registro: string;
+  funcaoNome: string;
+  setor: string | null;
+  resumo: {
+    unidades: number;
+    entregas: number;
+    tiposEpi: number;
+    perdas: number;
+    trocasPrecoces: number;
+    primeiraEntrega: string;
+    ultimaEntrega: string;
+    duracaoMedianaDias: number | null;
+  };
+  porEpi: DetalheEpiColaborador[];
+  /** Da mais recente para a mais antiga. */
+  entregas: EntregaDetalhe[];
+}
+
+function somarDias(dataISO: string, dias: number): string {
+  const [ano, mes, dia] = dataISO.slice(0, 10).split('-').map(Number);
+  const d = new Date(Date.UTC(ano, mes - 1, dia + dias));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Histórico completo de um colaborador com a duração de cada EPI. A referência
+ * da função vem do histórico de todos (não só do colaborador), com o mesmo
+ * mínimo de amostras da análise geral.
+ */
+export function detalharColaborador(pessoaId: string, historicoCompleto: LinhaConsumo[]): DetalheColaborador | null {
+  const proprias = historicoCompleto.filter(l => l.pessoa_id === pessoaId);
+  if (!proprias.length) return null;
+
+  const referencias = new Map<string, number[]>();
+  for (const i of intervalosDeReposicao(historicoCompleto)) {
+    somar(referencias, `${i.funcaoId}#${i.chave}`, () => [] as number[], lista => lista.push(i.dias));
+  }
+  const referenciaDe = (funcaoId: string, chave: string): number | null => {
+    const dias = referencias.get(`${funcaoId}#${chave}`);
+    return dias && dias.length >= AMOSTRAS_MINIMAS_DURACAO ? mediana(dias) : null;
+  };
+
+  const ordenadas = [...proprias].sort((a, b) => a.data_entrega.localeCompare(b.data_entrega));
+  const ultima = ordenadas[ordenadas.length - 1];
+  const intervalosPessoa = intervalosDeReposicao(proprias);
+  const diasPorItem = new Map(intervalosPessoa.map(i => [i.itemId, i.dias]));
+
+  // Dias desde a entrega anterior do mesmo EPI, contando dias distintos.
+  const ultimaDataPorChave = new Map<string, string>();
+  const entregas: EntregaDetalhe[] = ordenadas.map(l => {
+    const chave = chaveGrupo(l.categoria, l.grupo_epi);
+    const anterior = ultimaDataPorChave.get(chave);
+    const dias = anterior && anterior !== l.data_entrega ? diasEntre(anterior, l.data_entrega) : null;
+    if (!anterior || l.data_entrega > anterior) ultimaDataPorChave.set(chave, l.data_entrega);
+    const ref = referenciaDe(l.funcao_id, chave);
+    const reposicao = diasPorItem.get(l.item_id);
+    return {
+      itemId: l.item_id, fichaId: l.ficha_id, data: l.data_entrega, chave, grupoEpi: l.grupo_epi,
+      quantidade: Number(l.quantidade), motivo: l.motivo, foraDaMatriz: l.fora_da_matriz, dataDevolucao: l.data_devolucao,
+      codigoSap: l.codigo_sap, descricaoSap: l.descricao_sap,
+      diasDesdeAnterior: dias,
+      precoce: reposicao !== undefined && ref !== null && reposicao < ref / 2,
+    };
+  });
+
+  const porChave = new Map<string, EntregaDetalhe[]>();
+  for (const e of entregas) somar(porChave, e.chave, () => [] as EntregaDetalhe[], lista => lista.push(e));
+  const funcaoPorChave = new Map(ordenadas.map(l => [chaveGrupo(l.categoria, l.grupo_epi), l.funcao_id]));
+  const materiaisPorEpi = materiaisSapPorGrupo(proprias);
+
+  const porEpi: DetalheEpiColaborador[] = [...porChave.entries()].map(([chave, lista]) => {
+    const dias = intervalosPessoa.filter(i => i.chave === chave).map(i => i.dias);
+    const duracao = mediana(dias);
+    const referencia = referenciaDe(funcaoPorChave.get(chave) ?? '', chave);
+    const ultimaData = lista[lista.length - 1].data;
+    const base = referencia ?? duracao;
+    return {
+      chave,
+      grupoEpi: lista[0].grupoEpi,
+      materiaisSap: materiaisPorEpi.get(chave) ?? [],
+      unidades: lista.reduce((s, e) => s + e.quantidade, 0),
+      entregas: new Set(lista.map(e => e.data)).size,
+      perdas: lista.filter(e => e.motivo === 3).reduce((s, e) => s + e.quantidade, 0),
+      ultimaEntrega: ultimaData,
+      duracaoMedianaDias: duracao,
+      amostras: dias.length,
+      referenciaFuncaoDias: referencia,
+      precoces: lista.filter(e => e.precoce).length,
+      reposicaoPrevista: base ? somarDias(ultimaData, base) : null,
+    };
+  }).sort((a, b) => b.unidades - a.unidades || a.grupoEpi.localeCompare(b.grupoEpi, 'pt-BR'));
+
+  return {
+    pessoaId,
+    nome: ultima.nome,
+    registro: ultima.registro,
+    funcaoNome: ultima.funcao_nome,
+    setor: ultima.setor,
+    resumo: {
+      unidades: entregas.reduce((s, e) => s + e.quantidade, 0),
+      entregas: new Set(proprias.map(l => l.ficha_id)).size,
+      tiposEpi: porChave.size,
+      perdas: entregas.filter(e => e.motivo === 3).reduce((s, e) => s + e.quantidade, 0),
+      trocasPrecoces: entregas.filter(e => e.precoce).length,
+      primeiraEntrega: ordenadas[0].data_entrega,
+      ultimaEntrega: ultima.data_entrega,
+      duracaoMedianaDias: mediana(intervalosPessoa.map(i => i.dias)),
+    },
+    porEpi,
+    entregas: entregas.reverse(),
+  };
 }
