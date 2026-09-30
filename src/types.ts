@@ -3389,7 +3389,17 @@ export interface ControleEstoqueRm {
   requisitante: string | null;
   quantidade: number | null;
   pedido: string | null;
+  /** Item do pedido para o qual a RM virou compra (liga a RM à linha do pedido). */
+  item_pedido: string | null;
   deposito: string | null;
+}
+
+/** Lançamento de recebimento da MB51 (101 entrada, 102 estorno). */
+export interface ControleEstoqueEntrega {
+  data: string | null;
+  quantidade: number;
+  tipo_movimento: string;
+  documento: string | null;
 }
 
 export interface ControleEstoquePedido {
@@ -3408,6 +3418,7 @@ export interface ControleEstoquePedido {
   valor_brl: number | null;
   quantidade_recebida_mb51: number | null;
   ultima_data_recebimento: string | null;
+  entregas: ControleEstoqueEntrega[];
 }
 
 export interface ControleEstoqueOpcaoTorre {

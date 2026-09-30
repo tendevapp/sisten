@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BahiaSulEntrega, DiligenciamentoItem, EnrichedSAPRecord } from '../types';
-import { buildRastreioRows, groupRowsByPo, filterRegistros, montarSemMigoDadosMap } from './rastreio';
+import { buildRastreioRows, groupRowsByPo, filterRegistros, montarSemMigoDadosMap, isSemPo } from './rastreio';
 import type { VinculoSistenRm } from './centralComprasSisten';
 
 function registro(over: Partial<EnrichedSAPRecord> = {}): EnrichedSAPRecord {
@@ -233,4 +233,72 @@ describe('integração dos dados que vêm da tela Sem MIGO no Rastreio', () => {
     expect(row.dataPrevista).toBe('2026-09-01');
   });
 });
+
+describe('filtros rápidos de PO e Prazo de entrega', () => {
+  const hoje = new Date(2026, 8, 30); // 30/09/2026
+
+  const linhas = buildRastreioRows([
+    // Item 1: Sem PO
+    registro({ ri_po: 'item-sem-po', documento_compra: undefined, status_requisicao: 'Sem PO' }),
+    // Item 2: Com PO, no prazo (previsão 05/10/2026)
+    registro({ ri_po: 'item-no-prazo', documento_compra: '4100000001', data_entrega_confirmada: '2026-10-05' }),
+    // Item 3: Com PO, atrasado (previsão 20/09/2026)
+    registro({ ri_po: 'item-atrasado', documento_compra: '4100000002', data_entrega_confirmada: '2026-09-20' }),
+    // Item 4: Com PO, entregue (MIGO 25/09/2026)
+    registro({ ri_po: 'item-entregue', documento_compra: '4100000003', data_entrega_confirmada: '2026-09-20', data_migo: '2026-09-25' }),
+  ]);
+
+  it('identifica corretamente itens sem PO via isSemPo', () => {
+    expect(isSemPo(linhas[0])).toBe(true);
+    expect(isSemPo(linhas[1])).toBe(false);
+    expect(isSemPo(linhas[2])).toBe(false);
+    expect(isSemPo(linhas[3])).toBe(false);
+  });
+
+  it('filtra apenas itens sem PO com po: "Sem PO"', () => {
+    const res = filterRegistros(linhas, {
+      query: '', status: 'Todos', setor: 'Todos', ano: 'Todos', scope: 'todos',
+      po: 'Sem PO', hoje,
+    });
+    expect(res.length).toBe(1);
+    expect(res[0].riPo).toBe('item-sem-po');
+  });
+
+  it('filtra apenas itens com PO com po: "Com PO"', () => {
+    const res = filterRegistros(linhas, {
+      query: '', status: 'Todos', setor: 'Todos', ano: 'Todos', scope: 'todos',
+      po: 'Com PO', hoje,
+    });
+    expect(res.length).toBe(3);
+    expect(res.map(r => r.riPo)).toEqual(['item-no-prazo', 'item-atrasado', 'item-entregue']);
+  });
+
+  it('filtra apenas itens atrasados com prazo: "atrasado"', () => {
+    const res = filterRegistros(linhas, {
+      query: '', status: 'Todos', setor: 'Todos', ano: 'Todos', scope: 'todos',
+      prazo: 'atrasado', hoje,
+    });
+    expect(res.length).toBe(1);
+    expect(res[0].riPo).toBe('item-atrasado');
+  });
+
+  it('filtra apenas itens no prazo com prazo: "no_prazo"', () => {
+    const res = filterRegistros(linhas, {
+      query: '', status: 'Todos', setor: 'Todos', ano: 'Todos', scope: 'todos',
+      prazo: 'no_prazo', hoje,
+    });
+    expect(res.length).toBe(1);
+    expect(res[0].riPo).toBe('item-no-prazo');
+  });
+
+  it('filtra apenas itens entregues com prazo: "entregue"', () => {
+    const res = filterRegistros(linhas, {
+      query: '', status: 'Todos', setor: 'Todos', ano: 'Todos', scope: 'todos',
+      prazo: 'entregue', hoje,
+    });
+    expect(res.length).toBe(1);
+    expect(res[0].riPo).toBe('item-entregue');
+  });
+});
+
 

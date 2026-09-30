@@ -3,6 +3,7 @@ import type {
   ControleEstoqueAuditoria,
   ControleEstoqueConfig,
   ControleEstoqueDeposito,
+  ControleEstoqueEntrega,
   ControleEstoqueItem,
   ControleEstoqueMovimentoMensal,
   ControleEstoqueOpcaoTorre,
@@ -12,12 +13,13 @@ import type {
   Profile,
 } from '../types';
 import { calcularFaixaDoItem, type StatusControleEstoque } from './controleEstoque';
-import { casarTokens, extrairPalavrasChave } from './buscaKeywords';
+import { casarTokens } from './buscaKeywords';
 
 type UsuarioAutor = Pick<Profile, 'id'>;
 
 export interface FiltrosControleEstoque {
-  busca?: string;
+  /** Palavras-chave (chips) já normalizadas; o item precisa conter todas (AND). */
+  palavrasChave?: string[];
   centro?: string;
   deposito?: string;
   categoria?: string;
@@ -92,7 +94,15 @@ const normalizarRms = (valor: unknown): ControleEstoqueRm[] => lista<Record<stri
   requisitante: item.requisitante == null ? null : String(item.requisitante),
   quantidade: numeroOuNull(item.quantidade),
   pedido: item.pedido == null ? null : String(item.pedido),
+  item_pedido: item.item_pedido == null ? null : String(item.item_pedido),
   deposito: item.deposito == null ? null : String(item.deposito),
+}));
+
+const normalizarEntregas = (valor: unknown): ControleEstoqueEntrega[] => lista<Record<string, unknown>>(valor).map(item => ({
+  data: item.data == null ? null : String(item.data),
+  quantidade: numero(item.quantidade),
+  tipo_movimento: String(item.tipo_movimento ?? ''),
+  documento: item.documento == null ? null : String(item.documento),
 }));
 
 const normalizarPedidos = (valor: unknown): ControleEstoquePedido[] => lista<Record<string, unknown>>(valor).map(item => ({
@@ -111,6 +121,7 @@ const normalizarPedidos = (valor: unknown): ControleEstoquePedido[] => lista<Rec
   valor_brl: numeroOuNull(item.valor_brl),
   quantidade_recebida_mb51: numeroOuNull(item.quantidade_recebida_mb51),
   ultima_data_recebimento: item.ultima_data_recebimento == null ? null : String(item.ultima_data_recebimento),
+  entregas: normalizarEntregas(item.entregas),
 }));
 
 const normalizarOpcoesTorre = (valor: unknown): ControleEstoqueOpcaoTorre[] => lista<Record<string, unknown>>(valor).map(item => ({
@@ -251,7 +262,7 @@ export function criarPayloadInativacaoOverride(user: UsuarioAutor) {
  */
 export function filtrarControleEstoque(itens: ControleEstoqueItem[], filtros: FiltrosControleEstoque): ControleEstoqueItem[] {
   // Palavras-chave em qualquer ordem, sem acento, com "frases" entre aspas.
-  const tokens = extrairPalavrasChave(filtros.busca);
+  const tokens = filtros.palavrasChave ?? [];
   return itens.filter(item => {
     if (tokens.length > 0 && !casarTokens([item.material, item.descricao, item.categoria, item.aplicacao], tokens)) return false;
     if (filtros.centro && item.centro !== filtros.centro) return false;

@@ -205,6 +205,9 @@ const DATE_FIELD_MAP: Record<RastreioDateField, keyof RastreioRow> = {
   entrega: 'dataEntrega',
 };
 
+export type RastreioPoFilter = 'Todos' | 'Sem PO' | 'Com PO';
+export type RastreioPrazoFilter = 'Todos' | 'atrasado' | 'no_prazo' | 'entregue' | 'sem_data';
+
 export interface RastreioFilters {
   query: string;
   status: string; // 'Todos' ou um item_status
@@ -212,6 +215,9 @@ export interface RastreioFilters {
   ano: string;    // 'Todos' ou um ano (YYYY)
   scope: DeliveryScope;
   tipo?: TipoItemFilter;
+  po?: RastreioPoFilter;
+  prazo?: RastreioPrazoFilter;
+  hoje?: Date;
   // Intervalos de data (ISO YYYY-MM-DD) por campo. `from`/`to` vazios são
   // ignorados; com um intervalo ativo, linhas sem data naquele campo saem.
   dateRanges?: Partial<Record<RastreioDateField, { from?: string; to?: string }>>;
@@ -345,6 +351,7 @@ export const DELIVERY_STATUS_META: Record<DeliveryStatus, { label: string; dot: 
 // Filtra as linhas por busca textual parcial + filtros combináveis.
 export function filterRegistros(rows: RastreioRow[], f: RastreioFilters): RastreioRow[] {
   const q = f.query.trim().toLowerCase();
+  const hojeRef = f.hoje || new Date();
   return rows.filter(r => {
     if (f.scope === 'aberto' && hasValue(r.dataEntrega)) return false;
     if (f.status !== 'Todos' && r.status !== f.status) return false;
@@ -354,6 +361,15 @@ export function filterRegistros(rows: RastreioRow[], f: RastreioFilters): Rastre
       const eProjeto = isProjetoItem(r.material);
       if (f.tipo === 'projeto' && !eProjeto) return false;
       if (f.tipo === 'consumo' && eProjeto) return false;
+    }
+    if (f.po && f.po !== 'Todos') {
+      const semPo = isSemPo(r);
+      if (f.po === 'Sem PO' && !semPo) return false;
+      if (f.po === 'Com PO' && semPo) return false;
+    }
+    if (f.prazo && f.prazo !== 'Todos') {
+      const d = deriveDeliveryStatus(r, hojeRef);
+      if (d !== f.prazo) return false;
     }
     if (f.dateRanges) {
       for (const key of Object.keys(f.dateRanges) as RastreioDateField[]) {
@@ -444,6 +460,11 @@ export function groupRowsByPo(rows: RastreioRow[]): PoGroup[] {
       ),
     }))
     .sort((a, b) => comparePo(a.po, b.po));
+}
+
+// Verifica se a linha de rastreio ainda não possui pedido de compra (PO) emitido.
+export function isSemPo(r: RastreioRow): boolean {
+  return !hasValue(r.po) || r.statusReq === 'Sem PO';
 }
 
 // Item elegível para marcar chegada física no almoxarifado: PO emitida,

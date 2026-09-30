@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Route, Search, FileSpreadsheet, FileText, AlertCircle, RefreshCw, Filter,
   Building2, Calendar, Clock, ChevronDown, SlidersHorizontal, Table as TableIcon,
-  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle, MessageCircle, HelpCircle, Bug, Lightbulb, PackageCheck, CalendarClock,
+  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle, MessageCircle, HelpCircle, Bug, Lightbulb, PackageCheck, CalendarClock, X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -16,7 +16,7 @@ import { canAccessPage } from '../lib/pages';
 import {
   RastreioRow, DeliveryScope, TipoItemFilter, RastreioDateField, buildRastreioRows, filterRegistros, deriveDeliveryStatus,
   statusOptions, setorOptions, anoOptions, formatDateBR, formatDateTimeBR, parseDate, defaultSort, itensSemMigo,
-  montarSemMigoDadosMap, SemMigoRowInfo,
+  montarSemMigoDadosMap, SemMigoRowInfo, isSemPo, RastreioPoFilter, RastreioPrazoFilter,
 } from '../lib/rastreio';
 import { AlmoxarifadoChegada } from '../types';
 import { indexarVinculosSistenPorRm, VinculoSistenRm } from '../lib/centralComprasSisten';
@@ -45,14 +45,14 @@ const RASTREIO_TOUR_STEPS: TourStep[] = [
   {
     target: 'rastreio-filtros',
     icon: Filter,
-    title: 'Refine por tipo, status, setor e ano',
+    title: 'Refine por tipo, PO, prazo, status, setor e ano',
     description: 'Combine esses filtros com a busca para restringir a lista aos registros que interessam no momento.',
   },
   {
     target: 'rastreio-kpis',
     icon: Package,
-    title: 'Indicadores do que está filtrado',
-    description: 'Os cartões somam os registros visíveis: total, no prazo, atrasados e entregues. Eles mudam conforme você filtra.',
+    title: 'Indicadores e filtros rápidos',
+    description: 'Os cartões somam os registros e funcionam como filtros interativos: clique em qualquer cartão (Sem PO, No prazo, Atrasados ou Entregues) para filtrar a tabela diretamente.',
   },
   {
     target: 'rastreio-tabs',
@@ -149,6 +149,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
   const [setorFilter, setSetorFilter] = useState('Todos');
   const [anoFilter, setAnoFilter] = useState('Todos');
   const [scope, setScope] = useState<DeliveryScope>('todos');
+  const [poFilter, setPoFilter] = useState<RastreioPoFilter>('Todos');
+  const [prazoFilter, setPrazoFilter] = useState<RastreioPrazoFilter>('Todos');
   const [dateFilters, setDateFilters] = useState<RastreioDateFilters>(emptyDateFilters);
   const [showDateFilters, setShowDateFilters] = useState(false);
   const activeDateFilterCount = useMemo(
@@ -372,10 +374,103 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
   const setorOpts = useMemo(() => setorOptions(rows), [rows]);
   const anoOpts = useMemo(() => anoOptions(rows), [rows]);
 
-  const filteredRows = useMemo(
-    () => filterRegistros(rows, { query: searchQuery, status: statusFilter, setor: setorFilter, ano: anoFilter, scope, tipo: tipoFilter, dateRanges: dateFilters }),
-    [rows, searchQuery, statusFilter, setorFilter, anoFilter, scope, tipoFilter, dateFilters]
+  // Base dos filtros gerais (busca, tipo, status, setor, ano, datas) para os cartões
+  // manterem suas contagens contextuais estáveis ao alternar entre si.
+  const baseFilteredRows = useMemo(
+    () => filterRegistros(rows, {
+      query: searchQuery,
+      status: statusFilter,
+      setor: setorFilter,
+      ano: anoFilter,
+      scope,
+      tipo: tipoFilter,
+      dateRanges: dateFilters,
+      hoje,
+    }),
+    [rows, searchQuery, statusFilter, setorFilter, anoFilter, scope, tipoFilter, dateFilters, hoje]
   );
+
+  // KPIs sobre a base contextual filtrada (calculando Sem PO, No prazo, Atrasados e Entregues)
+  const kpis = useMemo(() => {
+    let entregues = 0, atrasados = 0, noPrazo = 0, semPo = 0;
+    baseFilteredRows.forEach(r => {
+      if (isSemPo(r)) semPo++;
+      const d = deriveDeliveryStatus(r, hoje);
+      if (d === 'entregue') entregues++;
+      else if (d === 'atrasado') atrasados++;
+      else if (d === 'no_prazo') noPrazo++;
+    });
+    return { total: baseFilteredRows.length, semPo, noPrazo, atrasados, entregues };
+  }, [baseFilteredRows, hoje]);
+
+  // Aplica filtros de PO e Prazo sobre as linhas da tabela
+  const filteredRows = useMemo(() => {
+    if (poFilter === 'Todos' && prazoFilter === 'Todos') return baseFilteredRows;
+    return filterRegistros(baseFilteredRows, {
+      query: '',
+      status: 'Todos',
+      setor: 'Todos',
+      ano: 'Todos',
+      scope: 'todos',
+      po: poFilter,
+      prazo: prazoFilter,
+      hoje,
+    });
+  }, [baseFilteredRows, poFilter, prazoFilter, hoje]);
+
+  type ActiveCardKey = 'total' | 'sem_po' | 'no_prazo' | 'atrasado' | 'entregue';
+
+  const activeCard = useMemo<ActiveCardKey | null>(() => {
+    if (poFilter === 'Sem PO' && prazoFilter === 'Todos') return 'sem_po';
+    if (prazoFilter === 'atrasado' && poFilter === 'Todos') return 'atrasado';
+    if (prazoFilter === 'no_prazo' && poFilter === 'Todos') return 'no_prazo';
+    if (prazoFilter === 'entregue' && poFilter === 'Todos') return 'entregue';
+    return null;
+  }, [poFilter, prazoFilter]);
+
+  const handleCardClick = (cardKey: ActiveCardKey) => {
+    if (cardKey === 'total') {
+      setPoFilter('Todos');
+      setPrazoFilter('Todos');
+      return;
+    }
+    if (cardKey === 'sem_po') {
+      if (poFilter === 'Sem PO') {
+        setPoFilter('Todos');
+      } else {
+        setPoFilter('Sem PO');
+        setPrazoFilter('Todos');
+      }
+      return;
+    }
+    if (cardKey === 'atrasado') {
+      if (prazoFilter === 'atrasado') {
+        setPrazoFilter('Todos');
+      } else {
+        setPrazoFilter('atrasado');
+        setPoFilter('Todos');
+      }
+      return;
+    }
+    if (cardKey === 'no_prazo') {
+      if (prazoFilter === 'no_prazo') {
+        setPrazoFilter('Todos');
+      } else {
+        setPrazoFilter('no_prazo');
+        setPoFilter('Todos');
+      }
+      return;
+    }
+    if (cardKey === 'entregue') {
+      if (prazoFilter === 'entregue') {
+        setPrazoFilter('Todos');
+      } else {
+        setPrazoFilter('entregue');
+        setPoFilter('Todos');
+      }
+      return;
+    }
+  };
 
   // Ordenação da tabela. Sem coluna ativa, usa o padrão (MIGO ↑, descrição ↑).
   const sortedRows = useMemo(() => {
@@ -423,8 +518,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
     });
   }, [almoxarifadoCandidateRis]);
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, tipoFilter, statusFilter, setorFilter, anoFilter, scope, sortColumn, sortDir, dateFilters]);
-  useEffect(() => { setSelectedRis(new Set()); }, [searchQuery, tipoFilter, statusFilter, setorFilter, anoFilter, scope, tab, dateFilters]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, tipoFilter, statusFilter, setorFilter, anoFilter, scope, sortColumn, sortDir, dateFilters, poFilter, prazoFilter]);
+  useEffect(() => { setSelectedRis(new Set()); }, [searchQuery, tipoFilter, statusFilter, setorFilter, anoFilter, scope, tab, dateFilters, poFilter, prazoFilter]);
 
   // Deep-link: notificação de mensagem abre a conversa do item (#/rastreio?ri=...).
   useEffect(() => {
@@ -448,18 +543,6 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
     if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortColumn(col); setSortDir('asc'); }
   };
-
-  // KPIs sobre o conjunto filtrado.
-  const kpis = useMemo(() => {
-    let entregues = 0, atrasados = 0, noPrazo = 0;
-    filteredRows.forEach(r => {
-      const d = deriveDeliveryStatus(r, hoje);
-      if (d === 'entregue') entregues++;
-      else if (d === 'atrasado') atrasados++;
-      else if (d === 'no_prazo') noPrazo++;
-    });
-    return { total: filteredRows.length, entregues, atrasados, noPrazo };
-  }, [filteredRows, hoje]);
 
   const handleExportExcel = () => {
     if (filteredRows.length === 0) return;
@@ -537,11 +620,72 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
     setTimeout(() => { win.print(); }, 300);
   };
 
-  const kpiCards = [
-    { label: 'Registros', value: kpis.total, icon: Package, color: 'bg-slate-400 dark:bg-slate-700', text: 'text-slate-800 dark:text-slate-100' },
-    { label: 'No prazo', value: kpis.noPrazo, icon: Truck, color: 'bg-blue-500 dark:bg-blue-600', text: 'text-blue-600 dark:text-blue-400' },
-    { label: 'Atrasados', value: kpis.atrasados, icon: AlertTriangle, color: 'bg-rose-500 dark:bg-rose-600', text: 'text-rose-600 dark:text-rose-400' },
-    { label: 'Entregues', value: kpis.entregues, icon: CheckCircle2, color: 'bg-emerald-500 dark:bg-emerald-600', text: 'text-emerald-600 dark:text-emerald-400' },
+  const kpiCards: {
+    key: ActiveCardKey;
+    label: string;
+    value: number;
+    icon: any;
+    color: string;
+    text: string;
+    activeBorder: string;
+    activeBg: string;
+    activeRing: string;
+  }[] = [
+    {
+      key: 'total',
+      label: 'Registros',
+      value: kpis.total,
+      icon: Package,
+      color: 'bg-slate-400 dark:bg-slate-700',
+      text: 'text-slate-800 dark:text-slate-100',
+      activeBorder: 'border-slate-500 dark:border-slate-400',
+      activeBg: 'bg-slate-50 dark:bg-slate-800/60',
+      activeRing: 'ring-2 ring-slate-400 dark:ring-slate-500',
+    },
+    {
+      key: 'sem_po',
+      label: 'Sem PO',
+      value: kpis.semPo,
+      icon: AlertCircle,
+      color: 'bg-amber-500 dark:bg-amber-600',
+      text: 'text-amber-600 dark:text-amber-400',
+      activeBorder: 'border-amber-500 dark:border-amber-400',
+      activeBg: 'bg-amber-50/70 dark:bg-amber-950/30',
+      activeRing: 'ring-2 ring-amber-500 dark:ring-amber-400',
+    },
+    {
+      key: 'no_prazo',
+      label: 'No prazo',
+      value: kpis.noPrazo,
+      icon: Truck,
+      color: 'bg-blue-500 dark:bg-blue-600',
+      text: 'text-blue-600 dark:text-blue-400',
+      activeBorder: 'border-blue-500 dark:border-blue-400',
+      activeBg: 'bg-blue-50/70 dark:bg-blue-950/30',
+      activeRing: 'ring-2 ring-blue-500 dark:ring-blue-400',
+    },
+    {
+      key: 'atrasado',
+      label: 'Atrasados',
+      value: kpis.atrasados,
+      icon: AlertTriangle,
+      color: 'bg-rose-500 dark:bg-rose-600',
+      text: 'text-rose-600 dark:text-rose-400',
+      activeBorder: 'border-rose-500 dark:border-rose-400',
+      activeBg: 'bg-rose-50/70 dark:bg-rose-950/30',
+      activeRing: 'ring-2 ring-rose-500 dark:ring-rose-400',
+    },
+    {
+      key: 'entregue',
+      label: 'Entregues',
+      value: kpis.entregues,
+      icon: CheckCircle2,
+      color: 'bg-emerald-500 dark:bg-emerald-600',
+      text: 'text-emerald-600 dark:text-emerald-400',
+      activeBorder: 'border-emerald-500 dark:border-emerald-400',
+      activeBg: 'bg-emerald-50/70 dark:bg-emerald-950/30',
+      activeRing: 'ring-2 ring-emerald-500 dark:ring-emerald-400',
+    },
   ];
 
   return (
@@ -591,15 +735,35 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
       {/* KPIs */}
       {!loading && !error && rows.length > 0 && (
-        <div data-tour="rastreio-kpis" className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div data-tour="rastreio-kpis" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
           {kpiCards.map(k => {
             const Icon = k.icon;
+            const isActive = activeCard === k.key;
             return (
-              <div key={k.label} className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+              <button
+                key={k.key}
+                type="button"
+                onClick={() => handleCardClick(k.key)}
+                title={isActive ? `Filtro ativo: ${k.label}. Clique para remover.` : `Clique para filtrar por ${k.label}`}
+                className={`rounded-xl border p-4 shadow-xs relative overflow-hidden text-left transition-all cursor-pointer group hover:shadow-md ${
+                  isActive
+                    ? `${k.activeBorder} ${k.activeBg} ${k.activeRing} ring-offset-2 ring-offset-white dark:ring-offset-slate-900`
+                    : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
+                }`}
+              >
                 <div className={`absolute top-0 left-0 w-1.5 h-full ${k.color}`} />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><Icon className="h-3 w-3" /> {k.label}</span>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                    <Icon className="h-3 w-3" /> {k.label}
+                  </span>
+                  {isActive && (
+                    <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
+                      Filtrado
+                    </span>
+                  )}
+                </div>
                 <p className={`text-3xl font-black mt-1 ${k.text}`}>{k.value.toLocaleString('pt-BR')}</p>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -653,6 +817,39 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                 <option value="consumo">Consumíveis</option>
                 <option value="projeto">Itens de Projeto</option>
                 <option value="todos">Tipo: Todos</option>
+              </select>
+            </div>
+            <div className="relative shrink-0 w-[140px] lg:w-auto lg:min-w-[130px]">
+              <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={poFilter}
+                onChange={(e) => {
+                  const val = e.target.value as RastreioPoFilter;
+                  setPoFilter(val);
+                  if (val === 'Sem PO' && prazoFilter !== 'Todos') setPrazoFilter('Todos');
+                }}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              >
+                <option value="Todos">PO: Todos</option>
+                <option value="Sem PO">Sem PO</option>
+                <option value="Com PO">Com PO</option>
+              </select>
+            </div>
+            <div className="relative shrink-0 w-[140px] lg:w-auto lg:min-w-[130px]">
+              <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={prazoFilter}
+                onChange={(e) => {
+                  const val = e.target.value as RastreioPrazoFilter;
+                  setPrazoFilter(val);
+                  if (val !== 'Todos' && poFilter === 'Sem PO') setPoFilter('Todos');
+                }}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              >
+                <option value="Todos">Prazo: Todos</option>
+                <option value="atrasado">Atrasados</option>
+                <option value="no_prazo">No prazo</option>
+                <option value="entregue">Entregues</option>
               </select>
             </div>
             <div className="relative shrink-0 w-[150px] lg:w-auto lg:min-w-[160px]">
@@ -776,8 +973,26 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         <>
           {tab === 'tabela' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between text-xs text-slate-550 dark:text-slate-400 px-1 font-bold gap-3">
-                <span className="min-w-0 truncate">Exibindo {Math.min(visibleCount, sortedRows.length)} de {sortedRows.length.toLocaleString('pt-BR')} registros</span>
+              <div className="flex items-center justify-between text-xs text-slate-550 dark:text-slate-400 px-1 font-bold gap-3 flex-wrap">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  <span className="min-w-0 truncate">Exibindo {Math.min(visibleCount, sortedRows.length)} de {sortedRows.length.toLocaleString('pt-BR')} registros</span>
+                  {poFilter !== 'Todos' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[11px] font-semibold">
+                      {poFilter}
+                      <button type="button" onClick={() => setPoFilter('Todos')} className="hover:text-rose-600 cursor-pointer ml-0.5" title="Remover filtro">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  )}
+                  {prazoFilter !== 'Todos' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold">
+                      {prazoFilter === 'atrasado' ? 'Atrasados' : prazoFilter === 'no_prazo' ? 'No prazo' : prazoFilter === 'entregue' ? 'Entregues' : 'Sem data'}
+                      <button type="button" onClick={() => setPrazoFilter('Todos')} className="hover:text-rose-600 cursor-pointer ml-0.5" title="Remover filtro">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  )}
+                </div>
                 <div className="relative shrink-0">
                   {showColMenu && <div className="fixed inset-0 z-20" onClick={() => setShowColMenu(false)} />}
                   <button

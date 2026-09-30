@@ -1,6 +1,7 @@
 import React from 'react';
-import { Filter, RotateCcw, Search } from 'lucide-react';
+import { Filter, RotateCcw } from 'lucide-react';
 import type { FiltrosControleEstoque } from '../../../lib/controleEstoqueApi';
+import SearchKeywordsChips from '../../ui/SearchKeywordsChips';
 
 export interface OpcoesFiltrosControleEstoque {
   depositos: string[];
@@ -24,20 +25,19 @@ export default function ControleEstoqueFiltros({ filtros, opcoes, onChange, onLi
   };
 
   return (
-    <div className="rounded-xl border p-3" style={{ background: 'var(--surface-card)', borderColor: 'var(--hairline)' }}>
+    <div className="rounded-xl border p-3 space-y-3" style={{ background: 'var(--surface-card)', borderColor: 'var(--hairline)' }}>
+      {/* Cada palavra confirmada com Enter vira um chip; o material precisa conter todos. */}
+      <SearchKeywordsChips
+        chips={filtros.palavrasChave ?? []}
+        onChangeChips={chips => atualizar('palavrasChave', chips.length > 0 ? chips : undefined)}
+        placeholder="Digite uma palavra e aperte Enter (material, descrição, categoria, aplicação)"
+        accent="brand"
+        compact
+      />
       <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
         <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
           <Filter className="h-3.5 w-3.5" /> Filtros
         </span>
-        <label className="relative shrink-0 w-80">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
-          <input
-            value={filtros.busca ?? ''}
-            onChange={event => atualizar('busca', event.target.value)}
-            placeholder="Palavras-chave (material, descrição, categoria)"
-            className={`${selectClass} w-full pl-8 font-normal`}
-          />
-        </label>
         <select value={filtros.deposito ?? ''} onChange={event => atualizar('deposito', event.target.value || undefined)} className={selectClass}>
           <option value="">Depósito: todos</option>
           {opcoes.depositos.map(valor => <option key={valor} value={valor}>{valor}</option>)}

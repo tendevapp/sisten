@@ -3,16 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Ficha de EPI — FRM.SEG-0008 (Termo de Responsabilidade de EPI).
- * Três abas: lançar uma entrega, consultar as fichas emitidas e analisar o
- * consumo que as fichas acumulam.
+ * Quatro abas: lançar uma entrega, consultar as fichas emitidas, analisar o
+ * consumo que as fichas acumulam e acompanhar o que saiu do estoque (dep. 0002).
  */
 
 import { useState } from 'react';
-import { BarChart3, ChevronLeft, ClipboardList, HardHat, Plus } from 'lucide-react';
+import { BarChart3, ChevronLeft, ClipboardList, HardHat, PackageMinus, Plus } from 'lucide-react';
 import type { Profile } from '../../types';
 import NovaFichaEpi from '../../components/ssma/fichaEpi/NovaFichaEpi';
 import FichasEpiLista from '../../components/ssma/fichaEpi/FichasEpiLista';
 import AnaliseConsumoEpi from '../../components/ssma/fichaEpi/AnaliseConsumoEpi';
+import ConsumoEstoqueEpi from '../../components/ssma/fichaEpi/ConsumoEstoqueEpi';
 import type { ColaboradorFichaEpi } from '../../lib/ssmaFichaEpiApi';
 import { CHAVE_ABRIR_REQUISICAO_BALCAO } from '../../lib/fichaEpiRequisicao';
 import { canAccessForm } from '../../lib/pages';
@@ -26,12 +27,13 @@ interface Props {
   onNavigate?: (path: string) => void;
 }
 
-type Aba = 'nova' | 'fichas' | 'analise';
+type Aba = 'nova' | 'fichas' | 'analise' | 'estoque';
 
 const ABAS: { id: Aba; rotulo: string; icone: typeof Plus }[] = [
   { id: 'nova', rotulo: 'Nova ficha', icone: Plus },
   { id: 'fichas', rotulo: 'Fichas emitidas', icone: ClipboardList },
   { id: 'analise', rotulo: 'Análise de consumo', icone: BarChart3 },
+  { id: 'estoque', rotulo: 'Saídas do estoque', icone: PackageMinus },
 ];
 
 export default function SsmaFichaEpiView({ user, onBack, voltarRotulo = 'Voltar ao SSMA', onNavigate }: Props) {
@@ -106,6 +108,7 @@ export default function SsmaFichaEpiView({ user, onBack, voltarRotulo = 'Voltar 
       </div>
       {aba === 'fichas' && <FichasEpiLista key={buscaFichas} user={user} buscaInicial={buscaFichas} />}
       {aba === 'analise' && <AnaliseConsumoEpi onLancarFicha={lancarPara} />}
+      {aba === 'estoque' && <ConsumoEstoqueEpi />}
     </div>
   );
 }

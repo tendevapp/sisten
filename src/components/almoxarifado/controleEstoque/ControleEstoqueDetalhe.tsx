@@ -1,11 +1,13 @@
 import React from 'react';
-import { ExternalLink, Layers3, PackageOpen, ReceiptText, Sigma, Warehouse } from 'lucide-react';
+import { ExternalLink, Pencil, Layers3, PackageOpen, ReceiptText, Sigma, Warehouse } from 'lucide-react';
 import type { ControleEstoqueAnalise } from '../../../lib/controleEstoque';
 import { formatBRL, formatQtd } from '../../../lib/almoxarifado';
 import { formatDateBR, formatDateTimeBR } from '../../../lib/format';
 import Modal, { ModalBody, ModalHeader } from '../../ui/Modal';
 
 interface Props {
+  /** Abre a edição de parâmetros/exceção do material; ausente para quem só consulta. */
+  onEditar?: () => void;
   linha: ControleEstoqueAnalise;
   onClose: () => void;
 }
@@ -24,7 +26,7 @@ const Secao = ({ titulo, icone: Icon, children }: { titulo: string; icone: typeo
   </section>
 );
 
-export default function ControleEstoqueDetalhe({ linha, onClose }: Props) {
+export default function ControleEstoqueDetalhe({ linha, onClose, onEditar }: Props) {
   const { item, faixa } = linha;
   return (
     <Modal onClose={onClose} ariaLabel={`Controle do material ${item.material}`} maxWidth="max-w-6xl">
@@ -34,6 +36,11 @@ export default function ControleEstoqueDetalhe({ linha, onClose }: Props) {
           <h2 className="font-mono text-lg font-black truncate" style={{ color: 'var(--ink-primary)' }}>{item.material}</h2>
           <p className="text-xs truncate" style={{ color: 'var(--ink-muted)' }}>{item.descricao || 'Sem descrição'} · Centro {item.centro}</p>
         </div>
+        {onEditar && (
+          <button type="button" onClick={onEditar} className="ml-auto mr-2 inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer hover:bg-[var(--surface-raised)]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+            <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Parâmetros do material
+          </button>
+        )}
       </ModalHeader>
       <ModalBody className="space-y-6">
         <Secao titulo="Faixa operacional da planilha" icone={Sigma}>

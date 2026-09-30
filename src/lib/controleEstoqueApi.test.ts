@@ -129,9 +129,9 @@ describe('controleEstoqueApi', () => {
     ];
 
     expect(filtrarControleEstoque(itens, {}).length).toBe(2);
-    expect(filtrarControleEstoque(itens, { busca: 'porca' }).map(i => i.material)).toEqual(['B2']);
-    expect(filtrarControleEstoque(itens, { busca: 'POR parafuso' })).toEqual([]);
-    expect(filtrarControleEstoque(itens, { busca: 'fixação  parafuso' }).map(i => i.material)).toEqual(['A1']);
+    expect(filtrarControleEstoque(itens, { palavrasChave: ['porca'] }).map(i => i.material)).toEqual(['B2']);
+    expect(filtrarControleEstoque(itens, { palavrasChave: ['por', 'parafuso'] })).toEqual([]);
+    expect(filtrarControleEstoque(itens, { palavrasChave: ['fixacao', 'parafuso'] }).map(i => i.material)).toEqual(['A1']);
     expect(filtrarControleEstoque(itens, { temRm: true }).map(i => i.material)).toEqual(['A1']);
     expect(filtrarControleEstoque(itens, { temPo: true }).map(i => i.material)).toEqual(['B2']);
     expect(filtrarControleEstoque(itens, { recebimento: 'SEM_RECEBIMENTO' }).map(i => i.material)).toEqual(['B2']);

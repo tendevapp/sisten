@@ -15,7 +15,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle, BookOpen, Download, Gauge, LayoutDashboard, RefreshCw, Scale, Settings2, TrendingUp, ClipboardCheck,
+  AlertCircle, BookOpen, Download, LayoutDashboard, RefreshCw, Scale, Settings2, TrendingUp, ClipboardCheck,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import type { ControleEstoqueConfig, ControleEstoqueItem, EstoqueReposicao, Profile } from '../types';
@@ -37,19 +37,17 @@ import ControleEstoqueFiltros, {
   type OpcoesFiltrosControleEstoque,
 } from '../components/almoxarifado/controleEstoque/ControleEstoqueFiltros';
 import ControleEstoqueDossie from '../components/almoxarifado/controleEstoque/ControleEstoqueDossie';
-import ControleEstoqueTabela from '../components/almoxarifado/controleEstoque/ControleEstoqueTabela';
 import ControleEstoqueDetalhe from '../components/almoxarifado/controleEstoque/ControleEstoqueDetalhe';
 import ControleEstoqueParametrosModal from '../components/almoxarifado/controleEstoque/ControleEstoqueParametrosModal';
 import EstoqueMinimoPanel from '../components/almoxarifado/EstoqueMinimoPanel';
 import { TableEmpty } from '../components/ui/DataTable';
 
-export type AbaControleEstoque = 'geral' | 'faixa' | 'sisten' | 'fluxo' | 'dossie';
+export type AbaControleEstoque = 'geral' | 'sisten' | 'fluxo' | 'dossie';
 type Aba = AbaControleEstoque;
 
-const ABAS: { id: Aba; rotulo: string; icone: typeof Gauge; pergunta: string }[] = [
+const ABAS: { id: Aba; rotulo: string; icone: typeof LayoutDashboard; pergunta: string }[] = [
   { id: 'geral', rotulo: 'Visão geral', icone: LayoutDashboard, pergunta: 'Como está o estoque frente à faixa mínima e máxima?' },
   { id: 'dossie', rotulo: 'Dossiê', icone: BookOpen, pergunta: 'Qual é a história de cada material: estoque, faixa, RM, pedido e chegada?' },
-  { id: 'faixa', rotulo: 'Faixa da planilha', icone: Gauge, pergunta: 'O que comprar, com a regra da planilha de controle?' },
   { id: 'sisten', rotulo: 'Mínimo SISTEN', icone: ClipboardCheck, pergunta: 'O que o método estatístico do SISTEN recomenda para os mesmos materiais?' },
   { id: 'fluxo', rotulo: 'Entradas x saídas', icone: TrendingUp, pergunta: 'O que entrou e o que foi consumido, mês a mês?' },
 ];
@@ -317,15 +315,6 @@ export default function ControleEstoque({ user, abaInicial = 'geral' }: Props) {
             ? <ControleEstoqueResumo linhas={linhas} />
             : !loading && <TableEmpty icon={Scale} title="Nenhum material neste recorte" hint="Ajuste ou limpe os filtros." />)}
 
-          {aba === 'faixa' && (
-            <ControleEstoqueTabela
-              linhas={linhas}
-              loading={loading}
-              onSelecionar={setDetalhe}
-              onEditar={podeEditar ? linha => setEdicao({ linha }) : undefined}
-            />
-          )}
-
           {aba === 'sisten' && (
             <EstoqueMinimoPanel
               sugestoes={sugestoes}
@@ -405,7 +394,13 @@ export default function ControleEstoque({ user, abaInicial = 'geral' }: Props) {
         </>
       )}
 
-      {detalhe && <ControleEstoqueDetalhe linha={detalhe} onClose={() => setDetalhe(null)} />}
+      {detalhe && (
+        <ControleEstoqueDetalhe
+          linha={detalhe}
+          onClose={() => setDetalhe(null)}
+          onEditar={podeEditar ? () => { setEdicao({ linha: detalhe }); setDetalhe(null); } : undefined}
+        />
+      )}
 
       {edicao && podeEditar && (
         <ControleEstoqueParametrosModal
