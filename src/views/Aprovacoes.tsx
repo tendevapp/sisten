@@ -296,8 +296,9 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
     // Filtro por busca textual
     if (busca.trim()) {
       const termo = busca.toLowerCase().trim();
+      const termoSemHash = termo.startsWith('#') ? termo.slice(1).trim() : termo;
       lista = lista.filter(r => {
-        if (r.number.toLowerCase().includes(termo)) return true;
+        if (r.number.toLowerCase().includes(termo) || (termoSemHash && r.number.toLowerCase().includes(termoSemHash))) return true;
         if (r.solicitante_name.toLowerCase().includes(termo)) return true;
         if (r.justificativa && r.justificativa.toLowerCase().includes(termo)) return true;
         const itens = localDb.getRequestItems(r.id);

@@ -157,8 +157,10 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     // Apply text search
     if (search.trim()) {
       const q = search.toLowerCase();
+      const qSemHash = q.startsWith('#') ? q.slice(1).trim() : q;
       list = list.filter(r => 
         r.number.includes(q) || 
+        (qSemHash ? r.number.includes(qSemHash) : false) ||
         r.solicitante_name.toLowerCase().includes(q) ||
         (r.justificativa && r.justificativa.toLowerCase().includes(q))
       );

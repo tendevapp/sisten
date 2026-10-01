@@ -111,8 +111,15 @@ export function requisitanteRm(nome?: string | null): string {
  */
 export function campoZRm(setor?: Sector | null): string {
   const codigo = setor?.sap_area_code?.trim();
-  if (codigo) return normalizarSap(codigo).slice(0, 4);
+  const normalizado = codigo ? normalizarSap(codigo).slice(0, 4) : '';
   const letras = normalizarSap(setor?.name || '').replace(/[^A-Z0-9]/g, '');
+
+  // Setor Facilities utiliza ADMI no SAP (ZZKOKRS) em vez de FACI
+  if (normalizado === 'FACI' || letras.startsWith('FACILIT') || setor?.id === '3') {
+    return 'ADMI';
+  }
+
+  if (normalizado) return normalizado;
   return letras.slice(0, 4);
 }
 

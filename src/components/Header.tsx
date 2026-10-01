@@ -25,16 +25,17 @@ interface HeaderProps {
   onUserChange: () => void;
   onNavigate: (path: string) => void;
   onOpenMobileMenu: () => void;
+  /** Abre a busca global (Ctrl+K). */
+  onAbrirBusca?: () => void;
 }
 
-export default function Header({ user, simulatedRole, onSimulateRole, onUserChange, onNavigate, onOpenMobileMenu }: HeaderProps) {
+export default function Header({ user, simulatedRole, onSimulateRole, onUserChange, onNavigate, onOpenMobileMenu, onAbrirBusca }: HeaderProps) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   // O sino abre em "não lidas": a caixa cheia de avisos já lidos é justamente
   // o que fazia o badge perder a força.
   const [somenteNaoLidas, setSomenteNaoLidas] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
 
   /* Avisos visuais de movimentação — ver `lib/avisosNotificacao.ts`. */
@@ -211,27 +212,6 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
     }
   };
 
-  const handleGlobalSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const query = searchQuery.trim();
-    if (!query) return;
-
-    if (query.length === 7 && /^\d+$/.test(query)) {
-      // It is a 7-digit request number
-      const reqs = localDb.getRequests();
-      const match = reqs.find(r => r.number === query);
-      if (match) {
-        onNavigate(`/solicitacoes?id=${match.id}`);
-        setSearchQuery('');
-        return;
-      }
-    }
-
-    // Otherwise redirect to catalog or my requests
-    onNavigate(`/materiais/busca?q=${encodeURIComponent(query)}`);
-    setSearchQuery('');
-  };
-
   const switchImpersonation = (targetId: string) => {
     const updated = localDb.switchUser(targetId);
     if (updated) {
@@ -322,6 +302,31 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
 
       {/* Right side Controls */}
       <div className="flex items-center space-x-2 sm:space-x-4 shrink-0">
+        {/* Busca global: pílula no desktop, só o ícone no celular. */}
+        {onAbrirBusca && (
+          <>
+            <button
+              type="button"
+              onClick={onAbrirBusca}
+              aria-label="Buscar no SISTEN"
+              title="Buscar (Ctrl+K)"
+              className="hidden items-center gap-2 rounded-full border border-gray-200 bg-gray-50 py-1.5 pl-3 pr-2 text-sm text-gray-500 transition-colors hover:border-gray-300 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800 md:flex"
+            >
+              <Search className="h-4 w-4" />
+              <span className="pr-4">Buscar…</span>
+              <kbd className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400">Ctrl K</kbd>
+            </button>
+            <button
+              type="button"
+              onClick={onAbrirBusca}
+              aria-label="Buscar no SISTEN"
+              title="Buscar"
+              className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 focus:outline-none dark:text-slate-400 dark:hover:bg-slate-800 md:hidden"
+            >
+              <Search className="h-5.5 w-5.5" />
+            </button>
+          </>
+        )}
         {/* Atalho de Importação de Planilhas — só admin, é onde ele mais precisa chegar rápido. */}
         {user.roles.includes('admin') && (
           <button

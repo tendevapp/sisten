@@ -108,7 +108,7 @@ export function escoposDisponiveis(user: Profile): EscopoDef[] {
  * de aba pra achá-la).
  */
 export const escopoPadrao = (user: Profile): Escopo => {
-  if (user.roles.includes('admin') && canAccessPage(user, 'sol_todas')) return 'todas';
+  if (canAccessPage(user, 'sol_todas')) return 'todas';
   return escoposDisponiveis(user)[0].id;
 };
 

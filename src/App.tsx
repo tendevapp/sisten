@@ -16,6 +16,7 @@ import ErrorBoundary, { CHUNK_RELOAD_GUARD_KEY } from './components/ErrorBoundar
 import { TourRegistryProvider } from './components/help/TourRegistryContext';
 import FeedbackButton from './components/feedback/FeedbackButton';
 import FilaOfflineFormularios from './components/offline/FilaOfflineFormularios';
+import ReporterSincronizacao from './components/offline/ReporterSincronizacao';
 import ForcePasswordChangeModal from './components/auth/ForcePasswordChangeModal';
 import ResumoLoginGate from './components/solicitacoes/ResumoLoginGate';
 
@@ -59,6 +60,8 @@ const ConsumoSemanal = lazy(() => import('./views/ConsumoSemanal'));
 const ControleEstoque = lazy(() => import('./views/ControleEstoque'));
 const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards'));
 const Sobre = lazy(() => import('./views/Sobre'));
+const BuscaGlobal = lazy(() => import('./components/BuscaGlobal'));
+const CentralSincronizacao = lazy(() => import('./views/admin/CentralSincronizacao'));
 const Formularios = lazy(() => import('./views/Formularios'));
 const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
 const ExpedicaoRelatorioLeadTime = lazy(() => import('./views/expedicao/ExpedicaoRelatorioLeadTime'));
@@ -228,6 +231,29 @@ export default function App() {
 
   // Mobile off-canvas sidebar
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Busca global: Ctrl/Cmd+K em qualquer lugar, ou "/" fora de campos de texto.
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const logado = !!user;
+  useEffect(() => {
+    if (!logado) return;
+    const aoTeclar = (ev: KeyboardEvent) => {
+      const atalho = (ev.ctrlKey || ev.metaKey) && !ev.altKey && !ev.shiftKey && ev.key.toLowerCase() === 'k';
+      if (atalho) {
+        ev.preventDefault();
+        setBuscaAberta(aberta => !aberta);
+        return;
+      }
+      if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      const alvo = ev.target as HTMLElement | null;
+      const editavel = !!alvo && (alvo.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(alvo.tagName));
+      if (editavel) return;
+      ev.preventDefault();
+      setBuscaAberta(true);
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [logado]);
 
   // Theme management (Dark / Light Mode)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -1417,6 +1443,12 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/admin/sincronizacao':
+        if (canAccessPage(user, 'admin_sincronizacao')) {
+          return <CentralSincronizacao user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/admin/cadastros':
         if (canAccessPage(user, 'admin_cadastros')) {
           return <CadastrosAdmin user={user} onNavigate={handleNavigate} />;
@@ -1468,6 +1500,7 @@ export default function App() {
           onUserChange={handleUserSessionChange}
           onNavigate={handleNavigate}
           onOpenMobileMenu={() => setMobileSidebarOpen(true)}
+          onAbrirBusca={() => setBuscaAberta(true)}
         />
 
         {/* Dynamic scrollable main pane view */}
@@ -1506,6 +1539,12 @@ export default function App() {
         </main>
       </div>
       <FeedbackButton pagePath={currentPath} />
+      {activeUser && buscaAberta && (
+        <Suspense fallback={null}>
+          <BuscaGlobal user={activeUser} onFechar={() => setBuscaAberta(false)} onNavigate={handleNavigate} />
+        </Suspense>
+      )}
+      {user && <ReporterSincronizacao usuarioId={user.id} usuarioNome={user.name} />}
       {user && <FilaOfflineFormularios usuarioId={user.id} emFormulario={currentPath.startsWith('/formularios') || currentPath.startsWith('/qualidade')} />}
       {activeUser && <ResumoLoginGate user={activeUser} onNavigate={handleNavigate} />}
     </div>

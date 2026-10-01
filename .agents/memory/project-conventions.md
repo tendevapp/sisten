@@ -20,4 +20,8 @@ updated: 2026-05-25
 - Para leitura e ingestão de páginas da web e documentação, preferir Defuddle (`defuddle.md` e skill `@[defuddle]`) para extrair Markdown limpo e poupar tokens.
 - Sempre que houver novas funções importantes ou alteração de regras de negócio, consolidar e atualizar o histórico de versões em `diretrizes.ts` do app, sem sobrecarregar.
 
+## Banco de Dados
+- O único banco de dados e servidor Supabase permitido no SISTEN é o **`supabase-sisten`** (projeto `fwezzgduywgyhxinjurn`).
+- É estritamente proibido utilizar `supabase-guigo` ou qualquer outra instância para comandos, consultas, migrações ou configurações do SISTEN.
+
 

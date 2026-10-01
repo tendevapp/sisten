@@ -23,6 +23,7 @@ import { ptBR } from 'date-fns/locale';
 import { localDb } from '../db/localDb';
 import { Profile, Request, RequestItem, RequestStatusHistory, Sector } from '../types';
 import { formatDateBR, toDate } from '../lib/format';
+import { casarTokens, extrairPalavrasChave } from '../lib/buscaKeywords';
 import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
 import { TIPOS_EM_ORDEM, TIPO_VISUAL } from '../components/solicitacoes/tipoVisual';
 import RequestDetailPanel from '../components/solicitacoes/RequestDetailPanel';
@@ -140,7 +141,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
     tipo: 'todos',
     criticidade: 'todas',
     setor: 'todos',
-    statusFiltro: 'abertas',
+    statusFiltro: 'todas',
     dataFiltro: 'todas',
     visao: visaoPadrao(),
   });
@@ -154,7 +155,9 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   const [tipo, setTipo] = useState<string>(cache.tipo);
   const [criticidade, setCriticidade] = useState<string>(cache.criticidade);
   const [setor, setSetor] = useState<string>(cache.setor);
-  const [statusFiltro, setStatusFiltro] = useState<string>(cache.statusFiltro || 'abertas');
+  const [statusFiltro, setStatusFiltro] = useState<string>(
+    cache.statusFiltro && cache.statusFiltro !== 'abertas' ? cache.statusFiltro : 'todas',
+  );
   const [dataFiltro, setDataFiltro] = useState<string>(cache.dataFiltro || 'todas');
   const [visao, setVisao] = useState<ModoVisao>((cache.visao as ModoVisao) || visaoPadrao());
 
@@ -225,8 +228,9 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   const itensPorRequestId = useMemo(() => {
     const map = new Map<string, RequestItem[]>();
     for (const req of todas) {
-      if (req.type === 'compra') {
-        map.set(req.id, localDb.getRequestItems(req.id));
+      const its = localDb.getRequestItems(req.id);
+      if (its && its.length > 0) {
+        map.set(req.id, its);
       }
     }
     return map;
@@ -312,18 +316,48 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
       });
     }
 
-    // Busca textual
-    const q = busca.trim().toLowerCase();
-    if (q) {
-      lista = lista.filter(r =>
-        r.number.toLowerCase().includes(q) ||
-        r.solicitante_name.toLowerCase().includes(q) ||
-        (r.justificativa || '').toLowerCase().includes(q) ||
-        (r.titulo || '').toLowerCase().includes(q),
-      );
+    // Busca textual abrangente (código, RM, descrição, itens ou qualquer palavra-chave)
+    if (busca.trim()) {
+      const tokens = extrairPalavrasChave(busca)
+        .map(t => t.replace(/^#/, '').trim())
+        .filter(Boolean);
+
+      if (tokens.length > 0) {
+        lista = lista.filter(r => {
+          const itens = itensPorRequestId.get(r.id) || [];
+          const camposItens = itens.flatMap(it => [
+            it.sap_code,
+            it.description,
+            it.observation,
+            it.brand,
+          ]);
+
+          const setorObj = sectors.find(s => s.id === r.solicitante_sector_id);
+
+          const campos: (string | null | undefined)[] = [
+            r.number,
+            `#${r.number}`,
+            r.linked_rm_number,
+            r.titulo,
+            r.justificativa,
+            r.solicitante_name,
+            setorObj?.name,
+            setorObj?.sap_area_code,
+            r.brand,
+            r.suggested_supplier,
+            r.codigo_sap_gerado,
+            r.ticket_externo,
+            r.category_id,
+            r.local,
+            ...camposItens,
+          ];
+
+          return casarTokens(campos, tokens);
+        });
+      }
     }
     return lista;
-  }, [universo, user, escopo, pendencias, statusFiltro, criticidade, setor, dataFiltro, busca]);
+  }, [universo, user, escopo, pendencias, statusFiltro, criticidade, setor, dataFiltro, busca, sectors, itensPorRequestId]);
 
   const contagemPorTipo = useMemo(() => {
     const contagem = { total: antesDoTipo.length, compra: 0, cadastro_sap: 0, chamado: 0 };
@@ -355,7 +389,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
   const limparFiltros = () => {
     setBusca('');
-    setStatusFiltro('abertas');
+    setStatusFiltro('todas');
     setCriticidade('todas');
     setSetor('todos');
     setDataFiltro('todas');
@@ -624,7 +658,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
             type="text"
             value={busca}
             onChange={e => setBusca(e.target.value)}
-            placeholder="Buscar por número, solicitante, título ou justificativa..."
+            placeholder="Buscar por código, RM, descrição ou qualquer palavra-chave..."
             className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 py-2 pl-10 pr-4 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
           />
         </div>
@@ -639,8 +673,8 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
               onChange={e => setStatusFiltro(e.target.value)}
               className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:border-emerald-600 focus:outline-none cursor-pointer"
             >
-              <option value="abertas">Abertas</option>
               <option value="todas">Todas</option>
+              <option value="abertas">Abertas</option>
               <option value="em_analise">Em análise</option>
               <option value="aguardando_aprovacao">Aguardando aprovação</option>
               <option value="concluidas">Concluídas</option>

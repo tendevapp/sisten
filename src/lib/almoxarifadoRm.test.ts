@@ -112,6 +112,12 @@ describe('campo Z (ZZKOKRS)', () => {
     expect(campoZRm(setorAlmox)).toBe('ALMO');
   });
 
+  it('setor Facilities usa ADMI em vez de FACI', () => {
+    expect(campoZRm({ id: '3', name: 'Facilities', is_support: true, helpdesk_enabled: true })).toBe('ADMI');
+    expect(campoZRm({ id: '3', name: 'Facilities', is_support: true, helpdesk_enabled: true, sap_area_code: 'FACI' })).toBe('ADMI');
+    expect(campoZRm({ id: '3', name: 'Facilities', is_support: true, helpdesk_enabled: true, sap_area_code: 'ADMI' })).toBe('ADMI');
+  });
+
   it('sem código, usa 4 letras do nome, ignorando pontuação', () => {
     expect(campoZRm(setorSemCodigo)).toBe('RECH');
   });

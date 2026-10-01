@@ -7,5 +7,6 @@
 - [project] Comunicação direta, sem floreios e economia de tokens seguindo padrão Caveman → caveman.md
 - [project] Ingestão de páginas web e documentação externa via Defuddle para Markdown limpo → defuddle.md
 - [project] Atualizar histórico nas diretrizes.ts sem sobrecarregar e verificar uso de skills nos prompts → project-conventions.md
+- [project] O único banco de dados a usar no SISTEN é o supabase-sisten (fwezzgduywgyhxinjurn) → project-conventions.md
 
 

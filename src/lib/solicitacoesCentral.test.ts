@@ -16,7 +16,7 @@ vi.mock('../db/localDb', () => ({
 
 const {
   podeVer, podeAprovar, ehOperador, pendencia, indexarConversas, indexarEventos,
-  escoposDisponiveis, filtrarPorEscopo, indexarPendencias, universoVisivel,
+  escoposDisponiveis, escopoPadrao, filtrarPorEscopo, indexarPendencias, universoVisivel,
   lerEstadoLeitura, marcarLida, novidade, montarResumo, faixaDe, ordenarFila,
 } = await import('./solicitacoesCentral');
 
@@ -273,5 +273,18 @@ describe('resumo de login', () => {
     const resumo = montarResumo([req({ status: 'aprovada' })], perfil(), estado, indexarEventos([], []), 0, rotuloStatus);
     expect(resumo.pendentes).toHaveLength(0);
     expect(resumo.novidades).toHaveLength(0);
+  });
+});
+
+describe('escopo padrão', () => {
+  it('abre na aba todas para quem tem acesso a sol_todas', () => {
+    const admin = perfil({ roles: ['admin'] });
+    expect(escopoPadrao(admin)).toBe('todas');
+
+    const usuarioComTodas = perfil({
+      roles: ['visualizador'],
+      page_access: { sol_todas: true },
+    });
+    expect(escopoPadrao(usuarioComTodas)).toBe('todas');
   });
 });

@@ -61,6 +61,12 @@ liberado universalmente (`defaultRoles: '*'`).
 - Princípio do menor privilégio: um colaborador recém-cadastrado só acessa o essencial
   (Início, Solicitações básicas), sem expor novos módulos operacionais automaticamente.
 
+## 4. Banco de dados: uso exclusivo de `supabase-sisten`
+
+O único banco de dados e servidor Supabase permitido e utilizado no SISTEN é o **`supabase-sisten`** (projeto `fwezzgduywgyhxinjurn`).
+- É estritamente proibido direcionar comandos, consultas SQL, migrações ou configurações para outros bancos ou servidores MCP (como `supabase-guigo`).
+- Todas as ferramentas MCP de banco, consultas, geração de types e edge functions devem utilizar exclusivamente o servidor `supabase-sisten`.
+
 ## Verificação antes de entregar
 
 ```bash

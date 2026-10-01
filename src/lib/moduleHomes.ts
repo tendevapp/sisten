@@ -201,6 +201,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       admin_feedback: 'Reportes de erro e sugestões enviados pelos usuários.',
       admin_apis: 'Chaves de API, provedores de IA e limites de uso.',
       admin_diretrizes: 'Diretrizes e políticas internas exibidas no sistema.',
+      admin_sincronizacao: 'O que cada aparelho ainda tem na fila offline, há quanto tempo e o último erro do servidor.',
       admin_exportar: 'Planilhas para o Financeiro, como fornecedores × ZL0136 mês a mês.',
     },
   },

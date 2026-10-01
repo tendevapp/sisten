@@ -38,6 +38,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-10-01',
+    resumo: 'Solicitações > Central de Solicitações — Abertura Padrão na Aba "Todas", Filtro de Status em "Todas" e Busca Abrangente (`SolicitacoesCentral.tsx`, `solicitacoesCentral.ts`, `solicitacoesCentral.test.ts`, `diretrizes.ts`): 1. Abertura inicial da Central de Solicitações e seu cache reativo configurados para abrir na aba "Todas" (para todos os perfis com acesso a ela) e com o filtro de Status setado como "Todas" por padrão, exibindo o panorama completo do sistema; 2. A barra de busca textual foi aprimorada com o motor universal de palavras-chave (`extrairPalavrasChave` e `casarTokens`), permitindo buscar simultaneamente por código/número da solicitação (com ou sem #), número da RM SAP (`linked_rm_number`), código SAP de materiais de itens (`it.sap_code`), descrição de itens, título, justificativa, solicitante, setor ou qualquer palavra-chave composta; 3. Suíte de testes unitários atualizada e validada.',
+  },
+  {
+    data: '2026-10-01',
+    resumo: 'Almoxarifado > Abrir RM — Mapeamento do Setor Facilities para Código ADMI no Campo Z / ZZKOKRS (`almoxarifadoRm.ts`, `almoxarifadoRm.test.ts`, `sectors.ts`, `diretrizes.ts`): 1. Atualizada a regra de conversão de `campoZRm` na exportação e pré-visualização da planilha de abertura de RM para atribuir "ADMI" em vez de "FACI" às solicitações originadas pelo setor Facilities (id 3); 2. Atualizado o cadastro base de setores (`sectors.ts`) e o banco Supabase (`sectors.sap_area_code = \'ADMI\'`) garantindo consistência com o padrão exigido pelo SAP para centros de custo/áreas administrativas; 3. Cobertura de testes unitários atualizada e validada.',
+  },
+  {
     data: '2026-09-30',
     resumo: 'Suprimentos > Rastreio de Compras — Cards de KPI Interativos e Filtros de "Sem PO" e "Atrasados" (`RastreioCompras.tsx`, `rastreio.ts`, `rastreio.test.ts`, `diretrizes.ts`): 1. Os 5 cartões de KPI (Registros, Sem PO, No prazo, Atrasados, Entregues) agora são clicáveis e filtram a tabela interativamente, com destaque visual ativo (anel de foco, fundo e badge "Filtrado") e alternância fácil (toggle off ao clicar novamente ou clicar em Registros para limpar); 2. Adicionados seletores dedicados na barra de filtros para "PO" (Todos / Sem PO / Com PO) e "Prazo" (Todos / Atrasados / No prazo / Entregues), sincronizados com os cartões; 3. Adicionados chips de filtro ativo com remoção rápida no topo da tabela; 4. Cobertura com testes unitários em `rastreio.test.ts` para `isSemPo` e filtros combinados de PO e Prazo.',
   },
