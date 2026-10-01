@@ -26,3 +26,6 @@ supabase/.temp/
 # Pastas de saida / exports locais temporarios
 outputs/
 
+# Configuracoes locais de ferramentas
+.mcp.json
+

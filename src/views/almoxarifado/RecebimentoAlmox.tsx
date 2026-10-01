@@ -236,9 +236,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       tipo={detalhe.tipo}
       row={detalhe.row}
       cargas={cargas}
-      podeEditar={
-        detalhe.tipo === 'nc' ? true : podeEditarFormulario(user, detalhe.row as CargaRow | ConferenciaRow)
-      }
+      podeEditar={true}
       onEditar={() => {
         if (detalhe.tipo === 'carga') setForm({ tipo: 'carga', registro: detalhe.row });
         else if (detalhe.tipo === 'conferencia') setForm({ tipo: 'conferencia', registro: detalhe.row });
@@ -255,7 +253,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
         <VistaFichaCega
           cargas={cargas}
           loading={loading}
-          podeEditar={(row) => podeEditarFormulario(user, row)}
+          podeEditar={() => true}
+          podeExcluir={(row) => podeEditarFormulario(user, row)}
           onVoltar={voltarAoHub}
           onNova={() => setForm({ tipo: 'carga' })}
           onEditar={(row) => setForm({ tipo: 'carga', registro: row })}
@@ -288,7 +287,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
           conferencias={conferencias}
           rascunhos={rascunhos}
           loading={loading}
-          podeEditar={(row) => podeEditarFormulario(user, row)}
+          podeEditar={() => true}
+          podeExcluir={(row) => podeEditarFormulario(user, row)}
           onVoltar={voltarAoHub}
           onNova={() => setForm({ tipo: 'conferencia' })}
           onEditar={(row) => setForm({ tipo: 'conferencia', registro: row })}
@@ -677,11 +677,12 @@ function ListaAgrupada<T>({
 // ===========================================================================
 
 function VistaFichaCega({
-  cargas, loading, podeEditar, onVoltar, onNova, onEditar, onAbrir, onRecarregar, onExcluir,
+  cargas, loading, podeEditar, podeExcluir, onVoltar, onNova, onEditar, onAbrir, onRecarregar, onExcluir,
 }: {
   cargas: CargaRow[];
   loading: boolean;
-  podeEditar: (row: CargaRow) => boolean;
+  podeEditar?: (row: CargaRow) => boolean;
+  podeExcluir: (row: CargaRow) => boolean;
   onVoltar: () => void;
   onNova: () => void;
   onEditar: (row: CargaRow) => void;
@@ -741,11 +742,9 @@ function VistaFichaCega({
             )}
       <div className="mt-2 flex items-center justify-end gap-3">
         <AcaoCard onClick={() => onAbrir(c)} cor="var(--ink-muted)">Detalhes</AcaoCard>
-        {podeEditar(c) && (
-          <>
-            <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">Editar</AcaoCard>
-            <AcaoCard onClick={() => onExcluir(c.id, c.codigo)} cor="var(--status-critical)">Excluir</AcaoCard>
-          </>
+        <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">Editar</AcaoCard>
+        {podeExcluir(c) && (
+          <AcaoCard onClick={() => onExcluir(c.id, c.codigo)} cor="var(--status-critical)">Excluir</AcaoCard>
         )}
       </div>
     </CardBase>
@@ -754,7 +753,7 @@ function VistaFichaCega({
   return (
     <VistaShell
       titulo="Ficha cega de volumes"
-      subtitulo="Toque num cartão para ver o preenchimento e o log. Só quem abriu (ou admin) edita; excluir tira da tela e mantém no banco."
+      subtitulo="Toque num cartão para ver o preenchimento e o log. Edição liberada; excluir tira da tela e mantém no banco (só autor/admin)."
       onVoltar={onVoltar}
       onRecarregar={onRecarregar}
       acao={<BotaoNovo onClick={onNova}>Nova ficha cega</BotaoNovo>}
@@ -790,13 +789,14 @@ function VistaFichaCega({
 // ===========================================================================
 
 function VistaContagem({
-  conferencias, rascunhos, loading, podeEditar, onVoltar, onNova, onEditar,
+  conferencias, rascunhos, loading, podeEditar, podeExcluir, onVoltar, onNova, onEditar,
   onContinuarRascunho, onExcluirRascunho, onAbrir, onRecarregar, onEncaminhar, onExcluir,
 }: {
   conferencias: ConferenciaRow[];
   rascunhos: RascunhoConferencia[];
   loading: boolean;
-  podeEditar: (row: ConferenciaRow) => boolean;
+  podeEditar?: (row: ConferenciaRow) => boolean;
+  podeExcluir: (row: ConferenciaRow) => boolean;
   onVoltar: () => void;
   onNova: () => void;
   onEditar: (row: ConferenciaRow) => void;
@@ -862,11 +862,9 @@ function VistaContagem({
             <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>encaminhado a Projetos</span>
           )}
           <AcaoCard onClick={() => onAbrir(c)} cor="var(--ink-muted)">Detalhes</AcaoCard>
-          {podeEditar(c) && (
-            <>
-              <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">Editar</AcaoCard>
-              <AcaoCard onClick={() => onExcluir(c.id, c.codigo)} cor="var(--status-critical)">Excluir</AcaoCard>
-            </>
+          <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">Editar</AcaoCard>
+          {podeExcluir(c) && (
+            <AcaoCard onClick={() => onExcluir(c.id, c.codigo)} cor="var(--status-critical)">Excluir</AcaoCard>
           )}
         </div>
       </CardBase>

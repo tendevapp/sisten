@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-10-01',
+    resumo: 'Formulários > Almoxarifado — Edição de Recebimento Aberta a Todos os Usuários (`RecebimentoAlmox.tsx`, migration `20260930201000_alm_recebimento_edicao_qualquer_usuario.sql`): 1. Edição de ficha cega de volumes (RCV) e conferência de itens (RCM) liberada para qualquer usuário logado com acesso ao módulo, mantendo a gravação detalhada do log campo a campo em `alm_receb_alteracoes` (quem, quando, de/para) através das RPCs transacionais; 2. Exclusão lógica (`excluido`) permanece restrita exclusivamente ao autor do registro ou administrador, protegida tanto na UI (`podeExcluir`) quanto via trigger de segurança (`alm_receb_guarda_exclusao`) e RLS no Supabase.',
+  },
+  {
+    data: '2026-10-01',
     resumo: 'Solicitações > Central de Solicitações — Abertura Padrão na Aba "Todas", Filtro de Status em "Todas" e Busca Abrangente (`SolicitacoesCentral.tsx`, `solicitacoesCentral.ts`, `solicitacoesCentral.test.ts`, `diretrizes.ts`): 1. Abertura inicial da Central de Solicitações e seu cache reativo configurados para abrir na aba "Todas" (para todos os perfis com acesso a ela) e com o filtro de Status setado como "Todas" por padrão, exibindo o panorama completo do sistema; 2. A barra de busca textual foi aprimorada com o motor universal de palavras-chave (`extrairPalavrasChave` e `casarTokens`), permitindo buscar simultaneamente por código/número da solicitação (com ou sem #), número da RM SAP (`linked_rm_number`), código SAP de materiais de itens (`it.sap_code`), descrição de itens, título, justificativa, solicitante, setor ou qualquer palavra-chave composta; 3. Suíte de testes unitários atualizada e validada.',
   },
   {
