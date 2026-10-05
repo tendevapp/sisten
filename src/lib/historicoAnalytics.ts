@@ -26,6 +26,15 @@ const txt = (v: unknown): string => String(v ?? '').trim();
 /** Rótulo de dimensão vazia. Some do gráfico seria pior: o gasto existe. */
 export const NAO_INFORMADO = 'Não informado';
 
+/** Linhas que não representam uma compra de material: serviço (ZP06) ou o
+ *  próprio contrato-quadro aparecendo como linha (descrição começa com
+ *  "Contrato..."). Ficam fora das análises de recorrência e de preço. */
+export function ehCompraDeMaterial(l: HistoricoPedidoView): boolean {
+  if (l.tipo_doc_compra === 'ZP06') return false;
+  if (/^contrato\b/i.test((l.txt_breve || '').trim())) return false;
+  return true;
+}
+
 export interface FatiaValor {
   chave: string;
   valor: number;
@@ -872,7 +881,7 @@ export interface PontoSerieRecorrencia {
   pedidos: number;
 }
 
-function periodoChave(dataISO: string, granularidade: 'semana' | 'mes'): string {
+export function periodoChave(dataISO: string, granularidade: 'semana' | 'mes'): string {
   if (granularidade === 'mes') return dataISO.slice(0, 7);
 
   const d = new Date(`${dataISO}T00:00:00`);

@@ -1276,13 +1276,42 @@ export async function embedAttachments(doc: PDFDocument, attachments: RequestAtt
   return failed;
 }
 
+export interface PdfGerado {
+  doc?: PDFDocument;
+  bytes: Uint8Array;
+  nomeArquivo: string;
+  titulo: string;
+}
+
+export async function docToPdfGerado(doc: PDFDocument, filename: string, title?: string): Promise<PdfGerado> {
+  const bytes = await doc.save();
+  return {
+    doc,
+    bytes,
+    nomeArquivo: filename,
+    titulo: title || filename,
+  };
+}
+
+export function baixarPdfGerado(pdf: PdfGerado): void {
+  if (typeof document === 'undefined') return;
+  const blob = new Blob([pdf.bytes as BlobPart], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = pdf.nomeArquivo;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export async function downloadPdf(doc: PDFDocument, filename: string): Promise<void> {
   const pdfBytes = await doc.save();
+  if (typeof document === 'undefined') return;
   const blob = new Blob([pdfBytes], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
   link.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

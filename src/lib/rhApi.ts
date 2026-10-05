@@ -1374,3 +1374,13 @@ export async function restaurarItemASE(id: string): Promise<void> {
   const { error } = await supabase.from('rh_ase_itens').update(marcarRestaurado()).eq('id', id);
   if (error) throw new Error(error.message);
 }
+
+/** Nome dos usuários por id (para `excluido_por`, que grava só o id). */
+export async function obterNomesUsuarios(ids: string[]): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>();
+  if (ids.length === 0) return mapa;
+  const { data, error } = await supabase.from('profiles').select('id, name').in('id', ids);
+  if (error) throw new Error(error.message);
+  for (const p of data || []) if (p.name) mapa.set(String(p.id), p.name);
+  return mapa;
+}

@@ -24,7 +24,14 @@ import type {
 } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
-import { exportBriefingPdf, exportBriefingConsolidadoPdf } from '../../lib/pdfExport/exportPortariaPdf';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import {
+  exportBriefingPdf,
+  gerarBriefingPdf,
+  exportBriefingConsolidadoPdf,
+  gerarBriefingConsolidadoPdf,
+} from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import SignaturePadModal from '../../components/portaria/SignaturePadModal';
 import { useToast } from '../../components/ui/Toast';
@@ -100,6 +107,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [sessaoAtiva, setSessaoAtiva] = useState<PortBriefingSessao | null>(null);
   const [sessoesSelecionadasIds, setSessoesSelecionadasIds] = useState<string[]>([]);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   // Só o autor da sessão (ou admin) altera a lista de presença / assinaturas.
   const podeEditarSessao = podeEditarFormulario(user, sessaoAtiva);
 
@@ -257,7 +265,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
     }
   };
 
-  const handleExportarConsolidado = async () => {
+  const handleExportarConsolidado = () => {
     const sessoesParaExportar = sessoes.filter((s) =>
       sessoesSelecionadasIds.includes(s.id)
     );
@@ -266,12 +274,10 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
       return;
     }
 
-    try {
-      await exportBriefingConsolidadoPdf(sessoesParaExportar);
-      toast.success(`PDF consolidado com ${sessoesParaExportar.length} turmas gerado com sucesso!`);
-    } catch (err: any) {
-      toast.error('Erro ao gerar PDF consolidado: ' + (err.message || ''));
-    }
+    setPdfPreview({
+      gerar: () => gerarBriefingConsolidadoPdf(sessoesParaExportar),
+      titulo: `Briefing Consolidado (${sessoesParaExportar.length} turmas)`,
+    });
   };
 
   // Estatísticas da sessão ativa
@@ -339,11 +345,14 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
             sessaoAtiva && (
               <button
                 type="button"
-                onClick={() => exportBriefingPdf(sessaoAtiva)}
+                onClick={() => setPdfPreview({
+                  gerar: () => gerarBriefingPdf(sessaoAtiva),
+                  titulo: `Lista de Presença Briefing - ${sessaoAtiva.tema_treinamento || sessaoAtiva.data}`,
+                })}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <FileDown className="h-4 w-4 text-slate-500" />
-                Imprimir / PDF da Lista
+                Visualizar / Baixar PDF
               </button>
             )
           )}
@@ -721,6 +730,13 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
           onNext={tour.next}
           onBack={tour.back}
           onClose={tour.close}
+        />
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
         />
       )}
     </div>

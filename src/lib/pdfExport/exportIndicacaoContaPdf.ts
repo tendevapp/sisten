@@ -11,7 +11,8 @@
 
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 import { Request } from '../../types';
-import { PAGE_WIDTH, PAGE_HEIGHT, MARGIN, sanitizeText, downloadPdf } from './core';
+import { PAGE_WIDTH, PAGE_HEIGHT, MARGIN, sanitizeText, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+export type { PdfGerado };
 import { parseNomeEspecificacoes } from './exportCadastroSapPdf';
 
 export interface IndicacaoContaDados {
@@ -88,7 +89,7 @@ function drawParagraph(page: PDFPage, fonts: Fonts, runs: TextRun[], startY: num
   return y - lineHeight;
 }
 
-export async function exportIndicacaoContaPdf(request: Request, dados: IndicacaoContaDados): Promise<void> {
+export async function gerarIndicacaoContaPdf(request: Request, dados: IndicacaoContaDados): Promise<PdfGerado> {
   const doc = await PDFDocument.create();
   const fonts: Fonts = {
     regular: await doc.embedFont(StandardFonts.Helvetica),
@@ -189,5 +190,9 @@ export async function exportIndicacaoContaPdf(request: Request, dados: Indicacao
   page.drawText(obsAssinatura, { x: (PAGE_WIDTH - wObs) / 2, y: y - 2, size: 8.5, font: fonts.italic, color: rgb(0.30, 0.34, 0.40) });
 
   const filename = `indicacao-conta-pagamento-${request.number}.pdf`;
-  await downloadPdf(doc, filename);
+  return docToPdfGerado(doc, filename, `Indicação de Conta #${request.number}`);
+}
+
+export async function exportIndicacaoContaPdf(request: Request, dados: IndicacaoContaDados): Promise<void> {
+  baixarPdfGerado(await gerarIndicacaoContaPdf(request, dados));
 }

@@ -33,11 +33,19 @@ import type {
 } from '../types';
 import * as api from '../lib/rhApi';
 import { calcularHorasASE, diaDaSemana } from '../lib/rhApi';
+import PdfPreviewModal from '../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../lib/pdfExport/core';
 import {
   exportAseHoraExtraPdf,
+  gerarAseHoraExtraPdf,
   exportAseConsolidadoDiaPdf,
+  gerarAseConsolidadoDiaPdf,
   exportAseConsolidadoDiaExcel,
+  exportAseAuditoriaExcel,
 } from '../lib/pdfExport/exportAseHoraExtraPdf';
+import {
+  descreverFiltroListaAse, filtrarListaAse, idsUsuariosAuditoria, montarAuditoriaAse, type FiltroListaAse,
+} from '../lib/aseAuditoria';
 import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
 import { acharLinhas, horasPorAreaSubsetor, SEM_INFO } from '../lib/aseRelatorio';
 import { canAccessAseRelatorio, canViewAllAse } from '../lib/pages';
@@ -302,12 +310,14 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
   const [itens, setItens] = useState<AseHoraExtraCompleta[] | null>(null);
   const [criando, setCriando] = useState(false);
   const [exportandoData, setExportandoData] = useState<string | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [escopoFiltro, setEscopoFiltro] = useState<'todas' | 'minhas'>(podeVerTodas ? 'todas' : 'minhas');
   const [termoBusca, setTermoBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
   const [itemParaExcluir, setItemParaExcluir] = useState<AseHoraExtraCompleta | null>(null);
   const [excluindo, setExcluindo] = useState(false);
+  const [exportandoAuditoria, setExportandoAuditoria] = useState(false);
 
   const recarregar = useCallback(async () => {
     try {
@@ -358,17 +368,11 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
     }
   };
 
-  const exportarConsolidadoPdf = async (solicitacoes: AseHoraExtraCompleta[], dataExecucao: string) => {
-    setExportandoData(`pdf-${dataExecucao}`);
-    try {
-      await exportAseConsolidadoDiaPdf(solicitacoes, dataExecucao);
-      toast.success(`PDF consolidado de ${formatDataBR(dataExecucao)} gerado com sucesso!`);
-    } catch (e) {
-      console.error('Falha ao gerar PDF consolidado:', e);
-      toast.error(`Erro ao gerar PDF consolidado: ${(e as Error).message}`);
-    } finally {
-      setExportandoData(null);
-    }
+  const exportarConsolidadoPdf = (solicitacoes: AseHoraExtraCompleta[], dataExecucao: string) => {
+    setPdfPreview({
+      gerar: () => gerarAseConsolidadoDiaPdf(solicitacoes, dataExecucao),
+      titulo: `ASE Consolidado - ${formatDataBR(dataExecucao)}`,
+    });
   };
 
   const exportarConsolidadoExcel = (solicitacoes: AseHoraExtraCompleta[], dataExecucao: string) => {
@@ -396,41 +400,39 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
   };
 
   // 1. Filtragem por permissão (escopo), status e busca textual
-  const itensFiltrados = useMemo(() => {
-    if (!itens) return [];
+  const filtroLista = useMemo<FiltroListaAse>(() => ({
+    podeVerTodas, escopo: escopoFiltro, status: filtroStatus, termo: termoBusca, userId: user.id,
+  }), [podeVerTodas, escopoFiltro, filtroStatus, termoBusca, user.id]);
 
-    return itens.filter(s => {
-      // Se não tem permissão para ver todas ou selecionou aba 'minhas'
-      if (!podeVerTodas || escopoFiltro === 'minhas') {
-        if (s.solicitante_id !== user.id) return false;
+  const itensFiltrados = useMemo(
+    () => (itens ? filtrarListaAse(itens, filtroLista) : []),
+    [itens, filtroLista],
+  );
+
+  // Auditoria (admin): mesmos filtros da tela, mas sempre com excluídas e
+  // colaboradores removidos, e sem o corte de 300 da lista de trabalho.
+  const exportarAuditoria = async () => {
+    setExportandoAuditoria(true);
+    try {
+      const todas = await api.listarSolicitacoesASEPeriodo(null, null, true);
+      const filtradas = filtrarListaAse(todas, filtroLista);
+      if (filtradas.length === 0) {
+        toast.error('Nenhuma ASE nos filtros atuais para exportar.');
+        return;
       }
-
-      // Filtro de status
-      if (filtroStatus !== 'TODOS' && s.status !== filtroStatus) {
-        return false;
-      }
-
-      // Termo de busca
-      if (termoBusca.trim()) {
-        const termo = termoBusca.toLowerCase().trim();
-        const noProtocolo = (s.numero_protocolo || '').toLowerCase().includes(termo);
-        const noSetor = (s.setor_nome || '').toLowerCase().includes(termo);
-        const noTurno = (s.turno_nome || '').toLowerCase().includes(termo);
-        const noSolicitante = (s.solicitante_nome || '').toLowerCase().includes(termo);
-        const naData = formatDataBR(s.data_execucao).includes(termo);
-        const noColab = s.itens.some(it =>
-          (it.nome || '').toLowerCase().includes(termo) ||
-          (it.registro || '').toLowerCase().includes(termo) ||
-          (it.cargo || '').toLowerCase().includes(termo)
-        );
-        if (!noProtocolo && !noSetor && !noTurno && !noSolicitante && !naData && !noColab) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [itens, podeVerTodas, escopoFiltro, filtroStatus, termoBusca, user.id]);
+      const nomes = await api.obterNomesUsuarios(idsUsuariosAuditoria(filtradas));
+      exportAseAuditoriaExcel({
+        auditoria: montarAuditoriaAse(filtradas, nomes),
+        descricaoFiltro: descreverFiltroListaAse(filtroLista),
+        geradoPor: user.name || user.email || user.id,
+      });
+      toast.success(`Auditoria exportada: ${filtradas.length} ASE(s).`);
+    } catch (e) {
+      toast.error(`Erro ao exportar auditoria: ${(e as Error).message}`);
+    } finally {
+      setExportandoAuditoria(false);
+    }
+  };
 
   // 2. Agrupamento por data de execução (ordem decrescente)
   const gruposPorData = useMemo(() => {
@@ -584,6 +586,22 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
               checked={mostrarExcluidos}
               onChange={setMostrarExcluidos}
             />
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={exportarAuditoria}
+                disabled={exportandoAuditoria}
+                title="Planilha de auditoria das ASEs nos filtros atuais, incluindo rascunhos, excluídas e colaboradores removidos, com quem criou/excluiu e quando"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-emerald-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-emerald-400 cursor-pointer"
+              >
+                {exportandoAuditoria ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                )}
+                Auditoria (.xlsx)
+              </button>
+            )}
           </div>
         </div>
 
@@ -830,6 +848,13 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
           onCancelar={() => setItemParaExcluir(null)}
         />
       )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
+        />
+      )}
     </div>
   );
 }
@@ -930,6 +955,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     | null
   >(null);
   const [processando, setProcessando] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
 
   const [modoEdicao, setModoEdicao] = useState(false);
 
@@ -1295,18 +1321,14 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     }
   };
 
-  const exportarPdf = async () => {
+  const exportarPdf = () => {
     if (!dados) return;
-    setProcessando(true);
-    try {
-      const setorNome = setores.find(s => s.id === dados.setor_id)?.nome ?? dados.setor_nome;
-      const turnoNome = turnos.find(t => t.id === dados.turno_id)?.nome ?? dados.turno_nome;
-      await exportAseHoraExtraPdf({ ...dados, setor_nome: setorNome, turno_nome: turnoNome, solicitante_nome: dados.solicitante_nome || user.name });
-    } catch (e) {
-      toast.error(`Falha ao gerar o PDF: ${(e as Error).message}`);
-    } finally {
-      setProcessando(false);
-    }
+    const setorNome = setores.find(s => s.id === dados.setor_id)?.nome ?? dados.setor_nome;
+    const turnoNome = turnos.find(t => t.id === dados.turno_id)?.nome ?? dados.turno_nome;
+    setPdfPreview({
+      gerar: () => gerarAseHoraExtraPdf({ ...dados, setor_nome: setorNome, turno_nome: turnoNome, solicitante_nome: dados.solicitante_nome || user.name }),
+      titulo: `ASE - ${dados.numero_protocolo || dados.data_execucao}`,
+    });
   };
 
   const exportarExcel = () => {
@@ -1992,12 +2014,11 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             <button
               type="button"
               onClick={exportarPdf}
-              disabled={processando}
-              title="Exportar PDF com logo oficial e tabelas estruturadas"
+              title="Visualizar antes de baixar PDF oficial com tabelas estruturadas"
               className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 hover:text-rose-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-rose-400 cursor-pointer"
             >
               <FileDown className="h-3.5 w-3.5 text-rose-500" />
-              PDF
+              Visualizar PDF
             </button>
           </div>
 
@@ -2118,6 +2139,13 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           onNext={tour.next}
           onBack={tour.back}
           onClose={tour.close}
+        />
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
         />
       )}
     </div>

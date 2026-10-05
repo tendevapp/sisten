@@ -36,21 +36,19 @@ describe('exportMatrizEpiFuncaoPdf', () => {
       { id: 'f-2', codigo_origem: 'FUN-002', nome: 'ELETRICISTA', ativo: true },
     ];
 
-    const bookMock: SsmaBookEpi[] = [
+    const bookMock: Partial<SsmaBookEpi>[] = [
       {
         id: 'b-1',
         codigo_sap: 'SAP-101',
         descricao_sap: 'CAPACETE AZUL',
         descricao_epi: 'Capacete de Seguranca',
-        numero_ca: '12345',
-        validade_ca: '2028-12-31',
+        ca: '12345',
+        validade: '2028-12-31',
         ativo: true,
         fabricante: '3M',
         grupo_epi: 'CAPACETE',
+        categoria: 'PROTECAO_CABECA',
         tamanho: 'UN',
-        cor: 'AZUL',
-        especificacao_tecnica: null,
-        foto_url: null,
       },
     ];
 
@@ -85,7 +83,7 @@ describe('exportMatrizEpiFuncaoPdf', () => {
       exportMatrizEpiFuncaoPdf({
         funcoes: funcoesMock,
         requisitos: requisitosMock,
-        book: bookMock,
+        book: bookMock as SsmaBookEpi[],
       })
     ).resolves.not.toThrow();
   });

@@ -23,7 +23,9 @@ import type { Profile, PortAlcoolemiaTeste, PortAlcoolemiaResultado, PortAlcoole
 import * as api from '../../lib/portariaApi';
 import { listarRhPessoas } from '../../lib/rhApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
-import { exportAlcoolemiaDiaPdf } from '../../lib/pdfExport/exportPortariaPdf';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportAlcoolemiaDiaPdf, gerarAlcoolemiaDiaPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
@@ -104,6 +106,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
 
   // Modais
   const [modalAberto, setModalAberto] = useState<boolean>(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [editandoTeste, setEditandoTeste] = useState<PortAlcoolemiaTeste | null>(null);
   const [salvando, setSalvando] = useState<boolean>(false);
   const [testeParaExcluir, setTesteParaExcluir] = useState<PortAlcoolemiaTeste | null>(null);
@@ -457,18 +460,15 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   };
 
   // Exportar PDF oficial
-  const exportarPdfDoDia = async () => {
+  const exportarPdfDoDia = () => {
     if (testes.length === 0) {
       toast.warning('Nenhum sorteado registrado para exportar nesta data.');
       return;
     }
-    try {
-      await exportAlcoolemiaDiaPdf(testes, dataSelecionada, user.name);
-      toast.success('PDF do Livro de Alcoolemia gerado com sucesso!');
-    } catch (err: any) {
-      console.error('Erro ao gerar PDF:', err);
-      toast.error('Erro ao gerar PDF do livro diário.');
-    }
+    setPdfPreview({
+      gerar: () => gerarAlcoolemiaDiaPdf(testes, dataSelecionada, user.name),
+      titulo: `Livro de Alcoolemia - ${formatarDataBR(dataSelecionada)}`,
+    });
   };
 
   return (
@@ -524,7 +524,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs transition-all hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             <FileDown className="h-4 w-4 text-rose-600 dark:text-rose-400" />
-            <span>Exportar Livro (PDF)</span>
+            <span>Visualizar / Exportar Livro (PDF)</span>
           </button>
 
           <button
@@ -1683,6 +1683,13 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
           confirmando={excluindo}
           onConfirmar={confirmarExclusao}
           onCancelar={() => setTesteParaExcluir(null)}
+        />
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
         />
       )}
     </div>

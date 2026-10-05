@@ -6,7 +6,8 @@
  * PDF, porque o pedido em si é por fornecedor (ver `pedidoCompra.ts`).
  */
 
-import { createDoc, PdfTextWriter, downloadPdf } from './core';
+import { createDoc, PdfTextWriter, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+export type { PdfGerado };
 import { formatarCnpj, nomeFornecedorCurto } from '../cotacoes';
 import type { PedidoFornecedor } from '../pedidoCompra';
 
@@ -89,15 +90,19 @@ function desenharPedidoCompra(writer: PdfTextWriter, pedido: PedidoFornecedor, n
 const nomeArquivoFornecedor = (razaoSocial: string) =>
   razaoSocial.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40);
 
-/** Um PDF por fornecedor — o padrão de sempre, para quando o comprador vai colocar cada pedido separadamente. */
-export async function exportPedidoCompraPdf(pedido: PedidoFornecedor, numeroProcesso: string): Promise<void> {
+export async function gerarPedidoCompraPdf(pedido: PedidoFornecedor, numeroProcesso: string): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
   desenharPedidoCompra(writer, pedido, numeroProcesso);
   writer.finalizeDoc('FRM.SUP-0007');
 
-  await downloadPdf(doc, `pedido-${numeroProcesso}-${nomeArquivoFornecedor(pedido.fornecedorRazaoSocial)}.pdf`);
+  const filename = `pedido-${numeroProcesso}-${nomeArquivoFornecedor(pedido.fornecedorRazaoSocial)}.pdf`;
+  return docToPdfGerado(doc, filename, `Pedido ${numeroProcesso} - ${pedido.fornecedorRazaoSocial}`);
+}
+
+export async function exportPedidoCompraPdf(pedido: PedidoFornecedor, numeroProcesso: string): Promise<void> {
+  baixarPdfGerado(await gerarPedidoCompraPdf(pedido, numeroProcesso));
 }
 
 /**
@@ -106,7 +111,7 @@ export async function exportPedidoCompraPdf(pedido: PedidoFornecedor, numeroProc
  * `exportPedidoCompraPdf` pedido por pedido, quando o comprador prefere um
  * arquivo consolidado a vários downloads separados.
  */
-export async function exportPedidosCompraPdfUnico(pedidos: PedidoFornecedor[], numeroProcesso: string): Promise<void> {
+export async function gerarPedidosCompraPdfUnico(pedidos: PedidoFornecedor[], numeroProcesso: string): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -116,5 +121,10 @@ export async function exportPedidosCompraPdfUnico(pedidos: PedidoFornecedor[], n
   });
 
   writer.finalizeDoc('FRM.SUP-0007');
-  await downloadPdf(doc, `pedidos-${numeroProcesso}-todos.pdf`);
+  const filename = `pedidos-${numeroProcesso}-todos.pdf`;
+  return docToPdfGerado(doc, filename, `Pedidos ${numeroProcesso} (${pedidos.length} fornecedores)`);
+}
+
+export async function exportPedidosCompraPdfUnico(pedidos: PedidoFornecedor[], numeroProcesso: string): Promise<void> {
+  baixarPdfGerado(await gerarPedidosCompraPdfUnico(pedidos, numeroProcesso));
 }

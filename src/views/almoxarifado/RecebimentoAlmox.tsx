@@ -11,7 +11,10 @@
  *        como chegou da transportadora, ANTES de abrir volume.
  *   F2 · Recebimento e contagem (RCM) — puxa o PO, confere item a item com
  *        check, foto e observação; divergência abre uma NCR consolidada.
- *   ·  · Não conformidades — acompanhamento das NCRs abertas.
+ *   ·  · Não conformidades — acompanhamento das NCRs abertas e, no topo, as
+ *        devolutivas de Suprimentos (decisão do comprador do PO sobre
+ *        avaria/falta/parcial; o almoxarifado confirma a execução). O card
+ *        acende um aviso quando há resposta esperando execução.
  *
  * O vínculo entre F1 e F2 é opcional. Serve item de projeto e de consumo no
  * mesmo formulário; a diferença é só o encaminhamento pós-conferência.
@@ -20,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, FileDown, HardHat, Loader2,
-  ClipboardList, PackageCheck, PackageMinus, Plus, RefreshCw, Search, Truck, X,
+  ClipboardList, MessageSquareReply, PackageCheck, PackageMinus, Plus, RefreshCw, Search, Truck, X,
 } from 'lucide-react';
 import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -55,6 +58,11 @@ import type { Profile } from '../../types';
 import { extrairPalavrasChave, casarTokens } from '../../lib/buscaKeywords';
 import SearchKeywordsChips from '../../components/ui/SearchKeywordsChips';
 import { cadastrarItensComFotoNoCatalogo, type ItemParaCatalogar } from '../../lib/fotosRecebimentoCatalogo';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import DevolutivasSuprimentos from '../../components/almoxarifado/DevolutivasSuprimentos';
+import { listarDevolutivasAlmox } from '../../lib/pendenciasRecebimentoApi';
+import { parametrosDaRota, type PendenciaRecebimento } from '../../lib/pendenciasRecebimento';
+import type { PdfGerado } from '../../lib/pdfExport/core';
 
 interface Props {
   user: Profile;
@@ -98,7 +106,12 @@ const FONTE_ROTULO: Record<string, string> = {
 
 export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   const toast = useToast();
-  const [vista, setVista] = useState<Vista>('hub');
+  // A notificação da devolutiva abre direto a vista: `?vista=devolutivas&id=…`
+  // (as devolutivas moram no topo das Não conformidades).
+  const [vista, setVista] = useState<Vista>(() =>
+    parametrosDaRota(window.location.hash || '').vista === 'devolutivas' ? 'nc' : 'hub');
+  const [destaqueDevolutiva, setDestaqueDevolutiva] = useState<string | null>(() => parametrosDaRota(window.location.hash || '').id);
+  const [devolutivas, setDevolutivas] = useState<PendenciaRecebimento[]>([]);
   const [cargas, setCargas] = useState<CargaRow[]>([]);
   const [conferencias, setConferencias] = useState<ConferenciaRow[]>([]);
   const [ncs, setNcs] = useState<NaoConformidadeRow[]>([]);
@@ -122,6 +135,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
 
   const recarregar = useCallback(async () => {
     setLoading(true);
+    // Fora do Promise.all: as devolutivas não podem derrubar o resto do hub.
+    void listarDevolutivasAlmox().then(setDevolutivas).catch(() => setDevolutivas([]));
     try {
       const [c, cf, n, t] = await Promise.all([
         listarCargas(), listarConferencias(), listarNaoConformidades(), listarTransportadorasSugeridas(),
@@ -138,6 +153,20 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   }, [toast]);
 
   useEffect(() => { void recarregar(); }, [recarregar]);
+
+  useEffect(() => {
+    const aoMudar = () => {
+      const q = parametrosDaRota(window.location.hash || '');
+      if (q.vista !== 'devolutivas') return;
+      setVista('nc');
+      setDestaqueDevolutiva(q.id);
+      void recarregar();
+    };
+    window.addEventListener('hashchange', aoMudar);
+    return () => window.removeEventListener('hashchange', aoMudar);
+  }, [recarregar]);
+
+  const devolutivasParaExecutar = devolutivas.filter((d) => d.status === 'aguardando_almox').length;
 
   const ncAbertas = ncs.filter((n) => n.status !== 'resolvida').length;
 
@@ -174,6 +203,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       icon: AlertTriangle,
       cor: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400',
       badge: `${ncAbertas} aberta(s)`,
+      alerta: devolutivasParaExecutar,
+      alertaTexto: `${devolutivasParaExecutar} resposta(s) de Suprimentos para executar`,
     },
   ];
 
@@ -183,6 +214,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   type CardHub = {
     id: Vista; rota?: string; codigo: string; titulo: string; desc: string;
     icon: typeof Truck; cor: string; badge: string;
+    /** Movimentação esperando o usuário: acende o aviso no canto do card. */
+    alerta?: number; alertaTexto?: string;
   };
   const cards: CardHub[] = [
     ...(podeRecebimento ? cardsRecebimento : []),
@@ -337,6 +370,26 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
         <VistaNaoConformidades
           ncs={ncs}
           loading={loading}
+          devolutivas={devolutivas.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <MessageSquareReply className="h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
+                <h2 className="text-[11px] font-extrabold uppercase tracking-wide" style={{ color: 'var(--ink-secondary)' }}>
+                  Devolutivas de Suprimentos
+                </h2>
+                {devolutivasParaExecutar > 0 && (
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-extrabold text-white" style={{ background: 'var(--status-critical)' }}>
+                    {devolutivasParaExecutar} para executar
+                  </span>
+                )}
+                <span className="h-px flex-1" style={{ background: 'var(--hairline)' }} />
+              </div>
+              <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                Avaria, falta e entrega parcial viram pendência para o comprador do PO. A decisão dele chega aqui para você executar.
+              </p>
+              <DevolutivasSuprimentos lista={devolutivas} loading={loading} destaqueId={destaqueDevolutiva} onExecutado={recarregar} />
+            </section>
+          )}
           onVoltar={voltarAoHub}
           onNova={() => setNcNova(true)}
           onRecarregar={recarregar}
@@ -406,9 +459,21 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
               key={card.rota ?? card.id}
               type="button"
               onClick={() => (card.rota ? onNavigate(card.rota) : setVista(card.id))}
-              className="group flex flex-col items-start justify-between rounded-2xl border p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none"
-              style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
+              className="group relative flex flex-col items-start justify-between rounded-2xl border p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none"
+              style={{ borderColor: card.alerta ? 'var(--status-critical)' : 'var(--hairline)', background: 'var(--surface-raised)' }}
             >
+              {!!card.alerta && (
+                <span
+                  className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[11px] font-extrabold text-white shadow-md"
+                  style={{ background: 'var(--status-critical)' }}
+                  role="status"
+                  aria-label={card.alertaTexto}
+                  title={card.alertaTexto}
+                >
+                  <span className="absolute inset-0 animate-ping rounded-full opacity-40" style={{ background: 'var(--status-critical)' }} />
+                  <span className="relative">{card.alerta}</span>
+                </span>
+              )}
               <div className="w-full">
                 <div className="flex w-full items-center justify-between">
                   <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${card.cor}`}>
@@ -422,7 +487,9 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
                 <p className="mt-1.5 text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>{card.desc}</p>
               </div>
               <div className="mt-5 flex w-full items-center justify-between border-t pt-3" style={{ borderColor: 'var(--hairline)' }}>
-                <span className="text-xs font-semibold" style={{ color: 'var(--ink-secondary)' }}>{card.badge}</span>
+                <span className="text-xs font-semibold" style={{ color: card.alerta ? 'var(--status-critical)' : 'var(--ink-secondary)' }}>
+                  {card.alerta ? card.alertaTexto : card.badge}
+                </span>
                 <span className="inline-flex items-center gap-1 text-xs font-bold transition-transform group-hover:translate-x-1" style={{ color: 'var(--brand)' }}>
                   Acessar <ArrowRight className="h-3.5 w-3.5" />
                 </span>
@@ -947,10 +1014,12 @@ function VistaContagem({
 // ===========================================================================
 
 function VistaNaoConformidades({
-  ncs, loading, onVoltar, onNova, onRecarregar, onAbrir, onEditar, onStatus, onExcluir,
+  ncs, loading, devolutivas, onVoltar, onNova, onRecarregar, onAbrir, onEditar, onStatus, onExcluir,
 }: {
   ncs: NaoConformidadeRow[];
   loading: boolean;
+  /** Seção das devolutivas de Suprimentos, no topo da vista (vazia quando não há nenhuma). */
+  devolutivas?: React.ReactNode;
   onVoltar: () => void;
   onNova: () => void;
   onRecarregar: () => void;
@@ -1039,6 +1108,7 @@ function VistaNaoConformidades({
       onRecarregar={onRecarregar}
       acao={<BotaoNovo onClick={onNova}>Nova não conformidade</BotaoNovo>}
     >
+      {devolutivas}
       {loading && <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
       {!loading && !ncs.length && (
         <TableEmpty icon={Check} title="Nenhuma não conformidade" hint="Abra uma NCR avulsa ou ela será criada quando a conferência acusar divergência." />
@@ -1245,7 +1315,7 @@ function ModalDetalhe({
   const lb = useLightbox();
   const toast = useToast();
   const codigo = (row as any).codigo as string;
-  const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [catalogando, setCatalogando] = useState(false);
 
   const itensComFoto = tipo === 'conferencia'
@@ -1275,20 +1345,19 @@ function ModalDetalhe({
   };
 
   /** PDF do registro aberto (carrega pdf-lib só quando pedem). */
-  const exportarPdf = async () => {
-    setGerandoPdf(true);
-    try {
-      const pdf = await import('../../lib/pdfExport/exportRecebimentoAlmoxPdf');
-      if (tipo === 'carga') await pdf.exportFichaCegaPdf(row as CargaRow);
-      else if (tipo === 'conferencia') {
-        const c = row as ConferenciaRow;
-        await pdf.exportConferenciaPdf(c, { cargaCodigo: cargas.find((x) => x.id === c.carga_id)?.codigo });
-      } else await pdf.exportNaoConformidadePdf(row as NaoConformidadeRow);
-    } catch (err: any) {
-      toast.error(err?.message || 'Não foi possível gerar o PDF.');
-    } finally {
-      setGerandoPdf(false);
-    }
+  const exportarPdf = () => {
+    setPdfPreview({
+      gerar: async () => {
+        const pdf = await import('../../lib/pdfExport/exportRecebimentoAlmoxPdf');
+        if (tipo === 'carga') return pdf.gerarFichaCegaPdf(row as CargaRow);
+        if (tipo === 'conferencia') {
+          const c = row as ConferenciaRow;
+          return pdf.gerarConferenciaPdf(c, { cargaCodigo: cargas.find((x) => x.id === c.carga_id)?.codigo });
+        }
+        return pdf.gerarNaoConformidadePdf(row as NaoConformidadeRow);
+      },
+      titulo: codigo,
+    });
   };
 
   const geralPaths = ((row as any).evidencias as AnexoRecebimento[] | undefined)?.map((e) => e.path) ?? [];
@@ -1516,12 +1585,11 @@ function ModalDetalhe({
         )}
         <button
           onClick={() => void exportarPdf()}
-          disabled={gerandoPdf}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border"
           style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
         >
-          {gerandoPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-          {gerandoPdf ? 'Gerando…' : 'Exportar PDF'}
+          <FileDown className="h-4 w-4" />
+          Visualizar PDF
         </button>
         {podeEditar && (
           <button onClick={onEditar} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white" style={{ background: 'var(--brand)' }}>
@@ -1530,6 +1598,13 @@ function ModalDetalhe({
         )}
       </ModalFooter>
     </Modal>
+    {pdfPreview && (
+      <PdfPreviewModal
+        gerar={pdfPreview.gerar}
+        tituloPadrao={pdfPreview.titulo}
+        onClose={() => setPdfPreview(null)}
+      />
+    )}
     {lb.elemento}
     </>
   );

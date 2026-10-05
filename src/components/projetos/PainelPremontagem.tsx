@@ -43,8 +43,10 @@ import { formatDateTimeBR, formatInt, formatQtd } from '../../lib/format';
 import { PREFIXO, TRAMOS, type Tramo } from '../../lib/projetos';
 import { subconjuntosDoTramo, type ArvoreBom, type ConsumoItem } from '../../lib/projetosBom';
 import { zonasDoTramo, zonaPorId, zonasPendentes, consumoDaZona, rotuloTramoComZona, type ZonaDef, type ZonaId } from '../../lib/projetosZonas';
+import PdfPreviewModal from '../ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
 import {
-  exportarRomaneio, fonteDaOrdem,
+  exportarRomaneio, gerarRomaneioPdf, fonteDaOrdem,
   type RomaneioFonte, type RomaneioFormato, type RomaneioVisao,
 } from '../../lib/projetosRomaneioExport';
 import {
@@ -963,8 +965,16 @@ function ExportarRomaneioBotoes({
   const toast = useToast();
   const [ocupado, setOcupado] = useState(false);
   const [aberto, setAberto] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
 
   const baixar = async (visao: RomaneioVisao, formato: RomaneioFormato) => {
+    if (formato === 'pdf') {
+      setPdfPreview({
+        gerar: () => gerarRomaneioPdf(fonte, arvore, itemPorId, visao),
+        titulo: `Romaneio (${visao === 'bom' ? 'BOM' : 'Part Number'}) — ${fonte.codigo}`,
+      });
+      return;
+    }
     setOcupado(true);
     try {
       await exportarRomaneio(fonte, arvore, itemPorId, visao, formato);
@@ -1014,7 +1024,7 @@ function ExportarRomaneioBotoes({
                 disabled={disabled || ocupado}
                 className={botaoCls}
                 style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
-                title={`${g.rotulo} — PDF`}
+                title={`${g.rotulo} — Visualizar PDF`}
               >
                 <FileText className="h-3.5 w-3.5 shrink-0" /> PDF
               </button>
@@ -1022,6 +1032,13 @@ function ExportarRomaneioBotoes({
           </div>
         ))}
       </div>
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
+        />
       )}
     </div>
   );

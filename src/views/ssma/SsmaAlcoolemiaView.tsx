@@ -29,9 +29,10 @@ import type {
 } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { listarRhPessoas } from '../../lib/rhApi';
-import { podeEditarFormulario } from '../../lib/permissoesFormularios';
-import { exportTermoAlcoolemiaPdf } from '../../lib/pdfExport/exportSsmaAlcoolemiaPdf';
-import { exportAlcoolemiaDiaPdf } from '../../lib/pdfExport/exportPortariaPdf';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportTermoAlcoolemiaPdf, gerarTermoAlcoolemiaPdf } from '../../lib/pdfExport/exportSsmaAlcoolemiaPdf';
+import { exportAlcoolemiaDiaPdf, gerarAlcoolemiaDiaPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -108,6 +109,7 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
   const [modalNovoAberto, setModalNovoAberto] = useState<boolean>(false);
   const [salvando, setSalvando] = useState<boolean>(false);
   const [imprimindo, setImprimindo] = useState<boolean>(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
 
   // Campos do Termo FRM.SOC-0042
   const [termoRazao, setTermoRazao] = useState<PortAlcoolemiaRazao>('ALEATORIO');
@@ -280,23 +282,18 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
   };
 
   // Impressão oficial do termo FRM.SOC-0042
-  const imprimirTermoOficial = async (teste: PortAlcoolemiaTeste) => {
-    setImprimindo(true);
-    try {
-      await exportTermoAlcoolemiaPdf(teste);
-      toast.success(`Termo de Alcoolemia (FRM.SOC-0042) gerado para ${teste.nome}!`);
-
-      // Marcar termo impresso
-      await api.atualizarTesteAlcoolemia(teste.id, {
-        termo_impresso_em: new Date().toISOString(),
-      });
-      await carregarTestes();
-    } catch (err: any) {
-      console.error('Erro ao exportar termo PDF:', err);
-      toast.error('Erro ao gerar termo em PDF.');
-    } finally {
-      setImprimindo(false);
-    }
+  const imprimirTermoOficial = (teste: PortAlcoolemiaTeste) => {
+    setPdfPreview({
+      gerar: async () => {
+        const pdf = await gerarTermoAlcoolemiaPdf(teste);
+        // Marcar termo impresso
+        void api.atualizarTesteAlcoolemia(teste.id, {
+          termo_impresso_em: new Date().toISOString(),
+        }).then(() => carregarTestes());
+        return pdf;
+      },
+      titulo: `Termo de Alcoolemia - ${teste.nome}`,
+    });
   };
 
   // Abrir Modal de Novo Teste Extra
@@ -412,12 +409,15 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
 
             <button
               type="button"
-              onClick={() => exportAlcoolemiaDiaPdf(testes, dataSelecionada, user.name)}
+              onClick={() => setPdfPreview({
+                gerar: () => gerarAlcoolemiaDiaPdf(testes, dataSelecionada, user.name),
+                titulo: `Livro de Alcoolemia - ${dataSelecionada}`,
+              })}
               disabled={testes.length === 0}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               <FileDown className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Relatório Diário</span>
+              <span>Visualizar / Exportar Diário</span>
             </button>
           </div>
         </div>
@@ -1428,6 +1428,13 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
           onNext={tour.next}
           onBack={tour.back}
           onClose={tour.close}
+        />
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
         />
       )}
     </div>

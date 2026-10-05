@@ -14,8 +14,10 @@ import { AttachmentGallery } from '../components/ui/Attachments';
 import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
-import { exportCadastroSapPdf } from '../lib/pdfExport/exportCadastroSapPdf';
-import { exportIndicacaoContaPdf } from '../lib/pdfExport/exportIndicacaoContaPdf';
+import PdfPreviewModal from '../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../lib/pdfExport/core';
+import { exportCadastroSapPdf, gerarCadastroSapPdf } from '../lib/pdfExport/exportCadastroSapPdf';
+import { exportIndicacaoContaPdf, gerarIndicacaoContaPdf } from '../lib/pdfExport/exportIndicacaoContaPdf';
 import { formatDateTimeBR } from '../lib/format';
 
 interface CadastrosSapProps {
@@ -62,6 +64,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [selectedReq, setSelectedReq] = useState<Request | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [showIndicacaoConta, setShowIndicacaoConta] = useState(false);
   const [exportingIndicacaoConta, setExportingIndicacaoConta] = useState(false);
   const [indicacaoCidade, setIndicacaoCidade] = useState('');
@@ -503,50 +506,43 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     return sectors.find(s => s.id === id)?.name || id;
   };
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = () => {
     if (!selectedReq) return;
-    setExportingPdf(true);
-    try {
-      const attachments = localDb.getAttachments(selectedReq.id);
-      const { failedAttachments } = await exportCadastroSapPdf(selectedReq, getSectorName(selectedReq.solicitante_sector_id), attachments);
-      if (failedAttachments.length > 0) {
-        toast.error(`PDF gerado, mas os anexos "${failedAttachments.join('", "')}" não puderam ser incluídos.`);
-      } else {
-        toast.success('PDF exportado com sucesso.');
-      }
-    } catch (e) {
-      console.error('Falha ao exportar PDF do cadastro SAP:', e);
-      toast.error('Não foi possível gerar o PDF. Tente novamente.');
-    } finally {
-      setExportingPdf(false);
-    }
+    const req = selectedReq;
+    const sectorName = getSectorName(req.solicitante_sector_id);
+    const attachments = localDb.getAttachments(req.id);
+    setPdfPreview({
+      gerar: async () => {
+        const res = await gerarCadastroSapPdf(req, sectorName, attachments);
+        if (res.failedAttachments.length > 0) {
+          toast.error(`PDF gerado, mas os anexos "${res.failedAttachments.join('", "')}" não puderam ser incluídos.`);
+        }
+        return res;
+      },
+      titulo: `Cadastro SAP #${req.number}`,
+    });
   };
 
-  const handleExportIndicacaoConta = async (e: React.FormEvent) => {
+  const handleExportIndicacaoConta = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedReq) return;
     if (!indicacaoCidade.trim() || !indicacaoBanco.trim() || !indicacaoAgencia.trim() || !indicacaoConta.trim()) {
       toast.error('Preencha cidade, banco, agência e conta corrente.');
       return;
     }
-    setExportingIndicacaoConta(true);
-    try {
-      const dados = {
-        cidade: indicacaoCidade.trim(),
-        banco: indicacaoBanco.trim(),
-        agencia: indicacaoAgencia.trim(),
-        conta: indicacaoConta.trim(),
-      };
-      await exportIndicacaoContaPdf(selectedReq, { ...dados, contaCorrente: dados.conta });
-      salvarIndicacaoContaLocal(selectedReq, dados);
-      toast.success('PDF de indicação de conta exportado com sucesso.');
-      setShowIndicacaoConta(false);
-    } catch (e) {
-      console.error('Falha ao exportar PDF de indicação de conta:', e);
-      toast.error('Não foi possível gerar o PDF. Tente novamente.');
-    } finally {
-      setExportingIndicacaoConta(false);
-    }
+    const req = selectedReq;
+    const dados = {
+      cidade: indicacaoCidade.trim(),
+      banco: indicacaoBanco.trim(),
+      agencia: indicacaoAgencia.trim(),
+      conta: indicacaoConta.trim(),
+    };
+    salvarIndicacaoContaLocal(req, dados);
+    setShowIndicacaoConta(false);
+    setPdfPreview({
+      gerar: () => gerarIndicacaoContaPdf(req, { ...dados, contaCorrente: dados.conta }),
+      titulo: `Indicação de Conta #${req.number}`,
+    });
   };
 
   const getItemSummary = (req: Request): string => {
@@ -787,11 +783,10 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleExportPdf}
-                  disabled={exportingPdf}
-                  className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
                 >
                   <FileText className="h-3.5 w-3.5 text-slate-500" />
-                  {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
+                  Visualizar PDF
                 </button>
 
                 {selectedReq.registration_type === 'Fornecedor' && (
@@ -1324,11 +1319,10 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
               </div>
               <button
                 type="submit"
-                disabled={exportingIndicacaoConta}
-                className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs py-2.5 px-3 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2.5 px-3 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1.5"
               >
                 <FileText className="h-3.5 w-3.5" />
-                {exportingIndicacaoConta ? 'Gerando...' : 'Gerar PDF'}
+                Visualizar PDF
               </button>
             </form>
           </ModalBody>
@@ -1350,6 +1344,13 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
           confirmando={excluindo}
           onConfirmar={handleExcluir}
           onCancelar={() => setConfirmarExclusao(false)}
+        />
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
         />
       )}
     </div>

@@ -19,7 +19,7 @@
  */
 
 import * as XLSX from 'xlsx';
-import { createDoc, downloadPdf, PdfTextWriter } from './pdfExport/core';
+import { createDoc, downloadPdf, PdfTextWriter, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './pdfExport/core';
 import { rotuloTramoComZona, zonaPorId } from './projetosZonas';
 import {
   montarLinhasConsolidadas,
@@ -79,8 +79,8 @@ export async function exportarRomaneio(
     else exportarPartNumberExcel(fonte, itemPorId);
     return;
   }
-  if (visao === 'bom') await exportarBomPdf(fonte, arvore, itemPorId);
-  else await exportarPartNumberPdf(fonte, itemPorId);
+  const pdf = await gerarRomaneioPdf(fonte, arvore, itemPorId, visao);
+  baixarPdfGerado(pdf);
 }
 
 function exportarBomExcel(fonte: RomaneioFonte, arvore: ArvoreBom, itemPorId: Map<string, ProjItem>): void {
@@ -148,7 +148,7 @@ async function cabecalho(fonte: RomaneioFonte, alvo: string) {
   return { doc, w };
 }
 
-async function exportarBomPdf(fonte: RomaneioFonte, arvore: ArvoreBom, itemPorId: Map<string, ProjItem>): Promise<void> {
+export async function gerarBomPdf(fonte: RomaneioFonte, arvore: ArvoreBom, itemPorId: Map<string, ProjItem>): Promise<PdfGerado> {
   const zona = zonaPorId(fonte.tramo as Tramo, fonte.zona);
   const alvo = rotuloTramoComZona(fonte.tramo as Tramo, zona);
   const linhas = montarLinhasPorNivel(arvore, fonte, itemPorId);
@@ -172,10 +172,15 @@ async function exportarBomPdf(fonte: RomaneioFonte, arvore: ArvoreBom, itemPorId
   );
 
   w.finalizeDoc(fonte.codigo);
-  await downloadPdf(doc, nomeArquivo(fonte, 'bom', alvo, 'pdf'));
+  return docToPdfGerado(doc, nomeArquivo(fonte, 'bom', alvo, 'pdf'), `Romaneio por BOM - ${fonte.codigo}`);
 }
 
-async function exportarPartNumberPdf(fonte: RomaneioFonte, itemPorId: Map<string, ProjItem>): Promise<void> {
+export async function exportarBomPdf(fonte: RomaneioFonte, arvore: ArvoreBom, itemPorId: Map<string, ProjItem>): Promise<void> {
+  const pdf = await gerarBomPdf(fonte, arvore, itemPorId);
+  baixarPdfGerado(pdf);
+}
+
+export async function gerarPartNumberPdf(fonte: RomaneioFonte, itemPorId: Map<string, ProjItem>): Promise<PdfGerado> {
   const zona = zonaPorId(fonte.tramo as Tramo, fonte.zona);
   const alvo = rotuloTramoComZona(fonte.tramo as Tramo, zona);
   const linhas = montarLinhasConsolidadas(fonte.itens, itemPorId);
@@ -195,5 +200,20 @@ async function exportarPartNumberPdf(fonte: RomaneioFonte, itemPorId: Map<string
   );
 
   w.finalizeDoc(fonte.codigo);
-  await downloadPdf(doc, nomeArquivo(fonte, 'part-number', alvo, 'pdf'));
+  return docToPdfGerado(doc, nomeArquivo(fonte, 'part-number', alvo, 'pdf'), `Romaneio por Part Number - ${fonte.codigo}`);
+}
+
+export async function exportarPartNumberPdf(fonte: RomaneioFonte, itemPorId: Map<string, ProjItem>): Promise<void> {
+  const pdf = await gerarPartNumberPdf(fonte, itemPorId);
+  baixarPdfGerado(pdf);
+}
+
+export async function gerarRomaneioPdf(
+  fonte: RomaneioFonte,
+  arvore: ArvoreBom,
+  itemPorId: Map<string, ProjItem>,
+  visao: RomaneioVisao,
+): Promise<PdfGerado> {
+  if (visao === 'bom') return gerarBomPdf(fonte, arvore, itemPorId);
+  return gerarPartNumberPdf(fonte, itemPorId);
 }

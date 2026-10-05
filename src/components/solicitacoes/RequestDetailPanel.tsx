@@ -28,7 +28,9 @@ import { AttachmentGallery, AttachmentPicker } from '../ui/Attachments';
 import { PreparedAttachment } from '../../lib/imageCompression';
 import { SinalChips } from '../ui/SinalChips';
 import { buscarMateriais, resumoSinais, type SinalChip } from '../../lib/materiais';
-import { exportCompraPdf } from '../../lib/pdfExport/exportCompraPdf';
+import PdfPreviewModal from '../ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportCompraPdf, gerarCompraPdf } from '../../lib/pdfExport/exportCompraPdf';
 import { useToast } from '../ui/Toast';
 import { formatDateBR, formatDateTimeBR } from '../../lib/format';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
@@ -139,6 +141,7 @@ export default function RequestDetailPanel({
 
   const [aba, setAba] = useState<Aba>('detalhes');
   const [exportandoPdf, setExportandoPdf] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [itensCopiados, setItensCopiados] = useState(false);
   const [sinais, setSinais] = useState<Record<string, SinalChip[]>>({});
   const [carregandoSinais, setCarregandoSinais] = useState(false);
@@ -365,21 +368,17 @@ export default function RequestDetailPanel({
     onChanged();
   };
 
-  const exportarPdf = async () => {
-    setExportandoPdf(true);
-    try {
-      const { failedAttachments } = await exportCompraPdf(request, nomeSetor(request.solicitante_sector_id), itens);
-      if (failedAttachments.length > 0) {
-        toast.error(`PDF gerado, mas os anexos "${failedAttachments.join('", "')}" ficaram de fora.`);
-      } else {
-        toast.success('PDF exportado.');
-      }
-    } catch (e) {
-      console.error('Falha ao exportar PDF da solicitação de compra:', e);
-      toast.error('Não foi possível gerar o PDF.');
-    } finally {
-      setExportandoPdf(false);
-    }
+  const exportarPdf = () => {
+    setPdfPreview({
+      gerar: async () => {
+        const res = await gerarCompraPdf(request, nomeSetor(request.solicitante_sector_id), itens);
+        if (res.failedAttachments.length > 0) {
+          toast.error(`PDF gerado, mas os anexos "${res.failedAttachments.join('", "')}" ficaram de fora.`);
+        }
+        return res;
+      },
+      titulo: `Solicitação #${request.number}`,
+    });
   };
 
   const copiarItens = async () => {
@@ -518,8 +517,8 @@ export default function RequestDetailPanel({
           )}
 
           {request.type === 'compra' && (
-            <BotaoSecundario onClick={exportarPdf} disabled={exportandoPdf}>
-              <FileText className="h-4 w-4" /> {exportandoPdf ? 'Gerando…' : 'PDF'}
+            <BotaoSecundario onClick={exportarPdf}>
+              <FileText className="h-4 w-4" /> Visualizar PDF
             </BotaoSecundario>
           )}
 
@@ -1157,6 +1156,14 @@ export default function RequestDetailPanel({
             </ModalFooter>
           </form>
         </Modal>
+      )}
+
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
+        />
       )}
     </div>
   );

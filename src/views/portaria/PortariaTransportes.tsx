@@ -17,7 +17,9 @@ import type { TourStep } from '../../components/help/types';
 import type { Profile, PortRegistroTransporte, PortTransporteStatus, PortTurno } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
-import { exportTransportesPdf } from '../../lib/pdfExport/exportPortariaPdf';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportTransportesPdf, gerarTransportesPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import SugestoesChegadaTransporte from '../../components/portaria/SugestoesChegadaTransporte';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
@@ -195,6 +197,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const [itemEditando, setItemEditando] = useState<PortRegistroTransporte | null>(null);
   const [itemParaRegistrarSaida, setItemParaRegistrarSaida] = useState<PortRegistroTransporte | null>(null);
   const [itemParaExcluir, setItemParaExcluir] = useState<PortRegistroTransporte | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [salvandoSaida, setSalvandoSaida] = useState(false);
   const [horaSaidaConfirmacao, setHoraSaidaConfirmacao] = useState('');
@@ -445,7 +448,11 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       toast.error('Nenhum transporte listado para exportar neste dia.');
       return;
     }
-    exportTransportesPdf(diaAtivo || api.hojeISO(), filtroTurno, listaExportar);
+    const dataAlvo = diaAtivo || api.hojeISO();
+    setPdfPreview({
+      gerar: () => gerarTransportesPdf(dataAlvo, filtroTurno, listaExportar),
+      titulo: `Relatório de Transportes - ${dataAlvo}`,
+    });
   };
 
   return (
@@ -489,7 +496,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
             >
               <FileDown className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              Exportar Folha (PDF)
+              Visualizar / Exportar Folha (PDF)
             </button>
           )}
 
@@ -1185,6 +1192,13 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
           onNext={tourNovo.next}
           onBack={tourNovo.back}
           onClose={tourNovo.close}
+        />
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
         />
       )}
     </div>

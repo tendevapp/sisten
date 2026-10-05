@@ -6,7 +6,12 @@
  */
 
 import { Request, RequestAttachment } from '../../types';
-import { createDoc, PdfTextWriter, embedAttachments, downloadPdf } from './core';
+import { createDoc, PdfTextWriter, embedAttachments, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+export type { PdfGerado };
+
+export interface GerarCadastroSapPdfResult extends PdfGerado {
+  failedAttachments: string[];
+}
 
 export interface ExportCadastroSapPdfResult {
   failedAttachments: string[];
@@ -28,11 +33,11 @@ export function parseNomeEspecificacoes(request: Request): { nome: string; espec
   return { nome: texto || '-', especificacoes: '-' };
 }
 
-export async function exportCadastroSapPdf(
+export async function gerarCadastroSapPdf(
   request: Request,
   sectorName: string,
   attachments: RequestAttachment[]
-): Promise<ExportCadastroSapPdfResult> {
+): Promise<GerarCadastroSapPdfResult> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
   const isFornecedor = request.registration_type === 'Fornecedor';
@@ -133,7 +138,16 @@ export async function exportCadastroSapPdf(
   }
 
   writer.finalizeDoc('FRM.CAD-0001');
-  await downloadPdf(doc, `cadastro-sap-${request.number}.pdf`);
+  const gerado = await docToPdfGerado(doc, `cadastro-sap-${request.number}.pdf`, `Cadastro SAP #${request.number}`);
+  return { ...gerado, failedAttachments };
+}
 
-  return { failedAttachments };
+export async function exportCadastroSapPdf(
+  request: Request,
+  sectorName: string,
+  attachments: RequestAttachment[]
+): Promise<ExportCadastroSapPdfResult> {
+  const res = await gerarCadastroSapPdf(request, sectorName, attachments);
+  baixarPdfGerado(res);
+  return { failedAttachments: res.failedAttachments };
 }

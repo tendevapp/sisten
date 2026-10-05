@@ -17,7 +17,9 @@ import { BadgeExcluido } from '../ui/ExcluidosControls';
 import { useLightbox } from '../ui/Lightbox';
 import { useToast } from '../ui/Toast';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
-import { exportRncPdf } from '../../lib/pdfExport/exportQualidadeRncPdf';
+import PdfPreviewModal from '../ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportRncPdf, gerarRncPdf } from '../../lib/pdfExport/exportQualidadeRncPdf';
 import { renovarUrlsAnexos } from '../../lib/qualidadeApi';
 import QualidadePlanoAcaoEditor from './QualidadePlanoAcaoEditor';
 
@@ -56,7 +58,7 @@ export default function QualidadeRncDetalhesModal({
   const toast = useToast();
   const lightbox = useLightbox();
   const [aba, setAba] = useState<'detalhes' | 'plano_acao'>('detalhes');
-  const [exportando, setExportando] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
   const [rncAtual, setRncAtual] = useState(rnc);
 
@@ -89,16 +91,11 @@ export default function QualidadeRncDetalhesModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rnc.id]);
 
-  const handleExportar = async () => {
-    setExportando(true);
-    try {
-      await exportRncPdf(rncAtual);
-      toast.success('PDF gerado com sucesso!');
-    } catch (err: any) {
-      toast.error(`Erro ao gerar PDF: ${err.message || ''}`);
-    } finally {
-      setExportando(false);
-    }
+  const handleExportar = () => {
+    setPdfPreview({
+      gerar: () => gerarRncPdf(rncAtual),
+      titulo: `RNC ${rncAtual.numero_registro}`,
+    });
   };
 
   const handlePlanoAtualizado = (atividades: QuaPlanoAcaoAtividade[], novoStatus: string) => {
@@ -108,6 +105,7 @@ export default function QualidadeRncDetalhesModal({
   };
 
   return (
+    <>
     <Modal onClose={onClose} maxWidth="max-w-3xl" ariaLabel={`RNC ${rncAtual.numero_registro}`}>
       <ModalHeader onClose={onClose}>
         <div className="flex flex-wrap items-center gap-2">
@@ -271,11 +269,10 @@ export default function QualidadeRncDetalhesModal({
         <button
           type="button"
           onClick={handleExportar}
-          disabled={exportando}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-rose-500 disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-rose-500"
         >
-          {exportando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
-          Exportar PDF
+          <FileDown className="h-3.5 w-3.5" />
+          Visualizar PDF
         </button>
       </ModalFooter>
 
@@ -293,5 +290,13 @@ export default function QualidadeRncDetalhesModal({
         />
       )}
     </Modal>
+    {pdfPreview && (
+      <PdfPreviewModal
+        gerar={pdfPreview.gerar}
+        tituloPadrao={pdfPreview.titulo}
+        onClose={() => setPdfPreview(null)}
+      />
+    )}
+    </>
   );
 }

@@ -16,7 +16,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LayoutDashboard, RefreshCw, TrendingUp, Users, Building2, Activity, BarChart3, Clock, Repeat } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, TrendingUp, Users, Building2, Activity, BarChart3, Clock, Repeat, Tags } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { EnrichedSAPRecord } from '../types';
@@ -34,9 +34,10 @@ import TabCarteira from '../components/suprimentos/TabCarteira';
 import TabFornecedores from '../components/suprimentos/TabFornecedores';
 import TabAnaliseCompras from '../components/suprimentos/TabAnaliseCompras';
 import TabRecorrenciaCompras from '../components/suprimentos/TabRecorrenciaCompras';
+import TabPrecoMedio from '../components/suprimentos/TabPrecoMedio';
 import ComposicaoModal, { ComposicaoModalConfig } from '../components/charts/ComposicaoModal';
 
-export type AbaSuprimentos = 'geral' | 'demandas' | 'carteira' | 'fornecedores' | 'compras' | 'recorrencia';
+export type AbaSuprimentos = 'geral' | 'demandas' | 'carteira' | 'fornecedores' | 'compras' | 'recorrencia' | 'preco';
 
 interface SapDashboardsProps {
   onNavigate: (path: string) => void;
@@ -51,6 +52,7 @@ const ABAS: { id: AbaSuprimentos; rotulo: string; icone: typeof Activity; pergun
   { id: 'fornecedores', rotulo: 'Fornecedores & Spend', icone: Building2, pergunta: 'Para onde vai o dinheiro e quem cumpre prazo?' },
   { id: 'compras', rotulo: 'Análise de Compras', icone: BarChart3, pergunta: 'No que já foi comprado: onde está concentrado o gasto e de onde ele vem?' },
   { id: 'recorrencia', rotulo: 'Recorrência de Compras', icone: Repeat, pergunta: 'Estamos comprando o mesmo material demais vezes, ou fracionando por falta de planejamento?' },
+  { id: 'preco', rotulo: 'Preço Médio', icone: Tags, pergunta: 'Quanto custa, em média, cada item — nos pedidos e nas cotações — e como o preço evoluiu?' },
 ];
 
 /**
@@ -358,6 +360,7 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
       {aba === 'compras' && <TabAnaliseCompras onNavigate={onNavigate} />}
 
       {aba === 'recorrencia' && <TabRecorrenciaCompras onNavigate={onNavigate} />}
+      {aba === 'preco' && <TabPrecoMedio />}
 
       <ComposicaoModal config={composicao} onClose={fecharComposicao} />
     </div>

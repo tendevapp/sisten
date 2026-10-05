@@ -97,9 +97,9 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
    * `/suprimentos/historico` não case com `/suprimentos/historicoX`.
    */
   const activePath = navItems
-    .flatMap(g => g.items.map(i => i.path))
-    .filter(p => currentPath === p || (p !== '/' && currentPath.startsWith(`${p}/`)))
-    .sort((a, b) => b.length - a.length)[0];
+    .flatMap(g => g.items.map(i => ({ path: i.path, acende: i.menuPai ?? i.path })))
+    .filter(({ path: p }) => currentPath === p || (p !== '/' && currentPath.startsWith(`${p}/`)))
+    .sort((a, b) => (b.path?.length ?? 0) - (a.path?.length ?? 0))[0]?.acende;
 
   return (
     <>
@@ -151,7 +151,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
       <div className="flex-1 overflow-y-auto py-4">
         {navItems.map((group, groupIdx) => {
           // Filter items based on user permission
-          const visibleItems = group.items.filter(item => canAccessPage(user, item.id));
+          const visibleItems = group.items.filter(item => !item.menuPai && canAccessPage(user, item.id));
 
           if (visibleItems.length === 0) return null;
 

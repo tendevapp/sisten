@@ -59,9 +59,12 @@ import {
   resumirIndicadoresMatriz,
   resumirIndicadoresTreinamentos,
 } from '../../lib/rhPlanoTreinamentosViewModel';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
 import {
   exportarRelatorioTreinamentosExcel,
   exportarRelatorioTreinamentosPdf,
+  gerarRelatorioTreinamentosPdf,
 } from '../../lib/rhPlanoTreinamentosExport';
 
 interface Props {
@@ -114,6 +117,7 @@ export default function RhRelatorioTreinamentos({ onNavigate }: Props) {
   const [carregando, setCarregando] = useState(true);
   const [exportandoPdf, setExportandoPdf] = useState(false);
   const [exportandoExcel, setExportandoExcel] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
 
   // Dados das APIs
   const [dadosPlano, setDadosPlano] = useState<Awaited<ReturnType<typeof apiPlano.carregarPlanoTreinamentos>> | null>(null);
@@ -251,20 +255,15 @@ export default function RhRelatorioTreinamentos({ onNavigate }: Props) {
   const temFiltroAtivo = ano !== 'todos' || mes !== 'todos' || tipo !== 'todos' || area !== 'todos' || buscaTabela !== '';
 
   // Handler de Exportação PDF Executivo
-  const handleExportarPdf = async () => {
-    try {
-      setExportandoPdf(true);
-      await exportarRelatorioTreinamentosPdf({
+  const handleExportarPdf = () => {
+    setPdfPreview({
+      gerar: () => gerarRelatorioTreinamentosPdf({
         resumoPlano,
         resumoMatriz: resumoMatriz || undefined,
         filtros: { ano, tipo, mes, area },
-      });
-      toast.success('Relatório Executivo em PDF gerado com sucesso.');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Não foi possível gerar o PDF executivo.');
-    } finally {
-      setExportandoPdf(false);
-    }
+      }),
+      titulo: `Relatório Executivo de Treinamentos - ${ano === 'todos' ? 'Geral' : ano}`,
+    });
   };
 
   // Handler de Exportação Excel
@@ -317,12 +316,12 @@ export default function RhRelatorioTreinamentos({ onNavigate }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => void handleExportarPdf()}
-            disabled={carregando || exportandoPdf}
+            onClick={handleExportarPdf}
+            disabled={carregando}
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           >
-            {exportandoPdf ? <Loader2 className="h-4 w-4 animate-spin text-rose-600" /> : <FileText className="h-4 w-4 text-rose-600" />}
-            <span>{exportandoPdf ? 'Gerando PDF...' : 'Exportar PDF'}</span>
+            <FileText className="h-4 w-4 text-rose-600" />
+            <span>Visualizar / Exportar PDF</span>
           </button>
 
           <button
@@ -1080,6 +1079,13 @@ export default function RhRelatorioTreinamentos({ onNavigate }: Props) {
             </div>
           )}
         </>
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
+        />
       )}
     </div>
   );

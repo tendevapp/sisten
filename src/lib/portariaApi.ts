@@ -22,6 +22,7 @@ import type {
   PortCarretaStatus,
   PortControleCarreta,
   PortControleEquipamento,
+  PortEquipamentoStatus,
   PortItemConferido,
   PortLocalSetor,
   PortMaterialSeguranca,

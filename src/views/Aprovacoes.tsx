@@ -28,7 +28,9 @@ import { AttachmentGallery } from '../components/ui/Attachments';
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
 import { useTelaEstreita } from '../lib/useTelaEstreita';
-import { exportCompraPdf } from '../lib/pdfExport/exportCompraPdf';
+import PdfPreviewModal from '../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../lib/pdfExport/core';
+import { exportCompraPdf, gerarCompraPdf } from '../lib/pdfExport/exportCompraPdf';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
@@ -157,6 +159,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
   const [sinaisPorItem, setSinaisPorItem] = useState<Record<string, SinalChip[]>>({});
   const [carregandoSinais, setCarregandoSinais] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
 
   // Carga inicial e subscricao reativa
   const carregarDados = () => {
@@ -552,23 +555,22 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
     setModalRedecidirAberta(false);
   };
 
-  // Exportacao de PDF Oficial
-  const exportarPdfSolicitacao = async () => {
+  // Visualização de PDF Oficial
+  const exportarPdfSolicitacao = () => {
     if (!solicitacaoAtiva) return;
-    setGerandoPdf(true);
-    try {
-      await exportCompraPdf(
-        solicitacaoAtiva,
-        nomeSetor(solicitacaoAtiva.solicitante_sector_id),
-        itensAtivos
-      );
-      toast.success('PDF executivo gerado com sucesso!');
-    } catch (err) {
-      console.error(err);
-      toast.error('Erro ao gerar PDF da solicitação.');
-    } finally {
-      setGerandoPdf(false);
-    }
+    const sol = solicitacaoAtiva;
+    const setor = nomeSetor(sol.solicitante_sector_id);
+    const itens = itensAtivos;
+    setPdfPreview({
+      gerar: async () => {
+        const res = await gerarCompraPdf(sol, setor, itens);
+        if (res.failedAttachments.length > 0) {
+          toast.error(`PDF gerado, mas os anexos "${res.failedAttachments.join('", "')}" ficaram de fora.`);
+        }
+        return res;
+      },
+      titulo: `Solicitação #${sol.number}`,
+    });
   };
 
   // Exportacao Excel
@@ -1471,12 +1473,11 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
 
                   <button
                     onClick={exportarPdfSolicitacao}
-                    disabled={gerandoPdf}
-                    title="Exportar documento oficial FRM.SUP-0001 em PDF"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                    title="Visualizar documento oficial FRM.SUP-0001 em PDF"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs transition-colors cursor-pointer"
                   >
                     <FileText className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
-                    <span>{gerandoPdf ? 'Gerando...' : 'PDF Oficial'}</span>
+                    <span>Visualizar PDF</span>
                   </button>
 
                   <button
@@ -1673,6 +1674,13 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
         />
       )}
 
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
+        />
+      )}
     </div>
   );
 }

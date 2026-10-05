@@ -15,7 +15,7 @@ import type {
   resumirIndicadoresTreinamentos,
   TreinamentoCritico,
 } from './rhPlanoTreinamentosViewModel';
-import { createDoc, downloadPdf, PdfTextWriter, PDF_COLORS } from './pdfExport/core';
+import { createDoc, downloadPdf, PdfTextWriter, PDF_COLORS, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './pdfExport/core';
 
 const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -296,11 +296,11 @@ export async function exportarRelatorioTreinamentosExcel(params: {
   await baixarWorkbookExcel(abas, `RELATORIO_TREINAMENTOS_RH_${ano}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
-export async function exportarRelatorioTreinamentosPdf(params: {
+export async function gerarRelatorioTreinamentosPdf(params: {
   resumoPlano: ReturnType<typeof resumirIndicadoresTreinamentos>;
   resumoMatriz?: ReturnType<typeof resumirIndicadoresMatriz>;
   filtros: { ano: string; tipo: string; mes?: string; area?: string };
-}) {
+}): Promise<PdfGerado> {
   const { resumoPlano, resumoMatriz, filtros } = params;
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
@@ -446,5 +446,18 @@ export async function exportarRelatorioTreinamentosPdf(params: {
     color: PDF_COLORS.mutedLabel,
   });
 
-  await downloadPdf(doc, `RELATORIO_EXECUTIVO_TREINAMENTOS_${filtros.ano}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return docToPdfGerado(
+    doc,
+    `RELATORIO_EXECUTIVO_TREINAMENTOS_${filtros.ano}_${new Date().toISOString().slice(0, 10)}.pdf`,
+    'Relatório Executivo de Treinamentos',
+  );
+}
+
+export async function exportarRelatorioTreinamentosPdf(params: {
+  resumoPlano: ReturnType<typeof resumirIndicadoresTreinamentos>;
+  resumoMatriz?: ReturnType<typeof resumirIndicadoresMatriz>;
+  filtros: { ano: string; tipo: string; mes?: string; area?: string };
+}): Promise<void> {
+  const pdf = await gerarRelatorioTreinamentosPdf(params);
+  baixarPdfGerado(pdf);
 }

@@ -10,8 +10,9 @@
 
 import { PDFDocument, type PDFImage } from 'pdf-lib';
 import {
-  createDoc, downloadPdf, MARGIN, PDF_COLORS, PdfTextWriter, sanitizeText, type GridField,
+  createDoc, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado, MARGIN, PDF_COLORS, PdfTextWriter, sanitizeText, type GridField,
 } from './core';
+export type { PdfGerado };
 import { formatDateTimeBR, formatQtd } from '../format';
 import {
   ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, separarNotasFiscais,
@@ -112,7 +113,7 @@ async function desenharFotos(w: PdfTextWriter, titulo: string, fotos: FotoPdf[])
 // Ficha cega de volumes
 // ---------------------------------------------------------------------------
 
-export async function exportFichaCegaPdf(c: CargaRow): Promise<void> {
+export async function gerarFichaCegaPdf(c: CargaRow): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const w = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -155,7 +156,13 @@ export async function exportFichaCegaPdf(c: CargaRow): Promise<void> {
   ]);
 
   w.finalizeDoc(FORM_CODIGO_RECEBIMENTO);
-  await downloadPdf(doc, `${c.codigo}.pdf`);
+  return docToPdfGerado(doc, `${c.codigo}.pdf`, `Ficha Cega ${c.codigo}`);
+}
+
+export async function exportFichaCegaPdf(c: CargaRow): Promise<void> {
+  const pdf = await gerarFichaCegaPdf(c);
+  if (pdf.doc) await downloadPdf(pdf.doc, pdf.nomeArquivo);
+  else baixarPdfGerado(pdf);
 }
 
 // ---------------------------------------------------------------------------
@@ -171,7 +178,7 @@ function situacaoItem(it: ConferenciaItemRow): { texto: string; divergente: bool
   return { texto: it.conferido ? 'Conferido' : 'Não conferido', divergente: false, parcial: false };
 }
 
-export async function exportConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCodigo?: string | null } = {}): Promise<void> {
+export async function gerarConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCodigo?: string | null } = {}): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const w = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -270,7 +277,13 @@ export async function exportConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCod
   ]);
 
   w.finalizeDoc(FORM_CODIGO_RECEBIMENTO);
-  await downloadPdf(doc, `${c.codigo}.pdf`);
+  return docToPdfGerado(doc, `${c.codigo}.pdf`, `Conferência ${c.codigo}`);
+}
+
+export async function exportConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCodigo?: string | null } = {}): Promise<void> {
+  const pdf = await gerarConferenciaPdf(c, opcoes);
+  if (pdf.doc) await downloadPdf(pdf.doc, pdf.nomeArquivo);
+  else baixarPdfGerado(pdf);
 }
 
 // ---------------------------------------------------------------------------
@@ -279,7 +292,7 @@ export async function exportConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCod
 
 const COR_STATUS_NC = { aberta: 'red', em_tratativa: 'amber', resolvida: 'green' } as const;
 
-export async function exportNaoConformidadePdf(n: NaoConformidadeRow): Promise<void> {
+export async function gerarNaoConformidadePdf(n: NaoConformidadeRow): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const w = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -347,5 +360,11 @@ export async function exportNaoConformidadePdf(n: NaoConformidadeRow): Promise<v
   ]);
 
   w.finalizeDoc(FORM_CODIGO_RECEBIMENTO);
-  await downloadPdf(doc, `${n.codigo}.pdf`);
+  return docToPdfGerado(doc, `${n.codigo}.pdf`, `Não Conformidade ${n.codigo}`);
+}
+
+export async function exportNaoConformidadePdf(n: NaoConformidadeRow): Promise<void> {
+  const pdf = await gerarNaoConformidadePdf(n);
+  if (pdf.doc) await downloadPdf(pdf.doc, pdf.nomeArquivo);
+  else baixarPdfGerado(pdf);
 }

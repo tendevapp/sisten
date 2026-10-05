@@ -29,3 +29,6 @@ outputs/
 # Configuracoes locais de ferramentas
 .mcp.json
 
+# Dispositivo reservado Windows / artefato temporario
+nul
+

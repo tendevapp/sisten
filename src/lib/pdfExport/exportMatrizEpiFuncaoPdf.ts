@@ -8,7 +8,8 @@
  */
 
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
-import { downloadPdf } from './core';
+import { downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+export type { PdfGerado };
 import {
   listarFuncoesEpi,
   listarEpisPorFuncao,
@@ -50,9 +51,9 @@ export function sanitizePdfText(text?: string | null): string {
 }
 
 /**
- * Monta e exporta em PDF paisagem (A4) a Matriz de Especificação EPI x Função da TEN.
+ * Monta em PDF paisagem (A4) a Matriz de Especificação EPI x Função da TEN.
  */
-export async function exportMatrizEpiFuncaoPdf(options: ExportMatrizEpiFuncaoOptions = {}): Promise<void> {
+export async function gerarMatrizEpiFuncaoPdf(options: ExportMatrizEpiFuncaoOptions = {}): Promise<PdfGerado> {
   // Carrega dados se não foram passados pela tela
   const [funcoesCarregadas, requisitosCarregados, bookCarregados] = await Promise.all([
     options.funcoes ?? listarFuncoesEpi(false),
@@ -78,7 +79,7 @@ export async function exportMatrizEpiFuncaoPdf(options: ExportMatrizEpiFuncaoOpt
     const codEpi = r.codigo_epi_origem;
     if (!episMap.has(codEpi)) {
       const bookItem = r.epi_book_id ? bookPorId.get(r.epi_book_id) : (r.epi_book || null);
-      const ca = bookItem?.numero_ca || r.ca_origem || '';
+      const ca = bookItem?.ca || r.ca_origem || '';
       episMap.set(codEpi, {
         codigo: codEpi,
         nome: r.descricao_epi_origem,
@@ -492,9 +493,13 @@ export async function exportMatrizEpiFuncaoPdf(options: ExportMatrizEpiFuncaoOpt
     }
   });
 
-  // Faz o download do PDF
+  // Gera o PDF
   const nomeFinal = options.nomeArquivo || 'matriz-epi-x-funcao-ten.pdf';
-  await downloadPdf(doc, nomeFinal);
+  return docToPdfGerado(doc, nomeFinal, 'Matriz de Especificação de EPI por Função');
+}
+
+export async function exportMatrizEpiFuncaoPdf(options: ExportMatrizEpiFuncaoOptions = {}): Promise<void> {
+  baixarPdfGerado(await gerarMatrizEpiFuncaoPdf(options));
 }
 
 /**

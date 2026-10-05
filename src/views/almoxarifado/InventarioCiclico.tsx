@@ -39,7 +39,9 @@ import {
   removerItemInventario, type InventarioRow, type ResultadoContagem,
 } from '../../lib/inventarioCiclicoApi';
 import { exportarPlanilhaInventario } from '../../lib/inventarioCiclicoPlanilha';
-import { exportInventarioCiclicoPdf } from '../../lib/pdfExport/exportInventarioCiclicoPdf';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportInventarioCiclicoPdf, gerarInventarioCiclicoPdf } from '../../lib/pdfExport/exportInventarioCiclicoPdf';
 import { hojeISO } from '../../lib/recebimentoAlmox';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { ehRespostaOffline } from '../../lib/offline/configFormularios';
@@ -771,6 +773,7 @@ function VistaInventario({
   const [busca, setBusca] = useState('');
   const [contandoId, setContandoId] = useState<string | null>(null);
   const [exportando, setExportando] = useState<'xlsx' | 'pdf' | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const r = resumirInventario(inv.itens);
   const dono = podeEditarFormulario(user, inv);
   const algumContado = inv.itens.some((i) => i.contagens.length > 0);
@@ -831,10 +834,19 @@ function VistaInventario({
   };
 
   const exportar = async (tipo: 'xlsx' | 'pdf') => {
+    if (tipo === 'pdf') {
+      setPdfPreview({
+        gerar: () => gerarInventarioCiclicoPdf(inv),
+        titulo: `Inventário Cíclico — ${inv.codigo}`,
+      });
+      if (r.pendentes + r.aguardando > 0) {
+        toast.warning('Exportado com itens em aberto — o saldo da ZL0024 só sai para item encerrado.');
+      }
+      return;
+    }
     setExportando(tipo);
     try {
-      if (tipo === 'xlsx') exportarPlanilhaInventario(inv);
-      else await exportInventarioCiclicoPdf(inv);
+      exportarPlanilhaInventario(inv);
       if (r.pendentes + r.aguardando > 0) {
         toast.warning('Exportado com itens em aberto — o saldo da ZL0024 só sai para item encerrado.');
       }
@@ -891,7 +903,7 @@ function VistaInventario({
             {exportando === 'xlsx' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Planilha
           </button>
           <button onClick={() => void exportar('pdf')} disabled={!!exportando} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
-            {exportando === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />} PDF
+            <FileText className="h-3.5 w-3.5" /> Visualizar PDF
           </button>
           {dono && inv.status === 'aberto' && (
             <button onClick={onAdicionar} className={btnSec} style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}>
@@ -1018,6 +1030,13 @@ function VistaInventario({
             </div>
           </div>
         </div>
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
+        />
       )}
     </div>
   );

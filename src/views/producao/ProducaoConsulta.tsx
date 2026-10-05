@@ -23,7 +23,9 @@ import {
   type FiltrosConsultaProducao,
 } from '../../lib/producaoApi';
 import type { StatusLancamento } from '../../lib/producao';
-import { exportProducaoLancamentoPdf } from '../../lib/pdfExport/exportProducaoPdf';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportProducaoLancamentoPdf, gerarProducaoLancamentoPdf } from '../../lib/pdfExport/exportProducaoPdf';
 
 interface Props {
   user: Profile;
@@ -41,6 +43,7 @@ export default function ProducaoConsulta({}: Props) {
   const [etapas, setEtapas] = useState<EtapaProducao[]>([]);
   const [linhas, setLinhas] = useState<LancamentoProducao[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
 
   const [etapaId, setEtapaId] = useState('');
   const [status, setStatus] = useState<StatusLancamento | ''>('');
@@ -152,7 +155,7 @@ export default function ProducaoConsulta({}: Props) {
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {nomeEtapa(l.etapa_id)} • {formatDateBR(l.data_liberacao)}
                 </p>
-                <button type="button" onClick={e => { e.stopPropagation(); void exportProducaoLancamentoPdf(l, nomeEtapa(l.etapa_id)); }} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-600"><FileDown className="h-3.5 w-3.5" /> Exportar PDF</button>
+                <button type="button" onClick={e => { e.stopPropagation(); setPdfPreview({ gerar: () => gerarProducaoLancamentoPdf(l, nomeEtapa(l.etapa_id)), titulo: `Lançamento ${l.codigo}` }); }} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-600"><FileDown className="h-3.5 w-3.5" /> Visualizar PDF</button>
               </TableCardRow>
             ))}
           </TableCards>
@@ -182,7 +185,7 @@ export default function ProducaoConsulta({}: Props) {
                       </Td>
                       <Td>{formatDateBR(l.data_liberacao)}</Td>
                       <Td truncate>{l.executante_nome ?? '—'}</Td>
-                      <Td><button type="button" onClick={e => { e.stopPropagation(); void exportProducaoLancamentoPdf(l, nomeEtapa(l.etapa_id)); }} className="inline-flex items-center gap-1 text-blue-600"><FileDown className="h-3.5 w-3.5" /> PDF</button></Td>
+                      <Td><button type="button" onClick={e => { e.stopPropagation(); setPdfPreview({ gerar: () => gerarProducaoLancamentoPdf(l, nomeEtapa(l.etapa_id)), titulo: `Lançamento ${l.codigo}` }); }} className="inline-flex items-center gap-1 text-blue-600"><FileDown className="h-3.5 w-3.5" /> Visualizar</button></Td>
                     </Tr>
                   ))}
                 </TableBody>
@@ -199,6 +202,13 @@ export default function ProducaoConsulta({}: Props) {
           tramo={fichaAberta.tramo}
           virola={fichaAberta.virola}
           onClose={() => setFichaAberta(null)}
+        />
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
         />
       )}
     </div>

@@ -40,6 +40,7 @@ import { HistoricoPedidoView } from '../../types';
 import {
   calcRecorrencia,
   detectarAlertasAuditoria,
+  ehCompraDeMaterial,
   normalizarDescricaoItem,
   serieTemporalRecorrencia,
   porFornecedor,
@@ -138,15 +139,6 @@ function rotuloItem(item: RecorrenciaItem, chaveDe: ChaveRecorrencia): string {
   return chaveDe === 'material'
     ? item.descricao || item.material || item.chave
     : `${item.grupoDesc} — ${item.descricao || item.chave}`;
-}
-
-/** Linhas que não representam uma compra de material: serviço (ZP06) ou o
- *  próprio contrato-quadro aparecendo como linha (descrição começa com
- *  "Contrato..."). Excluídas de toda a análise de recorrência de compras. */
-function ehCompraDeMaterial(l: HistoricoPedidoView): boolean {
-  if (l.tipo_doc_compra === 'ZP06') return false;
-  if (/^contrato\b/i.test((l.txt_breve || '').trim())) return false;
-  return true;
 }
 
 /** Razão entre a última compra e a média das anteriores — só para ordenação por variação. */

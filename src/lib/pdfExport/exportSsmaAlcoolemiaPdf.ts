@@ -7,7 +7,8 @@
  */
 
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { createDoc, downloadPdf, PAGE_WIDTH, PAGE_HEIGHT, MARGIN, sanitizeText, wrapText, PDF_COLORS } from './core';
+import { createDoc, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado, PAGE_WIDTH, PAGE_HEIGHT, MARGIN, sanitizeText, wrapText, PDF_COLORS } from './core';
+export type { PdfGerado };
 import type { PortAlcoolemiaTeste } from '../../types';
 
 function formatDataBR(iso?: string | null): string {
@@ -17,11 +18,11 @@ function formatDataBR(iso?: string | null): string {
   return `${d}/${m}/${y}`;
 }
 
-export async function exportTermoAlcoolemiaPdf(
+export async function gerarTermoAlcoolemiaPdf(
   teste: PortAlcoolemiaTeste,
   examinadorCustom?: string,
   localCustom?: string
-): Promise<void> {
+): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
@@ -356,5 +357,13 @@ export async function exportTermoAlcoolemiaPdf(
   });
 
   const nomeArquivo = `termo-alcoolemia-${teste.codigo_formulario}-${teste.nome.toLowerCase().replace(/[^a-z0-9]/g, '_')}.pdf`;
-  await downloadPdf(doc, nomeArquivo);
+  return docToPdfGerado(doc, nomeArquivo, `Termo de Alcoolemia - ${teste.nome}`);
+}
+
+export async function exportTermoAlcoolemiaPdf(
+  teste: PortAlcoolemiaTeste,
+  examinadorCustom?: string,
+  localCustom?: string
+): Promise<void> {
+  baixarPdfGerado(await gerarTermoAlcoolemiaPdf(teste, examinadorCustom, localCustom));
 }

@@ -8,9 +8,13 @@
 
 import { rgb } from 'pdf-lib';
 import type { AseHoraExtraCompleta, AseHoraExtraItem } from '../../types';
-import { createDoc, PdfTextWriter, downloadPdf, sanitizeText, MARGIN, PAGE_HEIGHT, PAGE_WIDTH } from './core';
+import { createDoc, PdfTextWriter, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado, sanitizeText, MARGIN, PAGE_HEIGHT, PAGE_WIDTH } from './core';
+export type { PdfGerado };
 import { diaDaSemana } from '../rhApi';
 import type { GrupoAse, LinhaAreaSubsetor, LinhaColaboradorAse, PontoDiario, ResumoAse } from '../aseRelatorio';
+import {
+  AUTOR_NAO_REGISTRADO, CABECALHO_ASES, CABECALHO_COLABORADORES, CABECALHO_EVENTOS, type AuditoriaAse,
+} from '../aseAuditoria';
 
 function formatDataBR(iso: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
@@ -318,7 +322,7 @@ function drawTableFooter(writer: PdfTextWriter, totalHoras: number, totalColabor
   writer.setY(rowY - 14);
 }
 
-export async function exportAseHoraExtraPdf(solicitacao: AseHoraExtraCompleta): Promise<void> {
+export async function gerarAseHoraExtraPdf(solicitacao: AseHoraExtraCompleta): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc('/logo-adm.png');
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -359,7 +363,11 @@ export async function exportAseHoraExtraPdf(solicitacao: AseHoraExtraCompleta): 
     drawTableFooter(writer, totalHoras, solicitacao.itens.length);
   }
 
-  await downloadPdf(doc, `ase-hora-extra-${solicitacao.numero_protocolo}.pdf`);
+  return docToPdfGerado(doc, `ase-hora-extra-${solicitacao.numero_protocolo}.pdf`, `ASE ${solicitacao.numero_protocolo} - ${solicitacao.setor_nome || 'Hora Extra'}`);
+}
+
+export async function exportAseHoraExtraPdf(solicitacao: AseHoraExtraCompleta): Promise<void> {
+  baixarPdfGerado(await gerarAseHoraExtraPdf(solicitacao));
 }
 
 // =====================================================================
@@ -376,7 +384,7 @@ interface ColabConsolidadoItem extends AseHoraExtraItem {
   status_ase: string;
 }
 
-export async function exportAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompleta[], dataExecucao: string): Promise<void> {
+export async function gerarAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompleta[], dataExecucao: string): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc('/logo-adm.png');
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -1216,7 +1224,11 @@ export async function exportAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompl
     color: rgb(0.08, 0.35, 0.2),
   });
 
-  await downloadPdf(doc, `ase-consolidado-${dataExecucao}.pdf`);
+  return docToPdfGerado(doc, `ase-consolidado-${dataExecucao}.pdf`, `ASE Consolidado - ${formatDataBR(dataExecucao)}`);
+}
+
+export async function exportAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompleta[], dataExecucao: string): Promise<void> {
+  baixarPdfGerado(await gerarAseConsolidadoDiaPdf(solicitacoes, dataExecucao));
 }
 
 export function exportAseConsolidadoDiaExcel(solicitacoes: AseHoraExtraCompleta[], dataExecucao: string): void {
@@ -1591,4 +1603,55 @@ export function exportAseRelatorioExcel(params: {
   XLSX.utils.book_append_sheet(wb, wsColab, 'Colaboradores');
 
   XLSX.writeFile(wb, `ase-relatorio-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Auditoria de ASE (admin, lista filtrada)                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Planilha de auditoria: inclui rascunhos, excluídas e colaboradores
+ * removidos. As linhas vêm prontas de `montarAuditoriaAse`.
+ */
+export function exportAseAuditoriaExcel(params: {
+  auditoria: AuditoriaAse;
+  descricaoFiltro: string;
+  geradoPor: string;
+}): void {
+  const { auditoria, descricaoFiltro, geradoPor } = params;
+  const wb = XLSX.utils.book_new();
+  const { totais } = auditoria;
+
+  const capa: (string | number)[][] = [
+    ['AUDITORIA DE ASE - HORA EXTRA (FRM.RHU-0007)'],
+    [`Gerado em: ${new Date().toLocaleString('pt-BR')} por ${geradoPor}`],
+    [descricaoFiltro],
+    ['Inclui rascunhos, canceladas, ASEs excluídas e colaboradores removidos.'],
+    [],
+    ['ASEs', totais.ases],
+    ['ASEs excluídas', totais.excluidas],
+    ['Linhas de colaborador', totais.colaboradores],
+    ['Colaboradores removidos', totais.removidos],
+    [],
+    ['Observação'],
+    [`O sistema registra quem criou e quem excluiu. Alterações intermediárias guardam só a data da última alteração; nesses eventos o usuário aparece como "${AUTOR_NAO_REGISTRADO}".`],
+  ];
+  const wsCapa = XLSX.utils.aoa_to_sheet(capa);
+  wsCapa['!cols'] = [{ wch: 30 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, wsCapa, 'Resumo');
+
+  const adicionar = (nome: string, cabecalho: string[], linhas: (string | number)[][], larguras: number[]) => {
+    const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+    ws['!cols'] = larguras.map(wch => ({ wch }));
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: linhas.length, c: cabecalho.length - 1 } }) };
+    XLSX.utils.book_append_sheet(wb, ws, nome);
+  };
+
+  adicionar('ASEs', CABECALHO_ASES, auditoria.ases,
+    [22, 14, 13, 20, 18, 11, 10, 28, 17, 17, 28, 17, 11, 11, 12, 11, 10, 40]);
+  adicionar('Colaboradores', CABECALHO_COLABORADORES, auditoria.colaboradores,
+    [22, 13, 11, 11, 12, 30, 24, 10, 10, 10, 7, 11, 10, 9, 14, 22, 30, 10, 17, 28, 17]);
+  adicionar('Eventos', CABECALHO_EVENTOS, auditoria.eventos, [17, 22, 24, 28, 50]);
+
+  XLSX.writeFile(wb, `ase-auditoria-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

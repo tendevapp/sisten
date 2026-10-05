@@ -26,7 +26,9 @@ import { useToast } from '../ui/Toast';
 import { formatBRL, formatQtd, formatDateBR } from '../../lib/format';
 import { formatarCnpj, nomeFornecedorCurto } from '../../lib/cotacoes';
 import { atualizarStatusProcesso, atualizarItensCotacao } from '../../lib/cotacoesApi';
-import { exportPedidoCompraPdf, exportPedidosCompraPdfUnico } from '../../lib/pdfExport/exportPedidoCompraPdf';
+import PdfPreviewModal from '../ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportPedidoCompraPdf, exportPedidosCompraPdfUnico, gerarPedidoCompraPdf, gerarPedidosCompraPdfUnico } from '../../lib/pdfExport/exportPedidoCompraPdf';
 import { montarPedidosCompra, risSemPedido } from '../../lib/pedidoCompra';
 import type { PedidoFornecedor } from '../../lib/pedidoCompra';
 import type { CotacaoProcesso, CotacaoProcessoItem, CotacaoPropostaDraft } from '../../types';
@@ -54,9 +56,9 @@ function CardPedido({
   numeroProcesso: string;
 }) {
   const toast = useToast();
-  const [baixando, setBaixando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
 
   const handleSalvarPedido = async () => {
     setSalvando(true);
@@ -80,15 +82,11 @@ function CardPedido({
     }
   };
 
-  const handleBaixar = async () => {
-    setBaixando(true);
-    try {
-      await exportPedidoCompraPdf(pedido, numeroProcesso);
-    } catch (err) {
-      toast.error(`Falha ao gerar o PDF: ${(err as Error).message}`);
-    } finally {
-      setBaixando(false);
-    }
+  const handleVisualizar = () => {
+    setPdfPreview({
+      gerar: () => gerarPedidoCompraPdf(pedido, numeroProcesso),
+      titulo: `Pedido ${numeroProcesso} - ${pedido.fornecedorRazaoSocial}`,
+    });
   };
 
   return (
@@ -150,12 +148,11 @@ function CardPedido({
         </button>
         <button
           type="button"
-          onClick={handleBaixar}
-          disabled={baixando}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={handleVisualizar}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 transition-colors hover:bg-indigo-700 cursor-pointer"
         >
-          {baixando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-          Baixar PDF do pedido
+          <Download className="h-3.5 w-3.5" />
+          Visualizar PDF do pedido
         </button>
         </div>
       </div>
@@ -241,6 +238,13 @@ function CardPedido({
           Custo da compra: {formatBRL(pedido.custo.custoTotal)}
         </span>
       </div>
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
+        />
+      )}
     </div>
   );
 }
@@ -262,6 +266,7 @@ export default function RevisaoPedidoCompra({
   const [confirmConcluirAberto, setConfirmConcluirAberto] = useState(false);
   const [escolhaDownloadAberta, setEscolhaDownloadAberta] = useState(false);
   const [baixandoTodos, setBaixandoTodos] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
 
   const pedidos = useMemo(() => montarPedidosCompra(propostas), [propostas]);
   const semPedido = useMemo(() => risSemPedido(escopo.map(e => e.ri), pedidos), [escopo, pedidos]);
@@ -293,17 +298,12 @@ export default function RevisaoPedidoCompra({
     }
   };
 
-  const handleBaixarUnico = async () => {
-    setBaixandoTodos(true);
-    try {
-      await exportPedidosCompraPdfUnico(pedidos, processo.numero);
-      setEscolhaDownloadAberta(false);
-      toast.success('PDF único com todos os pedidos baixado.');
-    } catch (err) {
-      toast.error(`Falha ao gerar o PDF: ${(err as Error).message}`);
-    } finally {
-      setBaixandoTodos(false);
-    }
+  const handleVisualizarUnico = () => {
+    setEscolhaDownloadAberta(false);
+    setPdfPreview({
+      gerar: () => gerarPedidosCompraPdfUnico(pedidos, processo.numero),
+      titulo: `Pedidos ${processo.numero} (${pedidos.length} fornecedores)`,
+    });
   };
 
   const totalGeral = pedidos.reduce((s, p) => s + p.total, 0);
@@ -437,15 +437,14 @@ export default function RevisaoPedidoCompra({
               </button>
               <button
                 type="button"
-                onClick={handleBaixarUnico}
-                disabled={baixandoTodos}
-                className="flex w-full items-start gap-3 rounded-xl border border-slate-200 p-3.5 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/20"
+                onClick={handleVisualizarUnico}
+                className="flex w-full items-start gap-3 rounded-xl border border-slate-200 p-3.5 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/50 cursor-pointer dark:border-slate-700 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/20"
               >
                 <FileStack className="mt-0.5 h-4.5 w-4.5 shrink-0 text-indigo-500" />
                 <span>
-                  <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Um PDF único</span>
+                  <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Visualizar PDF único</span>
                   <span className="block text-xs text-slate-500 dark:text-slate-400">
-                    Todos os pedidos consolidados num arquivo só, um fornecedor por página — para arquivar ou imprimir de uma vez.
+                    Todos os pedidos consolidados num arquivo só, um fornecedor por página — visualize antes de baixar ou imprimir.
                   </span>
                 </span>
               </button>
@@ -468,6 +467,14 @@ export default function RevisaoPedidoCompra({
             )}
           </ModalFooter>
         </Modal>
+      )}
+
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
+        />
       )}
     </div>
   );

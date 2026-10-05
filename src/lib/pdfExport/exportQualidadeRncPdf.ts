@@ -9,7 +9,8 @@
  *    campos que o usuário escolher incluir.
  */
 
-import { createDoc, PdfTextWriter, downloadPdf } from './core';
+import { createDoc, PdfTextWriter, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+export type { PdfGerado };
 import type { QuaRnc, QuaRelatorioCampos } from '../../types';
 import { renovarUrlsAnexos } from '../qualidadeApi';
 
@@ -88,7 +89,7 @@ function drawPlanoAcao(writer: PdfTextWriter, rnc: QuaRnc) {
 // =====================================================================
 // 1. Relatório individual de uma RNC
 // =====================================================================
-export async function exportRncPdf(rnc: QuaRnc): Promise<void> {
+export async function gerarRncPdf(rnc: QuaRnc): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -131,7 +132,11 @@ export async function exportRncPdf(rnc: QuaRnc): Promise<void> {
   }
 
   writer.finalizeDoc('FRM.QUA-0026');
-  await downloadPdf(doc, `rnc-${rnc.numero_registro}.pdf`);
+  return docToPdfGerado(doc, `rnc-${rnc.numero_registro}.pdf`, `RNC ${rnc.numero_rnc_externo || rnc.numero_registro}`);
+}
+
+export async function exportRncPdf(rnc: QuaRnc): Promise<void> {
+  baixarPdfGerado(await gerarRncPdf(rnc));
 }
 
 // =====================================================================
@@ -144,13 +149,12 @@ export const CAMPOS_RELATORIO_PADRAO: QuaRelatorioCampos = {
   fotos: true,
 };
 
-export async function exportRncConsolidadoPdf(
+export async function gerarRncConsolidadoPdf(
   rncs: QuaRnc[],
   campos: QuaRelatorioCampos = CAMPOS_RELATORIO_PADRAO
-): Promise<void> {
-  if (rncs.length === 0) return;
+): Promise<PdfGerado> {
   if (rncs.length === 1 && campos.identificacao && campos.descricao && campos.planoAcao && campos.fotos) {
-    return exportRncPdf(rncs[0]);
+    return gerarRncPdf(rncs[0]);
   }
 
   const { doc, font, fontBold, logo } = await createDoc();
@@ -217,5 +221,13 @@ export async function exportRncConsolidadoPdf(
   }
 
   writer.finalizeDoc('FRM.QUA-0026');
-  await downloadPdf(doc, `rnc-consolidado-${rncs.length}-registros.pdf`);
+  return docToPdfGerado(doc, `rnc-consolidado-${rncs.length}-registros.pdf`, `RNC Consolidado (${rncs.length} registros)`);
+}
+
+export async function exportRncConsolidadoPdf(
+  rncs: QuaRnc[],
+  campos: QuaRelatorioCampos = CAMPOS_RELATORIO_PADRAO
+): Promise<void> {
+  if (rncs.length === 0) return;
+  baixarPdfGerado(await gerarRncConsolidadoPdf(rncs, campos));
 }

@@ -37,9 +37,13 @@ import {
   RestaurarButton,
   classeLinhaExcluida,
 } from '../../components/ui/ExcluidosControls';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
 import {
   exportPassagemPlantaoPdf,
+  gerarPassagemPlantaoPdf,
   exportPassagensPlantaoConsolidadoPdf,
+  gerarPassagensPlantaoConsolidadoPdf,
 } from '../../lib/pdfExport/exportPortariaPdf';
 
 interface Props {
@@ -205,6 +209,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
 
   // Modal Detalhes / Visualização
   const [plantaoVisualizando, setPlantaoVisualizando] = useState<PortPassagemPlantao | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
 
   // Modal Encerrar Plantão
   const [plantaoParaEncerrar, setPlantaoParaEncerrar] = useState<PortPassagemPlantao | null>(null);
@@ -445,21 +450,16 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
     }
   };
 
-  const handleExportarConsolidado = async () => {
+  const handleExportarConsolidado = () => {
     const selecionados = plantoes.filter((p) => selecionadosIds.has(p.id));
     if (selecionados.length === 0) {
       toast.warning('Selecione ao menos um plantão para exportar.');
       return;
     }
-    setExportandoConsolidado(true);
-    try {
-      await exportPassagensPlantaoConsolidadoPdf(selecionados);
-      toast.success(`PDF consolidado com ${selecionados.length} plantões exportado com sucesso!`);
-    } catch (err: any) {
-      toast.error('Erro ao exportar PDF consolidado: ' + (err.message || ''));
-    } finally {
-      setExportandoConsolidado(false);
-    }
+    setPdfPreview({
+      gerar: () => gerarPassagensPlantaoConsolidadoPdf(selecionados),
+      titulo: `Consolidado de Passagens de Plantão (${selecionados.length})`,
+    });
   };
 
   return (
@@ -731,9 +731,12 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => exportPassagemPlantaoPdf(p)}
+                    onClick={() => setPdfPreview({
+                      gerar: () => gerarPassagemPlantaoPdf(p),
+                      titulo: `Passagem de Plantão - ${p.numero_protocolo || p.data}`,
+                    })}
                     className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800"
-                    title="Exportar PDF Oficial (FRM.SGP-0010)"
+                    title="Visualizar / Exportar PDF Oficial (FRM.SGP-0010)"
                   >
                     <FileDown className="h-4 w-4" />
                   </button>
@@ -1186,11 +1189,18 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
             </button>
             <button
               type="button"
-              onClick={() => exportPassagemPlantaoPdf(plantaoVisualizando)}
+              onClick={() => {
+                if (plantaoVisualizando) {
+                  setPdfPreview({
+                    gerar: () => gerarPassagemPlantaoPdf(plantaoVisualizando),
+                    titulo: `Passagem de Plantão - ${plantaoVisualizando.numero_protocolo || plantaoVisualizando.data}`,
+                  });
+                }
+              }}
               className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500"
             >
               <FileDown className="h-4 w-4" />
-              Gerar PDF Oficial (FRM.SGP-0010)
+              Visualizar / Baixar PDF Oficial
             </button>
           </ModalFooter>
         </Modal>
@@ -1270,6 +1280,13 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
           onNext={tourNovo.next}
           onBack={tourNovo.back}
           onClose={tourNovo.close}
+        />
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
         />
       )}
     </div>

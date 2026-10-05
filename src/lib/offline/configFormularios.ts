@@ -193,6 +193,13 @@ const RPCS: Record<string, ConfigRpc> = {
   alm_receb_editar_carga: { rotulo: 'Recebimento — edição da ficha cega', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
   alm_receb_editar_conferencia: { rotulo: 'Recebimento — edição da conferência', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
   alm_receb_editar_nc: { rotulo: 'Recebimento — edição da NC', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
+  // Almoxarifado confirma a devolutiva de Suprimentos na doca. A RPC ignora o
+  // que já foi concluído, então o reenvio da fila não duplica.
+  sup_receb_pend_executar: {
+    rotulo: 'Recebimento — execução da devolutiva',
+    resumo: args => `${(args?.p_ids || []).length} pendência(s)`,
+    respostaProvisoria: args => ({ concluidas: (args?.p_ids || []).length, [MARCA_OFFLINE]: true }),
+  },
 
   alm_req_balcao_salvar: {
     rotulo: 'Requisição no balcão',

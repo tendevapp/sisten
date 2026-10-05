@@ -7,7 +7,8 @@
  * assinaturas da ficha em papel (responsável e conferente).
  */
 
-import { createDoc, downloadPdf, PDF_COLORS, PdfTextWriter } from './core';
+import { createDoc, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado, PDF_COLORS, PdfTextWriter } from './core';
+export type { PdfGerado };
 import { formatQtd } from '../format';
 import {
   FORM_CODIGO_INVENTARIO, linhasResultado, nomeArquivoInventario, resumirInventario,
@@ -26,7 +27,7 @@ const STATUS_CURTO: Record<StatusItemInventario, string> = {
   divergente: 'Divergente',
 };
 
-export async function exportInventarioCiclicoPdf(inv: InventarioParaExportar & { status: string }): Promise<void> {
+export async function gerarInventarioCiclicoPdf(inv: InventarioParaExportar & { status: string }): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const w = new PdfTextWriter(doc, font, fontBold, logo);
   const resumo = resumirInventario(inv.itens);
@@ -108,5 +109,9 @@ export async function exportInventarioCiclicoPdf(inv: InventarioParaExportar & {
   ]);
 
   w.finalizeDoc(FORM_CODIGO_INVENTARIO);
-  await downloadPdf(doc, nomeArquivoInventario(inv.codigo, 'pdf'));
+  return docToPdfGerado(doc, nomeArquivoInventario(inv.codigo, 'pdf'), `Inventário Cíclico ${inv.codigo}`);
+}
+
+export async function exportInventarioCiclicoPdf(inv: InventarioParaExportar & { status: string }): Promise<void> {
+  baixarPdfGerado(await gerarInventarioCiclicoPdf(inv));
 }

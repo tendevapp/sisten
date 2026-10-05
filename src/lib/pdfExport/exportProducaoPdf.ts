@@ -1,8 +1,9 @@
-import { createDoc, PdfTextWriter, downloadPdf } from './core';
+import { createDoc, PdfTextWriter, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+export type { PdfGerado };
 import type { LancamentoProducao } from '../producaoApi';
 
 /** Data book enxuto do lançamento, com código e status oficiais do módulo. */
-export async function exportProducaoLancamentoPdf(lancamento: LancamentoProducao, etapaNome: string): Promise<void> {
+export async function gerarProducaoLancamentoPdf(lancamento: LancamentoProducao, etapaNome: string): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
   writer.drawDocumentHeader({
@@ -26,5 +27,9 @@ export async function exportProducaoLancamentoPdf(lancamento: LancamentoProducao
     [['Código', lancamento.codigo], ['Tentativa', String(lancamento.tentativa)], ['Criado por', lancamento.criado_por_nome || '-'], ['Registro', lancamento.created_at]],
   );
   writer.finalizeDoc(lancamento.codigo);
-  await downloadPdf(doc, `${lancamento.codigo}.pdf`);
+  return docToPdfGerado(doc, `${lancamento.codigo}.pdf`, `Registro de Produção — ${lancamento.codigo}`);
+}
+
+export async function exportProducaoLancamentoPdf(lancamento: LancamentoProducao, etapaNome: string): Promise<void> {
+  baixarPdfGerado(await gerarProducaoLancamentoPdf(lancamento, etapaNome));
 }

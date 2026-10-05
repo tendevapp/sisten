@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX,
 } from 'lucide-react';
 import { Profile, Role, Sector } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
@@ -37,6 +37,12 @@ export interface PageDef {
   defaultRoles: Role[] | '*';
   /** Página administrativa: sempre restrita a admin, sem checkbox editável no painel. */
   alwaysAdmin?: boolean;
+  /**
+   * Subpágina de outro item do menu: continua sendo rota e permissão própria,
+   * mas não ganha botão no menu lateral. Valor = rota do item que acende
+   * enquanto a subpágina está aberta.
+   */
+  menuPai?: string;
 }
 
 export const PAGES: PageDef[] = [
@@ -76,6 +82,8 @@ export const PAGES: PageDef[] = [
   { id: 'sup_central_compras', group: 'SUPRIMENTOS', label: 'Central Compras', path: '/suprimentos/compras', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_analise_cotacoes', group: 'SUPRIMENTOS', label: 'Análise de Cotações', path: '/suprimentos/cotacoes', icon: FileSpreadsheet, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_pendencias_processamento', group: 'SUPRIMENTOS', label: 'Pendências de Processamento', path: '/suprimentos/pendencias-processamento', icon: ReceiptText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  // Subpágina de Pendências (sem botão no menu; o PendenciasSubnav liga as duas): divergência/parcial da conferência do almoxarifado → devolutiva do comprador do PO.
+  { id: 'sup_pendencias_recebimento', group: 'SUPRIMENTOS', label: 'Pendências de Recebimento', path: '/suprimentos/pendencias-recebimento', icon: PackageX, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'], menuPai: '/suprimentos/pendencias-processamento' },
   // Correção de incoerência: menu prometia coordenador_suprimentos, App.tsx
   // só liberava admin/comprador. Padrão alinhado ao menu (permissão sap.fornecedores).
   { id: 'sup_fornecedores', group: 'SUPRIMENTOS', label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },

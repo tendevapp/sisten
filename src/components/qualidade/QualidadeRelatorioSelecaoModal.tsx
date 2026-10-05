@@ -12,7 +12,9 @@ import { FileDown, Loader2 } from 'lucide-react';
 import type { QuaRnc, QuaRelatorioCampos } from '../../types';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
-import { exportRncConsolidadoPdf, CAMPOS_RELATORIO_PADRAO } from '../../lib/pdfExport/exportQualidadeRncPdf';
+import PdfPreviewModal from '../ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportRncConsolidadoPdf, gerarRncConsolidadoPdf, CAMPOS_RELATORIO_PADRAO } from '../../lib/pdfExport/exportQualidadeRncPdf';
 
 interface QualidadeRelatorioSelecaoModalProps {
   rncsDisponiveis: QuaRnc[];
@@ -33,7 +35,7 @@ export default function QualidadeRelatorioSelecaoModal({
   const toast = useToast();
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set(selecaoInicial));
   const [campos, setCampos] = useState<QuaRelatorioCampos>(CAMPOS_RELATORIO_PADRAO);
-  const [gerando, setGerando] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
 
   const toggleRnc = (id: string) => {
     setSelecionados((prev) => {
@@ -49,24 +51,19 @@ export default function QualidadeRelatorioSelecaoModal({
     [rncsDisponiveis, selecionados]
   );
 
-  const handleGerar = async () => {
+  const handleGerar = () => {
     if (rncsSelecionadas.length === 0) {
       toast.error('Selecione ao menos uma RNC para gerar o relatório.');
       return;
     }
-    setGerando(true);
-    try {
-      await exportRncConsolidadoPdf(rncsSelecionadas, campos);
-      toast.success(`Relatório consolidado de ${rncsSelecionadas.length} RNC(s) gerado!`);
-      onClose();
-    } catch (err: any) {
-      toast.error(`Erro ao gerar relatório consolidado: ${err.message || ''}`);
-    } finally {
-      setGerando(false);
-    }
+    setPdfPreview({
+      gerar: () => gerarRncConsolidadoPdf(rncsSelecionadas, campos),
+      titulo: `Relatório Consolidado (${rncsSelecionadas.length} RNCs)`,
+    });
   };
 
   return (
+    <>
     <Modal onClose={onClose} maxWidth="max-w-2xl" ariaLabel="Gerar Relatório Consolidado de RNCs">
       <ModalHeader onClose={onClose}>
         <h2 className="text-sm font-bold text-slate-900 dark:text-slate-50">Relatório Consolidado de RNCs</h2>
@@ -138,13 +135,21 @@ export default function QualidadeRelatorioSelecaoModal({
         <button
           type="button"
           onClick={handleGerar}
-          disabled={gerando || rncsSelecionadas.length === 0}
+          disabled={rncsSelecionadas.length === 0}
           className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-rose-500 disabled:opacity-50"
         >
-          {gerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
-          Gerar PDF Consolidado
+          <FileDown className="h-3.5 w-3.5" />
+          Visualizar PDF Consolidado
         </button>
       </ModalFooter>
     </Modal>
+    {pdfPreview && (
+      <PdfPreviewModal
+        gerar={pdfPreview.gerar}
+        tituloPadrao={pdfPreview.titulo}
+        onClose={() => setPdfPreview(null)}
+      />
+    )}
+    </>
   );
 }

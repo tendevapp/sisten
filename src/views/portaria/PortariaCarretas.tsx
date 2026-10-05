@@ -17,7 +17,9 @@ import type { TourStep } from '../../components/help/types';
 import type { Profile, PortControleCarreta, PortCarretaStatus } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
-import { exportCarretasPdf } from '../../lib/pdfExport/exportPortariaPdf';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportCarretasPdf, gerarCarretasPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import SignaturePadModal from '../../components/portaria/SignaturePadModal';
@@ -167,6 +169,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
   const [modalAssinaturaAberto, setModalAssinaturaAberto] = useState(false);
   const [itemSelecionado, setItemSelecionado] = useState<PortControleCarreta | null>(null);
   const [itemParaExcluir, setItemParaExcluir] = useState<PortControleCarreta | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [salvando, setSalvando] = useState(false);
   const podeVerExcluidos = user.roles.includes('admin');
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
@@ -347,11 +350,14 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
         <div className="flex items-center gap-2.5">
           <button
             type="button"
-            onClick={() => exportCarretasPdf(itens)}
+            onClick={() => setPdfPreview({
+              gerar: () => gerarCarretasPdf(itens),
+              titulo: 'Recebimento de Aço - Carretas',
+            })}
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <FileDown className="h-4 w-4 text-slate-500" />
-            Exportar Relatório (PDF)
+            Visualizar / Exportar Relatório (PDF)
           </button>
 
           <button
@@ -865,6 +871,13 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
           onNext={tourNovo.next}
           onBack={tourNovo.back}
           onClose={tourNovo.close}
+        />
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
         />
       )}
     </div>

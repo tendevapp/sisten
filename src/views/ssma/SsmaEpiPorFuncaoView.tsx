@@ -42,7 +42,9 @@ import {
   type SsmaEpiPorFuncao,
 } from '../../lib/ssmaEpiPorFuncaoApi';
 import type { ClassificacaoEpiFuncao } from '../../lib/epiPorFuncaoImportacao';
-import { exportMatrizEpiFuncaoPdf } from '../../lib/pdfExport/exportMatrizEpiFuncaoPdf';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportMatrizEpiFuncaoPdf, gerarMatrizEpiFuncaoPdf } from '../../lib/pdfExport/exportMatrizEpiFuncaoPdf';
 
 interface Props {
   onBack: () => void;
@@ -120,6 +122,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [importando, setImportando] = useState(false);
   const [exportandoPdf, setExportandoPdf] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [cargosRecolhidosMobile, setCargosRecolhidosMobile] = useState(true);
 
   // Seleção e visualização
@@ -410,21 +413,15 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
   };
 
   // Exportar Matriz em PDF Paisagem
-  const exportarPdf = async () => {
-    setExportandoPdf(true);
-    try {
-      await exportMatrizEpiFuncaoPdf({
+  const exportarPdf = () => {
+    setPdfPreview({
+      gerar: () => gerarMatrizEpiFuncaoPdf({
         funcoes,
         requisitos,
         book,
-      });
-      toast.success('Matriz de EPI x Função exportada em PDF com sucesso!');
-    } catch (erro) {
-      toast.error('Erro ao gerar exportação em PDF da matriz.');
-      console.error(erro);
-    } finally {
-      setExportandoPdf(false);
-    }
+      }),
+      titulo: 'Matriz de EPI por Função',
+    });
   };
 
   return (
@@ -475,12 +472,12 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
           <button
             type="button"
             onClick={exportarPdf}
-            disabled={exportandoPdf || carregando}
+            disabled={carregando}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer shadow-sm transition-all"
-            title="Exportar a Matriz de EPI por Função oficial em PDF (A4 Paisagem)"
+            title="Visualizar antes de baixar a Matriz de EPI por Função oficial em PDF (A4 Paisagem)"
           >
-            {exportandoPdf ? <Loader2 className="h-4 w-4 animate-spin text-emerald-600" /> : <FileDown className="h-4 w-4 text-emerald-600" />}
-            <span>Exportar PDF</span>
+            <FileDown className="h-4 w-4 text-emerald-600" />
+            <span>Visualizar / Exportar PDF</span>
           </button>
 
           <button
@@ -1621,6 +1618,13 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
             </div>
           </div>
         </div>
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
+        />
       )}
     </div>
   );

@@ -6,8 +6,13 @@
  */
 
 import { localDb } from '../../db/localDb';
-import { Request, RequestItem } from '../../types';
-import { createDoc, PdfTextWriter, embedAttachments, downloadPdf } from './core';
+import { Request, RequestItem, RequestAttachment } from '../../types';
+import { createDoc, PdfTextWriter, embedAttachments, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+export type { PdfGerado };
+
+export interface GerarCompraPdfResult extends PdfGerado {
+  failedAttachments: string[];
+}
 
 const CRITICALITY_LABELS: Record<number, string> = {
   1: '1 - Baixa',
@@ -39,11 +44,11 @@ export interface ExportCompraPdfResult {
   failedAttachments: string[];
 }
 
-export async function exportCompraPdf(
+export async function gerarCompraPdf(
   request: Request,
   sectorName: string,
   items: RequestItem[]
-): Promise<ExportCompraPdfResult> {
+): Promise<GerarCompraPdfResult> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -150,7 +155,16 @@ export async function exportCompraPdf(
   }
 
   writer.finalizeDoc('FRM.SUP-0001');
-  await downloadPdf(doc, `compra-${request.number}.pdf`);
+  const gerado = await docToPdfGerado(doc, `compra-${request.number}.pdf`, `Solicitação de Compra #${request.number}`);
+  return { ...gerado, failedAttachments };
+}
 
-  return { failedAttachments };
+export async function exportCompraPdf(
+  request: Request,
+  sectorName: string,
+  items: RequestItem[]
+): Promise<ExportCompraPdfResult> {
+  const res = await gerarCompraPdf(request, sectorName, items);
+  baixarPdfGerado(res);
+  return { failedAttachments: res.failedAttachments };
 }

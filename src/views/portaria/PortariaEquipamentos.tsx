@@ -17,7 +17,9 @@ import type { TourStep } from '../../components/help/types';
 import type { Profile, PortControleEquipamento, PortEquipamentoStatus } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
-import { exportEquipamentoPdf } from '../../lib/pdfExport/exportPortariaPdf';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportEquipamentoPdf, gerarEquipamentoPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import { useToast } from '../../components/ui/Toast';
@@ -158,6 +160,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
   const [modalSaidaAberto, setModalSaidaAberto] = useState(false);
   const [itemSelecionado, setItemSelecionado] = useState<PortControleEquipamento | null>(null);
   const [itemParaExcluir, setItemParaExcluir] = useState<PortControleEquipamento | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const podeVerExcluidos = user.roles.includes('admin');
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
@@ -463,9 +466,12 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                         )}
                         <button
                           type="button"
-                          onClick={() => exportEquipamentoPdf(item)}
+                          onClick={() => setPdfPreview({
+                            gerar: () => gerarEquipamentoPdf(item),
+                            titulo: `Comprovante de Equipamentos - ${item.numero_protocolo}`,
+                          })}
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-                          title="Exportar comprovante em PDF"
+                          title="Visualizar / Exportar comprovante em PDF"
                         >
                           <FileDown className="h-4 w-4" />
                         </button>
@@ -771,6 +777,13 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
           onNext={tourNovo.next}
           onBack={tourNovo.back}
           onClose={tourNovo.close}
+        />
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
         />
       )}
     </div>

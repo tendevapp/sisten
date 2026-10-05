@@ -34,7 +34,9 @@ import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { listarRhPessoas } from '../../lib/rhApi';
 import { listarVeiculosLeves } from '../../lib/facilitiesApi';
-import { exportRelatorioPortariaPdf } from '../../lib/pdfExport/exportPortariaPdf';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { exportRelatorioPortariaPdf, gerarRelatorioPortariaPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import VeiculoLeveFormFields from '../../components/portaria/VeiculoLeveFormFields';
@@ -292,6 +294,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const [relatorios, setRelatorios] = useState<PortRelatorioPortaria[]>([]);
   const [loading, setLoading] = useState(true);
   const [relatorioAtivo, setRelatorioAtivo] = useState<PortRelatorioPortaria | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   // Só o autor do livro de plantão (ou um admin) altera lançamentos; os
   // demais só consultam. Espelha a RLS em `form_pode_editar`.
   const podeEditarAtivo = podeEditarFormulario(user, relatorioAtivo);
@@ -1103,11 +1106,14 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
           {relatorioAtivo && (
             <button
               type="button"
-              onClick={() => exportRelatorioPortariaPdf(relatorioAtivo)}
+              onClick={() => setPdfPreview({
+                gerar: () => gerarRelatorioPortariaPdf(relatorioAtivo),
+                titulo: `Livro de Portaria - ${relatorioAtivo.numero_protocolo || relatorioAtivo.data}`,
+              })}
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
             >
               <FileDown className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-              Exportar Livro (PDF)
+              Visualizar / Exportar Livro (PDF)
             </button>
           )}
 
@@ -2604,6 +2610,13 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
           onNext={tourOcorrencia.next}
           onBack={tourOcorrencia.back}
           onClose={tourOcorrencia.close}
+        />
+      )}
+      {pdfPreview && (
+        <PdfPreviewModal
+          gerar={pdfPreview.gerar}
+          tituloPadrao={pdfPreview.titulo}
+          onClose={() => setPdfPreview(null)}
         />
       )}
     </div>

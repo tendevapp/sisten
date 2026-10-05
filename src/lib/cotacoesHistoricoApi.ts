@@ -8,6 +8,7 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import type { ItemCotacaoPreco } from './precoMedio';
 
 export interface ItemHistoricoCotacao {
   id: string;
@@ -393,6 +394,66 @@ export async function buscarHistoricoItensCotacao(
     itens: itensFormatados,
     total: count ?? itensFormatados.length,
   };
+}
+
+/**
+ * Todos os preços unitários cotados, na forma enxuta que a análise de preço
+ * médio precisa (sem os 30 campos da proposta). Item desconsiderado ou fora do
+ * escopo (frete, bonificação) não é preço de produto e fica de fora.
+ *
+ * Pagina de 1.000 em 1.000: o PostgREST corta a resposta nesse limite, e a
+ * ordenação por `id` mantém as páginas estáveis entre as chamadas.
+ */
+export async function buscarItensCotacaoParaPreco(): Promise<ItemCotacaoPreco[]> {
+  const PAGINA = 1000;
+  const itens: ItemCotacaoPreco[] = [];
+
+  for (let de = 0; ; de += PAGINA) {
+    const { data, error } = await supabase
+      .from('sup_cotacao_proposta_itens')
+      .select(
+        `
+        id,
+        material_code,
+        descricao_produto,
+        unidade_medida,
+        quantidade,
+        preco_unitario,
+        created_at,
+        proposta:sup_cotacao_propostas (
+          numero_proposta,
+          data_emissao,
+          fornecedor_razao_social
+        )
+      `
+      )
+      .gt('preco_unitario', 0)
+      .eq('desconsiderado', false)
+      .eq('fora_escopo', false)
+      .order('id')
+      .range(de, de + PAGINA - 1);
+    if (error) throw new Error(`Falha ao carregar os preços cotados: ${error.message}`);
+
+    for (const row of (data ?? []) as any[]) {
+      const prop = Array.isArray(row.proposta) ? row.proposta[0] : row.proposta;
+      itens.push({
+        id: row.id,
+        material_code: row.material_code ?? null,
+        descricao_produto: row.descricao_produto,
+        unidade_medida: row.unidade_medida ?? null,
+        quantidade: row.quantidade != null ? Number(row.quantidade) : null,
+        preco_unitario: row.preco_unitario != null ? Number(row.preco_unitario) : null,
+        // Proposta sem data de emissão (o extrator nem sempre acha) cai na data de entrada no sistema.
+        data: prop?.data_emissao ?? (row.created_at ? String(row.created_at).slice(0, 10) : null),
+        fornecedor: prop?.fornecedor_razao_social ?? null,
+        numero_proposta: prop?.numero_proposta ?? null,
+      });
+    }
+
+    if (!data || data.length < PAGINA) break;
+  }
+
+  return itens;
 }
 
 /**

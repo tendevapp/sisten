@@ -11,7 +11,8 @@
  * 6. FRM.SGP-0010 (Passagem de Plantão da Portaria)
  */
 
-import { createDoc, PdfTextWriter, downloadPdf } from './core';
+import { createDoc, PdfTextWriter, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+export type { PdfGerado };
 import type {
   PortControleEquipamento,
   PortRegistroTransporte,
@@ -32,11 +33,11 @@ function formatDataBR(iso?: string | null): string {
 // =====================================================================
 // 1. FRM.SGP-0011: Equipamentos e Ferramentas de Terceiros
 // =====================================================================
-export async function exportEquipamentoPdf(item: PortControleEquipamento): Promise<void> {
+export async function gerarEquipamentoPdf(item: PortControleEquipamento): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
-  const isBaixado = item.status === 'DEVOLVIDO_SAIU' || !!item.data_saida;
+  const isBaixado = item.status === 'DEVOLVIDO' || !!item.data_saida;
 
   writer.drawDocumentHeader({
     title: 'Controle de Entrada de Equipamentos de Terceiros',
@@ -79,17 +80,21 @@ export async function exportEquipamentoPdf(item: PortControleEquipamento): Promi
   ]);
 
   writer.finalizeDoc(item.codigo_formulario || 'FRM.SGP-0011');
-  await downloadPdf(doc, `portaria-equipamentos-${item.numero_protocolo}.pdf`);
+  return docToPdfGerado(doc, `portaria-equipamentos-${item.numero_protocolo}.pdf`, `Equipamento ${item.numero_protocolo} - ${item.nome_empresa}`);
+}
+
+export async function exportEquipamentoPdf(item: PortControleEquipamento): Promise<void> {
+  baixarPdfGerado(await gerarEquipamentoPdf(item));
 }
 
 // =====================================================================
 // 2. FRM.SGP-0009: Registro de Chegada de Transportes
 // =====================================================================
-export async function exportTransportesPdf(
+export async function gerarTransportesPdf(
   data: string,
   turno: string,
   transportes: PortRegistroTransporte[]
-): Promise<void> {
+): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -131,13 +136,21 @@ export async function exportTransportesPdf(
   ]);
 
   writer.finalizeDoc('FRM.SGP-0009');
-  await downloadPdf(doc, `portaria-transportes-${data}-${turno}.pdf`);
+  return docToPdfGerado(doc, `portaria-transportes-${data}-${turno}.pdf`, `Transportes - ${formatDataBR(data)} (${turno})`);
+}
+
+export async function exportTransportesPdf(
+  data: string,
+  turno: string,
+  transportes: PortRegistroTransporte[]
+): Promise<void> {
+  baixarPdfGerado(await gerarTransportesPdf(data, turno, transportes));
 }
 
 // =====================================================================
 // 3. FRM.SGP-0020: Controle de Carretas de Chapas
 // =====================================================================
-export async function exportCarretasPdf(carretas: PortControleCarreta[], periodoStr?: string): Promise<void> {
+export async function gerarCarretasPdf(carretas: PortControleCarreta[], periodoStr?: string): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -167,7 +180,7 @@ export async function exportCarretasPdf(carretas: PortControleCarreta[], periodo
     `${c.empresa}\n${c.nome_motorista}${c.cpf_motorista ? ` (${c.cpf_motorista})` : ''}`,
     `Cav: ${c.placa_cavalo}\nCar: ${c.placa_carreta}`,
     `NF: ${c.numero_nf || '-'}\n${c.peso_bruto ? `${c.peso_bruto} kg` : '-'}`,
-    c.status === 'DESCARREGADO_SAIU' ? 'LIBERADO' : 'NO PÁTIO',
+    c.status === 'LIBERADO' || c.status === 'FINALIZADO' ? 'LIBERADO' : 'NO PÁTIO',
   ]);
 
   writer.drawTable(tableHeaders, tableRows);
@@ -178,13 +191,17 @@ export async function exportCarretasPdf(carretas: PortControleCarreta[], periodo
   ]);
 
   writer.finalizeDoc('FRM.SGP-0020');
-  await downloadPdf(doc, 'portaria-carretas-chapas.pdf');
+  return docToPdfGerado(doc, 'portaria-carretas-chapas.pdf', 'Controle de Carretas de Chapas');
+}
+
+export async function exportCarretasPdf(carretas: PortControleCarreta[], periodoStr?: string): Promise<void> {
+  baixarPdfGerado(await gerarCarretasPdf(carretas, periodoStr));
 }
 
 // =====================================================================
 // 4. FRM.SGP-0010: Relatório de Ocorrências da Portaria (Executivo)
 // =====================================================================
-export async function exportRelatorioPortariaPdf(relatorio: PortRelatorioPortaria): Promise<void> {
+export async function gerarRelatorioPortariaPdf(relatorio: PortRelatorioPortaria): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -263,27 +280,34 @@ export async function exportRelatorioPortariaPdf(relatorio: PortRelatorioPortari
   }
 
   writer.finalizeDoc(relatorio.codigo_formulario || 'FRM.SGP-0010');
-  await downloadPdf(doc, `relatorio-portaria-${relatorio.numero_protocolo}.pdf`);
+  return docToPdfGerado(doc, `relatorio-portaria-${relatorio.numero_protocolo}.pdf`, `Relatório Portaria ${relatorio.numero_protocolo}`);
+}
+
+export async function exportRelatorioPortariaPdf(relatorio: PortRelatorioPortaria): Promise<void> {
+  baixarPdfGerado(await gerarRelatorioPortariaPdf(relatorio));
 }
 
 // =====================================================================
 // 5. FRM.SGP-0013: Lista de Presença - Briefing de Segurança (Individual)
 // =====================================================================
-export async function exportBriefingPdf(sessao: PortBriefingSessao): Promise<void> {
+export async function gerarBriefingPdf(sessao: PortBriefingSessao): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
   await renderSessaoBriefing(writer, sessao);
 
   writer.finalizeDoc(sessao.codigo_formulario || 'FRM.SGP-0013');
-  await downloadPdf(doc, `briefing-seguranca-${sessao.numero_protocolo}.pdf`);
+  return docToPdfGerado(doc, `briefing-seguranca-${sessao.numero_protocolo}.pdf`, `Briefing ${sessao.numero_protocolo} - ${sessao.tema_treinamento}`);
+}
+
+export async function exportBriefingPdf(sessao: PortBriefingSessao): Promise<void> {
+  baixarPdfGerado(await gerarBriefingPdf(sessao));
 }
 
 // 5.1 FRM.SGP-0013: Relatório Consolidado de Múltiplas Sessões de Briefing
-export async function exportBriefingConsolidadoPdf(sessoes: PortBriefingSessao[]): Promise<void> {
-  if (sessoes.length === 0) return;
+export async function gerarBriefingConsolidadoPdf(sessoes: PortBriefingSessao[]): Promise<PdfGerado> {
   if (sessoes.length === 1) {
-    return exportBriefingPdf(sessoes[0]);
+    return gerarBriefingPdf(sessoes[0]);
   }
 
   const { doc, font, fontBold, logo } = await createDoc();
@@ -297,7 +321,12 @@ export async function exportBriefingConsolidadoPdf(sessoes: PortBriefingSessao[]
   }
 
   writer.finalizeDoc('FRM.SGP-0013');
-  await downloadPdf(doc, `briefing-seguranca-consolidado-${sessoes.length}-sessoes.pdf`);
+  return docToPdfGerado(doc, `briefing-seguranca-consolidado-${sessoes.length}-sessoes.pdf`, `Briefings Consolidados (${sessoes.length} sessões)`);
+}
+
+export async function exportBriefingConsolidadoPdf(sessoes: PortBriefingSessao[]): Promise<void> {
+  if (sessoes.length === 0) return;
+  baixarPdfGerado(await gerarBriefingConsolidadoPdf(sessoes));
 }
 
 async function renderSessaoBriefing(writer: PdfTextWriter, sessao: PortBriefingSessao): Promise<void> {
@@ -338,7 +367,7 @@ async function renderSessaoBriefing(writer: PdfTextWriter, sessao: PortBriefingS
 // =====================================================================
 // 6. FRM.SGP-0010: Passagem de Plantão da Portaria
 // =====================================================================
-export async function exportPassagemPlantaoPdf(plantao: PortPassagemPlantao): Promise<void> {
+export async function gerarPassagemPlantaoPdf(plantao: PortPassagemPlantao): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -390,22 +419,26 @@ export async function exportPassagemPlantaoPdf(plantao: PortPassagemPlantao): Pr
     writer.drawCallout('Observações Gerais', plantao.observacoes);
   }
 
+  const entregadorNome = (plantao as any).vigilante_anterior01 || (plantao as any).vigilante_anterior_01 || '';
   writer.drawSignatures([
-    { role: 'Vigilante Entregador (Plantão Anterior)', name: plantao.vigilante_anterior_01 || '' },
+    { role: 'Vigilante Entregador (Plantão Anterior)', name: entregadorNome },
     { role: 'Vigilante Recebedor (Plantão Atual)', name: plantao.vigilante_portaria },
   ]);
 
   writer.finalizeDoc(plantao.codigo_formulario || 'FRM.SGP-0010');
-  await downloadPdf(doc, `passagem-plantao-${plantao.numero_protocolo}.pdf`);
+  return docToPdfGerado(doc, `passagem-plantao-${plantao.numero_protocolo}.pdf`, `Passagem de Plantão ${plantao.numero_protocolo}`);
+}
+
+export async function exportPassagemPlantaoPdf(plantao: PortPassagemPlantao): Promise<void> {
+  baixarPdfGerado(await gerarPassagemPlantaoPdf(plantao));
 }
 
 // =====================================================================
 // 7. Relatório Consolidado de Múltiplos Plantões (FRM.SGP-0010)
 // =====================================================================
-export async function exportPassagensPlantaoConsolidadoPdf(plantoes: PortPassagemPlantao[]): Promise<void> {
-  if (plantoes.length === 0) return;
+export async function gerarPassagensPlantaoConsolidadoPdf(plantoes: PortPassagemPlantao[]): Promise<PdfGerado> {
   if (plantoes.length === 1) {
-    return exportPassagemPlantaoPdf(plantoes[0]);
+    return gerarPassagemPlantaoPdf(plantoes[0]);
   }
 
   const { doc, font, fontBold, logo } = await createDoc();
@@ -429,11 +462,12 @@ export async function exportPassagensPlantaoConsolidadoPdf(plantoes: PortPassage
   plantoes.forEach((plantao, index) => {
     writer.drawSectionHeader(`Plantão ${index + 1}: ${formatDataBR(plantao.data)} — Turno ${plantao.turno} (${plantao.numero_protocolo})`);
 
+    const entregadorNome = (plantao as any).vigilante_anterior01 || (plantao as any).vigilante_anterior_01 || '-';
     writer.drawInfoGrid([
       { label: 'Vigilante Portaria', value: plantao.vigilante_portaria },
       { label: 'Vigilante Ronda 01', value: plantao.vigilante_ronda01 || '-' },
       { label: 'Vigilante Ronda 02', value: plantao.vigilante_ronda02 || '-' },
-      { label: 'Entregue por', value: plantao.vigilante_anterior_01 || '-' },
+      { label: 'Entregue por', value: entregadorNome },
     ], 2);
 
     const itens = plantao.itens_conferidos || [];
@@ -462,17 +496,22 @@ export async function exportPassagensPlantaoConsolidadoPdf(plantoes: PortPassage
   ]);
 
   writer.finalizeDoc('FRM.SGP-0010');
-  await downloadPdf(doc, `consolidado-passagens-plantao-${datas[0]}-${datas[datas.length - 1]}.pdf`);
+  return docToPdfGerado(doc, `consolidado-passagens-plantao-${datas[0]}-${datas[datas.length - 1]}.pdf`, `Passagens de Plantão Consolidadas (${plantoes.length})`);
+}
+
+export async function exportPassagensPlantaoConsolidadoPdf(plantoes: PortPassagemPlantao[]): Promise<void> {
+  if (plantoes.length === 0) return;
+  baixarPdfGerado(await gerarPassagensPlantaoConsolidadoPdf(plantoes));
 }
 
 // =====================================================================
-// 7. FRM.SGP-0015: Teste de Alcoolemia / Livro Diário de Sorteados
+// 8. FRM.SGP-0015: Teste de Alcoolemia / Livro Diário de Sorteados
 // =====================================================================
-export async function exportAlcoolemiaDiaPdf(
+export async function gerarAlcoolemiaDiaPdf(
   testes: PortAlcoolemiaTeste[],
   dataISO: string,
   vigilanteNome?: string
-): Promise<void> {
+): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
@@ -525,6 +564,14 @@ export async function exportAlcoolemiaDiaPdf(
   ]);
 
   writer.finalizeDoc('FRM.SGP-0015');
-  await downloadPdf(doc, `livro-alcoolemia-${dataISO}.pdf`);
+  return docToPdfGerado(doc, `livro-alcoolemia-${dataISO}.pdf`, `Livro de Alcoolemia - ${formatDataBR(dataISO)}`);
+}
+
+export async function exportAlcoolemiaDiaPdf(
+  testes: PortAlcoolemiaTeste[],
+  dataISO: string,
+  vigilanteNome?: string
+): Promise<void> {
+  baixarPdfGerado(await gerarAlcoolemiaDiaPdf(testes, dataISO, vigilanteNome));
 }
 
