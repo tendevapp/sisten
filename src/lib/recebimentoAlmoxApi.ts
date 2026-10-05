@@ -241,6 +241,8 @@ export interface ConferenciaItemInput {
   item_manual?: boolean;
   /** Recebimento parcial deste lote — não conta como falta / NC. */
   parcial?: boolean;
+  /** Parcial confirmado como de acordo com a NF — não abre pendência com Suprimentos. */
+  parcial_conforme_nf?: boolean;
   observacao?: string | null;
   evidencias?: AnexoRecebimento[];
 }

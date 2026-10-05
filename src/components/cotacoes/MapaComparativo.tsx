@@ -25,7 +25,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, AlertTriangle, Truck, CalendarClock, CreditCard, Sparkles,
   Scissors, Merge, Award, PackageX, RotateCcw, Link2, Ban, X, ShoppingCart, Plus, Check, SearchX, FileSearch,
-  LayoutGrid, Table2, Rows3, BarChart3, EyeOff, Eye,
+  LayoutGrid, Table2, Rows3, BarChart3, EyeOff, Eye, History,
 } from 'lucide-react';
 import * as XLSX from 'xlsx-js-style';
 import MapaOpcoesBar from './MapaOpcoesBar';
@@ -40,9 +40,15 @@ import { construirLinhasSap } from '../../lib/exportSapCotacao';
 import { montarPlanilhaMapa } from '../../lib/exportMapaCotacao';
 import type { LinhaSapExport } from '../../lib/exportSapCotacao';
 import { useToast } from '../ui/Toast';
-import { formatBRL, formatQtd } from '../../lib/format';
+import { formatBRL, formatDateBR, formatQtd } from '../../lib/format';
 import { formatarCnpj, nomeFornecedorCurto, normalizarDescricao } from '../../lib/cotacoes';
 import { salvarFreteProposta, salvarSelecaoMapa } from '../../lib/cotacoesApi';
+import { listarMateriaisGenericos } from '../../lib/cotacoesHistoricoApi';
+import { localDb } from '../../db/localDb';
+import {
+  INICIO_HISTORICO_COMPRAS, chaveMaterialSap, menorPrecoPorMaterial,
+} from '../../lib/menorPrecoComprado';
+import type { MenorPrecoComprado } from '../../lib/menorPrecoComprado';
 import {
   agruparLinhasMapa, resumirFornecedores, cenarioMenorPreco, cenarioFornecedorUnico,
   cenarioSelecao, opcoesDaBase, ordenarLinhas, LIMIAR_SIMILARIDADE_PADRAO,
@@ -633,18 +639,84 @@ function Celula({
 }
 
 // =====================================================================
+// Histórico de compras
+// =====================================================================
+
+/**
+ * Menor preço já pago pelo material desde 2026, com fornecedor e valor
+ * unitário. Só referência: o comprador vê de relance se uma compra anterior
+ * saiu mais barata que a melhor oferta desta linha. A comparação usa o
+ * unitário da base escolhida na barra de opções; o pedido traz o líquido pago.
+ */
+function CelulaHistorico({
+  compra, melhorOferta, unidade, carregando, generico,
+}: {
+  compra: MenorPrecoComprado | null;
+  melhorOferta: number | null;
+  unidade: string;
+  carregando: boolean;
+  generico: boolean;
+}) {
+  if (!compra) {
+    return (
+      <div className="flex h-full min-h-[70px] items-center justify-center px-2 text-center text-[10px] text-slate-300 dark:text-slate-600">
+        {carregando ? 'carregando…' : generico ? 'código genérico' : 'sem compra desde 2026'}
+      </div>
+    );
+  }
+  const abaixoDaOferta = melhorOferta != null && compra.preco < melhorOferta;
+  const difPct = melhorOferta != null && melhorOferta > 0 ? ((melhorOferta - compra.preco) / melhorOferta) * 100 : null;
+  const detalhe = [
+    `Menor preço pago desde ${formatDateBR(INICIO_HISTORICO_COMPRAS)}: ${formatBRL(compra.preco)}`,
+    `Fornecedor: ${compra.fornecedor}`,
+    `Pedido ${compra.pedido || '—'} de ${formatDateBR(compra.data)} (${formatQtd(compra.qtd)} un)`,
+    `${compra.compras} ${compra.compras === 1 ? 'compra' : 'compras'} do material no período`,
+  ].join('\n');
+
+  return (
+    <div
+      title={detalhe}
+      className={`flex h-full flex-col gap-1 rounded-xl border p-2 ${
+        abaixoDaOferta
+          ? 'border-amber-300 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/20'
+          : 'border-transparent'
+      }`}
+    >
+      <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+        {formatBRL(compra.preco)}
+        <span className="ml-0.5 text-[10px] font-normal text-slate-400">/{unidade}</span>
+      </div>
+      <div className="line-clamp-2 text-[11px] font-medium leading-snug text-slate-600 dark:text-slate-300">
+        {nomeFornecedorCurto(compra.fornecedor)}
+      </div>
+      <div className="text-[10px] text-slate-400">
+        {formatDateBR(compra.data)}{compra.pedido ? ` · PO ${compra.pedido}` : ''}
+      </div>
+      {abaixoDaOferta && (
+        <Chip tom="aviso" title="O menor preço já pago é menor que a melhor oferta desta linha.">
+          {difPct != null ? `${difPct.toFixed(1)}% abaixo da melhor oferta` : 'abaixo da melhor oferta'}
+        </Chip>
+      )}
+    </div>
+  );
+}
+
+// =====================================================================
 // Larguras de coluna ajustáveis
 // =====================================================================
 
 const chaveLarguras = (processoId: string) => `sisten_cotacao_mapa_larguras_${processoId}`;
 /** Chave da 1ª coluna (item cotado) no mapa de larguras. */
 const COL_ITEM = '__item__';
+/** Chave da coluna de histórico de compras no mapa de larguras. */
+const COL_HISTORICO = '__historico__';
 // Defaults pensados para monitor largo (1920px): dão espaço para a
 // descrição do item e para o cabeçalho do fornecedor (selo de posição,
 // chips, campo de frete) sem truncar de cara. Ainda redimensionável por
 // coluna — isto é só o ponto de partida.
 const LARGURA_ITEM_PADRAO = 340;
 const LARGURA_FORN_PADRAO = 300;
+const LARGURA_HISTORICO_PADRAO = 190;
 const LARGURA_MIN = 150;
 const LARGURA_MAX = 760;
 
@@ -755,6 +827,30 @@ export default function MapaComparativo({
   // vez — por isso não persiste: é o mesmo tipo de filtro que a busca.
   const [ocultarSemCotacao, setOcultarSemCotacao] = useState(false);
 
+  // Histórico de compras (pedidos de 2026 em diante) para a coluna de menor
+  // valor já pago. Começa pela cópia local e atualiza só se o dataset mudou
+  // (`fetchHistoricoPedidos` não rebaixa a view à toa). Falhar aqui não pode
+  // atrapalhar o mapa: a coluna só fica vazia.
+  const [pedidosHistorico, setPedidosHistorico] = useState(() => localDb.getHistoricoPedidos());
+  const [genericos, setGenericos] = useState<Set<string>>(new Set());
+  const [carregandoHistorico, setCarregandoHistorico] = useState(true);
+  useEffect(() => {
+    let ativo = true;
+    Promise.all([
+      localDb.fetchHistoricoPedidos().then(r => { if (ativo) setPedidosHistorico(r); }),
+      listarMateriaisGenericos()
+        .then(g => { if (ativo) setGenericos(new Set(g.map(x => chaveMaterialSap(x.material_code)))); })
+        .catch(() => { /* informativo: sem a lista, o histórico ainda serve */ }),
+    ])
+      .catch(err => console.error('Falha ao carregar o histórico de compras do mapa:', err))
+      .finally(() => { if (ativo) setCarregandoHistorico(false); });
+    return () => { ativo = false; };
+  }, []);
+  const menorPrecoComprado = useMemo(
+    () => menorPrecoPorMaterial(pedidosHistorico, genericos),
+    [pedidosHistorico, genericos],
+  );
+
   // Só proposta salva entra no mapa: a decisão é gravada no item cotado, que
   // só existe no banco depois de "Salvar proposta".
   const salvas = useMemo(() => propostas.filter(p => p._salvo), [propostas]);
@@ -811,7 +907,8 @@ export default function MapaComparativo({
   const larguraDe = (col: string) => {
     if (larguraPreview?.col === col) return larguraPreview.px;
     if (typeof larguras[col] === 'number') return larguras[col];
-    return col === COL_ITEM ? LARGURA_ITEM_PADRAO : LARGURA_FORN_PADRAO;
+    if (col === COL_ITEM) return LARGURA_ITEM_PADRAO;
+    return col === COL_HISTORICO ? LARGURA_HISTORICO_PADRAO : LARGURA_FORN_PADRAO;
   };
   const fixarLargura = (col: string, px: number) => {
     setLarguraPreview(null);
@@ -1338,6 +1435,7 @@ export default function MapaComparativo({
             <table className="border-collapse" style={{ tableLayout: 'fixed', width: 'max-content', minWidth: '100%' }}>
               <colgroup>
                 <col style={{ width: larguraDe(COL_ITEM) }} />
+                <col style={{ width: larguraDe(COL_HISTORICO) }} />
                 {resumos.map(r => (
                   <col key={r.propostaKey} style={{ width: larguraDe(r.propostaKey) }} />
                 ))}
@@ -1350,6 +1448,23 @@ export default function MapaComparativo({
                       largura={larguraDe(COL_ITEM)}
                       onArrastar={px => setLarguraPreview({ col: COL_ITEM, px })}
                       onFim={px => fixarLargura(COL_ITEM, px)}
+                    />
+                  </th>
+                  <th
+                    className="relative border-l border-slate-100 bg-slate-50/60 p-2.5 text-left align-bottom dark:border-slate-800 dark:bg-slate-800/40"
+                    title={`Menor preço unitário já pago pelo material em pedidos desde ${formatDateBR(INICIO_HISTORICO_COMPRAS)} — para conferir se uma compra anterior saiu melhor que as ofertas atuais`}
+                  >
+                    <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      <History className="h-3.5 w-3.5 shrink-0" />
+                      Menor compra
+                    </div>
+                    <div className="mt-0.5 text-[10px] font-normal normal-case text-slate-400">
+                      desde {formatDateBR(INICIO_HISTORICO_COMPRAS)}
+                    </div>
+                    <AlcaColuna
+                      largura={larguraDe(COL_HISTORICO)}
+                      onArrastar={px => setLarguraPreview({ col: COL_HISTORICO, px })}
+                      onFim={px => fixarLargura(COL_HISTORICO, px)}
                     />
                   </th>
                   {resumos.map((r, i) => {
@@ -1410,6 +1525,22 @@ export default function MapaComparativo({
                           entre a melhor e a pior oferta (por unidade): <span className="font-semibold">{formatBRL(linha.dispersao)}</span>
                         </div>
                       )}
+                    </td>
+
+                    <td className="overflow-hidden border-l border-slate-100 p-1 align-top dark:border-slate-800">
+                      {(() => {
+                        // Código SAP da linha: o da RM; sem ele, o vínculo de qualquer item cotado.
+                        const codigo = chaveMaterialSap(linha.materialCode ?? linha.celulas.find(c => c.item.material_code)?.item.material_code);
+                        return (
+                          <CelulaHistorico
+                            compra={codigo ? menorPrecoComprado.get(codigo) ?? null : null}
+                            melhorOferta={linha.melhorCusto}
+                            unidade={linha.unidade || 'un'}
+                            carregando={carregandoHistorico}
+                            generico={!!codigo && genericos.has(codigo)}
+                          />
+                        );
+                      })()}
                     </td>
 
                     {resumos.map(r => {

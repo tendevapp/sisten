@@ -85,6 +85,11 @@ export interface LinhaConferencia {
    * certo — o resto vem em outra entrega. Não conta como falta / NC.
    */
   parcial: boolean;
+  /**
+   * Parcial confirmado como "de acordo com a NF": o fornecedor faturou só isso,
+   * então não abre pendência com Suprimentos. `false` = divergente da NF (abre).
+   */
+  parcialConformeNf?: boolean;
   observacao: string;
   evidencias: AnexoRecebimento[];
 }
@@ -115,6 +120,21 @@ export function classificarDivergencia(linha: {
   if (delta > EPSILON_QTD) return 'excedente';
   if (delta < -EPSILON_QTD) return linha.parcial ? null : 'falta';
   return null;
+}
+
+/**
+ * Ao marcar a linha como parcial só vale perguntar se confere com a NF quando
+ * ela de fato chegou com menos que o pendente do PO — senão o parcial não muda nada.
+ */
+export function parcialPrecisaConfirmarNf(linha: {
+  qtdPedido: number | null;
+  qtdJaFornecida?: number | null;
+  qtdRecebida: number;
+  itemManual?: boolean;
+}): boolean {
+  if (linha.itemManual || linha.qtdPedido === null) return false;
+  const pendente = linha.qtdPedido - (linha.qtdJaFornecida ?? 0);
+  return linha.qtdRecebida - pendente < -EPSILON_QTD;
 }
 
 /**

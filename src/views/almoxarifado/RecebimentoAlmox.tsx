@@ -39,7 +39,7 @@ import {
 import { prepararFotoCarimbada } from '../../lib/carimboFoto';
 import {
   EPSILON_QTD, PREFIXO_RECEB, juntarNotasFiscais, separarNotasFiscais, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarItensComPo, buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
-  entregaParcialAnterior, listarFornecedoresDoCache, pendentePedido, podeExcluirNaoConformidade, posAbertosDoFornecedor,
+  entregaParcialAnterior, listarFornecedoresDoCache, parcialPrecisaConfirmarNf, pendentePedido, podeExcluirNaoConformidade, posAbertosDoFornecedor,
   resumoConferencia, tipoNcSugerido, validarNovaNcAvulsa,
   type AnexoRecebimento, type DestinoPrevisto, type FontePedido, type ItemPoEncontrado, type LinhaConferencia, type PoAberto,
   type LinhaCacheSAP, type TipoDivergencia, type TipoEmbalagem,
@@ -1499,7 +1499,7 @@ function ModalDetalhe({
                           {it.divergencia && it.tipo_divergencia && (
                             <StatusChip texto={ROTULO_DIVERGENCIA[it.tipo_divergencia as TipoDivergencia] ?? it.tipo_divergencia} tom="alerta" />
                           )}
-                          {amberParcial && <StatusChip texto="parcial" tom="atencao" />}
+                          {amberParcial && <StatusChip texto={it.parcial_conforme_nf ? 'parcial · conforme NF' : 'parcial · divergente da NF'} tom="atencao" />}
                           {okVerde && (
                             <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold uppercase" style={{ color: 'var(--status-good)' }}>
                               <Check className="h-3 w-3" /> conferido
@@ -2202,6 +2202,7 @@ function ModalConferencia({
           evidencias: it.evidencias ?? [],
           fotos: [],
           estado: est,
+          parcialConformeNf: it.parcial_conforme_nf ?? false,
           ...flagsDoEstado(est),
         };
       });
@@ -2301,12 +2302,27 @@ function ModalConferencia({
 
   /** Marca conferido/parcial/avaria de forma exclusiva — clicar no que já está
    *  marcado limpa. Os três booleans do payload saem de `flagsDoEstado`. */
-  const setEstado = (idx: number, alvo: Exclude<EstadoLinha, null>) =>
+  const aplicarEstado = (idx: number, alvo: Exclude<EstadoLinha, null>, conformeNf = false) =>
     setLinhas((a) => a.map((l, i) => {
       if (i !== idx) return l;
       const est = l.estado === alvo ? null : alvo;
-      return { ...l, estado: est, ...flagsDoEstado(est) };
+      return { ...l, estado: est, parcialConformeNf: est === 'parcial' && conformeNf, ...flagsDoEstado(est) };
     }));
+
+  /** Parcial de verdade (chegou menos que o pendente) pergunta se confere com a NF antes de marcar. */
+  const setEstado = (idx: number, alvo: Exclude<EstadoLinha, null>) => {
+    const l = linhas[idx];
+    if (alvo === 'parcial' && l && l.estado !== 'parcial' && parcialPrecisaConfirmarNf(l)) {
+      setPerguntaNf(idx);
+      return;
+    }
+    aplicarEstado(idx, alvo);
+  };
+  const [perguntaNf, setPerguntaNf] = useState<number | null>(null);
+  const responderNf = (conformeNf: boolean) => {
+    if (perguntaNf !== null) aplicarEstado(perguntaNf, 'parcial', conformeNf);
+    setPerguntaNf(null);
+  };
 
   const addManual = () =>
     setLinhas((a) => [...a, {
@@ -2399,6 +2415,7 @@ function ModalConferencia({
           tipo_divergencia: tipo,
           item_manual: l.itemManual,
           parcial: l.parcial,
+          parcial_conforme_nf: l.parcial && !!l.parcialConformeNf,
           observacao: l.observacao.trim() || null,
           evidencias: [...l.evidencias, ...evidNovas],
         });
@@ -2523,6 +2540,7 @@ function ModalConferencia({
   };
 
   return (
+    <>
     <Modal onClose={() => !salvando && onClose()} maxWidth="max-w-3xl" ariaLabel={ed ? `Editar ${ed.codigo}` : 'Nova conferência de recebimento'} disableOutsideClose>
       <ModalHeader onClose={() => !salvando && onClose()}>
         <h3 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>
@@ -2882,7 +2900,7 @@ function ModalConferencia({
                     </label>
                     {([
                       ['conferido', 'conferido', 'Contagem confere com o pendente. Ao salvar o formulário, atualiza a marcação de chegada no almoxarifado.'],
-                      ['parcial', 'parcial', 'Chegou parte do pendente; o resto vem em outra entrega. Não abre NC. Ao salvar o formulário, atualiza a marcação de chegada no almoxarifado.'],
+                      ['parcial', 'parcial', 'Chegou parte do pendente; o resto vem em outra entrega. Não abre NC. Pergunta se a quantidade confere com a NF — se não, abre pendência com Suprimentos. Ao salvar o formulário, atualiza a marcação de chegada no almoxarifado.'],
                       ['avaria', 'avaria', 'Item danificado — abre NCR.'],
                     ] as const).map(([alvo, rot, dica]) => (
                       <label
@@ -2905,7 +2923,7 @@ function ModalConferencia({
                     )}
                     {amberParcial && (
                       <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase" style={{ background: 'color-mix(in srgb, var(--status-serious) 16%, transparent)', color: 'var(--status-serious)' }}>
-                        parcial
+                        {l.parcialConformeNf ? 'parcial · conforme NF' : 'parcial · divergente da NF'}
                       </span>
                     )}
                     {okVerde && (
@@ -3020,6 +3038,35 @@ function ModalConferencia({
         </button>
       </ModalFooter>
     </Modal>
+        {perguntaNf !== null && linhas[perguntaNf] && (
+          <Modal onClose={() => setPerguntaNf(null)} maxWidth="max-w-md" ariaLabel="Parcial de acordo com a NF?" zIndexClassName="z-[120]">
+            <ModalBody className="space-y-3 p-5">
+              <h3 className="text-base font-bold" style={{ color: 'var(--ink-primary)' }}>Está de acordo com a NF?</h3>
+              <p className="text-sm" style={{ color: 'var(--ink-secondary)' }}>
+                {linhas[perguntaNf].descricao || linhas[perguntaNf].materialCode}: recebido{' '}
+                <strong>{formatQtd(linhas[perguntaNf].qtdRecebida)} {linhas[perguntaNf].unidade}</strong> de{' '}
+                {formatQtd(pendentePedido(linhas[perguntaNf].qtdPedido, linhas[perguntaNf].qtdJaFornecida))} pendentes no PO.
+                A quantidade que chegou é a que consta na nota fiscal?
+              </p>
+              <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                <strong>Sim:</strong> o fornecedor faturou só isso — nada é aberto com Suprimentos.{' '}
+                <strong>Não:</strong> abre pendência para o comprador do PO decidir.
+              </p>
+            </ModalBody>
+            <ModalFooter>
+              <button type="button" onClick={() => setPerguntaNf(null)} className="rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+                Cancelar
+              </button>
+              <button type="button" onClick={() => responderNf(false)} className="rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer" style={{ borderColor: 'var(--status-serious)', color: 'var(--status-serious)' }}>
+                Não, divergente da NF
+              </button>
+              <button type="button" onClick={() => responderNf(true)} className="rounded-lg px-3 py-1.5 text-xs font-bold text-white cursor-pointer" style={{ background: 'var(--status-good)' }}>
+                Sim, confere com a NF
+              </button>
+            </ModalFooter>
+          </Modal>
+        )}
+    </>
   );
 }
 

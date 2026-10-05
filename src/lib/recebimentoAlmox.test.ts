@@ -24,6 +24,7 @@ import {
   validarNovaNcAvulsa,
   type LinhaCacheSAP,
   type LinhaConferencia,
+  parcialPrecisaConfirmarNf,
 } from './recebimentoAlmox';
 
 const linha = (over: Partial<LinhaConferencia> = {}): LinhaConferencia => ({
@@ -77,6 +78,19 @@ describe('classificarDivergencia', () => {
 
   it('item fora do pedido é sem_pedido', () => {
     expect(classificarDivergencia(linha({ itemManual: true, qtdPedido: null }))).toBe('sem_pedido');
+  });
+});
+
+describe('parcialPrecisaConfirmarNf', () => {
+  it('só pergunta quando chegou menos que o pendente do PO', () => {
+    expect(parcialPrecisaConfirmarNf({ qtdPedido: 6, qtdJaFornecida: 0, qtdRecebida: 5 })).toBe(true);
+    expect(parcialPrecisaConfirmarNf({ qtdPedido: 10, qtdJaFornecida: 4, qtdRecebida: 5 })).toBe(true);
+  });
+  it('não pergunta quando chegou tudo, a mais, ou sem PO', () => {
+    expect(parcialPrecisaConfirmarNf({ qtdPedido: 6, qtdJaFornecida: 0, qtdRecebida: 6 })).toBe(false);
+    expect(parcialPrecisaConfirmarNf({ qtdPedido: 10, qtdJaFornecida: 4, qtdRecebida: 7 })).toBe(false);
+    expect(parcialPrecisaConfirmarNf({ qtdPedido: null, qtdRecebida: 2 })).toBe(false);
+    expect(parcialPrecisaConfirmarNf({ qtdPedido: 6, qtdRecebida: 2, itemManual: true })).toBe(false);
   });
 });
 

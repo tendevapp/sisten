@@ -429,6 +429,7 @@ export type Database = {
           nro_pedido: string | null
           observacao: string | null
           parcial: boolean
+          parcial_conforme_nf: boolean
           qtd_ja_fornecida: number | null
           qtd_pedido: number | null
           qtd_recebida: number
@@ -449,6 +450,7 @@ export type Database = {
           nro_pedido?: string | null
           observacao?: string | null
           parcial?: boolean
+          parcial_conforme_nf?: boolean
           qtd_ja_fornecida?: number | null
           qtd_pedido?: number | null
           qtd_recebida?: number
@@ -469,6 +471,7 @@ export type Database = {
           nro_pedido?: string | null
           observacao?: string | null
           parcial?: boolean
+          parcial_conforme_nf?: boolean
           qtd_ja_fornecida?: number | null
           qtd_pedido?: number | null
           qtd_recebida?: number
