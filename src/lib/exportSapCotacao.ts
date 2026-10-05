@@ -7,13 +7,12 @@
  * para lançar o pedido. Uma aba por fornecedor: cada fornecedor é um pedido
  * individual, não faz sentido misturar dois pedidos na mesma aba.
  *
- * DDP (condição de pagamento) e Imposto (código fiscal do SAP, série
- * A/B/C/H) vêm das tabelas reais `sup_ddp` e `sup_impostos` — não são um
- * palpite deste app. `imposto` já entra sugerido comparando o código que
- * `custoCompra.ts` (Calc Impostos) infere pela UF de origem, que usa a
- * MESMA nomenclatura (C1-C5, A3) que o SAP; quando o código sugerido não
- * existe na tabela real (ex.: "ISENTO", que só existe do lado da Calc
- * Impostos), a linha some sem sugestão e o comprador escolhe no modal.
+ * DDP (condição de pagamento) e Imposto (código fiscal do SAP) vêm das
+ * tabelas reais `sup_ddp` e `sup_impostos`. A planilha nasce com ambos
+ * vazios; o modal de conferência preenche o Imposto com a sugestão de
+ * `sugestaoCodigoImposto.ts` (regra pela cotação + histórico de pedidos) e
+ * exige a confirmação do comprador — o UF/CST que ela usa viaja em
+ * `ufFornecedor`/`cst`, sem ir para o Excel.
  *
  * O que continua sem fonte automática — RM não guarda "data de
  * necessidade", por exemplo — fica em branco e editável no modal antes do
@@ -29,6 +28,7 @@ import * as XLSX from 'xlsx-js-style';
 import { calcularCustoCompraItem } from './custoCompra';
 import { nomeFornecedorCurto } from './cotacoes';
 import type { LinhaMapa } from './mapaCotacao';
+import type { SugestaoCodigoImposto } from './sugestaoCodigoImposto';
 import type { CotacaoProcessoItem, CotacaoPropostaDraft } from '../types';
 
 export interface LinhaSapExport {
@@ -66,6 +66,11 @@ export interface LinhaSapExport {
   baseReduzida: number | null;
   precoLiq2: number | null;
   frete2: number | null;
+  /** UF e CST da proposta — insumo da sugestão do código de imposto; não vão para o Excel. */
+  ufFornecedor: string | null;
+  cst: string | null;
+  /** Código de imposto sugerido pelo app e ainda não confirmado pelo comprador (ver `sugestaoCodigoImposto.ts`). Some quando ele confirma ou escolhe outro. */
+  impostoSugestao?: SugestaoCodigoImposto | null;
 }
 
 const arredondar2 = (v: number) => Math.round(v * 100) / 100;
@@ -142,9 +147,8 @@ export function construirLinhasSap(params: {
         ddpDescr: '',
         frete,
         incoterms: frete === 'CIF' ? 'CIF-Custo, Seguro & frete' : frete === 'FOB' ? 'FOB-Franco a bordo' : '',
-        // Sem sugestão automática: o código fiscal que este app infere é
-        // heurística por UF, não certeza — o comprador escolhe na lista
-        // buscável em vez de herdar um palpite calado.
+        // Nasce vazio: a sugestão depende do histórico de pedidos (assíncrono) e
+        // é preenchida pelo modal, que a marca como "a confirmar".
         imposto: '',
         impDescricao: '',
         dataRemessa: '',
@@ -160,6 +164,8 @@ export function construirLinhasSap(params: {
         baseReduzida: null,
         precoLiq2: custo.incompleto ? null : custo.impostos.precoLiquidoUnitario,
         frete2: frete === 'FOB' ? item.frete_teorico : null,
+        ufFornecedor: proposta.fornecedor_uf ?? null,
+        cst: item.cst ?? null,
       },
     });
   }

@@ -33,6 +33,10 @@ import {
   type VinculoSistenRm,
 } from '../lib/centralComprasSisten';
 import { buscarCotacoesItensMap, type CotacaoItemVinculo } from '../lib/cotacoesApi';
+import {
+  agruparPorMaterial, buscarSugestoesCatalogo, buscarSugestoesCotacao, mesclarFornecedoresMaterial,
+  mesmoFornecedor, origensDe, ROTULO_ORIGEM, type SugestaoFornecedor,
+} from '../lib/fornecedoresMaterial';
 import MapaCotacaoModal from '../components/cotacoes/MapaCotacaoModal';
 import type { CotacaoProcessoItemDraft } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
@@ -308,6 +312,24 @@ const MigoBadge = ({ dataMigo }: { dataMigo?: string }) => (
   </span>
 );
 
+const ORIGEM_ESTILO: Record<string, string> = {
+  PO: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/50',
+  COTACAO: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-900/50',
+  CATALOGO: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-900/50',
+};
+const ORIGEM_CURTA: Record<string, string> = { PO: 'PO', COTACAO: 'Cotação', CATALOGO: 'Catálogo' };
+
+/** Selos que dizem de onde veio o fornecedor: PO anterior, cotação anterior ou catálogo. */
+const OrigemFornecedorBadges = ({ f }: { f: FornecedorMaterialRow }) => (
+  <>
+    {origensDe(f).map(o => (
+      <span key={o} title={ROTULO_ORIGEM[o]} className={`px-1.5 py-0.5 rounded border text-[9px] font-black uppercase tracking-wide ${ORIGEM_ESTILO[o]}`}>
+        {ORIGEM_CURTA[o]}
+      </span>
+    ))}
+  </>
+);
+
 /**
  * Card de um fornecedor do histórico (vw_historico_fornecedores_sem_po) —
  * mesmo conteúdo mostrado na visão de cartões, reaproveitado pelo modal de
@@ -325,6 +347,7 @@ const FornecedorHistoricoCard = ({ f }: { f: FornecedorMaterialRow }) => (
             {f.regiao_uf}
           </span>
         )}
+        <OrigemFornecedorBadges f={f} />
       </div>
       {f.nome_fantasia && f.nome_fantasia !== '—' && (
         <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
@@ -345,10 +368,14 @@ const FornecedorHistoricoCard = ({ f }: { f: FornecedorMaterialRow }) => (
         <span className="text-slate-200 dark:text-slate-800">|</span>
         <span className="flex items-center gap-0.5 text-slate-500 dark:text-slate-455">
           <Calendar className="h-3 w-3" />
-          Compra: {f.ultima_data !== '—' ? (isNaN(Date.parse(f.ultima_data)) ? f.ultima_data : new Date(f.ultima_data).toLocaleDateString('pt-BR')) : '—'}
+          {origensDe(f)[0] === 'COTACAO' ? 'Cotação' : origensDe(f)[0] === 'CATALOGO' ? 'Catálogo' : 'Compra'}: {f.ultima_data !== '—' ? (isNaN(Date.parse(f.ultima_data)) ? f.ultima_data : new Date(f.ultima_data).toLocaleDateString('pt-BR')) : '—'}
         </span>
-        <span className="text-slate-200 dark:text-slate-800">|</span>
-        <MigoBadge dataMigo={f.data_migo} />
+        {origensDe(f).includes('PO') && (
+          <>
+            <span className="text-slate-200 dark:text-slate-800">|</span>
+            <MigoBadge dataMigo={f.data_migo} />
+          </>
+        )}
       </div>
     </div>
     <div className="flex flex-col gap-1.5 shrink-0 text-[11px] items-start sm:items-end">
@@ -398,7 +425,7 @@ const HistoricoFornecedoresModal = ({
     <ModalHeader onClose={onClose}>
       <h3 className="text-sm font-bold flex items-center gap-2 text-slate-850 dark:text-slate-100">
         <Users className="h-4 w-4 text-slate-450" />
-        Histórico de fornecedores
+        Fornecedores sugeridos
       </h3>
       <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
         <span className="font-mono font-bold">{record.material_code || '—'}</span> — {record.texto_breve || 'Sem descrição'}
@@ -408,7 +435,7 @@ const HistoricoFornecedoresModal = ({
     </ModalHeader>
     <ModalBody className="space-y-2">
       {fornecedores.length === 0 ? (
-        <p className="text-xs text-slate-400">Sem histórico de compras anteriores para este material.</p>
+        <p className="text-xs text-slate-400">Sem PO, cotação ou catálogo anterior para este material.</p>
       ) : (
         fornecedores.map((f, idx) => <FornecedorHistoricoCard key={idx} f={f} />)
       )}
@@ -826,7 +853,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       items = [];
       rawRmGroups.forEach(g => {
         g.items.forEach(it => {
-          if (it.fornecedores.some(f => f.cod_forn === supplier.cod_forn)) {
+          if (it.fornecedores.some(f => mesmoFornecedor(f, supplier))) {
             items.push({ record: it.record, rm: g.rm });
           }
         });
@@ -878,8 +905,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         if (!selectedRis.has(it.record.ri_po)) return;
         items.push({ record: it.record, rm: g.rm });
         it.fornecedores.forEach(f => {
-          if (f.email && f.email !== '—' && f.cod_forn && f.cod_forn !== '—') {
-            supplierByCod.set(f.cod_forn, f);
+          if (f.email && f.email !== '—') {
+            supplierByCod.set(f.email.trim().toLowerCase(), f);
           }
         });
       });
@@ -1292,7 +1319,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       };
 
       // Executa as 4 consultas assíncronas em paralelo
-      const [techMap, historyMap, cotacoesMap, linhasHistorico] = await Promise.all([
+      const [techMap, historyMap, cotacoesMap, linhasHistorico, sugestoesCotacao, sugestoesCatalogo] = await Promise.all([
         fetchTechText().catch(err => {
           console.warn('Falha ao buscar texto técnico dos materiais Sem PO:', err);
           return new Map<string, string>();
@@ -1308,6 +1335,14 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         fetchLinhasHistorico().catch(err => {
           console.warn('Falha ao buscar histórico de fornecedores (Sem PO):', err);
           return [] as HistoricoPedidoView[];
+        }),
+        buscarSugestoesCotacao(codesArr, contatosMap).catch(err => {
+          console.warn('Falha ao buscar fornecedores de cotações anteriores:', err);
+          return [] as SugestaoFornecedor[];
+        }),
+        buscarSugestoesCatalogo(codesArr, contatosMap.values()).catch(err => {
+          console.warn('Falha ao buscar fornecedores do catálogo:', err);
+          return [] as SugestaoFornecedor[];
         }),
       ]);
 
@@ -1374,6 +1409,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           fornecedoresPorMaterial.set(normKey, list);
         });
       }
+
+      // Soma ao histórico de PO quem já cotou o material e quem o tem no
+      // catálogo — o comprador vê onde cotar mesmo sem compra anterior.
+      const extrasPorMaterial = agruparPorMaterial([...sugestoesCotacao, ...sugestoesCatalogo]);
+      extrasPorMaterial.forEach((extras, normKey) => {
+        fornecedoresPorMaterial.set(normKey, mesclarFornecedoresMaterial(fornecedoresPorMaterial.get(normKey) ?? [], extras));
+      });
 
       const rmMap = new Map<string, ItemNode[]>();
       const rmOrder: string[] = [];
@@ -2923,86 +2965,18 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                       {r.status_requisicao !== 'Processado' && (
                       <div className="space-y-1.5 pt-1">
                         <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                          Fornecedores com Histórico ({fornecedores.length})
+                          Fornecedores sugeridos ({fornecedores.length})
                         </span>
 
                         {!encontrado ? (
                           <div className="flex items-center gap-2 p-3 rounded-xl border border-dashed border-rose-150 dark:border-rose-900/40 bg-rose-50/20 dark:bg-rose-955/5 text-rose-800 dark:text-rose-455 text-xs">
                             <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
-                            <span>Sem histórico de compras anteriores para este material.</span>
+                            <span>Sem PO, cotação ou catálogo anterior para este material.</span>
                           </div>
                         ) : (
                           <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                             {fornecedores.map((f, fIdx) => (
-                              <div key={fIdx} className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-955/20 hover:bg-slate-50 dark:hover:bg-slate-950/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-3 text-left">
-                                <div className="min-w-0 flex-1 space-y-1.5">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-extrabold text-slate-850 dark:text-slate-200 break-words" title={f.fornecedor}>
-                                      {f.fornecedor}
-                                    </span>
-                                    {f.regiao_uf && f.regiao_uf !== '—' && (
-                                      <span className="px-1.5 py-0.3 bg-slate-100 dark:bg-slate-800 text-[9px] font-black rounded text-slate-500 dark:text-slate-400">
-                                        {f.regiao_uf}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {f.nome_fantasia && f.nome_fantasia !== '—' && (
-                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                                      Fantasia: {f.nome_fantasia}
-                                    </p>
-                                  )}
-                                  {(f.cidade || f.pais) && (f.cidade !== '—' || f.pais !== '—') && (
-                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                                      <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
-                                      {[f.rua, f.cidade, f.pais].filter(x => x && x !== '—').join(', ')}
-                                    </p>
-                                  )}
-                                  <p className="text-[10px] text-slate-450 dark:text-slate-500 font-bold">
-                                    Cód: {f.cod_forn} | CNPJ: {f.cnpj || '—'}
-                                  </p>
-
-                                  
-                                  {/* Detalhes de preço e data */}
-                                  <div className="flex items-center gap-2 text-[10px] text-slate-600 dark:text-slate-400 font-bold bg-white dark:bg-slate-900 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 w-fit shadow-3xs">
-                                    <span>Preço: <span className="text-emerald-600 dark:text-emerald-450">{formatPreco(f.preco_liquido)}</span></span>
-                                    <span className="text-slate-200 dark:text-slate-800">|</span>
-                                    <span className="flex items-center gap-0.5 text-slate-500 dark:text-slate-455">
-                                      <Calendar className="h-3 w-3" />
-                                      Compra: {f.ultima_data !== '—' ? (isNaN(Date.parse(f.ultima_data)) ? f.ultima_data : new Date(f.ultima_data).toLocaleDateString('pt-BR')) : '—'}
-                                    </span>
-                                    <span className="text-slate-200 dark:text-slate-800">|</span>
-                                    {renderMigoInfo(f.data_migo)}
-                                  </div>
-                                </div>
-                                <div className="flex flex-col gap-1.5 shrink-0 text-[11px] items-start sm:items-end">
-                                  {f.telefone !== '—' && f.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
-                                    <div key={telIdx} className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-3xs shrink-0">
-                                      <Phone className="h-3 w-3 text-slate-450 shrink-0" />
-                                      <a
-                                        href={`tel:${singleTel}`}
-                                        className="font-mono text-slate-705 dark:text-slate-355 hover:underline hover:text-[#0056c6] cursor-pointer font-bold"
-                                        title={`Ligar: ${singleTel}`}
-                                      >
-                                        {singleTel}
-                                      </a>
-                                      <ClipboardCopyButton text={singleTel} label="telefone" />
-                                    </div>
-                                  ))}
-                                  {f.email !== '—' && (
-                                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-3xs max-w-full">
-                                      <Mail className="h-3 w-3 text-slate-455 shrink-0" />
-                                      <a
-                                        href={`mailto:${f.email}`}
-                                        className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[150px] sm:max-w-[200px]"
-                                        title={f.email}
-                                      >
-                                        {f.email}
-                                      </a>
-                                      <ClipboardCopyButton text={f.email} label="e-mail" />
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
+                              <FornecedorHistoricoCard key={fIdx} f={f} />
                             ))}
                           </div>
                         )}
@@ -3401,6 +3375,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                   <span className="font-bold text-slate-800 dark:text-slate-200 truncate block" title={fornecedores[0].fornecedor}>
                                     {fornecedores[0].fornecedor}
                                   </span>
+                                  <span className="flex gap-1 flex-wrap my-0.5"><OrigemFornecedorBadges f={fornecedores[0]} /></span>
                                   <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold mt-0.5">
                                     <span className="text-emerald-600 dark:text-emerald-455">{formatPreco(fornecedores[0].preco_liquido)}</span>
                                     <MigoBadge dataMigo={fornecedores[0].data_migo} />

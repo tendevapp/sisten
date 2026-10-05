@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Conferência antes de exportar a planilha de importação SAP. DDP (condição
- * de pagamento) e Imposto vêm das tabelas reais `sup_ddp` e `sup_impostos`
- * — não são um palpite deste app, e por isso não vêm pré-selecionados:
- * "certeza" aqui é o comprador escolhendo na busca, não uma heurística por
- * UF decidindo por ele. O que continua sem fonte automática (Prz.
+ * de pagamento) e Imposto vêm das tabelas reais `sup_ddp` e `sup_impostos`.
+ * O DDP não vem pré-selecionado. O Imposto vem **sugerido** (ver
+ * `sugestaoCodigoImposto.ts`: regra pela cotação + último CI do mesmo item e
+ * fornecedor na ZL0132) mas só vale depois que o comprador confirma ou troca
+ * o código — exportar com sugestão pendente pede confirmação, como campo
+ * vazio. O que continua sem fonte automática (Prz.
  * Apresentação, Data Remessa) tem atalho para preencher uma vez e aplicar a
  * todas as linhas — normalmente é a mesma data para o processo inteiro.
  *
@@ -26,10 +28,14 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { FileSpreadsheet, Info, Loader2, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { FileSpreadsheet, Info, Loader2, ChevronDown, ChevronRight, AlertTriangle, Check, Sparkles } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import ConfirmDialog from '../ui/ConfirmDialog';
-import { listarDdp, listarImpostosSap, criarDdp } from '../../lib/cotacoesApi';
+import {
+  listarDdp, listarImpostosSap, criarDdp, buscarUsosCodigoImposto, buscarRegimeSimplesPorCnpj,
+} from '../../lib/cotacoesApi';
+import { sugerirCodigoImposto, normalizarCnpjDigitos } from '../../lib/sugestaoCodigoImposto';
+import type { ConfiancaCodigoImposto, SugestaoCodigoImposto } from '../../lib/sugestaoCodigoImposto';
 import { nomeFornecedorCurto } from '../../lib/cotacoes';
 import SeletorBuscaCodigo from './SeletorBuscaCodigo';
 import { exportarSapXlsx } from '../../lib/exportSapCotacao';
@@ -92,6 +98,25 @@ const LEFT_FIXO: Partial<Record<keyof LinhaSapExport, number>> = (() => {
   return mapa;
 })();
 
+const CONFIANCA_ROTULO: Record<ConfiancaCodigoImposto, string> = { alta: 'alta', media: 'média', baixa: 'baixa' };
+
+const CONFIANCA_CLASSE: Record<ConfiancaCodigoImposto, string> = {
+  alta: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+  media: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+  baixa: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
+};
+
+/** Texto do tooltip: por que o app sugeriu este código e o que o SAP usou antes. */
+function detalheSugestao(s: SugestaoCodigoImposto): string {
+  const linhas = [...s.motivos];
+  if (s.ultimoUso) {
+    const origem = [s.ultimoUso.pedido ? `PO ${s.ultimoUso.pedido}` : null, s.ultimoUso.data].filter(Boolean).join(', ');
+    linhas.push(`Último pedido do fornecedor: ${s.ultimoUso.codigo}${origem ? ` (${origem})` : ''}`);
+  }
+  if (s.alternativas.length > 0) linhas.push(`Outros códigos possíveis: ${s.alternativas.join(', ')}`);
+  return linhas.join('\n');
+}
+
 /** `false` para número (0 é valor legítimo) — só string vazia ou nulo conta como "faltando". */
 function campoVazio(valor: unknown): boolean {
   if (valor == null) return true;
@@ -102,14 +127,21 @@ function campoVazio(valor: unknown): boolean {
 interface ExportarSapModalProps {
   linhasIniciais: LinhaSapExport[];
   numeroProcesso: string;
+  /**
+   * Fornecedor é Simples/MEI, por CNPJ (só dígitos), segundo a consulta na
+   * Receita feita pelo mapa. Tem prioridade sobre o regime da última NF
+   * (ZL0136), que pode estar desatualizado.
+   */
+  simplesPorCnpj?: ReadonlyMap<string, boolean>;
   onClose: () => void;
 }
 
-export default function ExportarSapModal({ linhasIniciais, numeroProcesso, onClose }: ExportarSapModalProps) {
+export default function ExportarSapModal({ linhasIniciais, numeroProcesso, simplesPorCnpj, onClose }: ExportarSapModalProps) {
   const [linhas, setLinhas] = useState<LinhaSapExport[]>(linhasIniciais);
   const [ddpTabela, setDdpTabela] = useState<{ ddp: string; descricao: string }[]>([]);
   const [impostosTabela, setImpostosTabela] = useState<{ incoterms: string; descricao: string }[]>([]);
   const [carregandoTabelas, setCarregandoTabelas] = useState(true);
+  const [sugerindoImposto, setSugerindoImposto] = useState(false);
   const [novoDdp, setNovoDdp] = useState<{ linhaKey: string; codigo: string; descricao: string } | null>(null);
   const [salvandoDdp, setSalvandoDdp] = useState(false);
   const [prazoBulk, setPrazoBulk] = useState('');
@@ -122,14 +154,46 @@ export default function ExportarSapModal({ linhasIniciais, numeroProcesso, onClo
     (async () => {
       try {
         const [ddp, impostos] = await Promise.all([listarDdp(), listarImpostosSap()]);
-        if (!cancelado) { setDdpTabela(ddp); setImpostosTabela(impostos); }
+        if (cancelado) return;
+        setDdpTabela(ddp);
+        setImpostosTabela(impostos);
+        setCarregandoTabelas(false);
+
+        // Sugestão do código de imposto: regra pela cotação + histórico de pedidos.
+        // Roda depois das tabelas porque só sugere código que existe em `sup_impostos`.
+        setSugerindoImposto(true);
+        const [usos, regime] = await Promise.all([
+          buscarUsosCodigoImposto(linhasIniciais.map(l => l.material)),
+          buscarRegimeSimplesPorCnpj(linhasIniciais.map(l => l.cnpj)),
+        ]);
+        if (cancelado) return;
+        const validos = new Set(impostos.map(i => i.incoterms.trim().toUpperCase()));
+        const descricaoPorCodigo = new Map(impostos.map(i => [i.incoterms.trim().toUpperCase(), i.descricao]));
+
+        setLinhas(prev => prev.map(l => {
+          // Quem já escolheu um código (ou uma sugestão já aplicada) não é sobrescrito.
+          if (l.imposto || l.impostoSugestao) return l;
+          const s = sugerirCodigoImposto({
+            material: l.material,
+            cnpj: l.cnpj,
+            ufFornecedor: l.ufFornecedor,
+            aliqIcms: l.aliqIcms,
+            aliqIpi: l.aliqIpi,
+            cst: l.cst,
+            simples: simplesPorCnpj?.get(normalizarCnpjDigitos(l.cnpj)) ?? regime.get(normalizarCnpjDigitos(l.cnpj)) ?? null,
+            usosMaterial: usos.get(l.material.trim().replace(/^0+/, '')) ?? [],
+            codigosValidos: validos,
+          });
+          return s ? { ...l, imposto: s.codigo, impDescricao: descricaoPorCodigo.get(s.codigo) ?? '', impostoSugestao: s } : l;
+        }));
       } catch (err) {
         console.error('Falha ao carregar tabelas de referência do export SAP:', err);
       } finally {
-        if (!cancelado) setCarregandoTabelas(false);
+        if (!cancelado) { setCarregandoTabelas(false); setSugerindoImposto(false); }
       }
     })();
     return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const opcoesDdp = useMemo(() => ddpTabela.map(d => ({ codigo: d.ddp, descricao: d.descricao })), [ddpTabela]);
@@ -145,8 +209,17 @@ export default function ExportarSapModal({ linhasIniciais, numeroProcesso, onClo
     setLinhas(prev => prev.map(l => (l.key === key ? { ...l, ddp: codigo, ddpDescr: descricao } : l)));
   };
 
+  // Escolher um código na lista já é a confirmação do comprador: some o "sugerido".
   const aplicarImposto = (key: string, codigo: string, descricao: string) => {
-    setLinhas(prev => prev.map(l => (l.key === key ? { ...l, imposto: codigo, impDescricao: descricao } : l)));
+    setLinhas(prev => prev.map(l => (l.key === key ? { ...l, imposto: codigo, impDescricao: descricao, impostoSugestao: null } : l)));
+  };
+
+  const confirmarSugestao = (key: string) => {
+    setLinhas(prev => prev.map(l => (l.key === key ? { ...l, impostoSugestao: null } : l)));
+  };
+
+  const confirmarSugestoesAltas = () => {
+    setLinhas(prev => prev.map(l => (l.impostoSugestao?.confianca === 'alta' ? { ...l, impostoSugestao: null } : l)));
   };
 
   const aplicarFrete = (key: string, codigo: string) => {
@@ -191,6 +264,10 @@ export default function ExportarSapModal({ linhasIniciais, numeroProcesso, onClo
     [linhas],
   );
 
+  // Códigos que o app preencheu e o comprador ainda não confirmou.
+  const pendentesImposto = useMemo(() => linhas.filter(l => l.impostoSugestao).length, [linhas]);
+  const pendentesAltas = useMemo(() => linhas.filter(l => l.impostoSugestao?.confianca === 'alta').length, [linhas]);
+
   const toggleGrupo = (propostaKey: string) => {
     setGruposAbertos(prev => {
       const next = new Set(prev);
@@ -206,7 +283,7 @@ export default function ExportarSapModal({ linhasIniciais, numeroProcesso, onClo
   };
 
   const handleClicarExportar = () => {
-    if (totalFaltantes > 0) setConfirmarExportarAberto(true);
+    if (totalFaltantes > 0 || pendentesImposto > 0) setConfirmarExportarAberto(true);
     else executarExportacao();
   };
 
@@ -241,14 +318,40 @@ export default function ExportarSapModal({ linhasIniciais, numeroProcesso, onClo
     }
 
     if (c.campo === 'impDescricao') {
+      const sugestao = linha.impostoSugestao;
       return (
-        <SeletorBuscaCodigo
-          opcoes={opcoesImposto}
-          valor={linha.imposto}
-          onSelecionar={(codigo, descricao) => aplicarImposto(linha.key, codigo, descricao)}
-          placeholder="Buscar imposto..."
-          vazio={vazio}
-        />
+        <div className="space-y-1">
+          <div className={sugestao ? 'rounded ring-2 ring-amber-300 dark:ring-amber-700' : undefined}>
+            <SeletorBuscaCodigo
+              opcoes={opcoesImposto}
+              valor={linha.imposto}
+              onSelecionar={(codigo, descricao) => aplicarImposto(linha.key, codigo, descricao)}
+              placeholder="Buscar imposto..."
+              vazio={vazio}
+            />
+          </div>
+          {sugestao && (
+            <div className="flex flex-wrap items-center gap-1.5" title={detalheSugestao(sugestao)}>
+              <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${CONFIANCA_CLASSE[sugestao.confianca]}`}>
+                <Sparkles className="h-3 w-3" />
+                sugerido · confiança {CONFIANCA_ROTULO[sugestao.confianca]}
+              </span>
+              {sugestao.divergeDoHistorico && sugestao.ultimoUso && (
+                <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                  último do fornecedor: {sugestao.ultimoUso.codigo}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => confirmarSugestao(linha.key)}
+                className="inline-flex items-center gap-1 rounded border border-emerald-300 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+              >
+                <Check className="h-3 w-3" />
+                Confirmar
+              </button>
+            </div>
+          )}
+        </div>
       );
     }
 
@@ -288,7 +391,7 @@ export default function ExportarSapModal({ linhasIniciais, numeroProcesso, onClo
         <div className="flex items-start gap-2 border-b border-amber-100 bg-amber-50/60 px-4 py-2.5 text-[11px] text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            DDP e Imposto vêm das tabelas do SAP (<code>sup_ddp</code> / <code>sup_impostos</code>) e não têm sugestão automática — busque e escolha o que tiver certeza. Prz. Apresentação e Data Remessa não têm fonte automática — preencha uma vez abaixo e aplique a todas, ou edite item a item. Campo em vermelho está vazio.
+            DDP e Imposto vêm das tabelas do SAP (<code>sup_ddp</code> / <code>sup_impostos</code>). O DDP não tem sugestão — busque e escolha. O código de Imposto já vem <strong>sugerido</strong> a partir da cotação (UF, ICMS, IPI, ST, Simples) e do que o SAP usou nos pedidos do mesmo item e fornecedor — passe o mouse no selo para ver o porquê e <strong>confirme ou troque cada um</strong>. Prz. Apresentação e Data Remessa não têm fonte automática — preencha uma vez abaixo e aplique a todas, ou edite item a item. Campo em vermelho está vazio.
           </span>
         </div>
 
@@ -320,6 +423,26 @@ export default function ExportarSapModal({ linhasIniciais, numeroProcesso, onClo
           {carregandoTabelas && (
             <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-400">
               <Loader2 className="h-3 w-3 animate-spin" /> Carregando tabelas DDP e Imposto...
+            </span>
+          )}
+          {sugerindoImposto && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-400">
+              <Loader2 className="h-3 w-3 animate-spin" /> Sugerindo códigos de imposto pelo histórico...
+            </span>
+          )}
+          {pendentesImposto > 0 && (
+            <span className="inline-flex items-center gap-2 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+              <Sparkles className="h-3.5 w-3.5" />
+              {pendentesImposto} {pendentesImposto === 1 ? 'código de imposto a confirmar' : 'códigos de imposto a confirmar'}
+              {pendentesAltas > 0 && (
+                <button
+                  type="button"
+                  onClick={confirmarSugestoesAltas}
+                  className="rounded-lg border border-emerald-300 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+                >
+                  Confirmar as {pendentesAltas} de confiança alta
+                </button>
+              )}
             </span>
           )}
           {totalFaltantes > 0 && (
@@ -423,8 +546,12 @@ export default function ExportarSapModal({ linhasIniciais, numeroProcesso, onClo
 
       {confirmarExportarAberto && (
         <ConfirmDialog
-          titulo="Exportar com campos vazios?"
-          mensagem={`${totalFaltantes} ${totalFaltantes === 1 ? 'campo está vazio' : 'campos estão vazios'} na planilha. Pode exportar assim mesmo e completar depois, ou voltar e revisar antes.`}
+          titulo={totalFaltantes > 0 ? 'Exportar com pendências?' : 'Exportar com códigos de imposto sem confirmar?'}
+          mensagem={[
+            totalFaltantes > 0 ? `${totalFaltantes} ${totalFaltantes === 1 ? 'campo está vazio' : 'campos estão vazios'} na planilha.` : null,
+            pendentesImposto > 0 ? `${pendentesImposto} ${pendentesImposto === 1 ? 'código de imposto foi sugerido pelo app e não foi confirmado' : 'códigos de imposto foram sugeridos pelo app e não foram confirmados'} — o SAP vai recalcular o valor bruto com ele.` : null,
+            'Pode exportar assim mesmo, ou voltar e revisar antes.',
+          ].filter(Boolean).join(' ')}
           confirmarLabel="Exportar mesmo assim"
           cancelarLabel="Revisar antes"
           onConfirmar={executarExportacao}

@@ -23,14 +23,12 @@ import type { LucideIcon } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import { canAccessPage } from '../../lib/pages';
 import {
-  NAVES,
   hojeLocal,
   montarMatriz,
   semanaISO,
   semanasDoIntervalo,
   semanasNoAno,
   type EtapaApontamento,
-  type Nave,
   type QuantidadeSemanal,
   type SemanaRef,
 } from '../../lib/producaoApontamentos';
@@ -44,10 +42,10 @@ import {
   processarFilaApontamentos,
 } from '../../lib/producaoApontamentosApi';
 import TabelaProgramadoRealizado from '../../components/producao/apontamentos/TabelaProgramadoRealizado';
-import LancamentoNave from '../../components/producao/apontamentos/LancamentoNave';
 import RelatoriosApontamento from '../../components/producao/apontamentos/RelatoriosApontamento';
 import ProgramacaoSemanal from '../../components/producao/apontamentos/ProgramacaoSemanal';
 import CadastroEtapas from '../../components/producao/apontamentos/CadastroEtapas';
+import ApontamentosTorresFluxo from '../../components/producao/apontamentos/ApontamentosTorresFluxo';
 import { btnSecundario, inputCls } from '../../components/producao/apontamentos/estilos';
 import type { Profile } from '../../types';
 
@@ -56,19 +54,18 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-type Aba = 'painel' | 'lancar' | 'relatorios' | 'programacao' | 'etapas';
+type Aba = 'lancar' | 'painel' | 'relatorios' | 'programacao' | 'etapas';
 
 /** A planilha da fábrica vai até a W52 — é o horizonte padrão da tabela. */
 const ULTIMA_SEMANA_PADRAO = 52;
 
-export default function ProducaoApontamentos({ user }: Props) {
+export default function ProducaoApontamentos({ user, onNavigate }: Props) {
   const toast = useToast();
   const semanaAtual = useMemo(() => semanaISO(hojeLocal()), []);
   const podeProgramar = canAccessPage(user, 'prod_apt_programar');
   const podeCadastros = canAccessPage(user, 'prod_apt_cadastros');
 
-  const [aba, setAba] = useState<Aba>('painel');
-  const [nave, setNave] = useState<Nave>('nave1');
+  const [aba, setAba] = useState<Aba>('lancar');
   const [ano, setAno] = useState(semanaAtual.ano);
   const [de, setDe] = useState(Math.max(1, semanaAtual.semana - 4));
   const [ate, setAte] = useState(ULTIMA_SEMANA_PADRAO);
@@ -153,8 +150,8 @@ export default function ProducaoApontamentos({ user }: Props) {
   }, [tentarEnviar]);
 
   const abas: Array<{ id: Aba; rotulo: string; Icone: LucideIcon }> = [
+    { id: 'lancar', rotulo: 'Lançar Realizado', Icone: ClipboardPen },
     { id: 'painel', rotulo: 'Programado × Realizado', Icone: Table2 },
-    { id: 'lancar', rotulo: 'Lançar realizado', Icone: ClipboardPen },
     { id: 'relatorios', rotulo: 'Relatórios', Icone: BarChart3 },
     { id: 'programacao', rotulo: 'Programação', Icone: CalendarRange },
     ...(podeCadastros ? [{ id: 'etapas' as Aba, rotulo: 'Etapas', Icone: ListOrdered }] : []),
@@ -300,36 +297,17 @@ export default function ProducaoApontamentos({ user }: Props) {
         ))}
       </div>
 
-      {!etapas || !matriz ? (
+      {aba === 'lancar' && (
+        <ApontamentosTorresFluxo user={user} onNavegarAlmoxarifado={() => onNavigate('/almoxarifado')} />
+      )}
+
+      {aba !== 'lancar' && (!etapas || !matriz ? (
         <div className="flex justify-center py-16">
           <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
         </div>
       ) : (
         <>
           {aba === 'painel' && <TabelaProgramadoRealizado matriz={matriz} semanaAtual={semanaAtual} />}
-
-          {aba === 'lancar' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-2">
-                {NAVES.map(n => (
-                  <button
-                    key={n.id}
-                    type="button"
-                    onClick={() => setNave(n.id)}
-                    className={`rounded-xl border px-3 py-3 text-left transition ${
-                      nave === n.id
-                        ? 'border-orange-500 bg-orange-50 dark:border-orange-500 dark:bg-orange-950/30'
-                        : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900'
-                    }`}
-                  >
-                    <span className="block text-sm font-bold text-slate-900 dark:text-slate-50">{n.titulo}</span>
-                    <span className="hidden text-[11px] text-slate-500 dark:text-slate-400 sm:block">{n.descricao}</span>
-                  </button>
-                ))}
-              </div>
-              <LancamentoNave key={nave} user={user} nave={NAVES.find(n => n.id === nave)!} etapas={etapas} onAlterado={carregar} />
-            </div>
-          )}
 
           {aba === 'relatorios' && <RelatoriosApontamento matriz={matriz} />}
 
@@ -339,7 +317,7 @@ export default function ProducaoApontamentos({ user }: Props) {
 
           {aba === 'etapas' && podeCadastros && <CadastroEtapas etapas={etapas} onAlterado={carregar} />}
         </>
-      )}
+      ))}
     </div>
   );
 }

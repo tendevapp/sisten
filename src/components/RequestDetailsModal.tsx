@@ -9,7 +9,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, FileText } from 'lucide-react';
 import { Request, RequestItem, Sector, SupPendenciaProcessamentoNF } from '../types';
-import { formatBRL, formatDateBR, formatDateTimeBR, EMPTY } from '../lib/format';
+import { formatBRL, formatDateBR, formatDateTimeBR, formatQtd, EMPTY } from '../lib/format';
 import { rotuloTipo, rotuloCriticidade } from '../lib/solicitacoes';
 import { isChamadoSuprimentosPendencia, camposExibicao, rotuloNumero } from '../lib/supPendenciasProcessamento';
 import { listarPendenciasPorRequest } from '../lib/supPendenciasApi';
@@ -194,7 +194,7 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
                     <div className="grid grid-cols-2 gap-2">
                       <Field label="Código SAP" value={it.sap_code} />
                       <Field label="Descrição" value={it.description} />
-                      <Field label="Quantidade" value={`${it.quantity} ${it.unit}`} />
+                      <Field label="Quantidade" value={`${formatQtd(it.quantity)} ${it.unit}`} />
                       <Field label="Marca" value={it.brand} />
                       <Field label="Item Genérico" value={it.is_generic ? 'Sim' : 'Não'} />
                       <Field label="Aceita Similar" value={it.is_similar_allowed ? 'Sim' : 'Não'} />

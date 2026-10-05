@@ -513,6 +513,8 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
           ], tokens);
           if (!hit) return false;
         }
+
+        return true;
       });
 
       if (matchingLines.length === 0) return null;

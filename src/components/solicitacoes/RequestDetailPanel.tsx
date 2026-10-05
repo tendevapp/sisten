@@ -32,7 +32,7 @@ import PdfPreviewModal from '../ui/PdfPreviewModal';
 import type { PdfGerado } from '../../lib/pdfExport/core';
 import { exportCompraPdf, gerarCompraPdf } from '../../lib/pdfExport/exportCompraPdf';
 import { useToast } from '../ui/Toast';
-import { formatDateBR, formatDateTimeBR } from '../../lib/format';
+import { formatDateBR, formatDateTimeBR, formatQtd } from '../../lib/format';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import {
   avisoEdicao, classificarEventoHistorico, podeEditar,
@@ -383,7 +383,7 @@ export default function RequestDetailPanel({
 
   const copiarItens = async () => {
     const texto = itens
-      .map(it => `${it.sap_code || 'Sem código'} — ${it.description} — ${it.quantity} ${it.unit}`)
+      .map(it => `${it.sap_code || 'Sem código'} — ${it.description} — ${formatQtd(it.quantity)} ${it.unit}`)
       .join('\n');
     try {
       await navigator.clipboard.writeText(texto);
@@ -1354,7 +1354,7 @@ function ItemLinha({
 
       <div className="shrink-0 text-left sm:text-right">
         <p className="text-sm font-bold" style={{ color: ehGenerico ? 'var(--status-critical)' : 'var(--ink-primary)' }}>
-          {item.quantity} {item.unit}
+          {formatQtd(item.quantity)} {item.unit}
         </p>
         {item.estimated_value > 0 && (
           <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>

@@ -34,6 +34,7 @@ import {
 import {
   podeEditar, statusAposEdicao, avisoEdicao, formatarObservacaoItemGenerico, desformatarObservacaoItemGenerico,
   ehItemImobilizado, marcarObservacaoImobilizado, temMarcaImobilizado, carimbarAvisoAlmoxarifado,
+  normalizarQuantidadeSolicitacao,
 } from '../lib/solicitacoes';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
@@ -177,7 +178,7 @@ interface PurchaseItemState {
   technical_text?: string;
   /** Chips de estoque/RM/pedido — vêm junto com `technical_text`, mesmo motivo. */
   sinais?: SinalChip[];
-  quantity: number | '';
+  quantity: number | string;
   unit: string;
   brand: string;
   is_similar_allowed: boolean;
@@ -1367,6 +1368,19 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         return;
       }
 
+      const itemSemQtd = items.findIndex(it => {
+        const q = normalizarQuantidadeSolicitacao(it.quantity);
+        return !q || q <= 0;
+      });
+      if (itemSemQtd !== -1) {
+        alert(
+          ehServico
+            ? `Serviço ${itemSemQtd + 1}: informe uma quantidade válida maior que zero antes de enviar.`
+            : `Item ${itemSemQtd + 1}: informe uma quantidade válida maior que zero antes de enviar.`,
+        );
+        return;
+      }
+
       // Código SAP de 5 dígitos = item de imobilizado: exige as duas confirmações.
       const imobPendente = items.findIndex(
         it => !it.is_generic
@@ -1500,7 +1514,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               is_generic: ehGen,
               observation,
               reference_link: it.reference_link || '',
-              quantity: it.quantity,
+              quantity: normalizarQuantidadeSolicitacao(it.quantity),
               unit: it.unit,
               brand: it.brand,
               is_similar_allowed: it.is_similar_allowed,
@@ -2386,20 +2400,32 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         )}
                       </div>
 
-                      {/* Qtd — largura máxima própria: numa coluna principal
-                          larga (sem o painel lateral, abaixo de xl) o track de
-                          grid de 2/12 ficaria bem mais largo que um campo
-                          numérico precisa. */}
+                      {/* Qtd — aceita números inteiros ou dízimas/fracionários (ex: 0,35 ou 1.5) */}
                       <div className="sm:col-span-2 sm:max-w-[160px]">
                         <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Qtd *</label>
                         <input
-                          type="number"
-                          inputMode="numeric"
+                          type="text"
+                          inputMode="decimal"
                           required
-                          min={1}
-                          placeholder="0"
+                          placeholder="Ex.: 1 ou 0,35"
                           value={it.quantity}
-                          onChange={(e) => handleItemChange(index, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
+                          onChange={(e) => {
+                            const val = e.target.value.trimStart();
+                            const normalizado = val.replace(',', '.');
+                            if (val === '' || val === ',' || val === '.' || /^\d+(\.\d*)?$/.test(normalizado) || /^\.\d*$/.test(normalizado)) {
+                              handleItemChange(index, 'quantity', val);
+                            }
+                          }}
+                          onBlur={(e) => {
+                            const val = String(e.target.value ?? '').trim();
+                            if (val.startsWith(',')) {
+                              handleItemChange(index, 'quantity', '0' + val);
+                            } else if (val.startsWith('.')) {
+                              handleItemChange(index, 'quantity', '0' + val);
+                            } else if (val.endsWith(',') || val.endsWith('.')) {
+                              handleItemChange(index, 'quantity', val.slice(0, -1));
+                            }
+                          }}
                           className="w-full rounded border py-1 px-2 text-sm tabular transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         />

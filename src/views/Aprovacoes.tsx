@@ -21,7 +21,7 @@ import { localDb } from '../db/localDb';
 import { Profile, Request, RequestAttachment, RequestItem, Sector, RequestStatus, RequestStatusHistory } from '../types';
 import { podeAprovar, podeAlterarDecisao } from '../lib/solicitacoesCentral';
 import { rotuloCriticidade, rotuloStatus, exportarSolicitacoes, foiEditadaAposAprovacao } from '../lib/solicitacoes';
-import { formatBRL, formatDateBR, formatDateTimeBR } from '../lib/format';
+import { formatBRL, formatDateBR, formatDateTimeBR, formatQtd } from '../lib/format';
 import { buscarMateriais, resumoSinais, type SinalChip } from '../lib/materiais';
 import { SinalChips } from '../components/ui/SinalChips';
 import { AttachmentGallery } from '../components/ui/Attachments';
@@ -863,7 +863,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
 
                 <div className="shrink-0 text-left sm:text-right">
                   <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                    {it.quantity} {it.unit}
+                    {formatQtd(it.quantity)} {it.unit}
                   </p>
                   <p className="text-slate-500 dark:text-slate-400 text-[11px]">
                     {it.estimated_value > 0 ? `un: ${formatBRL(it.estimated_value)}` : 'sem estimativa'}

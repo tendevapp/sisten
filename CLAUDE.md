@@ -68,6 +68,24 @@ ZL0024), a tela checa `ehRespostaOffline(retorno)` e não afirma o resultado.
 
 Os checklists da Qualidade têm modo offline próprio (`src/lib/qualidadeOffline.ts`).
 
+## 4. Novos módulos: sem liberação padrão geral (nascem desmarcados)
+
+Todo novo módulo, página ou formulário criado no SISTEN NUNCA deve nascer
+liberado universalmente (`defaultRoles: '*'`).
+
+- Novos módulos devem nascer desmarcados para o público geral (usar `defaultRoles: ['admin']`
+  ou `defaultRoles: []`).
+- O acesso a novos módulos deve ser concedido de forma granular pelo administrador através
+  da **Gestão de Acessos** (`profiles.page_access`) ou atribuído a papéis/setores específicos.
+- Princípio do menor privilégio: um colaborador recém-cadastrado só acessa o essencial
+  (Início, Solicitações básicas), sem expor novos módulos operacionais automaticamente.
+
+## 5. Banco de dados: uso exclusivo de `supabase-sisten`
+
+O único banco de dados e servidor Supabase permitido e utilizado no SISTEN é o **`supabase-sisten`** (projeto `fwezzgduywgyhxinjurn`).
+- É estritamente proibido direcionar comandos, consultas SQL, migrações ou configurações para outros bancos ou servidores MCP (como `supabase-guigo`).
+- Todas as ferramentas MCP de banco, consultas, geração de types e edge functions devem utilizar exclusivamente o servidor `supabase-sisten` configurado via `.mcp.json` (`https://mcp.supabase.com/mcp?skip_elicitations=execute_sql,apply_migration`).
+
 ## Verificação antes de entregar
 
 ```bash

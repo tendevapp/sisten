@@ -227,6 +227,24 @@ describe('calcularCustoItem — DIFAL', () => {
     expect(c.liquido).toBe(1000);
   });
 
+  it('fornecedor do Simples sem ICMS destacado não gera crédito de ICMS estimado', () => {
+    const semIcms = item({ descricao_produto: 'X', quantidade: 10, preco_total_item: 1000, aliquota_icms_pct: null });
+    const normal = calcularCustoItem(semIcms, OPCOES_CUSTO_PADRAO, 0, 'SP');
+    expect(normal.creditosPossiveis?.icmsEstimado).toBe(true);
+    expect(normal.creditosPossiveis?.icms).toBeCloseTo(70, 2); // 7% interestadual estimado
+
+    const simples = calcularCustoItem(semIcms, OPCOES_CUSTO_PADRAO, 0, 'SP', true);
+    expect(simples.creditosPossiveis?.icms).toBe(0);
+    expect(simples.creditosPossiveis?.icmsEstimado).toBe(false);
+    // Sem ICMS a abater, a base do PIS/COFINS é o valor inteiro: 9,25% de 1000.
+    expect(simples.creditosPossiveis?.pisCofins).toBeCloseTo(92.5, 2);
+  });
+
+  it('Simples que destaca ICMS mantém o crédito destacado', () => {
+    const c = calcularCustoItem(sp, OPCOES_CUSTO_PADRAO, 0, 'SP', true);
+    expect(c.creditosPossiveis?.icms).toBeCloseTo(120, 2);
+  });
+
   it('crédito de ICMS não mexe no DIFAL', () => {
     const c = calcularCustoItem(sp, { ...OPCOES_CUSTO_PADRAO, creditaIcms: true }, 0, 'SP');
     expect(c.liquido).toBeCloseTo(1000 - 120, 2);

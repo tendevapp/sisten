@@ -266,6 +266,8 @@ export function calcularCustoItem(
   freteRateado = 0,
   /** UF do fornecedor — só com ela há DIFAL. */
   ufOrigem?: string | null,
+  /** Fornecedor do Simples Nacional/MEI, quando se sabe — tira o crédito de ICMS estimado. */
+  simples?: boolean | null,
 ): CustoItem {
   const bruto = brutoDoItem(item);
   const incompleto = bruto == null;
@@ -284,6 +286,7 @@ export function calcularCustoItem(
     valorIpi: ipiDestacado,
     ufOrigem,
     aliqIcmsDestacada: item.aliquota_icms_pct,
+    simples,
   });
   const creditoIcms = opcoes.creditaIcms ? base * fracao(item.aliquota_icms_pct) : 0;
   const creditoPisCofins = opcoes.creditaPisCofins
@@ -385,6 +388,8 @@ export interface ParamsAgrupamento {
   overrides?: Record<string, string>;
   /** Frete por proposta informado no mapa. */
   fretePorProposta?: Record<string, number | null>;
+  /** Fornecedor do Simples Nacional/MEI por proposta (consulta de CNPJ). Ausente = não se sabe. */
+  simplesPorProposta?: Record<string, boolean | null>;
 }
 
 interface LinhaEmMontagem {
@@ -514,7 +519,7 @@ export function agruparLinhasMapa(params: ParamsAgrupamento): LinhaMapa[] {
         const frete = usaFreteTeorico.has(c.propostaKey)
           ? (c.item.frete_teorico ?? 0)
           : (brutoDoItem(c.item) ?? 0) * fator;
-        const custo = calcularCustoItem(c.item, opcoes, frete, ufPorProposta.get(c.propostaKey));
+        const custo = calcularCustoItem(c.item, opcoes, frete, ufPorProposta.get(c.propostaKey), params.simplesPorProposta?.[c.propostaKey]);
         return { propostaKey: c.propostaKey, item: c.item, custo, score: c.score, deltaPct: null, melhor: false };
       });
 

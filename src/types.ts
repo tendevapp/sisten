@@ -794,7 +794,12 @@ export interface ContatoFornecedor {
   updated_at?: string;
 }
 
+/** De onde veio a sugestão de fornecedor para um material da Central de Compras. */
+export type OrigemFornecedor = 'PO' | 'COTACAO' | 'CATALOGO';
+
 export interface FornecedorMaterialRow {
+  /** Origens da sugestão; ausente = só PO (linhas montadas antes da mescla). */
+  origens?: OrigemFornecedor[];
   cod_forn: string;
   cnpj: string;
   fornecedor: string;

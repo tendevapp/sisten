@@ -29,6 +29,7 @@ const {
   formatarObservacaoItemGenerico, desformatarObservacaoItemGenerico,
   ehItemImobilizado, marcarObservacaoImobilizado, temMarcaImobilizado, MARCA_IMOBILIZADO,
   temAvisoAlmoxarifado, carimbarAvisoAlmoxarifado, estaEmAberto,
+  normalizarQuantidadeSolicitacao,
 } = await import('./solicitacoes');
 const {
   podeAlterarDecisao, podeCancelar,
@@ -480,6 +481,33 @@ describe('carimbo de aviso ao almoxarifado em compras para estoque', () => {
 
     // Quando a justificativa original está vazia
     expect(carimbarAvisoAlmoxarifado('', true)).toBe('[Almoxarifado avisado: Sim]');
+  });
+});
+
+describe('normalizarQuantidadeSolicitacao', () => {
+  it('converte dízima com vírgula (ex.: 0,35) para número float', () => {
+    expect(normalizarQuantidadeSolicitacao('0,35')).toBe(0.35);
+    expect(normalizarQuantidadeSolicitacao('1,5')).toBe(1.5);
+    expect(normalizarQuantidadeSolicitacao(',35')).toBe(0.35);
+  });
+
+  it('converte dízima com ponto (ex.: 0.35) para número float', () => {
+    expect(normalizarQuantidadeSolicitacao('0.35')).toBe(0.35);
+    expect(normalizarQuantidadeSolicitacao('.35')).toBe(0.35);
+    expect(normalizarQuantidadeSolicitacao('12.75')).toBe(12.75);
+  });
+
+  it('mantém números inteiros e números nativos intactos', () => {
+    expect(normalizarQuantidadeSolicitacao(10)).toBe(10);
+    expect(normalizarQuantidadeSolicitacao(0.35)).toBe(0.35);
+    expect(normalizarQuantidadeSolicitacao('5')).toBe(5);
+  });
+
+  it('trata valores vazios ou inválidos retornando 0', () => {
+    expect(normalizarQuantidadeSolicitacao('')).toBe(0);
+    expect(normalizarQuantidadeSolicitacao(null)).toBe(0);
+    expect(normalizarQuantidadeSolicitacao(undefined)).toBe(0);
+    expect(normalizarQuantidadeSolicitacao('abc')).toBe(0);
   });
 });
 

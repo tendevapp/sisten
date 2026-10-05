@@ -45,6 +45,16 @@ const STATUS_ENCERRADOS: RequestStatus[] = ['fechado', 'cancelada', 'rejeitada',
 export const estaEmAberto = (r: Request): boolean => !STATUS_ENCERRADOS.includes(r.status);
 
 /**
+ * Normaliza quantidade de item da solicitação (suporta inteiros e dízimas com vírgula ou ponto, ex.: 0,35).
+ */
+export function normalizarQuantidadeSolicitacao(qtd: number | string | null | undefined): number {
+  if (typeof qtd === 'number') return Number.isFinite(qtd) ? qtd : 0;
+  if (!qtd) return 0;
+  const num = Number(String(qtd).trim().replace(',', '.'));
+  return Number.isFinite(num) ? num : 0;
+}
+
+/**
  * Recorte por papel.
  *
  * O gestor vê apenas o próprio setor — mesma regra que a tela de Aprovações já

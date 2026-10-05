@@ -21,11 +21,11 @@
  *   escondidos num card lá embaixo.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, AlertTriangle, Truck, CalendarClock, CreditCard, Sparkles,
   Scissors, Merge, Award, PackageX, RotateCcw, Link2, Ban, X, ShoppingCart, Plus, Check, SearchX, FileSearch,
-  LayoutGrid, Table2, Rows3, BarChart3, EyeOff, Eye, History,
+  LayoutGrid, Table2, Rows3, BarChart3, EyeOff, Eye, History, Building2, Loader2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx-js-style';
 import MapaOpcoesBar from './MapaOpcoesBar';
@@ -49,6 +49,10 @@ import {
   INICIO_HISTORICO_COMPRAS, chaveMaterialSap, menorPrecoPorMaterial,
 } from '../../lib/menorPrecoComprado';
 import type { MenorPrecoComprado } from '../../lib/menorPrecoComprado';
+import {
+  descreverRegime, ehSimplesParaImposto, resolverRegimes, situacaoIrregular, soDigitos,
+} from '../../lib/regimeFornecedor';
+import type { RegimeFornecedor } from '../../lib/regimeFornecedor';
 import {
   agruparLinhasMapa, resumirFornecedores, cenarioMenorPreco, cenarioFornecedorUnico,
   cenarioSelecao, opcoesDaBase, ordenarLinhas, LIMIAR_SIMILARIDADE_PADRAO,
@@ -369,7 +373,14 @@ function ConfirmarForaDoMelhorModal({
 
 function CabecalhoFornecedor({
   resumo, proposta, posicao, melhorTotal, onFrete, arquivoOriginal, onEditarMarkdown, onAtualizarProposta,
+  regime, consultandoRegime, erroRegime, onReconsultarRegime,
 }: {
+  /** Regime tributário do fornecedor (Simples/MEI) pela consulta de CNPJ; ausente = ainda não consultado. */
+  regime?: RegimeFornecedor | null;
+  consultandoRegime: boolean;
+  /** Por que a consulta não deu certo — mostra o botão para tentar de novo. */
+  erroRegime?: string;
+  onReconsultarRegime: () => void;
   resumo: ResumoFornecedor;
   proposta: CotacaoPropostaDraft;
   posicao: number;
@@ -458,6 +469,34 @@ function CabecalhoFornecedor({
           <CalendarClock className="h-3 w-3" />
           {resumo.prazoEntregaDias != null ? `${resumo.prazoEntregaDias} dias` : 'prazo n/i'}
         </Chip>
+        {regime ? (
+          <>
+            <Chip tom={ehSimplesParaImposto(regime) ? 'aviso' : 'neutro'} title={descreverRegime(regime)}>
+              <Building2 className="h-3 w-3" />
+              {regime.mei ? 'MEI' : regime.simples ? 'Simples Nacional' : 'Fora do Simples'}
+            </Chip>
+            {situacaoIrregular(regime) && (
+              <Chip tom="ruim" title="A Receita não mostra este CNPJ como ativo — confirme antes de emitir pedido.">
+                CNPJ {regime.situacaoCadastral}
+              </Chip>
+            )}
+          </>
+        ) : consultandoRegime ? (
+          <Chip tom="neutro" title="Consultando o regime tributário do CNPJ na Receita.">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Simples: consultando…
+          </Chip>
+        ) : (
+          <button
+            type="button"
+            onClick={onReconsultarRegime}
+            title={`${erroRegime ?? 'Regime tributário ainda não consultado.'}\nClique para consultar o CNPJ na Receita.`}
+            className="inline-flex items-center gap-1 rounded border border-dashed border-slate-300 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-600 dark:text-slate-400"
+          >
+            <RotateCcw className="h-3 w-3" />
+            Simples: verificar
+          </button>
+        )}
         {resumo.validadeDias != null && (
           <Chip
             tom={resumo.validadeDias < 0 ? 'ruim' : resumo.validadeDias <= 3 ? 'aviso' : 'ok'}
@@ -869,6 +908,55 @@ export default function MapaComparativo({
     return r;
   }, [salvas]);
 
+  // Regime do fornecedor (Simples/MEI), pela consulta de CNPJ — o chip do
+  // cabeçalho mostra e o cálculo de crédito de ICMS usa. Chega aos poucos
+  // (uma consulta por fornecedor, com cache de 30 dias), então a tela abre
+  // antes e o chip aparece quando resolve.
+  const [regimes, setRegimes] = useState<Map<string, RegimeFornecedor>>(new Map());
+  const [consultandoRegime, setConsultandoRegime] = useState<Set<string>>(new Set());
+  const [falhasRegime, setFalhasRegime] = useState<Map<string, string>>(new Map());
+  const chaveCnpjs = useMemo(
+    () => [...new Set(salvas.map(p => soDigitos(p.fornecedor_cnpj)).filter(Boolean))].sort().join(','),
+    [salvas],
+  );
+
+  const consultarRegimes = useCallback(async (cnpjs: string[], forcar = false) => {
+    if (cnpjs.length === 0) return;
+    setConsultandoRegime(prev => new Set([...prev, ...cnpjs]));
+    try {
+      const { falhas } = await resolverRegimes(cnpjs, {
+        usuario: usuarioNome,
+        forcar,
+        aoResolver: r => {
+          setRegimes(prev => new Map(prev).set(r.cnpj, r));
+          setConsultandoRegime(prev => { const n = new Set(prev); n.delete(r.cnpj); return n; });
+        },
+      });
+      setFalhasRegime(prev => {
+        const n = new Map(prev);
+        for (const c of cnpjs) n.delete(c);
+        for (const [c, motivo] of falhas) n.set(c, motivo);
+        return n;
+      });
+    } finally {
+      setConsultandoRegime(prev => { const n = new Set(prev); for (const c of cnpjs) n.delete(c); return n; });
+    }
+  }, [usuarioNome]);
+
+  useEffect(() => {
+    consultarRegimes(chaveCnpjs ? chaveCnpjs.split(',') : []);
+  }, [chaveCnpjs, consultarRegimes]);
+
+  /** `true`/`false` quando o regime é conhecido; ausente quando não se sabe (não consultado ou falhou). */
+  const simplesPorProposta = useMemo(() => {
+    const r: Record<string, boolean | null> = {};
+    for (const p of salvas) {
+      const reg = regimes.get(soDigitos(p.fornecedor_cnpj));
+      r[p._key] = reg ? ehSimplesParaImposto(reg) : null;
+    }
+    return r;
+  }, [salvas, regimes]);
+
   const [overrides, setOverrides] = useState<Record<string, string>>(() => {
     try {
       const bruto = localStorage.getItem(chaveOverrides(processo.id));
@@ -971,8 +1059,8 @@ export default function MapaComparativo({
   const opcoes = useMemo(() => opcoesDaBase(base, creditos), [base, creditos]);
 
   const linhas = useMemo(
-    () => agruparLinhasMapa({ escopo, propostas: propostasMapa, opcoes, limiar, overrides, fretePorProposta }),
-    [escopo, propostasMapa, opcoes, limiar, overrides, fretePorProposta],
+    () => agruparLinhasMapa({ escopo, propostas: propostasMapa, opcoes, limiar, overrides, fretePorProposta, simplesPorProposta }),
+    [escopo, propostasMapa, opcoes, limiar, overrides, fretePorProposta, simplesPorProposta],
   );
 
   // Ordem que a matriz exibe — escolha do comprador, alfabética por padrão.
@@ -1472,6 +1560,17 @@ export default function MapaComparativo({
                     return (
                     <th key={r.propostaKey} className="relative border-l border-slate-100 bg-slate-50/60 align-top dark:border-slate-800 dark:bg-slate-800/40">
                       <CabecalhoFornecedor
+                        regime={regimes.get(soDigitos(propostaDoFornecedor.fornecedor_cnpj))}
+                        consultandoRegime={consultandoRegime.has(soDigitos(propostaDoFornecedor.fornecedor_cnpj))}
+                        erroRegime={
+                          falhasRegime.get(soDigitos(propostaDoFornecedor.fornecedor_cnpj))
+                          ?? (soDigitos(propostaDoFornecedor.fornecedor_cnpj) ? undefined : 'CNPJ não identificado na proposta.')
+                        }
+                        onReconsultarRegime={() => {
+                          const c = soDigitos(propostaDoFornecedor.fornecedor_cnpj);
+                          if (c) consultarRegimes([c], true);
+                          else toast.info('CNPJ não identificado nesta proposta — corrija na revisão da proposta.');
+                        }}
                         resumo={r}
                         proposta={propostaDoFornecedor}
                         posicao={i}
@@ -1624,6 +1723,7 @@ export default function MapaComparativo({
         <ExportarSapModal
           linhasIniciais={sapModalLinhas}
           numeroProcesso={processo.numero}
+          simplesPorCnpj={new Map([...regimes].map(([cnpj, r]) => [cnpj, ehSimplesParaImposto(r)]))}
           onClose={() => setSapModalLinhas(null)}
         />
       )}

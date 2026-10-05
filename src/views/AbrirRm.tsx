@@ -39,7 +39,7 @@ import { localDb } from '../db/localDb';
 import type {
   AlmoxRmExportacao, AlmoxRmExportacaoSolicitacao, Profile, Request, RequestItem, Sector,
 } from '../types';
-import { formatDateBR, formatDateTimeBR } from '../lib/format';
+import { formatDateBR, formatDateTimeBR, formatQtd } from '../lib/format';
 import { rotuloCriticidade } from '../lib/solicitacoes';
 import { classificarMudanca, dividirMudancas, type TipoMudanca } from '../lib/solicitacoesDiff';
 import {
@@ -1221,7 +1221,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                               <td className="px-2 py-1.5 font-mono" style={{ color: 'var(--ink-secondary)' }}>{idx + 1}</td>
                               <td className="px-2 py-1.5 font-mono font-semibold whitespace-nowrap">{it.sap_code || 'sem código'}</td>
                               <td className="px-2 py-1.5" style={{ color: 'var(--ink-primary)' }}>{it.description}</td>
-                              <td className="px-2 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{it.quantity}</td>
+                              <td className="px-2 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{formatQtd(it.quantity)}</td>
                               <td className="px-2 py-1.5" style={{ color: 'var(--ink-secondary)' }}>{it.unit}</td>
                             </tr>
                           ))}
@@ -1580,7 +1580,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                                         it.description
                                       )}
                                     </td>
-                                    <td className="px-2 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{it.quantity}</td>
+                                    <td className="px-2 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{formatQtd(it.quantity)}</td>
                                     <td className="px-2 py-1.5" style={{ color: 'var(--ink-secondary)' }}>{it.unit}</td>
                                     <td
                                       className="px-2 py-1.5 font-mono font-semibold whitespace-nowrap"
@@ -1824,7 +1824,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                                                 </span>
                                                 <span style={{ color: 'var(--ink-primary)' }}>{it.description}</span>
                                                 <span style={{ color: 'var(--ink-muted)' }}>
-                                                  {it.quantity} {it.unit}
+                                                  {formatQtd(it.quantity)} {it.unit}
                                                 </span>
                                               </li>
                                             ))}
@@ -2087,7 +2087,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
 
                               <div className="flex items-center gap-2 shrink-0 text-[11px] font-semibold text-[var(--ink-secondary)]">
                                 <span className="font-mono bg-[var(--surface-raised)] px-1.5 py-0.5 rounded border border-[var(--hairline)]">
-                                  {it.quantity} {it.unit}
+                                  {formatQtd(it.quantity)} {it.unit}
                                 </span>
                               </div>
                             </div>

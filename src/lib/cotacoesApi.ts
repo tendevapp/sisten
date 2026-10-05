@@ -19,6 +19,7 @@ import {
   proximoIndiceCotacao,
 } from './cotacoes';
 import { comprimirImagemUpload } from './imageCompression';
+import type { UsoCodigoImposto } from './sugestaoCodigoImposto';
 import type {
   CotacaoProcesso, CotacaoProcessoItem, CotacaoProcessoItemDraft, CotacaoProcessoStatus,
   CotacaoProposta, CotacaoPropostaDraft, ExtracaoResposta, SugestaoVinculo,
@@ -804,6 +805,93 @@ export async function listarImpostosSap(): Promise<{ incoterms: string; descrica
   const { data, error } = await supabase.from('sup_impostos').select('incoterms, descricao').order('incoterms');
   if (error) throw new Error(`Falha ao carregar a tabela de impostos: ${error.message}`);
   return data ?? [];
+}
+
+/** Variações de grafia do código de material (com e sem zeros à esquerda) — a ZL0132 guarda sem, a cotação pode trazer com. */
+function variantesMaterial(codigo: string): string[] {
+  const bruto = codigo.trim();
+  const semZeros = bruto.replace(/^0+/, '');
+  return [...new Set([bruto, semZeros].filter(Boolean))];
+}
+
+/**
+ * Códigos de imposto que o SAP já usou em pedidos dos materiais informados
+ * (`sap_zl0132_po.ci`), de qualquer fornecedor, do mais recente ao mais
+ * antigo. Alimenta a sugestão do código no export SAP: o prefixo (finalidade)
+ * e a validação contra o último uso do mesmo fornecedor.
+ *
+ * Chave do mapa = código do material sem zeros à esquerda. Falha de leitura
+ * devolve mapa vazio — a sugestão cai na regra pela cotação, não trava o export.
+ */
+export async function buscarUsosCodigoImposto(materiais: string[]): Promise<Map<string, UsoCodigoImposto[]>> {
+  const out = new Map<string, UsoCodigoImposto[]>();
+  const unicos = [...new Set(materiais.map(m => m.trim()).filter(Boolean))];
+  const PAGINA = 1000;
+  const LOTE = 40;
+
+  try {
+    for (let i = 0; i < unicos.length; i += LOTE) {
+      const lote = unicos.slice(i, i + LOTE).flatMap(variantesMaterial);
+      // Pagina de 1.000 em 1.000 — o PostgREST corta a resposta nesse limite.
+      for (let de = 0; ; de += PAGINA) {
+        const { data, error } = await supabase
+          .from('sap_zl0132_po')
+          .select('material, cnpj_fornecedor, ci, data_doc, doc_compra')
+          .in('material', lote)
+          .not('ci', 'is', null)
+          .order('data_doc', { ascending: false })
+          .order('id')
+          .range(de, de + PAGINA - 1);
+        if (error) throw new Error(error.message);
+
+        for (const r of (data ?? []) as any[]) {
+          const chave = String(r.material ?? '').trim().replace(/^0+/, '');
+          const lista = out.get(chave) ?? [];
+          lista.push({
+            codigo: String(r.ci).trim().toUpperCase(),
+            data: r.data_doc ?? null,
+            pedido: r.doc_compra ?? null,
+            cnpj: r.cnpj_fornecedor ? String(r.cnpj_fornecedor).replace(/\D/g, '') : null,
+          });
+          out.set(chave, lista);
+        }
+        if (!data || data.length < PAGINA) break;
+      }
+    }
+  } catch (err) {
+    console.error('Falha ao carregar o histórico de códigos de imposto:', err);
+    return new Map();
+  }
+  return out;
+}
+
+/**
+ * Regime de cada fornecedor (Simples Nacional ou não) segundo a NF mais
+ * recente da ZL0136. CNPJ só com dígitos. Fornecedor sem NF registrada fica
+ * fora do mapa; falha de leitura devolve mapa vazio.
+ */
+export async function buscarRegimeSimplesPorCnpj(cnpjs: string[]): Promise<Map<string, boolean>> {
+  const out = new Map<string, boolean>();
+  const unicos = [...new Set(cnpjs.map(c => c.replace(/\D/g, '')).filter(Boolean))];
+  if (unicos.length === 0) return out;
+  try {
+    const { data, error } = await supabase
+      .from('sap_zl0136_nf')
+      .select('cnpj_parceiro, simples_nacional_sap, data_lancamento')
+      .in('cnpj_parceiro', unicos)
+      .not('simples_nacional_sap', 'is', null)
+      .order('data_lancamento', { ascending: false })
+      .limit(1000);
+    if (error) throw new Error(error.message);
+    for (const r of (data ?? []) as any[]) {
+      const cnpj = String(r.cnpj_parceiro ?? '').replace(/\D/g, '');
+      if (cnpj && !out.has(cnpj)) out.set(cnpj, String(r.simples_nacional_sap).toUpperCase() === 'S');
+    }
+  } catch (err) {
+    console.error('Falha ao carregar o regime tributário dos fornecedores:', err);
+    return new Map();
+  }
+  return out;
 }
 
 /** Cadastra um novo código de DDP em `sup_ddp` — atalho no modal de "Exportar SAP" para quando o código que o comprador precisa ainda não está na tabela. */

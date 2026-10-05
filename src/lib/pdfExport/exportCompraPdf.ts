@@ -8,6 +8,7 @@
 import { localDb } from '../../db/localDb';
 import { Request, RequestItem, RequestAttachment } from '../../types';
 import { createDoc, PdfTextWriter, embedAttachments, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+import { formatQtd } from '../format';
 export type { PdfGerado };
 
 export interface GerarCompraPdfResult extends PdfGerado {
@@ -99,7 +100,7 @@ export async function gerarCompraPdf(
     `${it.description}${it.is_generic ? ' [GENÉRICO]' : ''}${it.observation ? `\nObs: ${it.observation}` : ''}`,
     it.sap_code || '-',
     it.brand || '-',
-    `${it.quantity} ${it.unit}`,
+    `${formatQtd(it.quantity)} ${it.unit}`,
     it.estimated_value > 0 ? `R$ ${it.estimated_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-',
   ]);
 
@@ -122,7 +123,7 @@ export async function gerarCompraPdf(
       if (att.mime_type?.startsWith('image/')) {
         photoAttachments.push({
           title: `Item #${idx + 1}: ${item.description}`,
-          reference: `Código SAP: ${item.sap_code || 'Não informado'} · Marca: ${item.brand || 'N/A'} · Quantidade: ${item.quantity} ${item.unit}`,
+          reference: `Código SAP: ${item.sap_code || 'Não informado'} · Marca: ${item.brand || 'N/A'} · Quantidade: ${formatQtd(item.quantity)} ${item.unit}`,
           source: att.storage_path || att.url,
           description: `Arquivo anexado: ${att.name}${item.observation ? ` (Obs: ${item.observation})` : ''}`,
         });

@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-10-05',
+    resumo: 'Solicitações > Nova Solicitação de Compras — Suporte a Quantidades Fracionárias / Dízimas (`NewRequest.tsx`, `solicitacoes.ts`, `solicitacoes.test.ts`, `AbrirRm.tsx`, `Aprovacoes.tsx`, `RequestDetailPanel.tsx`, `RequestDetailsModal.tsx`, `exportCompraPdf.ts`, `diretrizes.ts`): 1. Campo de quantidade dos itens na criação de solicitação de compras atualizado para permitir a digitação de dízimas/fracionários (ex.: 0,35, 1,5), aceitando vírgula ou ponto sem bloqueio nativo do browser; 2. Implementada função `normalizarQuantidadeSolicitacao` para converter e higienizar com segurança entradas decimais para float nativo antes da persistência no banco; 3. Formatação visual padronizada com `formatQtd` em todo o ciclo de vida da solicitação (Aprovações, Detalhes, Painel Lateral, Exportação PDF e Abertura de RM no Almoxarifado).',
+  },
+  {
+    data: '2026-10-05',
     resumo: 'Suprimentos > Pendências — Nova Subpágina de RNC e Indicadores por Aba (`PendenciasRecebimentoRnc.tsx`, `PendenciasSubnav.tsx`, `RecebimentoAlmox.tsx`, `pendenciasRecebimento.ts`, `pendenciasRecebimentoApi.ts`, `supPendenciasApi.ts`, `pages.ts`): 1. Nova subpágina "RNC" em Pendências de Suprimentos (`/suprimentos/pendencias-recebimento-rnc`), permitindo aos compradores e coordenação acompanhar diretamente os itens de recebimento que viraram Não Conformidade (NCR) e suas tratativas com fornecedor; 2. Barra de subpáginas unificada (`PendenciasSubnav`) agora integra Processamento de NF, Recebimento e RNC, exibindo contadores em tempo real de itens aguardando ação em cada aba; 3. No Almoxarifado, aba de Não Conformidades organizada entre "Pendências com Suprimentos" e "RNC", com indicação clara do fluxo de resolução.',
   },
   {
@@ -48,6 +52,10 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-10-01',
     resumo: 'Formulários > Almoxarifado — Edição de Recebimento Aberta a Todos os Usuários (`RecebimentoAlmox.tsx`, migration `20260930201000_alm_recebimento_edicao_qualquer_usuario.sql`): 1. Edição de ficha cega de volumes (RCV) e conferência de itens (RCM) liberada para qualquer usuário logado com acesso ao módulo, mantendo a gravação detalhada do log campo a campo em `alm_receb_alteracoes` (quem, quando, de/para) através das RPCs transacionais; 2. Exclusão lógica (`excluido`) permanece restrita exclusivamente ao autor do registro ou administrador, protegida tanto na UI (`podeExcluir`) quanto via trigger de segurança (`alm_receb_guarda_exclusao`) e RLS no Supabase.',
+  },
+  {
+    data: '2026-10-05',
+    resumo: 'Produção > Plano de Expedição GW — Seleção Padrão da Semana Atual do Calendário (`ProducaoPlanoExpedicao.tsx`, `diretrizes.ts`): 1. Abertura inicial do Plano de Expedição configurada para selecionar dinamicamente a semana ISO atual do calendário (`getISOWeek(new Date())`) no seletor de "Semana de programação" da aba Relatório; 2. O filtro de torres foi inicializado vazio para exibir por padrão todas as torres programadas para a semana atual; 3. Mantida a preservação da semana selecionada pelo usuário ao recarregar dados se ela constar no plano.',
   },
   {
     data: '2026-10-01',

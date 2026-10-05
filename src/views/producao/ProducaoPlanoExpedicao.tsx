@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, CircleCheck, ClipboardList, FileText, Loader2, RefreshCw, Save, Truck } from 'lucide-react';
+import { getISOWeek } from 'date-fns';
 import type { Profile } from '../../types';
 import { ordenarPlanoExpedicao, resumirPlanoExpedicao, type StatusPlanoExpedicao } from '../../lib/producao';
 import {
@@ -86,8 +87,8 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
   const toast = useToast();
   const [linhas, setLinhas] = useState<PlanoExpedicaoProducao[]>([]);
   const linhasSalvasRef = useRef<Map<string, PlanoExpedicaoProducao>>(new Map());
-  const [semanaRelatorio, setSemanaRelatorio] = useState(39);
-  const [torresSelecionadas, setTorresSelecionadas] = useState<number[]>([4, 5]);
+  const [semanaRelatorio, setSemanaRelatorio] = useState(() => getISOWeek(new Date()));
+  const [torresSelecionadas, setTorresSelecionadas] = useState<number[]>([]);
   const [semanaDados, setSemanaDados] = useState('todas');
   const [torreDados, setTorreDados] = useState('todas');
   const [busca, setBusca] = useState('');
@@ -101,7 +102,12 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
       const plano = ordenarPlanoExpedicao(await listarPlanoExpedicao());
       setLinhas(plano);
       linhasSalvasRef.current = new Map(plano.map(item => [item.id, { ...item }]));
-      if (!plano.some(linha => linha.semana === 39)) setSemanaRelatorio(plano[0]?.semana ?? 39);
+      const semanaAtual = getISOWeek(new Date());
+      setSemanaRelatorio(atual => {
+        if (plano.some(linha => linha.semana === atual)) return atual;
+        if (plano.some(linha => linha.semana === semanaAtual)) return semanaAtual;
+        return plano[0]?.semana ?? semanaAtual;
+      });
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível carregar o plano de expedição.');
     } finally { setCarregando(false); }
@@ -109,7 +115,11 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
 
   useEffect(() => { void carregar(); }, []);
 
-  const semanas = useMemo(() => [...new Set(linhas.map(linha => linha.semana))].sort((a, b) => a - b), [linhas]);
+  const semanas = useMemo(() => {
+    const conj = new Set(linhas.map(linha => linha.semana));
+    if (semanaRelatorio) conj.add(semanaRelatorio);
+    return [...conj].sort((a, b) => a - b);
+  }, [linhas, semanaRelatorio]);
   const torresDaSemana = useMemo(() => [...new Set(linhas.filter(linha => linha.semana === semanaRelatorio).map(linha => linha.torre_numero))].sort((a, b) => a - b), [linhas, semanaRelatorio]);
   const relatorio = useMemo(() => linhas.filter(linha => linha.semana === semanaRelatorio && (!torresSelecionadas.length || torresSelecionadas.includes(linha.torre_numero))), [linhas, semanaRelatorio, torresSelecionadas]);
   const resumo = useMemo(() => resumirPlanoExpedicao(relatorio), [relatorio]);

@@ -292,12 +292,20 @@ export function estimarCreditosPossiveis(params: {
   ufOrigem: string | null | undefined;
   aliqIcmsDestacada?: number | null;
   ufDestino?: string;
+  /**
+   * Fornecedor optante do Simples Nacional (ou MEI). Sem ICMS destacado na
+   * proposta, o Simples não gera crédito de ICMS — estimar pela UF seria
+   * inventar um crédito que a nota não vai trazer. `null`/ausente = não se sabe.
+   */
+  simples?: boolean | null;
 }): CreditosPossiveis {
   const v = Math.max(0, Number(params.valorItem) || 0);
   const origem = (params.ufOrigem ?? '').trim().toUpperCase();
   const destino = (params.ufDestino ?? 'BA').trim().toUpperCase();
 
   let aliqIcms = params.aliqIcmsDestacada ?? null;
+  const semCreditoSimples = aliqIcms == null && params.simples === true;
+  if (semCreditoSimples) aliqIcms = 0;
   const icmsEstimado = aliqIcms == null && !!origem;
   if (aliqIcms == null && origem) {
     aliqIcms = origem === destino ? ALIQ_INTERNA_ICMS_BA : aliquotaInterestadualPorUf(origem, destino);
