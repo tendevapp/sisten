@@ -18,6 +18,7 @@ import {
   type FabricaNave1Id,
   type NaveProducaoId,
 } from './producaoTorres';
+import type { OperacaoTramo } from './producaoWip';
 
 const db = (tabela: string) => (supabase.from as any)(tabela);
 const BUCKET = 'prod-evidencias';
@@ -232,6 +233,25 @@ export async function listarApontamentosRecentes(nave?: NaveProducaoId, limite: 
   }
 
   return apontamentos;
+}
+
+/**
+ * Operações realizadas que já têm código de tramo, só com o necessário para
+ * posicionar o tramo na Visão WIP (processo e data). Falha de leitura devolve
+ * lista vazia: a visão cai de volta para o Controle de Entrega.
+ */
+export async function listarOperacoesComTramo(): Promise<OperacaoTramo[]> {
+  const { data, error } = await db('prod_apt_operacoes')
+    .select('tramo_codigo, processo_id, data_apontamento')
+    .eq('realizado', true)
+    .not('tramo_codigo', 'is', null)
+    .order('data_apontamento', { ascending: false })
+    .limit(5000);
+  if (error) {
+    console.warn('Erro ao listar operações por tramo:', error.message);
+    return [];
+  }
+  return (data || []) as OperacaoTramo[];
 }
 
 /**

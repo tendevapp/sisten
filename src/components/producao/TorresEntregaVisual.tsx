@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   ListChecks,
   ListOrdered,
+  Factory,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -32,6 +33,7 @@ import {
 import ModalDetalheTramoEntrega from './ModalDetalheTramoEntrega';
 import ModalGerenciarTramosEntrega from './ModalGerenciarTramosEntrega';
 import VisaoExpedicaoChecklist from './VisaoExpedicaoChecklist';
+import VisaoWipChaoFabrica from './VisaoWipChaoFabrica';
 
 interface TorresEntregaVisualProps {
   tramos: TramoEntrega[];
@@ -47,7 +49,7 @@ export default function TorresEntregaVisual({
   const [subprojetoFiltro, setSubprojetoFiltro] = useState<string>('todos');
   const [somenteGargalos, setSomenteGargalos] = useState(false);
   const [buscaTorre, setBuscaTorre] = useState('');
-  const [modoExibicao, setModoExibicao] = useState<'cilindros' | 'gargalos' | 'expedicao'>('cilindros');
+  const [modoExibicao, setModoExibicao] = useState<'cilindros' | 'gargalos' | 'expedicao' | 'wip'>('cilindros');
 
   const [tramoSelecionado, setTramoSelecionado] = useState<TramoEntrega | null>(null);
   const [torreSelecionada, setTorreSelecionada] = useState<TorreEntregaAgrupada | null>(null);
@@ -86,6 +88,19 @@ export default function TorresEntregaVisual({
     setTorreSelecionada(torre);
   };
 
+  const tramosFiltrados = useMemo(
+    () =>
+      torresFiltradas.flatMap(t =>
+        ORDEM_TRAMOS_VISUAL.map(id => t.tramos[id]).filter((tr): tr is TramoEntrega => tr !== null),
+      ),
+    [torresFiltradas],
+  );
+
+  const handleAbrirTramoWip = (tramo: TramoEntrega) => {
+    setTramoSelecionado(tramo);
+    setTorreSelecionada(todasTorres.find(t => t.torre_numero === tramo.torre_numero) ?? null);
+  };
+
   const handleSalvarTramo = (atualizado: TramoEntrega) => {
     if (aoAtualizarTramo) {
       aoAtualizarTramo(atualizado);
@@ -105,7 +120,7 @@ export default function TorresEntregaVisual({
               Prontidão de conjunto das torres e balanceamento de gargalos para despacho ao parque.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setModoExibicao('cilindros')}
@@ -141,6 +156,18 @@ export default function TorresEntregaVisual({
             >
               <ListChecks className="h-3.5 w-3.5" />
               Visão Expedição
+            </button>
+            <button
+              type="button"
+              onClick={() => setModoExibicao('wip')}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+                modoExibicao === 'wip'
+                  ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
+              }`}
+            >
+              <Factory className="h-3.5 w-3.5" />
+              WIP no Chão de Fábrica
             </button>
             <button
               type="button"
@@ -618,6 +645,11 @@ export default function TorresEntregaVisual({
 
       {/* 5. Visão Expedição — Checklist de Liberação por Tramo (White → Expedido) */}
       {modoExibicao === 'expedicao' && <VisaoExpedicaoChecklist torres={torresFiltradas} />}
+
+      {/* 5b. Visão WIP — quantos tramos há em cada etapa da planta */}
+      {modoExibicao === 'wip' && (
+        <VisaoWipChaoFabrica tramos={tramosFiltrados} todosTramos={tramos} aoAbrirTramo={handleAbrirTramoWip} />
+      )}
 
       {/* 6. Modal de Detalhe e Tomada de Decisão */}
       {tramoSelecionado && (

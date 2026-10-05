@@ -37,8 +37,10 @@ export default function ProducaoOperacao({ modo, user }: { modo: Modo; user: Pro
   const [relatorio, setRelatorio] = useState<{ data: string; total: number; aprovados: number; reprovados: number; refugados: number; pendentes: number }[]>([]);
   const [erro, setErro] = useState('');
 
-  const carregar = async () => {
-    setCarregando(true); setErro('');
+  // `silencioso`: atualiza os dados por baixo sem trocar a tela por um spinner, para a visão
+  // (scroll, modo e filtros) continuar onde o usuário estava depois de salvar uma edição.
+  const carregar = async (silencioso = false) => {
+    if (!silencioso) { setCarregando(true); setErro(''); }
     try {
       if (modo === 'pendencias') setPendencias(await listarPendencias());
       if (modo === 'entrega') setTramosEntrega(await listarTramosEntrega());
@@ -48,9 +50,10 @@ export default function ProducaoOperacao({ modo, user }: { modo: Modo; user: Pro
         setRelatorio(await listarRelatorioDiario());
       }
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Não foi possível carregar os dados.');
+      if (silencioso) console.warn('Falha ao atualizar em segundo plano:', e);
+      else setErro(e instanceof Error ? e.message : 'Não foi possível carregar os dados.');
     } finally {
-      setCarregando(false);
+      if (!silencioso) setCarregando(false);
     }
   };
 
@@ -70,7 +73,7 @@ export default function ProducaoOperacao({ modo, user }: { modo: Modo; user: Pro
         <TorresEntregaVisual
           tramos={tramosEntrega}
           aoAtualizarTramo={handleAtualizarTramo}
-          recarregar={carregar}
+          recarregar={() => void carregar(true)}
         />
       )}
       {modo === 'painel' && <><div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><CardNumero label="Lançamentos" valor={indicadores.total} /><CardNumero label="FPY" valor={`${indicadores.fpy}%`} tom="text-emerald-600" /><CardNumero label="Retrabalho" valor={`${indicadores.retrabalho}%`} tom="text-amber-600" /><CardNumero label="WIP / pendências" valor={indicadores.wip} tom="text-rose-600" /></div><section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><h2 className="font-bold">Relatório diário</h2><div className="mt-3 overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b text-slate-500"><th className="p-2">Data</th><th className="p-2">Total</th><th className="p-2">Aprov.</th><th className="p-2">Reprov.</th><th className="p-2">Refugo</th><th className="p-2">Pendente</th></tr></thead><tbody>{relatorio.map(r => <tr key={r.data} className="border-b last:border-0"><td className="p-2 font-medium">{r.data}</td><td className="p-2">{r.total}</td><td className="p-2 text-emerald-600">{r.aprovados}</td><td className="p-2 text-rose-600">{r.reprovados}</td><td className="p-2">{r.refugados}</td><td className="p-2 text-amber-600">{r.pendentes}</td></tr>)}</tbody></table></div></section></>}
