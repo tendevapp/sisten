@@ -35,6 +35,7 @@ const AdminPanel = lazy(() => import('./views/AdminPanel'));
 const UsageDashboard = lazy(() => import('./views/UsageDashboard'));
 const ProfileView = lazy(() => import('./views/ProfileView'));
 const CadastrosSap = lazy(() => import('./views/CadastrosSap'));
+const CatalogosSuprimentos = lazy(() => import('./views/CatalogosSuprimentos'));
 const Reports = lazy(() => import('./views/Reports'));
 const Compras = lazy(() => import('./views/Compras'));
 const AnaliseCotacoes = lazy(() => import('./views/AnaliseCotacoes'));
@@ -1085,6 +1086,12 @@ export default function App() {
       case '/suprimentos/cadastros-sap':
         if (canAccessPage(user, 'sup_cadastros_sap')) {
           return <CadastrosSap user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/suprimentos/catalogos':
+        if (canAccessPage(user, 'sup_catalogos')) {
+          return <CatalogosSuprimentos user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

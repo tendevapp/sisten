@@ -76,6 +76,7 @@ export const PAGES: PageDef[] = [
 
   { id: 'suprimentos_home', group: 'SUPRIMENTOS', label: 'Suprimentos', path: '/suprimentos', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_cadastros_sap', group: 'SUPRIMENTOS', label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },
+  { id: 'sup_catalogos', group: 'SUPRIMENTOS', label: 'Catálogos', path: '/suprimentos/catalogos', icon: BookOpen, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   // `id` é chave de `profiles.page_access` e não muda; só o endereço saiu de
   // `/suprimentos/fornecedores-sem-po` (nome do recorte inicial) para
   // `/suprimentos/compras`. O antigo é redirecionado em App.tsx.
