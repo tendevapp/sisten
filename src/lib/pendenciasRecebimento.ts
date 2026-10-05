@@ -311,3 +311,72 @@ export function parametrosDaRota(hash: string): { id: string | null; conf: strin
   const q = new URLSearchParams(i === -1 ? '' : hash.slice(i + 1));
   return { id: q.get('id'), conf: q.get('conf'), status: q.get('status'), vista: q.get('vista') };
 }
+
+// ---------------------------------------------------------------------------
+// Pendências que viraram RNC (subpágina "RNC" de Pendências)
+// ---------------------------------------------------------------------------
+
+export type StatusNcr = 'aberta' | 'em_tratativa' | 'resolvida';
+
+export const ROTULO_STATUS_NCR: Record<StatusNcr, string> = {
+  aberta: 'Aberta',
+  em_tratativa: 'Em tratativa',
+  resolvida: 'Resolvida',
+};
+
+export interface AcaoNcr {
+  texto: string | null;
+  por_nome: string | null;
+  em: string;
+}
+
+/** Pendência cuja decisão abriu (ou reaproveitou) uma NCR do Recebimento, com o estado dela. */
+export interface PendenciaRnc extends PendenciaRecebimento {
+  ncr_status: StatusNcr;
+  ncr_resolucao: string | null;
+  ncr_acoes: AcaoNcr[];
+}
+
+/** A verificação com o fornecedor ainda não terminou. */
+export function rncEmAberto(p: Pick<PendenciaRnc, 'ncr_status'>): boolean {
+  return p.ncr_status !== 'resolvida';
+}
+
+/** Do comprador logado — ou sem dono, que alguém precisa assumir. */
+export function ehDoComprador(
+  p: Pick<PendenciaRecebimento, 'comprador_id' | 'decidido_por_id'>,
+  usuarioId: string,
+): boolean {
+  return !p.comprador_id || p.comprador_id === usuarioId || p.decidido_por_id === usuarioId;
+}
+
+/** Balão da subpágina Recebimento: esperando a devolutiva deste comprador. */
+export function contarAguardandoComprador(lista: Pick<PendenciaRecebimento, 'status' | 'comprador_id' | 'decidido_por_id'>[], usuarioId: string): number {
+  return lista.filter((p) => p.status === 'aguardando_comprador' && ehDoComprador(p, usuarioId)).length;
+}
+
+/** Balão da subpágina RNC: RNC deste comprador ainda em verificação com o fornecedor. */
+export function contarRncEmAberto(lista: Pick<PendenciaRnc, 'ncr_status' | 'comprador_id' | 'decidido_por_id'>[], usuarioId: string): number {
+  return lista.filter((p) => rncEmAberto(p) && ehDoComprador(p, usuarioId)).length;
+}
+
+export type FiltroRnc = 'abertas' | 'resolvidas' | 'todas';
+
+export function filtrarRnc(
+  lista: PendenciaRnc[],
+  f: { status: FiltroRnc; somenteMinhas: boolean; usuarioId: string; busca: string },
+): PendenciaRnc[] {
+  const termos = normalizar(f.busca).split(/\s+/).filter(Boolean);
+  return lista.filter((p) => {
+    if (f.status === 'abertas' && !rncEmAberto(p)) return false;
+    if (f.status === 'resolvidas' && rncEmAberto(p)) return false;
+    if (f.somenteMinhas && !ehDoComprador(p, f.usuarioId)) return false;
+    if (termos.length > 0) {
+      const alvo = normalizar([
+        p.codigo, p.nc_codigo, p.nro_pedido, p.material_code, p.descricao, p.fornecedor, p.comprador_nome,
+      ].filter(Boolean).join(' '));
+      if (!termos.every((t) => alvo.includes(t))) return false;
+    }
+    return true;
+  });
+}

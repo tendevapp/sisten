@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, FileDown, HardHat, Loader2,
-  ClipboardList, MessageSquareReply, PackageCheck, PackageMinus, Plus, RefreshCw, Search, Truck, X,
+  ClipboardList, MessageSquareReply, PackageCheck, PackageMinus, Plus, RefreshCw, Search, ShieldAlert, Truck, X,
 } from 'lucide-react';
 import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -111,6 +111,9 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   const [vista, setVista] = useState<Vista>(() =>
     parametrosDaRota(window.location.hash || '').vista === 'devolutivas' ? 'nc' : 'hub');
   const [destaqueDevolutiva, setDestaqueDevolutiva] = useState<string | null>(() => parametrosDaRota(window.location.hash || '').id);
+  // Não conformidades tem duas janelas: o que está com Suprimentos e as RNC de fato.
+  const [abaNc, setAbaNc] = useState<AbaNc>(() =>
+    parametrosDaRota(window.location.hash || '').vista === 'devolutivas' ? 'suprimentos' : 'rnc');
   const [devolutivas, setDevolutivas] = useState<PendenciaRecebimento[]>([]);
   const [cargas, setCargas] = useState<CargaRow[]>([]);
   const [conferencias, setConferencias] = useState<ConferenciaRow[]>([]);
@@ -159,6 +162,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       const q = parametrosDaRota(window.location.hash || '');
       if (q.vista !== 'devolutivas') return;
       setVista('nc');
+      setAbaNc('suprimentos');
       setDestaqueDevolutiva(q.id);
       void recarregar();
     };
@@ -167,6 +171,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   }, [recarregar]);
 
   const devolutivasParaExecutar = devolutivas.filter((d) => d.status === 'aguardando_almox').length;
+  /** Ainda em andamento com Suprimentos (sem decisão ou esperando o almoxarifado executar). */
+  const pendenciasEmAberto = devolutivas.filter((d) => d.status === 'aguardando_comprador' || d.status === 'aguardando_almox').length;
 
   const ncAbertas = ncs.filter((n) => n.status !== 'resolvida').length;
 
@@ -370,22 +376,14 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
         <VistaNaoConformidades
           ncs={ncs}
           loading={loading}
-          devolutivas={devolutivas.length > 0 && (
+          aba={abaNc}
+          onAba={setAbaNc}
+          pendenciasEmAberto={pendenciasEmAberto}
+          pendenciasSuprimentos={(
             <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <MessageSquareReply className="h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
-                <h2 className="text-[11px] font-extrabold uppercase tracking-wide" style={{ color: 'var(--ink-secondary)' }}>
-                  Devolutivas de Suprimentos
-                </h2>
-                {devolutivasParaExecutar > 0 && (
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-extrabold text-white" style={{ background: 'var(--status-critical)' }}>
-                    {devolutivasParaExecutar} para executar
-                  </span>
-                )}
-                <span className="h-px flex-1" style={{ background: 'var(--hairline)' }} />
-              </div>
               <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-                Avaria, falta e entrega parcial viram pendência para o comprador do PO. A decisão dele chega aqui para você executar.
+                Avaria, falta e entrega parcial viram pendência para o comprador do PO. Segure o material até a resposta;
+                a decisão dele chega aqui para você executar. Quando vira RNC, ela passa para a aba RNC.
               </p>
               <DevolutivasSuprimentos lista={devolutivas} loading={loading} destaqueId={destaqueDevolutiva} onExecutado={recarregar} />
             </section>
@@ -1013,13 +1011,20 @@ function VistaContagem({
 // Vista — Não conformidades
 // ===========================================================================
 
+type AbaNc = 'suprimentos' | 'rnc';
+
 function VistaNaoConformidades({
-  ncs, loading, devolutivas, onVoltar, onNova, onRecarregar, onAbrir, onEditar, onStatus, onExcluir,
+  ncs, loading, aba, onAba, pendenciasEmAberto, pendenciasSuprimentos,
+  onVoltar, onNova, onRecarregar, onAbrir, onEditar, onStatus, onExcluir,
 }: {
   ncs: NaoConformidadeRow[];
   loading: boolean;
-  /** Seção das devolutivas de Suprimentos, no topo da vista (vazia quando não há nenhuma). */
-  devolutivas?: React.ReactNode;
+  aba: AbaNc;
+  onAba: (aba: AbaNc) => void;
+  /** Pendências com Suprimentos ainda em andamento (balão da janela). */
+  pendenciasEmAberto: number;
+  /** Conteúdo da janela "Suprimentos": pendências aguardando o comprador, a executar e concluídas. */
+  pendenciasSuprimentos: React.ReactNode;
   onVoltar: () => void;
   onNova: () => void;
   onRecarregar: () => void;
@@ -1108,13 +1113,46 @@ function VistaNaoConformidades({
       onRecarregar={onRecarregar}
       acao={<BotaoNovo onClick={onNova}>Nova não conformidade</BotaoNovo>}
     >
-      {devolutivas}
-      {loading && <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
-      {!loading && !ncs.length && (
+      <div role="tablist" aria-label="Não conformidades" className="flex w-fit max-w-full flex-wrap items-center gap-1 rounded-xl border p-1" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+        {([
+          { id: 'suprimentos', rotulo: 'Pendências com Suprimentos', icon: MessageSquareReply, n: pendenciasEmAberto },
+          { id: 'rnc', rotulo: 'RNC', icon: ShieldAlert, n: ncs.filter((x) => x.status !== 'resolvida').length },
+        ] as const).map((t) => {
+          const Icon = t.icon;
+          const ativa = aba === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={ativa}
+              onClick={() => onAba(t.id)}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer"
+              style={ativa
+                ? { background: 'var(--surface-card)', color: 'var(--brand)', boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.06)' }
+                : { color: 'var(--ink-muted)' }}
+            >
+              <Icon className="h-3.5 w-3.5" /> {t.rotulo}
+              {t.n > 0 && (
+                <span
+                  className="inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-extrabold leading-[18px] text-white"
+                  style={{ background: t.id === 'suprimentos' ? 'var(--status-critical)' : 'var(--ink-muted)' }}
+                >
+                  {t.n}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {aba === 'suprimentos' && pendenciasSuprimentos}
+      {aba === 'rnc' && loading && <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
+      {aba === 'rnc' && !loading && !ncs.length && (
         <TableEmpty icon={Check} title="Nenhuma não conformidade" hint="Abra uma NCR avulsa ou ela será criada quando a conferência acusar divergência." />
       )}
 
-      {!loading && ncs.length > 0 && (
+      {aba === 'rnc' && !loading && ncs.length > 0 && (
         <>
           <FiltroLista
             busca={busca} onBusca={setBusca}

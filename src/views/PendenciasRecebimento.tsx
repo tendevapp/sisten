@@ -198,7 +198,7 @@ export default function PendenciasRecebimento({ user, onNavigate }: Props) {
 
   return (
     <div className="space-y-5 text-left w-full pb-28">
-      <PendenciasSubnav user={user} atual="sup_pendencias_recebimento" onNavigate={onNavigate} contagem={{ sup_pendencias_recebimento: minhasAguardando }} />
+      <PendenciasSubnav user={user} atual="sup_pendencias_recebimento" onNavigate={onNavigate} versao={lista} />
 
       <div className="reveal">
         <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2" style={{ color: 'var(--ink-primary)' }}>

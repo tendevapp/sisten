@@ -210,6 +210,17 @@ export interface GrupoPendencia {
   classif_recorrencia?: string | null;
 }
 
+/** Notas ainda sem baixa — balão da subpágina, sem os efeitos colaterais da listagem agrupada. */
+export async function contarNotasAguardando(): Promise<number> {
+  if (!supabase) return 0;
+  const { count, error } = await (supabase as any)
+    .from(TABELA)
+    .select('id', { count: 'exact', head: true })
+    .neq('status', 'concluido');
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 /**
  * Pendências agrupadas por chamado, com os dados da solicitação anexados
  * (número, solicitante, setor). Base da tela de baixa do Suprimentos.

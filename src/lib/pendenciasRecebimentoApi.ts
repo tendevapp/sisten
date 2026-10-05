@@ -11,7 +11,8 @@
  */
 
 import { supabase } from '../db/supabaseClient';
-import type { DecisaoPendencia, PendenciaRecebimento } from './pendenciasRecebimento';
+import { DECISOES_QUE_ABREM_RNC, contarAguardandoComprador, type AcaoNcr, type DecisaoPendencia, type PendenciaRecebimento, type PendenciaRnc, type StatusNcr } from './pendenciasRecebimento';
+import { editarNc } from './recebimentoAlmoxApi';
 
 const db = (tabela: string) => (supabase.from as any)(tabela);
 
@@ -41,6 +42,63 @@ export async function listarDevolutivasAlmox(): Promise<PendenciaRecebimento[]> 
     .order('decidido_em', { ascending: false, nullsFirst: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as PendenciaRecebimento[];
+}
+
+/**
+ * Pendências cuja decisão abriu RNC (abrir RNC, devolver, devolver com reposição),
+ * já com o estado da NCR no Recebimento. NCR excluída sai da lista.
+ */
+export async function listarPendenciasRnc(): Promise<PendenciaRnc[]> {
+  const { data, error } = await db('sup_pend_recebimento')
+    .select('*')
+    .in('decisao', DECISOES_QUE_ABREM_RNC)
+    .not('nc_id', 'is', null)
+    .neq('status', 'cancelada')
+    .order('decidido_em', { ascending: false, nullsFirst: false });
+  if (error) throw new Error(error.message);
+  const pend = (data ?? []) as PendenciaRecebimento[];
+  if (pend.length === 0) return [];
+
+  const ids = [...new Set(pend.map((p) => p.nc_id!))];
+  const { data: ncs, error: errNc } = await db('alm_receb_nc')
+    .select('id, status, resolucao, acoes, excluido')
+    .in('id', ids);
+  if (errNc) throw new Error(errNc.message);
+  const porId = new Map<string, { status: StatusNcr; resolucao: string | null; acoes: AcaoNcr[] | null; excluido: boolean }>(
+    ((ncs ?? []) as any[]).map((n) => [n.id, n]),
+  );
+
+  return pend.flatMap((p) => {
+    const nc = porId.get(p.nc_id!);
+    if (!nc || nc.excluido) return [];
+    return [{ ...p, ncr_status: nc.status, ncr_resolucao: nc.resolucao, ncr_acoes: Array.isArray(nc.acoes) ? nc.acoes : [] }];
+  });
+}
+
+/** Comprador registra o andamento com o fornecedor na NCR (e, se quiser, a encerra). */
+export async function registrarAndamentoRnc(
+  ncId: string,
+  texto: string,
+  resolver: boolean,
+  user: { id: string; nome: string },
+): Promise<void> {
+  const t = texto.trim();
+  if (!t) throw new Error('Descreva o andamento.');
+  await editarNc(
+    ncId,
+    resolver ? { status: 'resolvida', resolucao: t } : { status: 'em_tratativa' },
+    { texto: t },
+    { id: user.id, nome: user.nome },
+  );
+}
+
+/** Balão da subpágina Recebimento: só as colunas necessárias para contar. */
+export async function contarMinhasAguardando(usuarioId: string): Promise<number> {
+  const { data, error } = await db('sup_pend_recebimento')
+    .select('status, comprador_id, decidido_por_id')
+    .eq('status', 'aguardando_comprador');
+  if (error) throw new Error(error.message);
+  return contarAguardandoComprador((data ?? []) as PendenciaRecebimento[], usuarioId);
 }
 
 export async function decidirPendencias(

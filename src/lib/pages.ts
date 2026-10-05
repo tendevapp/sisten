@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX, ShieldAlert,
 } from 'lucide-react';
 import { Profile, Role, Sector } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
@@ -84,6 +84,8 @@ export const PAGES: PageDef[] = [
   { id: 'sup_pendencias_processamento', group: 'SUPRIMENTOS', label: 'Pendências de Processamento', path: '/suprimentos/pendencias-processamento', icon: ReceiptText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   // Subpágina de Pendências (sem botão no menu; o PendenciasSubnav liga as duas): divergência/parcial da conferência do almoxarifado → devolutiva do comprador do PO.
   { id: 'sup_pendencias_recebimento', group: 'SUPRIMENTOS', label: 'Pendências de Recebimento', path: '/suprimentos/pendencias-recebimento', icon: PackageX, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'], menuPai: '/suprimentos/pendencias-processamento' },
+  // Subpágina de Pendências: o que virou RNC (NCR do Recebimento) por decisão do comprador — acompanha a verificação com o fornecedor.
+  { id: 'sup_pendencias_recebimento_rnc', group: 'SUPRIMENTOS', label: 'Pendências de Recebimento — RNC', path: '/suprimentos/pendencias-recebimento-rnc', icon: ShieldAlert, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'], menuPai: '/suprimentos/pendencias-processamento' },
   // Correção de incoerência: menu prometia coordenador_suprimentos, App.tsx
   // só liberava admin/comprador. Padrão alinhado ao menu (permissão sap.fornecedores).
   { id: 'sup_fornecedores', group: 'SUPRIMENTOS', label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },

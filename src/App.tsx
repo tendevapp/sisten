@@ -77,6 +77,7 @@ const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
 const CalcImpostos = lazy(() => import('./views/CalcImpostos'));
 const PendenciasProcessamento = lazy(() => import('./views/PendenciasProcessamento'));
 const PendenciasRecebimento = lazy(() => import('./views/PendenciasRecebimento'));
+const PendenciasRecebimentoRnc = lazy(() => import('./views/PendenciasRecebimentoRnc'));
 const PortariaHub = lazy(() => import('./views/portaria/PortariaHub'));
 const PortariaPassagemPlantao = lazy(() => import('./views/portaria/PortariaPassagemPlantao'));
 const PortariaEquipamentos = lazy(() => import('./views/portaria/PortariaEquipamentos'));
@@ -986,6 +987,12 @@ export default function App() {
       case '/suprimentos/pendencias-recebimento':
         if (canAccessPage(user, 'sup_pendencias_recebimento')) {
           return <PendenciasRecebimento user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/suprimentos/pendencias-recebimento-rnc':
+        if (canAccessPage(user, 'sup_pendencias_recebimento_rnc')) {
+          return <PendenciasRecebimentoRnc user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

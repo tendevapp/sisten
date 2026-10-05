@@ -10,6 +10,11 @@ import {
   DECISOES_POR_MOTIVO,
   DECISOES_QUE_ABREM_RNC,
   abreRnc,
+  contarAguardandoComprador,
+  contarRncEmAberto,
+  ehDoComprador,
+  filtrarRnc,
+  type PendenciaRnc,
   agruparPorPedido,
   atrasada,
   decisoesComuns,
@@ -169,5 +174,48 @@ describe('parametrosDaRota', () => {
     expect(parametrosDaRota('#/suprimentos/pendencias-recebimento?id=abc')).toMatchObject({ id: 'abc', conf: null });
     expect(parametrosDaRota('#/formularios/almoxarifado?vista=devolutivas&id=x')).toMatchObject({ vista: 'devolutivas', id: 'x' });
     expect(parametrosDaRota('#/suprimentos/pendencias-recebimento')).toMatchObject({ id: null, status: null });
+  });
+});
+
+describe('balões e lista de RNC', () => {
+  const rnc = (p: Partial<PendenciaRnc>): PendenciaRnc => ({
+    ...pend({ decisao: 'abrir_rnc', status: 'aguardando_almox', nc_id: 'n1', nc_codigo: 'NCR-051026-01', decidido_por_id: 'u-isa' }),
+    ncr_status: 'em_tratativa', ncr_resolucao: null, ncr_acoes: [],
+    ...p,
+  });
+
+  it('dono é o comprador, quem decidiu ou ninguém', () => {
+    expect(ehDoComprador({ comprador_id: 'u-isa', decidido_por_id: null }, 'u-isa')).toBe(true);
+    expect(ehDoComprador({ comprador_id: 'u-outro', decidido_por_id: 'u-isa' }, 'u-isa')).toBe(true);
+    expect(ehDoComprador({ comprador_id: null, decidido_por_id: null }, 'u-isa')).toBe(true);
+    expect(ehDoComprador({ comprador_id: 'u-outro', decidido_por_id: null }, 'u-isa')).toBe(false);
+  });
+
+  it('balão do Recebimento conta só o que espera a devolutiva do usuário', () => {
+    const lista = [
+      pend({ id: 'a' }),
+      pend({ id: 'b', comprador_id: 'u-outro' }),
+      pend({ id: 'c', comprador_id: null }),
+      pend({ id: 'd', status: 'aguardando_almox' }),
+    ];
+    expect(contarAguardandoComprador(lista, 'u-isa')).toBe(2);
+  });
+
+  it('balão da RNC conta as ainda não resolvidas do usuário', () => {
+    const lista = [
+      rnc({ id: 'a' }),
+      rnc({ id: 'b', ncr_status: 'resolvida' }),
+      rnc({ id: 'c', comprador_id: 'u-outro', decidido_por_id: 'u-outro' }),
+    ];
+    expect(contarRncEmAberto(lista, 'u-isa')).toBe(1);
+  });
+
+  it('filtra por situação da RNC, dono e busca', () => {
+    const lista = [rnc({ id: 'a' }), rnc({ id: 'b', ncr_status: 'resolvida' }), rnc({ id: 'c', comprador_id: 'u-outro', decidido_por_id: 'u-outro' })];
+    const base = { status: 'abertas' as const, somenteMinhas: false, usuarioId: 'u-isa', busca: '' };
+    expect(filtrarRnc(lista, base).map((p) => p.id)).toEqual(['a', 'c']);
+    expect(filtrarRnc(lista, { ...base, status: 'resolvidas' }).map((p) => p.id)).toEqual(['b']);
+    expect(filtrarRnc(lista, { ...base, somenteMinhas: true }).map((p) => p.id)).toEqual(['a']);
+    expect(filtrarRnc(lista, { ...base, status: 'todas', busca: 'ncr-051026' })).toHaveLength(3);
   });
 });

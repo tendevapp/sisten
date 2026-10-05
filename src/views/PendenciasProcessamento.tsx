@@ -760,7 +760,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
 
   return (
     <div className="space-y-6 text-left w-full pb-24">
-      <PendenciasSubnav user={user} atual="sup_pendencias_processamento" onNavigate={onNavigate} />
+      <PendenciasSubnav user={user} atual="sup_pendencias_processamento" onNavigate={onNavigate} versao={grupos} />
       <div className="reveal">
         <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2" style={{ color: 'var(--ink-primary)' }}>
           <ReceiptText className="h-7 w-7" style={{ color: 'var(--ink-muted)' }} />
