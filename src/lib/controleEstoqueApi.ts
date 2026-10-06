@@ -14,6 +14,7 @@ import type {
 } from '../types';
 import { calcularFaixaDoItem, type StatusControleEstoque } from './controleEstoque';
 import { casarTokens } from './buscaKeywords';
+import { isProjetoItem } from './almoxarifado';
 
 type UsuarioAutor = Pick<Profile, 'id'>;
 
@@ -30,6 +31,8 @@ export interface FiltrosControleEstoque {
   temPo?: boolean;
   recebimento?: 'COM_RECEBIMENTO' | 'SEM_RECEBIMENTO';
   projeto?: string;
+  /** Natureza do material: 'projeto' (código 100000…) ou 'consumo' (demais códigos). */
+  tipoItem?: 'projeto' | 'consumo';
   pagina?: number;
   itensPorPagina?: number;
 }
@@ -277,6 +280,8 @@ export function filtrarControleEstoque(itens: ControleEstoqueItem[], filtros: Fi
     if (filtros.recebimento === 'SEM_RECEBIMENTO' && item.quantidade_recebida > 0) return false;
     if (filtros.deposito && !item.depositos.some(dep => dep.deposito === filtros.deposito)) return false;
     if (filtros.projeto && !item.opcoes_quantidade_por_torre.some(opcao => opcao.projeto === filtros.projeto)) return false;
+    if (filtros.tipoItem === 'projeto' && !isProjetoItem(item.material)) return false;
+    if (filtros.tipoItem === 'consumo' && isProjetoItem(item.material)) return false;
     if (filtros.status && calcularFaixaDoItem(item).status !== filtros.status) return false;
     return true;
   });

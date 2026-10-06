@@ -30,7 +30,7 @@ import { exportarControleEstoqueExcel } from '../lib/controleEstoqueExport';
 import { montarDossie } from '../lib/controleEstoqueDossie';
 import { calcularSugestao, type Recomendacao } from '../lib/reposicao';
 import { canAccessPage } from '../lib/pages';
-import { formatBRL, formatQtd } from '../lib/almoxarifado';
+import { formatBRL, formatQtd, ordenarDepositos } from '../lib/almoxarifado';
 import { formatDateBR, formatDateTimeBR } from '../lib/format';
 import ControleEstoqueResumo from '../components/almoxarifado/controleEstoque/ControleEstoqueResumo';
 import ControleEstoqueFiltros, {
@@ -135,7 +135,7 @@ export default function ControleEstoque({ user, abaInicial = 'geral' }: Props) {
   );
 
   const opcoes = useMemo<OpcoesFiltrosControleEstoque>(() => ({
-    depositos: unicos(itens.flatMap(i => i.depositos.map(d => d.deposito))),
+    depositos: ordenarDepositos(unicos(itens.flatMap(i => i.depositos.map(d => d.deposito)))),
     categorias: unicos(itens.map(i => i.categoria)),
     aplicacoes: unicos(itens.map(i => i.aplicacao)),
     projetos: unicos(itens.flatMap(i => i.opcoes_quantidade_por_torre.map(o => o.projeto))),

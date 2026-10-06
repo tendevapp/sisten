@@ -8,7 +8,7 @@ import {
   type ResumoCompraDossie,
   type SituacaoChegada,
 } from '../../../lib/controleEstoqueDossie';
-import { formatQtd } from '../../../lib/almoxarifado';
+import { formatQtd, isProjetoItem } from '../../../lib/almoxarifado';
 import { formatDateBR, formatInt } from '../../../lib/format';
 import Pagination from '../../ui/Pagination';
 import { StatusBadge } from './StatusBadge';
@@ -234,7 +234,23 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                         className="cursor-pointer hover:bg-[var(--surface-raised)]"
                         style={{ borderTop: linha.primeiraDoMaterial ? '2px solid var(--hairline)' : '1px dashed var(--hairline)' }}
                       >
-                        <td className="px-3 py-2 font-mono font-black whitespace-nowrap" style={esmaecido}>{linha.material}</td>
+                        <td className="px-3 py-2 font-mono font-black whitespace-nowrap" style={esmaecido}>
+                          <div className="flex items-center gap-1.5">
+                            <span>{linha.material}</span>
+                            {linha.primeiraDoMaterial && (
+                              <span
+                                className="inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider"
+                                style={{
+                                  background: isProjetoItem(linha.material) ? 'color-mix(in srgb, var(--brand) 15%, transparent)' : 'var(--surface-sunken)',
+                                  color: isProjetoItem(linha.material) ? 'var(--brand)' : 'var(--ink-muted)',
+                                }}
+                                title={isProjetoItem(linha.material) ? 'Material de Projeto (código 100000…)' : 'Material de Consumo'}
+                              >
+                                {isProjetoItem(linha.material) ? 'Projeto' : 'Consumo'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-3 py-2 max-w-72">
                           <p className="truncate" title={linha.descricao ?? ''} style={esmaecido}>{linha.descricao || 'Sem descrição'}</p>
                           {linha.resumo && <ResumoMaterial resumo={linha.resumo} />}
@@ -294,7 +310,19 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                 <button type="button" onClick={() => onSelecionar(linha.chave)} className="w-full p-4 text-left">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-mono text-sm font-black truncate" style={{ color: 'var(--ink-primary)' }}>{linha.material}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-mono text-sm font-black truncate" style={{ color: 'var(--ink-primary)' }}>{linha.material}</p>
+                        <span
+                          className="inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider"
+                          style={{
+                            background: isProjetoItem(linha.material) ? 'color-mix(in srgb, var(--brand) 15%, transparent)' : 'var(--surface-sunken)',
+                            color: isProjetoItem(linha.material) ? 'var(--brand)' : 'var(--ink-muted)',
+                          }}
+                          title={isProjetoItem(linha.material) ? 'Material de Projeto (código 100000…)' : 'Material de Consumo'}
+                        >
+                          {isProjetoItem(linha.material) ? 'Projeto' : 'Consumo'}
+                        </span>
+                      </div>
                       <p className="text-xs truncate mt-0.5" style={{ color: 'var(--ink-muted)' }}>{linha.descricao || 'Sem descrição'}</p>
                       {linha.resumo && <ResumoMaterial resumo={linha.resumo} />}
                     </div>

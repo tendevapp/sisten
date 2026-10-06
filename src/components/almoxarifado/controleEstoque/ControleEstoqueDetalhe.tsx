@@ -1,7 +1,7 @@
 import React from 'react';
 import { ExternalLink, Pencil, Layers3, PackageOpen, ReceiptText, Sigma, Warehouse } from 'lucide-react';
 import type { ControleEstoqueAnalise } from '../../../lib/controleEstoque';
-import { formatBRL, formatQtd } from '../../../lib/almoxarifado';
+import { formatBRL, formatDeposito, formatQtd } from '../../../lib/almoxarifado';
 import { formatDateBR, formatDateTimeBR } from '../../../lib/format';
 import Modal, { ModalBody, ModalHeader } from '../../ui/Modal';
 
@@ -79,7 +79,7 @@ export default function ControleEstoqueDetalhe({ linha, onClose, onEditar }: Pro
         <Secao titulo={`Depósitos (${item.quantidade_depositos})`} icone={Warehouse}>
           <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
             <table className="w-full text-xs"><thead style={{ background: 'var(--surface-raised)' }}><tr><th className="p-2 text-left">Depósito</th><th className="p-2 text-right">Saldo</th><th className="p-2 text-right">PMM SAP</th><th className="p-2 text-right">Valor</th><th className="p-2 text-left">Situação</th></tr></thead><tbody>
-              {item.depositos.map(deposito => <tr key={deposito.deposito ?? 'sem'} className="border-t" style={{ borderColor: 'var(--hairline)' }}><td className="p-2 font-mono font-bold">{deposito.deposito || 'Sem depósito'}</td><td className="p-2 text-right tabular">{formatQtd(deposito.saldo)}</td><td className="p-2 text-right tabular">{deposito.preco_medio_sap === null ? '—' : formatBRL(deposito.preco_medio_sap)}</td><td className="p-2 text-right tabular">{formatBRL(deposito.valor)}</td><td className="p-2">{deposito.inativo ? 'Inativo — mantido no histórico' : 'Ativo'}</td></tr>)}
+              {item.depositos.map(deposito => <tr key={deposito.deposito ?? 'sem'} className="border-t" style={{ borderColor: 'var(--hairline)' }}><td className="p-2 font-mono font-bold" title={formatDeposito(deposito.deposito)}>{formatDeposito(deposito.deposito)}</td><td className="p-2 text-right tabular">{formatQtd(deposito.saldo)}</td><td className="p-2 text-right tabular">{deposito.preco_medio_sap === null ? '—' : formatBRL(deposito.preco_medio_sap)}</td><td className="p-2 text-right tabular">{formatBRL(deposito.valor)}</td><td className="p-2">{deposito.inativo ? 'Inativo — mantido no histórico' : 'Ativo'}</td></tr>)}
             </tbody></table>
           </div>
         </Secao>
@@ -87,7 +87,7 @@ export default function ControleEstoqueDetalhe({ linha, onClose, onEditar }: Pro
         <Secao titulo={`Requisições abertas (${item.rms_abertas})`} icone={ReceiptText}>
           {item.rms.length === 0 ? <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>Nenhuma RM aberta para este material.</p> : (
             <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--hairline)' }}><table className="min-w-[760px] w-full text-xs"><thead style={{ background: 'var(--surface-raised)' }}><tr><th className="p-2 text-left">RM</th><th className="p-2 text-left">Data</th><th className="p-2 text-left">Requisitante</th><th className="p-2 text-right">Quantidade</th><th className="p-2 text-left">Pedido</th><th className="p-2 text-left">Depósito</th></tr></thead><tbody>
-              {item.rms.map((rm, indice) => <tr key={`${rm.ri}-${indice}`} className="border-t" style={{ borderColor: 'var(--hairline)' }}><td className="p-2 font-mono">{rm.requisicao || rm.ri || '—'}</td><td className="p-2">{formatDateBR(rm.data)}</td><td className="p-2">{rm.requisitante || '—'}</td><td className="p-2 text-right tabular">{rm.quantidade === null ? '—' : formatQtd(rm.quantidade)}</td><td className="p-2 font-mono">{rm.pedido || '—'}</td><td className="p-2">{rm.deposito || '—'}</td></tr>)}
+              {item.rms.map((rm, indice) => <tr key={`${rm.ri}-${indice}`} className="border-t" style={{ borderColor: 'var(--hairline)' }}><td className="p-2 font-mono">{rm.requisicao || rm.ri || '—'}</td><td className="p-2">{formatDateBR(rm.data)}</td><td className="p-2">{rm.requisitante || '—'}</td><td className="p-2 text-right tabular">{rm.quantidade === null ? '—' : formatQtd(rm.quantidade)}</td><td className="p-2 font-mono">{rm.pedido || '—'}</td><td className="p-2" title={formatDeposito(rm.deposito)}>{formatDeposito(rm.deposito, '—')}</td></tr>)}
             </tbody></table></div>
           )}
         </Secao>

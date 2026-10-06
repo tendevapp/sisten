@@ -137,6 +137,18 @@ describe('controleEstoqueApi', () => {
     expect(filtrarControleEstoque(itens, { recebimento: 'SEM_RECEBIMENTO' }).map(i => i.material)).toEqual(['B2']);
     expect(filtrarControleEstoque(itens, { categoria: 'FIXACAO', deposito: 'D1' }).map(i => i.material)).toEqual(['A1']);
     expect(filtrarControleEstoque(itens, { deposito: 'D9' })).toEqual([]);
+
+    const itensComProjeto = [
+      ...itens,
+      normalizarLinhaControleEstoque({
+        ...base,
+        material: '100000000000047981',
+        descricao: 'PARAFUSO PROJETO',
+        depositos: [{ deposito: 'D1', saldo: 5, valor: 1 }],
+      }),
+    ];
+    expect(filtrarControleEstoque(itensComProjeto, { tipoItem: 'projeto' }).map(i => i.material)).toEqual(['100000000000047981']);
+    expect(filtrarControleEstoque(itensComProjeto, { tipoItem: 'consumo' }).map(i => i.material)).toEqual(['A1', 'B2']);
   });
 
   it('propaga falha da view em vez de retornar cache ou lista vazia', async () => {
