@@ -434,7 +434,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
   /* Ações ------------------------------------------------------------------- */
 
-  const propagarPrevisaoParaRastreio = async (item: ItemDiligenciamento, novaTransportadora?: string, novaPrevisaoManual?: string) => {
+  const propagarPrevisaoParaRastreio = async (item: ItemDiligenciamento, novaTransportadora?: string, novaPrevisaoManual?: string): Promise<boolean> => {
     const transportadora = novaTransportadora ?? item.transportadora;
     // Prioridade: o que foi digitado agora → previsão manual salva → previsão do
     // CTe Bahia Sul (prv_chegada) → cálculo remessa + prazo abaixo.
@@ -448,10 +448,14 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
       const dias = resolverPrazoDias(uf, transportadora, prazos);
       if (dias !== null) efetiva = somarDiasCorridos(item.dataRemessa, dias);
     }
-    if (!efetiva || !dataValida(efetiva)) return;
+    if (!efetiva || !dataValida(efetiva)) return true;
 
     const { falhas } = await gravarPrevisaoNoRastreio([item.ri], efetiva);
-    if (falhas.length > 0) toast.error('A previsão foi salva aqui, mas não foi possível atualizar o Rastreio Compras.');
+    if (falhas.length > 0) {
+      toast.error('A previsão foi salva aqui, mas não foi possível atualizar o Rastreio Compras (sem permissão de comprador?).');
+      return false;
+    }
+    return true;
   };
 
   const salvarTransportadora = async (item: ItemDiligenciamento, novoNome: string) => {
@@ -484,9 +488,9 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
         [item.riPo], new Map([[item.riPo, item.docCompra]]), { previsao_manual: data || null },
         { id: user.id, nome: user.name },
       );
-      await propagarPrevisaoParaRastreio(item, undefined, data);
+      const refletiu = await propagarPrevisaoParaRastreio(item, undefined, data);
       await carregarDiligenciamento();
-      toast.success('Previsão atualizada — já refletida no Rastreio Compras.');
+      if (refletiu) toast.success('Previsão atualizada — já refletida no Rastreio Compras.');
     } catch (e) {
       console.error('Falha ao salvar previsão manual:', e);
       toast.error('Não foi possível salvar a previsão.');

@@ -194,10 +194,9 @@ export interface ResultadoGravacaoRastreio {
  * `data_entrega_confirmada` — a única data que o Rastreio exibe ao
  * solicitante (ver `localDb.confirmDeliveryDate`).
  *
- * Reaproveita `localDb.updateBuyerFields`, passando adiante a observação e o
- * status atuais de cada RI: essa função sempre regrava `obs_comprador`
- * inteiro, então gravar `''`/`undefined` ali apagaria uma nota do comprador
- * que não tem nada a ver com esta tela.
+ * Grava pela RPC `gravar_previsao_rastreio` (`localDb.gravarPrevisaoEntrega`), que
+ * qualquer usuário autenticado pode chamar e que só toca nas duas datas —
+ * observação e status do comprador ficam intactos.
  *
  * Não escreve em `dt_remessa` (ZL0132): é dado bruto do SAP, sobrescrito na
  * próxima importação, e o Rastreio deliberadamente nunca a usa como prazo.
@@ -214,11 +213,8 @@ export async function gravarPrevisaoNoRastreio(
     const req = requisicoesPorRi.get(ri);
     if (!req) { falhas.push(ri); continue; }
 
-    const salvou = await localDb.updateBuyerFields(ri, req.obs_comprador || '', novaData, req.item_status);
+    const salvou = await localDb.gravarPrevisaoEntrega(ri, novaData);
     if (!salvou) { falhas.push(ri); continue; }
-
-    const confirmou = await localDb.confirmDeliveryDate(ri);
-    if (!confirmou) { falhas.push(ri); continue; }
 
     ok.push(ri);
   }

@@ -13,7 +13,7 @@
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 import type { EstoqueItem } from '../types';
-import { ORIGEM_FICHA_EPI, type PepAplicacao, type TipoMovimentoBalcao } from './requisicaoBalcao';
+import { DEPOSITO_EPI, ORIGEM_FICHA_EPI, type PepAplicacao, type TipoMovimentoBalcao } from './requisicaoBalcao';
 import { ehRespostaOffline } from './offline/configFormularios';
 
 /** As tabelas ainda não estão em `database.types.ts` — mesmo atalho de `almoxarifadoRmApi`. */
@@ -225,7 +225,7 @@ export interface RequisicaoPendenteCriada {
  * PEP e liberar.
  */
 export async function criarRequisicaoPendenteDeFicha(input: RequisicaoPendenteInput): Promise<RequisicaoPendenteCriada> {
-  const depositoOrigem = input.itens[0]?.deposito ?? '';
+  const depositoOrigem = input.itens[0]?.deposito || DEPOSITO_EPI;
   const { data, error } = await supabase.rpc('alm_req_balcao_salvar' as any, {
     p_id: null,
     p_req: {

@@ -4,7 +4,7 @@ import {
   alertaDaLinha, atualizarQtdItemDoGrupo, buscarMateriais, buscarMateriaisEmDepositos, criarGrupoPep,
   definirDepositoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
   removerItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao, type LinhaBalcao,
-  DEPOSITO_PADRAO_BALCAO, PEP_EPI_DEMAIS_SETORES, PEP_EPI_PRODUCAO, itensRequisicaoDaFicha, sugerirPepEpi,
+  DEPOSITO_PADRAO_BALCAO, DEPOSITO_EPI, PEP_EPI_DEMAIS_SETORES, PEP_EPI_PRODUCAO, itensRequisicaoDaFicha, sugerirPepEpi,
 } from './requisicaoBalcao';
 import type { EstoqueItem } from '../types';
 
@@ -290,28 +290,29 @@ describe('requisição gerada pela ficha de EPI', () => {
   });
 
   const estoqueEpi = indexarEstoquePorDeposito([
-    { id: 1, deposito: '0004', material: '1352000', txt_breve_material: 'CAPACETE', umb: 'UN', quantidade: 3 },
+    { id: 1, deposito: '0002', material: '1352000', txt_breve_material: 'CAPACETE', umb: 'UN', quantidade: 3 },
     { id: 2, deposito: '0005', material: '1352000', txt_breve_material: 'CAPACETE', umb: 'UN', quantidade: 10 },
     { id: 3, deposito: '0004', material: '0001386655', txt_breve_material: 'TIRANTE', umb: 'PAR', quantidade: 0 },
   ] as EstoqueItem[]);
 
-  it('escolhe o depósito que cobre a quantidade e casa código com zeros à esquerda', () => {
+  it('puxa sempre a saída do depósito 002 (DEPOSITO_EPI) e casa código com zeros à esquerda', () => {
+    expect(DEPOSITO_EPI).toBe('0002');
     const r = itensRequisicaoDaFicha([
       { codigo_sap: '1352000', descricao: 'CAPACETE - TAM. M', quantidade: 5 },
       { codigo_sap: '1386655', descricao: 'TIRANTE', quantidade: 1 },
     ], estoqueEpi);
-    expect(r.itens[0]).toMatchObject({ material: '1352000', deposito: '0005', unidade: 'UN', descricao: 'CAPACETE' });
-    expect(r.itens[1]).toMatchObject({ material: '0001386655', deposito: '0004', unidade: 'PAR' });
+    expect(r.itens[0]).toMatchObject({ material: '1352000', deposito: '0002', unidade: 'UN', descricao: 'CAPACETE' });
+    expect(r.itens[1]).toMatchObject({ material: '0001386655', deposito: '0002', unidade: 'PAR' });
     expect(r.semCodigo).toEqual([]);
   });
 
-  it('material fora da ZL0024 vai para o depósito padrão; sem código volta em semCodigo', () => {
+  it('material fora da ZL0024 vai para o depósito 002; sem código volta em semCodigo', () => {
     const r = itensRequisicaoDaFicha([
       { codigo_sap: '999', descricao: 'LUVA X', quantidade: 2 },
       { codigo_sap: null, descricao: 'PROTETOR AURICULAR', quantidade: 1 },
       { codigo_sap: '999', descricao: 'LUVA X', quantidade: 1 },
     ], estoqueEpi);
-    expect(r.itens).toEqual([{ material: '999', quantidade: 3, descricao: 'LUVA X', unidade: 'UN', deposito: DEPOSITO_PADRAO_BALCAO }]);
+    expect(r.itens).toEqual([{ material: '999', quantidade: 3, descricao: 'LUVA X', unidade: 'UN', deposito: '0002' }]);
     expect(r.semCodigo).toEqual(['PROTETOR AURICULAR']);
   });
 });

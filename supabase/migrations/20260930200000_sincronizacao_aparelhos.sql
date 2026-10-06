@@ -74,7 +74,7 @@ begin
   end if;
 
   -- O nome vem do cadastro, nao do cliente: a tela do admin nao deve exibir o que o aparelho inventar.
-  select name into v_nome from public.profiles where id = v_uid;
+  select name into v_nome from public.profiles where id = v_uid::text;
 
   insert into public.ops_sincronizacao_aparelhos as a (
     device_id, user_id, user_name, plataforma, online,

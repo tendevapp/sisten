@@ -798,7 +798,12 @@ export default function App() {
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/almoxarifado-requisicao-balcao':
-        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_almoxarifado_requisicao_balcao')) {
+        if (
+          canAccessPage(user, 'formularios') &&
+          (canAccessForm(user, 'form_almoxarifado_requisicao_balcao') ||
+            canAccessForm(user, 'form_ssma_ficha_epi') ||
+            canAccessForm(user, 'form_almoxarifado_ficha_epi'))
+        ) {
           return <RequisicaoBalcao user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;

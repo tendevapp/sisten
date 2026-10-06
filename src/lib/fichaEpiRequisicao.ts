@@ -14,7 +14,7 @@
 import type { ItemFichaPayload } from './fichaEpi';
 import { formatarDataBR } from './fichaEpi';
 import { isDepositoInativo } from './almoxarifado';
-import { indexarEstoquePorDeposito, itensRequisicaoDaFicha, sugerirPepEpi } from './requisicaoBalcao';
+import { DEPOSITO_EPI, indexarEstoquePorDeposito, itensRequisicaoDaFicha, sugerirPepEpi } from './requisicaoBalcao';
 import {
   buscarEstoqueBalcao, criarRequisicaoPendenteDeFicha, listarAplicacoesBalcao,
 } from './requisicaoBalcaoApi';
@@ -38,18 +38,19 @@ export interface EntradaRequisicaoDaFicha {
 export async function gerarRequisicaoPendenteDaFicha(entrada: EntradaRequisicaoDaFicha): Promise<ResultadoRequisicaoDaFicha> {
   const [estoque, peps] = await Promise.all([
     buscarEstoqueBalcao(false).catch(() => []),
-    listarAplicacoesBalcao(),
+    listarAplicacoesBalcao().catch(() => []),
   ]);
 
   const { itens, semCodigo } = itensRequisicaoDaFicha(
     entrada.itens.map(i => ({ codigo_sap: i.codigo_sap, descricao: i.descricao, quantidade: i.quantidade, tamanho: i.tamanho })),
     indexarEstoquePorDeposito(estoque, true),
     isDepositoInativo,
+    DEPOSITO_EPI,
   );
   if (!itens.length) return { situacao: 'sem_itens', semCodigo };
 
-  const pep = sugerirPepEpi(setorDoColaborador(entrada.pessoa), peps);
-  if (!pep) throw new Error('Os PEPs de EPI não estão cadastrados na lista do balcão.');
+  const pep = sugerirPepEpi(setorDoColaborador(entrada.pessoa), peps)
+    ?? { wbs: 'TEN001134003000', nome: 'EPI - PRODUÇÃO' };
 
   const observacao = [
     `Ficha de EPI ${entrada.fichaCodigo} (entrega de ${formatarDataBR(entrada.dataEntrega)}).`,

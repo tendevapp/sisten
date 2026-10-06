@@ -251,7 +251,7 @@ function RequisicaoGerada({ requisicao, onTentarNovamente, onAbrir }: {
   return (
     <div className={`${caixa} border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200`}>
       <p className="font-bold">
-        Saída de estoque {r.codigo} criada como <span className="uppercase">pendente de confirmação</span>.
+        Saída de estoque {r.codigo} criada no depósito 002 como <span className="uppercase">pendente de confirmação</span>.
       </p>
       <p className="mt-0.5">
         PEP sugerido pelo setor: <strong>{r.pepSugerido}</strong>. O almoxarifado abre a requisição, confirma o PEP e libera para exportar ao SAP.
@@ -522,8 +522,9 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
       setRequisicao({ estado: 'pronta', resultado });
       if (resultado.situacao === 'criada') {
         if (!resultado.pendente) {
-          toast.error('A requisição foi criada, mas sem o status "pendente de confirmação" (migration do balcão não aplicada). Não exporte antes de conferir.');
-        } else if (onAbrirRequisicaoBalcao) {
+          toast.warning('A requisição foi criada, mas sem o status "pendente de confirmação". Não exporte antes de conferir.');
+        }
+        if (onAbrirRequisicaoBalcao) {
           onAbrirRequisicaoBalcao(resultado.codigo);
         }
       }
@@ -593,7 +594,7 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
         usuarioNome: user.name,
       };
       setEntradaRequisicao(entrada);
-      void gerarRequisicao(entrada);
+      await gerarRequisicao(entrada);
     } catch (erro) {
       toast.error(mensagemErroFichaEpi(erro));
     } finally {

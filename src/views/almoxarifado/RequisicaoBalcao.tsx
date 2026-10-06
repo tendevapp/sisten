@@ -210,12 +210,15 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     let codigo: string | null = null;
     try { codigo = sessionStorage.getItem(CHAVE_ABRIR_REQUISICAO_BALCAO); } catch { /* sem storage */ }
     if (!codigo) return;
-    try { sessionStorage.removeItem(CHAVE_ABRIR_REQUISICAO_BALCAO); } catch { /* sem storage */ }
     const alvo = requisicoes.find((r) => r.codigo === codigo);
-    setFiltroExportacao(alvo?.pendente_confirmacao ? 'aguardando' : 'todas');
-    if (alvo) setForm({ registro: alvo });
-    else toast.info(`Requisição ${codigo} não encontrada na lista — atualize a tela.`);
-  }, [loading, requisicoes, toast]);
+    if (alvo) {
+      try { sessionStorage.removeItem(CHAVE_ABRIR_REQUISICAO_BALCAO); } catch { /* sem storage */ }
+      setFiltroExportacao(alvo.pendente_confirmacao ? 'aguardando' : 'todas');
+      setForm({ registro: alvo });
+    } else {
+      void recarregarRequisicoes();
+    }
+  }, [loading, requisicoes, recarregarRequisicoes]);
 
   const exportar = async () => {
     const sel = requisicoes.filter((r) => selecionadas.has(r.id));

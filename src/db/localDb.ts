@@ -4922,8 +4922,11 @@ class LocalDatabase {
             updatePayload.item_status_updated_by = userName;
           }
 
-          const { error: updateErr } = await supabase.from('sap_me5a_rc').update(updatePayload).eq('ri', ri);
+          // `.select('ri')` porque a RLS de sap_me5a_rc não dá erro para quem não
+          // pode gravar: o UPDATE só afeta 0 linhas e pareceria salvo.
+          const { data: gravadas, error: updateErr } = await supabase.from('sap_me5a_rc').update(updatePayload).eq('ri', ri).select('ri');
           if (updateErr) throw updateErr;
+          if (!gravadas || gravadas.length === 0) throw new Error(`Sem permissão para gravar a requisição ${ri} (RLS).`);
 
           // Registra histórico detalhado
           await supabase.from('sap_requisicoes_observacoes').insert({
@@ -5257,6 +5260,38 @@ class LocalDatabase {
    * previsão depois, a confirmada fica defasada até ele confirmar de novo, e o
    * Rastreio segue mostrando o último valor confirmado (estável).
    */
+  /**
+   * Grava a previsão de chegada (prevista + confirmada) via RPC `security definer`:
+   * a RLS de sap_me5a_rc só deixa comprador/coordenador/admin escrever, mas
+   * quem usa o Diligenciamento também precisa atualizar essa data. A RPC não
+   * toca em observação nem status.
+   */
+  public async gravarPrevisaoEntrega(ri: string, data: string): Promise<boolean> {
+    const reqs = this.getRequisicoes();
+    const idx = reqs.findIndex(r => r.ri === ri);
+    if (idx === -1) return false;
+    const prevPrevista = reqs[idx].data_entrega_prevista || '';
+    const prevConfirmada = reqs[idx].data_entrega_confirmada || '';
+
+    reqs[idx].data_entrega_prevista = data;
+    reqs[idx].data_entrega_confirmada = data;
+    this.setStorageItem(this.requisicoesKey, reqs);
+
+    const { error } = await (supabase.rpc as any)('gravar_previsao_rastreio', { p_ri: ri, p_data: data });
+    if (error) {
+      console.error('Erro ao gravar a previsão no Supabase:', error);
+      const revert = this.getRequisicoes();
+      const rIdx = revert.findIndex(r => r.ri === ri);
+      if (rIdx !== -1) {
+        revert[rIdx].data_entrega_prevista = prevPrevista;
+        revert[rIdx].data_entrega_confirmada = prevConfirmada || undefined;
+        this.setStorageItem(this.requisicoesKey, revert);
+      }
+      return false;
+    }
+    return true;
+  }
+
   public async confirmDeliveryDate(ri: string): Promise<boolean> {
     const reqs = this.getRequisicoes();
     const idx = reqs.findIndex(r => r.ri === ri);
@@ -5288,11 +5323,13 @@ class LocalDatabase {
     this.setStorageItem(this.obsHistoryKey, hist);
 
     try {
-      const { error } = await supabase
+      const { data: gravadas, error } = await supabase
         .from('sap_me5a_rc')
         .update({ data_entrega_confirmada: dataConfirmar } as any)
-        .eq('ri', ri);
+        .eq('ri', ri)
+        .select('ri');
       if (error) throw error;
+      if (!gravadas || gravadas.length === 0) throw new Error(`Sem permissão para confirmar a requisição ${ri} (RLS).`);
 
       await supabase.from('sap_requisicoes_observacoes').insert({
         id: histId,

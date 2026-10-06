@@ -49,9 +49,8 @@ export default function SsmaFichaEpiView({ user, onBack, voltarRotulo = 'Voltar 
     setAba('nova');
   };
 
-  // Só quem acessa o balcão é levado até a requisição pendente; os demais
-  // veem apenas o aviso de que ela foi gerada.
-  const abrirRequisicaoBalcao = onNavigate && canAccessForm(user, 'form_almoxarifado_requisicao_balcao')
+  // Leva até a requisição no balcão aberta com o código gerado
+  const abrirRequisicaoBalcao = onNavigate
     ? (codigo: string) => {
         try { sessionStorage.setItem(CHAVE_ABRIR_REQUISICAO_BALCAO, codigo); } catch { /* sem storage: abre a lista */ }
         onNavigate('/formularios/almoxarifado-requisicao-balcao');

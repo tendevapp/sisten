@@ -296,6 +296,9 @@ export const PEP_EPI_DEMAIS_SETORES = 'TEN001201090000';
 /** Depósito do almoxarifado central — usado quando o material não tem saldo em nenhum. */
 export const DEPOSITO_PADRAO_BALCAO = '0004';
 
+/** Depósito exclusivo de EPIs e Consumíveis (002 / '0002'). */
+export const DEPOSITO_EPI = '0002';
+
 /** Origem gravada em `alm_req_balcao.origem` para as requisições vindas da ficha. */
 export const ORIGEM_FICHA_EPI = 'ficha_epi';
 
@@ -304,7 +307,7 @@ const AREAS_DE_PRODUCAO = ['producao', 'calderaria', 'solda', 'jato', 'pintura',
 /**
  * Sugestão de PEP pelo setor do colaborador: área de produção → "EPI - PRODUÇÃO";
  * qualquer outra → "EPI - DEMAIS SETORES". É só sugestão — quem confirma no
- * almoxarifado escolhe o PEP. `null` quando o PEP não está na lista carregada.
+ * almoxarifado escolhe o PEP. Se não houver na lista carregada, gera o PEP padrão.
  */
 export function sugerirPepEpi(setor: string | null | undefined, peps: PepAplicacao[]): PepAplicacao | null {
   const s = normalizar(setor ?? '');
@@ -332,17 +335,21 @@ export interface ItemRequisicaoEpi {
 const semZeros = (v: string) => v.trim().replace(/^0+/, '');
 
 /**
- * Converte os itens da ficha em itens da requisição. O material é o código SAP
- * do Book; o depósito é o que tem o saldo (o que cobre a quantidade, senão o de
- * maior saldo), ou o padrão quando o material nem aparece na ZL0024 — nesse caso
- * a linha vai com alerta de "sem saldo", para o almoxarife conferir.
- * Item sem código SAP não vira linha: volta em `semCodigo` para ser lançado à mão.
+ * Converte os itens da ficha em itens da requisição no balcão.
+ * Por regra de negócio do SISTEN, a saída de EPI puxa sempre do depósito 002 (0002).
+ * O código SAP do material vem do Book de EPI; dados adicionais como descrição e
+ * unidade vêm prioritariamente do depósito 002 da ZL0024 (ou de outro depósito se
+ * o item estiver cadastrado em outro depósito na ZL0024).
+ * Item sem código SAP não vira linha da requisição: volta em `semCodigo` para ser lançado à mão.
  */
 export function itensRequisicaoDaFicha(
   itens: ItemFichaParaRequisicao[],
   estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
   depositoInativo: (dep: string) => boolean = () => false,
+  depositoSaida: string = DEPOSITO_EPI,
 ): { itens: ItemRequisicaoEpi[]; semCodigo: string[] } {
+  const depSaidaNormalizado = chaveDeposito(depositoSaida);
+
   // material normalizado → onde ele existe
   const ondeTem = new Map<string, { deposito: string; material: MaterialDisponivel }[]>();
   for (const [deposito, mapa] of estoquePorDeposito) {
@@ -361,22 +368,23 @@ export function itensRequisicaoDaFicha(
     if (!codigo) { semCodigo.push(it.descricao); continue; }
 
     const candidatos = ondeTem.get(semZeros(codigo)) ?? [];
-    const melhor = [...candidatos].sort((a, b) =>
-      Number(b.material.saldo >= it.quantidade) - Number(a.material.saldo >= it.quantidade)
-      || Number(depositoInativo(a.deposito)) - Number(depositoInativo(b.deposito))
-      || b.material.saldo - a.material.saldo)[0];
+    // Prioriza os dados cadastrais/unidade do próprio depósito de EPI (002)
+    const noDepositoEpi = candidatos.find((c) => chaveDeposito(c.deposito) === depSaidaNormalizado);
+    const melhorDados = noDepositoEpi ?? candidatos[0];
 
-    const deposito = melhor?.deposito ?? DEPOSITO_PADRAO_BALCAO;
-    const material = melhor?.material.material ?? codigo;
+    // O depósito de saída é sempre o depósito 002
+    const deposito = depSaidaNormalizado;
+    const material = melhorDados?.material.material ?? codigo;
     const chave = `${material}|${deposito}`;
     const existente = linhas.get(chave);
-    if (existente) existente.quantidade += it.quantidade;
-    else {
+    if (existente) {
+      existente.quantidade += it.quantidade;
+    } else {
       linhas.set(chave, {
         material,
         quantidade: it.quantidade,
-        descricao: melhor?.material.descricao || it.descricao,
-        unidade: melhor?.material.unidade || 'UN',
+        descricao: melhorDados?.material.descricao || it.descricao,
+        unidade: melhorDados?.material.unidade || 'UN',
         deposito,
       });
     }
