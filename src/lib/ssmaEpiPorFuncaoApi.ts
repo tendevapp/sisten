@@ -125,6 +125,136 @@ export async function excluirEpiPorFuncao(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export function identificarDuplicadoEpi(
+  itemOrigem: { epi_book_id?: string | null; descricao_epi_origem: string },
+  itensDestino: Array<{ epi_book_id?: string | null; descricao_epi_origem: string }>
+): boolean {
+  const descOrigem = itemOrigem.descricao_epi_origem.trim().toUpperCase();
+  return itensDestino.some(dest => {
+    if (itemOrigem.epi_book_id && dest.epi_book_id && itemOrigem.epi_book_id === dest.epi_book_id) {
+      return true;
+    }
+    return dest.descricao_epi_origem.trim().toUpperCase() === descOrigem;
+  });
+}
+
+export function prepararRequisitosParaCopia(
+  itensOrigem: SsmaEpiPorFuncao[],
+  itensDestinoExistentes: SsmaEpiPorFuncao[],
+  funcaoDestinoId: string,
+  opcoes?: {
+    requisitoIds?: string[];
+  }
+): {
+  itensParaInserir: Array<Omit<SalvarEpiPorFuncao, 'id'>>;
+  ignoradosDuplicados: number;
+} {
+  const selecionados = opcoes?.requisitoIds
+    ? itensOrigem.filter(r => opcoes.requisitoIds!.includes(r.id))
+    : itensOrigem;
+
+  const codigosUsados = new Set<string>(
+    itensDestinoExistentes.map(item => item.codigo_epi_origem.trim().toUpperCase())
+  );
+
+  let maiorNumero = 0;
+  for (const cod of codigosUsados) {
+    const match = cod.match(/^EPI-(\d+)$/i);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maiorNumero) maiorNumero = num;
+    }
+  }
+
+  const gerarProximoCodigo = (): string => {
+    maiorNumero += 1;
+    let candidato = `EPI-${String(maiorNumero).padStart(3, '0')}`;
+    while (codigosUsados.has(candidato)) {
+      maiorNumero += 1;
+      candidato = `EPI-${String(maiorNumero).padStart(3, '0')}`;
+    }
+    codigosUsados.add(candidato);
+    return candidato;
+  };
+
+  const itensParaInserir: Array<Omit<SalvarEpiPorFuncao, 'id'>> = [];
+  let ignoradosDuplicados = 0;
+
+  for (const item of selecionados) {
+    if (identificarDuplicadoEpi(item, itensDestinoExistentes)) {
+      ignoradosDuplicados += 1;
+      continue;
+    }
+
+    let codigoEscolhido = item.codigo_epi_origem?.trim().toUpperCase();
+    if (!codigoEscolhido || codigosUsados.has(codigoEscolhido)) {
+      codigoEscolhido = gerarProximoCodigo();
+    } else {
+      codigosUsados.add(codigoEscolhido);
+      const match = codigoEscolhido.match(/^EPI-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maiorNumero) maiorNumero = num;
+      }
+    }
+
+    itensParaInserir.push({
+      funcao_id: funcaoDestinoId,
+      epi_book_id: item.epi_book_id,
+      codigo_vinculo_origem: null,
+      codigo_epi_origem: codigoEscolhido,
+      descricao_epi_origem: item.descricao_epi_origem.trim().toUpperCase(),
+      ca_origem: item.ca_origem,
+      classificacao: item.classificacao,
+      condicao_uso: item.condicao_uso,
+      ativo: item.ativo,
+    });
+  }
+
+  return { itensParaInserir, ignoradosDuplicados };
+}
+
+export interface CopiarEpisParametros {
+  funcaoOrigemId: string;
+  funcaoDestinoId: string;
+  requisitoIds?: string[];
+}
+
+export async function copiarEpisEntreFuncoes(
+  params: CopiarEpisParametros
+): Promise<{ copiados: SsmaEpiPorFuncao[]; ignoradosDuplicados: number }> {
+  const { funcaoOrigemId, funcaoDestinoId, requisitoIds } = params;
+  if (!funcaoOrigemId || !funcaoDestinoId) {
+    throw new Error('Função de origem e destino são obrigatórias.');
+  }
+  if (funcaoOrigemId === funcaoDestinoId) {
+    throw new Error('A função de origem e a função de destino não podem ser iguais.');
+  }
+
+  const [itensOrigem, itensDestinoExistentes] = await Promise.all([
+    listarEpisPorFuncao(funcaoOrigemId, true),
+    listarEpisPorFuncao(funcaoDestinoId, true),
+  ]);
+
+  const { itensParaInserir, ignoradosDuplicados } = prepararRequisitosParaCopia(
+    itensOrigem,
+    itensDestinoExistentes,
+    funcaoDestinoId,
+    { requisitoIds }
+  );
+
+  if (itensParaInserir.length === 0) {
+    return { copiados: [], ignoradosDuplicados };
+  }
+
+  const { data, error } = await requisitos()
+    .insert(itensParaInserir)
+    .select('*, funcao:ssma_epi_funcoes(*), epi_book:ssma_book_epis(*)');
+
+  if (error) throw error;
+  return { copiados: data || [], ignoradosDuplicados };
+}
+
 export async function salvarEpiPorFuncao(item: SalvarEpiPorFuncao): Promise<SsmaEpiPorFuncao> {
   const { id, ...payload } = item;
   const query = id ? requisitos().update(payload).eq('id', id).select('*, funcao:ssma_epi_funcoes(*), epi_book:ssma_book_epis(*)').single()

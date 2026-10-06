@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Copy,
   FileDown,
   FileSpreadsheet,
   HelpCircle,
@@ -28,7 +29,9 @@ import {
 import { useToast } from '../../components/ui/Toast';
 import { listarBookEpis, urlFotoBookEpi, type SsmaBookEpi } from '../../lib/ssmaBookEpisApi';
 import {
+  copiarEpisEntreFuncoes,
   excluirEpiPorFuncao,
+  identificarDuplicadoEpi,
   importarEpiPorFuncaoWorkbook,
   listarEpisPorFuncao,
   listarFuncoesEpi,
@@ -137,9 +140,18 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
 
   // Modais
   const [editandoRequisito, setEditandoRequisito] = useState<SalvarEpiPorFuncao | null>(null);
+  const [cargoPreenchimentoId, setCargoPreenchimentoId] = useState('');
+  const [epiPreenchimentoId, setEpiPreenchimentoId] = useState('');
   const [modalFuncao, setModalFuncao] = useState<{ id?: string; codigo_origem: string; nome: string; ativo: boolean } | null>(null);
   const [buscaBook, setBuscaBook] = useState('');
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
+  const [modalCopiarCargo, setModalCopiarCargo] = useState<{
+    funcaoDestinoId: string;
+    funcaoOrigemId: string;
+    selecionadosIds: string[];
+    buscaEpi: string;
+  } | null>(null);
+  const [copiandoLote, setCopiandoLote] = useState(false);
 
   // Paginação da tabela geral
   const [paginaAtual, setPaginaAtual] = useState(1);
@@ -280,6 +292,8 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
   const abrirNovoRequisito = (funcaoId = funcaoSelecionadaId) => {
     const proximoCodigo = proximoCodigoEpiManual(requisitos);
     setBuscaBook('');
+    setCargoPreenchimentoId('');
+    setEpiPreenchimentoId('');
     setEditandoRequisito({
       funcao_id: funcaoId || (funcoes[0]?.id || ''),
       epi_book_id: null,
@@ -294,6 +308,8 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
 
   const abrirEditarRequisito = (item: SsmaEpiPorFuncao) => {
     setBuscaBook(item.epi_book?.descricao_sap || item.epi_book?.codigo_sap || '');
+    setCargoPreenchimentoId('');
+    setEpiPreenchimentoId('');
     setEditandoRequisito({
       id: item.id,
       funcao_id: item.funcao_id,
@@ -306,6 +322,116 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
       condicao_uso: item.condicao_uso,
       ativo: item.ativo,
     });
+  };
+
+  const aplicarPreenchimentoDeEpi = (epiOrigem: SsmaEpiPorFuncao) => {
+    setEditandoRequisito(atual => {
+      if (!atual) return null;
+      return {
+        ...atual,
+        descricao_epi_origem: epiOrigem.descricao_epi_origem,
+        classificacao: epiOrigem.classificacao,
+        condicao_uso: epiOrigem.condicao_uso,
+        ca_origem: epiOrigem.ca_origem,
+        epi_book_id: epiOrigem.epi_book_id,
+      };
+    });
+    if (epiOrigem.epi_book) {
+      setBuscaBook(epiOrigem.epi_book.descricao_sap || epiOrigem.epi_book.codigo_sap || '');
+    }
+    toast.success(`Campos preenchidos com os dados de "${epiOrigem.descricao_epi_origem}".`);
+  };
+
+  const abrirModalCopiarCargo = (destinoId = funcaoSelecionadaId) => {
+    const alvoDestinoId = destinoId || (funcoes[0]?.id || '');
+    const primeiraOrigem = funcoes.find(f => f.id !== alvoDestinoId && (mapaRequisitosPorFuncao.get(f.id)?.length || 0) > 0);
+    const origemId = primeiraOrigem ? primeiraOrigem.id : (funcoes.find(f => f.id !== alvoDestinoId)?.id || '');
+    const reqsOrigem = mapaRequisitosPorFuncao.get(origemId) || [];
+    const reqsDestino = mapaRequisitosPorFuncao.get(alvoDestinoId) || [];
+    const novosIds = reqsOrigem
+      .filter(item => !identificarDuplicadoEpi(item, reqsDestino))
+      .map(item => item.id);
+
+    setModalCopiarCargo({
+      funcaoDestinoId: alvoDestinoId,
+      funcaoOrigemId: origemId,
+      selecionadosIds: novosIds.length > 0 ? novosIds : reqsOrigem.map(r => r.id),
+      buscaEpi: '',
+    });
+  };
+
+  const trocarOrigemModalCopiar = (novaOrigemId: string) => {
+    if (!modalCopiarCargo) return;
+    const reqsOrigem = mapaRequisitosPorFuncao.get(novaOrigemId) || [];
+    const reqsDestino = mapaRequisitosPorFuncao.get(modalCopiarCargo.funcaoDestinoId) || [];
+    const novosIds = reqsOrigem
+      .filter(item => !identificarDuplicadoEpi(item, reqsDestino))
+      .map(item => item.id);
+
+    setModalCopiarCargo({
+      ...modalCopiarCargo,
+      funcaoOrigemId: novaOrigemId,
+      selecionadosIds: novosIds.length > 0 ? novosIds : reqsOrigem.map(r => r.id),
+      buscaEpi: '',
+    });
+  };
+
+  const trocarDestinoModalCopiar = (novoDestinoId: string) => {
+    if (!modalCopiarCargo) return;
+    const reqsOrigem = mapaRequisitosPorFuncao.get(modalCopiarCargo.funcaoOrigemId) || [];
+    const reqsDestino = mapaRequisitosPorFuncao.get(novoDestinoId) || [];
+    const novosIds = reqsOrigem
+      .filter(item => !identificarDuplicadoEpi(item, reqsDestino))
+      .map(item => item.id);
+
+    setModalCopiarCargo({
+      ...modalCopiarCargo,
+      funcaoDestinoId: novoDestinoId,
+      selecionadosIds: novosIds.length > 0 ? novosIds : reqsOrigem.map(r => r.id),
+    });
+  };
+
+  const executarCopiaRequisitos = async () => {
+    if (!modalCopiarCargo) return;
+    const { funcaoOrigemId, funcaoDestinoId, selecionadosIds } = modalCopiarCargo;
+    if (!funcaoOrigemId || !funcaoDestinoId) {
+      toast.error('Selecione os cargos de origem e destino.');
+      return;
+    }
+    if (funcaoOrigemId === funcaoDestinoId) {
+      toast.error('O cargo de origem deve ser diferente do cargo de destino.');
+      return;
+    }
+    if (selecionadosIds.length === 0) {
+      toast.error('Selecione ao menos um EPI para copiar.');
+      return;
+    }
+
+    setCopiandoLote(true);
+    try {
+      const resultado = await copiarEpisEntreFuncoes({
+        funcaoOrigemId,
+        funcaoDestinoId,
+        requisitoIds: selecionadosIds,
+      });
+
+      const nomeOrigem = funcoes.find(f => f.id === funcaoOrigemId)?.nome || 'origem';
+      const nomeDestino = funcoes.find(f => f.id === funcaoDestinoId)?.nome || 'destino';
+
+      if (resultado.copiados.length > 0) {
+        toast.success(`${resultado.copiados.length} EPI(s) copiados de "${nomeOrigem}" para "${nomeDestino}" com sucesso.`);
+        setRequisitos(atual => [...atual, ...resultado.copiados]);
+      } else {
+        toast.info('Nenhum novo EPI foi adicionado (todos já estavam presentes no cargo de destino).');
+      }
+
+      setModalCopiarCargo(null);
+      setFuncaoSelecionadaId(funcaoDestinoId);
+    } catch (erro) {
+      toast.error(mensagemErroEpiPorFuncao(erro));
+    } finally {
+      setCopiandoLote(false);
+    }
   };
 
   const salvarRequisito = async () => {
@@ -944,6 +1070,16 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
 
                     <button
                       type="button"
+                      onClick={() => abrirModalCopiarCargo(funcaoAtual.id)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
+                      title="Copiar requisitos de EPI de outro cargo para esta função"
+                    >
+                      <Copy className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Copiar de Outro Cargo</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => abrirNovoRequisito(funcaoAtual.id)}
                       className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 cursor-pointer"
                     >
@@ -973,16 +1109,26 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                       Nenhum EPI associado a esta função
                     </h3>
                     <p className="mt-1 text-xs text-slate-500">
-                      Clique no botão acima para adicionar as exigências de proteção individual deste cargo.
+                      Clique em um dos botões abaixo para adicionar as exigências de proteção individual deste cargo.
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => abrirNovoRequisito(funcaoAtual.id)}
-                      className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 cursor-pointer"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span>Adicionar Primeiro EPI</span>
-                    </button>
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => abrirNovoRequisito(funcaoAtual.id)}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 cursor-pointer"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>Adicionar Primeiro EPI</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => abrirModalCopiarCargo(funcaoAtual.id)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                      >
+                        <Copy className="h-4 w-4 text-emerald-600" />
+                        <span>Copiar de Outro Cargo</span>
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-6">
@@ -1326,20 +1472,109 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
 
             <div className="mt-5 space-y-4">
               {/* Função / Cargo */}
-              <label className="grid gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-                <span>Cargo / Função Destino:</span>
-                <select
-                  value={editandoRequisito.funcao_id}
-                  onChange={e => setEditandoRequisito({ ...editandoRequisito, funcao_id: e.target.value })}
-                  className="rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800"
-                >
-                  {funcoes.map(f => (
-                    <option key={f.id} value={f.id}>
-                      {f.codigo_origem} — {f.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <label className="grid flex-1 gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                  <span>Cargo / Função Destino:</span>
+                  <select
+                    value={editandoRequisito.funcao_id}
+                    onChange={e => setEditandoRequisito({ ...editandoRequisito, funcao_id: e.target.value })}
+                    className="rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800"
+                  >
+                    {funcoes.map(f => (
+                      <option key={f.id} value={f.id}>
+                        {f.codigo_origem} — {f.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {!editandoRequisito.id && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const destId = editandoRequisito.funcao_id;
+                      setEditandoRequisito(null);
+                      abrirModalCopiarCargo(destId);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 cursor-pointer"
+                    title="Copiar múltiplos EPIs de outro cargo para esta função"
+                  >
+                    <Copy className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Copiar de outro cargo em lote</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Opção rápida de preenchimento a partir de outro cargo */}
+              {!editandoRequisito.id && (
+                <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-800/80 dark:bg-emerald-950/20">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                      <Copy className="h-3.5 w-3.5 text-emerald-600" />
+                      Preencher este EPI copiando dados de outro cargo:
+                    </span>
+                    {epiPreenchimentoId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCargoPreenchimentoId('');
+                          setEpiPreenchimentoId('');
+                        }}
+                        className="text-[10px] text-slate-500 hover:underline dark:text-slate-400 cursor-pointer"
+                      >
+                        Limpar seleção
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <select
+                      value={cargoPreenchimentoId}
+                      onChange={e => {
+                        setCargoPreenchimentoId(e.target.value);
+                        setEpiPreenchimentoId('');
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <option value="">1. Selecione o cargo de referência...</option>
+                      {funcoes
+                        .filter(f => f.id !== editandoRequisito.funcao_id)
+                        .map(f => {
+                          const qtd = mapaRequisitosPorFuncao.get(f.id)?.length || 0;
+                          return (
+                            <option key={f.id} value={f.id} disabled={qtd === 0}>
+                              {f.codigo_origem} — {f.nome} ({qtd} {qtd === 1 ? 'EPI' : 'EPIs'})
+                            </option>
+                          );
+                        })}
+                    </select>
+
+                    <select
+                      value={epiPreenchimentoId}
+                      disabled={!cargoPreenchimentoId}
+                      onChange={e => {
+                        const id = e.target.value;
+                        setEpiPreenchimentoId(id);
+                        if (id) {
+                          const epiOrigem = requisitos.find(r => r.id === id);
+                          if (epiOrigem) {
+                            aplicarPreenchimentoDeEpi(epiOrigem);
+                          }
+                        }
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white p-2 text-xs disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <option value="">
+                        {!cargoPreenchimentoId ? 'Selecione primeiro o cargo...' : '2. Selecione o EPI para copiar...'}
+                      </option>
+                      {(mapaRequisitosPorFuncao.get(cargoPreenchimentoId) || []).map(r => (
+                        <option key={r.id} value={r.id}>
+                          {r.descricao_epi_origem} ({rotuloClassificacao(r.classificacao)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               {/* Dados de Origem */}
               <div className="grid gap-3 sm:grid-cols-3">
@@ -1619,6 +1854,300 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
           </div>
         </div>
       )}
+      {/* ================= MODAL: COPIAR REQUISITOS DE OUTRO CARGO ================= */}
+      {modalCopiarCargo && (() => {
+        const reqsDestino = mapaRequisitosPorFuncao.get(modalCopiarCargo.funcaoDestinoId) || [];
+        const reqsOrigem = mapaRequisitosPorFuncao.get(modalCopiarCargo.funcaoOrigemId) || [];
+
+        const termo = modalCopiarCargo.buscaEpi.trim().toLocaleLowerCase('pt-BR');
+        const reqsOrigemFiltrados = reqsOrigem.filter(r => {
+          if (!termo) return true;
+          const texto = [
+            r.descricao_epi_origem,
+            r.codigo_epi_origem,
+            r.ca_origem || '',
+            r.epi_book?.descricao_sap || '',
+            r.epi_book?.codigo_sap || '',
+          ].join(' ').toLocaleLowerCase('pt-BR');
+          return texto.includes(termo);
+        });
+
+        const todosFiltradosSelecionados =
+          reqsOrigemFiltrados.length > 0 &&
+          reqsOrigemFiltrados.every(r => modalCopiarCargo.selecionadosIds.includes(r.id));
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900 max-h-[90vh] flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4 dark:border-slate-800">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                    Matriz SSMA de EPI por Função
+                  </p>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50 flex items-center gap-2">
+                    <Copy className="h-5 w-5 text-emerald-600" />
+                    <span>Copiar Requisitos de Outro Cargo</span>
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    Copie a relação de EPIs de um cargo de referência diretamente para o cargo de destino.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalCopiarCargo(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Corpo */}
+              <div className="mt-4 flex-1 overflow-y-auto space-y-4 pr-1">
+                {/* Seleção de Cargos Destino e Origem */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {/* Destino */}
+                  <label className="grid gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <span>Cargo / Função Destino:</span>
+                    <select
+                      value={modalCopiarCargo.funcaoDestinoId}
+                      onChange={e => trocarDestinoModalCopiar(e.target.value)}
+                      className="rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      {funcoes.map(f => {
+                        const qtd = mapaRequisitosPorFuncao.get(f.id)?.length || 0;
+                        return (
+                          <option key={f.id} value={f.id}>
+                            {f.codigo_origem} — {f.nome} ({qtd} {qtd === 1 ? 'EPI' : 'EPIs'})
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <span className="text-[11px] font-normal text-slate-500">
+                      Possui atualmente {reqsDestino.length} {reqsDestino.length === 1 ? 'EPI cadastrado' : 'EPIs cadastrados'}
+                    </span>
+                  </label>
+
+                  {/* Origem */}
+                  <label className="grid gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <span>Cargo de Origem (Copiar de):</span>
+                    <select
+                      value={modalCopiarCargo.funcaoOrigemId}
+                      onChange={e => trocarOrigemModalCopiar(e.target.value)}
+                      className="rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <option value="">Selecione o cargo de origem...</option>
+                      {funcoes
+                        .filter(f => f.id !== modalCopiarCargo.funcaoDestinoId)
+                        .map(f => {
+                          const qtd = mapaRequisitosPorFuncao.get(f.id)?.length || 0;
+                          return (
+                            <option key={f.id} value={f.id} disabled={qtd === 0}>
+                              {f.codigo_origem} — {f.nome} ({qtd} {qtd === 1 ? 'EPI' : 'EPIs'})
+                            </option>
+                          );
+                        })}
+                    </select>
+                    <span className="text-[11px] font-normal text-slate-500">
+                      Disponibiliza {reqsOrigem.length} {reqsOrigem.length === 1 ? 'EPI para cópia' : 'EPIs para cópia'}
+                    </span>
+                  </label>
+                </div>
+
+                {/* Lista de EPIs da Origem */}
+                {reqsOrigem.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-800">
+                    <p className="text-xs text-slate-500">
+                      {modalCopiarCargo.funcaoOrigemId
+                        ? 'O cargo de origem selecionado não possui nenhum EPI configurado.'
+                        : 'Selecione um cargo de origem acima para visualizar os EPIs disponíveis.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {/* Toolbar de seleção e busca */}
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          EPIs a serem copiados:
+                        </span>
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                          {modalCopiarCargo.selecionadosIds.length} de {reqsOrigem.length} selecionados
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (todosFiltradosSelecionados) {
+                              const filtradosIds = new Set(reqsOrigemFiltrados.map(r => r.id));
+                              setModalCopiarCargo({
+                                ...modalCopiarCargo,
+                                selecionadosIds: modalCopiarCargo.selecionadosIds.filter(id => !filtradosIds.has(id)),
+                              });
+                            } else {
+                              const novos = Array.from(new Set([...modalCopiarCargo.selecionadosIds, ...reqsOrigemFiltrados.map(r => r.id)]));
+                              setModalCopiarCargo({
+                                ...modalCopiarCargo,
+                                selecionadosIds: novos,
+                              });
+                            }
+                          }}
+                          className="text-[11px] font-bold text-emerald-600 hover:underline dark:text-emerald-400 cursor-pointer"
+                        >
+                          {todosFiltradosSelecionados ? 'Desmarcar lista' : 'Selecionar todos'}
+                        </button>
+                        <span className="text-slate-300 dark:text-slate-700">·</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const novosIds = reqsOrigem
+                              .filter(item => !identificarDuplicadoEpi(item, reqsDestino))
+                              .map(item => item.id);
+                            setModalCopiarCargo({
+                              ...modalCopiarCargo,
+                              selecionadosIds: novosIds,
+                            });
+                          }}
+                          className="text-[11px] font-bold text-slate-600 hover:underline dark:text-slate-400 cursor-pointer"
+                        >
+                          Apenas novos
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Campo de pesquisa dentro do modal */}
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={modalCopiarCargo.buscaEpi}
+                        onChange={e => setModalCopiarCargo({ ...modalCopiarCargo, buscaEpi: e.target.value })}
+                        placeholder="Filtrar EPIs por descrição, código ou CA..."
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 pl-8 pr-3 text-xs outline-none focus:border-emerald-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800"
+                      />
+                    </div>
+
+                    {/* Lista rolável de itens com checkbox */}
+                    <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 p-1 divide-y divide-slate-100 dark:border-slate-800 dark:divide-slate-800/60">
+                      {reqsOrigemFiltrados.length === 0 ? (
+                        <div className="p-4 text-center text-xs text-slate-400">
+                          Nenhum EPI encontrado com o filtro informado.
+                        </div>
+                      ) : (
+                        reqsOrigemFiltrados.map(r => {
+                          const estaSelecionado = modalCopiarCargo.selecionadosIds.includes(r.id);
+                          const jaExisteNoDestino = identificarDuplicadoEpi(r, reqsDestino);
+
+                          return (
+                            <label
+                              key={r.id}
+                              className={`flex items-start gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${
+                                estaSelecionado
+                                  ? 'bg-emerald-50/70 dark:bg-emerald-950/30'
+                                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={estaSelecionado}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    setModalCopiarCargo({
+                                      ...modalCopiarCargo,
+                                      selecionadosIds: [...modalCopiarCargo.selecionadosIds, r.id],
+                                    });
+                                  } else {
+                                    setModalCopiarCargo({
+                                      ...modalCopiarCargo,
+                                      selecionadosIds: modalCopiarCargo.selecionadosIds.filter(id => id !== r.id),
+                                    });
+                                  }
+                                }}
+                                className="mt-1 rounded"
+                              />
+
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                    {r.descricao_epi_origem}
+                                  </span>
+                                  <span className={`inline-flex rounded-full border px-1.5 py-0.2 text-[10px] font-bold ${badgeClassificacao(r.classificacao)}`}>
+                                    {rotuloClassificacao(r.classificacao)}
+                                  </span>
+                                  {jaExisteNoDestino && (
+                                    <span className="inline-flex rounded-full bg-slate-100 px-1.5 py-0.2 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                                      Já cadastrado no destino
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                                  <span className="font-mono">{r.codigo_epi_origem}</span>
+                                  {r.ca_origem && <span>· CA: {r.ca_origem}</span>}
+                                  {r.epi_book ? (
+                                    <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                                      · Book: SAP {r.epi_book.codigo_sap || 'N/A'} (CA {r.epi_book.ca})
+                                    </span>
+                                  ) : (
+                                    <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                      · Sem vínculo Book
+                                    </span>
+                                  )}
+                                  {r.condicao_uso && (
+                                    <span className="truncate italic max-w-[280px]">
+                                      · {r.condicao_uso}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-slate-400">
+                      💡 Os EPIs selecionados serão duplicados para o cargo de destino mantendo classificação, condição de uso e vínculo com o Book de EPIs.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Rodapé com botões de ação */}
+              <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setModalCopiarCargo(null)}
+                  className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={executarCopiaRequisitos}
+                  disabled={copiandoLote || modalCopiarCargo.selecionadosIds.length === 0}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-60 cursor-pointer"
+                >
+                  {copiandoLote ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                  <span>
+                    Copiar {modalCopiarCargo.selecionadosIds.length} {modalCopiarCargo.selecionadosIds.length === 1 ? 'EPI Selecionado' : 'EPIs Selecionados'}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {pdfPreview && (
         <PdfPreviewModal
           gerar={pdfPreview.gerar}
