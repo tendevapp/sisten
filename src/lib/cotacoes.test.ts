@@ -5,7 +5,7 @@ import {
   normalizarDescricao, normalizarProposta, validarProposta, conferirTotais,
   podeSalvar, deveAutoSelecionar, aplicarSugestoes, coberturaEscopo,
   repararJsonTruncado, gerarCodigoCotacao, proximoIndiceCotacao, nomeFornecedorCurto,
-  prefixoTituloRm, montarTituloProcesso, parsePeso,
+  prefixoTituloRm, montarTituloProcesso, parsePeso, complementarPropostaComPrint,
 } from './cotacoes';
 import type {
   CotacaoPropostaDraft, CotacaoPropostaItemDraft, CotacaoProcessoItem,
@@ -590,5 +590,55 @@ describe('parsePeso', () => {
     expect(parsePeso('1.200,5')).toBe(1200.5);
     expect(parsePeso('abc')).toBeNull();
     expect(parsePeso(null)).toBeNull();
+  });
+});
+
+describe('complementarPropostaComPrint', () => {
+  const item = (o: Partial<CotacaoPropostaItemDraft>): CotacaoPropostaItemDraft => ({
+    _key: 'i' + Math.random(), processo_item_id: null, fora_escopo: false, vinculo_origem: null as any, vinculo_score: null,
+    ri: null, material_code: null, item_numero: null, codigo_produto: null, descricao_produto: '', marca_fabricante: null,
+    unidade_medida: null, ncm: null, cst: null, cfop: null, quantidade: null, preco_unitario: null, preco_total_item: null,
+    aliquota_icms_pct: null, aliquota_pis_pct: null, aliquota_cofins_pct: null, aliquota_ipi_pct: null, desconsiderado: false,
+    vinculo_divergencias: [], peso_unitario_kg: null, peso_origem: null, frete_teorico: null, codigo_fiscal: null,
+    preco_liquido_unitario: null, preco_liquido_total: null, custo_total_item: null, extraido_raw: {} as any, ...o,
+  });
+  const prop = (itens: CotacaoPropostaItemDraft[], o: Partial<CotacaoPropostaDraft> = {}): CotacaoPropostaDraft =>
+    ({ ...normalizarProposta({ itens: [] } as any, {}), itens, ...o });
+
+  it('preenche quantidade e preços do item sem perder o vínculo existente', () => {
+    const atual = prop([item({ _key: 'a', descricao_produto: 'NVD GRAVADOR DE IMAGENS 32 CANAIS', ri: 'RI1', processo_item_id: 'p1' })]);
+    const print = prop([item({ descricao_produto: 'NVD GRAVADOR DE IMAGENS 32 CANAIS', quantidade: 2, preco_unitario: 100, preco_total_item: 200, unidade_medida: 'UN' })]);
+    const r = complementarPropostaComPrint(atual, print);
+    expect(r.proposta.itens).toHaveLength(1);
+    expect(r.proposta.itens[0]).toMatchObject({ ri: 'RI1', processo_item_id: 'p1', quantidade: 2, preco_unitario: 100, preco_total_item: 200, unidade_medida: 'UN' });
+    expect(r.itensPreenchidos).toBe(1);
+  });
+
+  it('não sobrescreve o que o comprador já tem', () => {
+    const atual = prop([item({ descricao_produto: 'CABO', quantidade: 5, preco_unitario: 9 })]);
+    const print = prop([item({ descricao_produto: 'CABO', quantidade: 7, preco_unitario: 1, ncm: '8544' })]);
+    const [i] = complementarPropostaComPrint(atual, print).proposta.itens;
+    expect(i).toMatchObject({ quantidade: 5, preco_unitario: 9, ncm: '8544' });
+  });
+
+  it('item do print sem par entra no fim; cabeçalho só preenche o que está vazio', () => {
+    const atual = prop([item({ descricao_produto: 'PARAFUSO M8' })], { numero_proposta: 'X1', condicao_pagamento: null });
+    const print = prop(
+      [item({ descricao_produto: 'PARAFUSO M8', quantidade: 1 }), item({ descricao_produto: 'PORCA SEXTAVADA' })],
+      { numero_proposta: 'Y9', condicao_pagamento: '30 DDL' },
+    );
+    const r = complementarPropostaComPrint(atual, print);
+    expect(r.proposta.itens).toHaveLength(2);
+    expect(r.itensNovos).toBe(1);
+    expect(r.proposta.numero_proposta).toBe('X1');
+    expect(r.proposta.condicao_pagamento).toBe('30 DDL');
+  });
+
+  it('um item de cada lado casa mesmo com descrição diferente', () => {
+    const atual = prop([item({ descricao_produto: 'DVR' })]);
+    const print = prop([item({ descricao_produto: 'NVD GRAVADOR DE IMAGENS 32 CANAIS', preco_unitario: 50 })]);
+    const r = complementarPropostaComPrint(atual, print);
+    expect(r.proposta.itens).toHaveLength(1);
+    expect(r.proposta.itens[0].preco_unitario).toBe(50);
   });
 });

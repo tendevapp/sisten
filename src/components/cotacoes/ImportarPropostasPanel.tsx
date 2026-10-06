@@ -17,7 +17,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   UploadCloud, Download, Trash2, PackageSearch, Timer, Coins, DollarSign, History,
-  Sparkles, Loader2, AlertCircle, Cpu, AlertTriangle,
+  Sparkles, Loader2, AlertCircle, Cpu, AlertTriangle, ImagePlus,
 } from 'lucide-react';
 import { useToast } from '../ui/Toast';
 import ItemFilaRow, { type ItemFila } from '../markdown/ItemFilaRow';
@@ -34,6 +34,7 @@ import {
 } from '../../lib/markdownConvert';
 import { converterComIA, registrarConversaoLocal, buscarUltimaConversaoPorArquivo } from '../../lib/converterMarkdownApi';
 import { converterPdfNativoParaMarkdown } from '../../lib/pdfNativeExtract';
+import { comprimirImagemUpload } from '../../lib/imageCompression';
 import { buscarPropostasPorArquivo, buscarPropostasPorNomeArquivo, type PropostaJaExtraida } from '../../lib/cotacoesApi';
 import { propostaParaDraft } from '../../lib/cotacoes';
 import { formatDuration, formatCustoBrl, formatModelo } from '../../lib/format';
@@ -68,6 +69,8 @@ interface ImportarPropostasPanelProps {
   processoId: string;
   processando: boolean;
   erro: string | null;
+  /** A extração rodou mas não achou item nenhum (típico de PDF que é só imagem) — habilita o envio de um print para OCR. */
+  semItens?: boolean;
   uso: ExtracaoUso | null;
   /** Provedor/modelo que atendeu a última extração (ex.: "gemini:gemini-2.0-flash") — só some quando uma nova extração começa. */
   modelo: string | null;
@@ -86,6 +89,7 @@ export default function ImportarPropostasPanel({
   processoId,
   processando,
   erro,
+  semItens,
   uso,
   modelo,
   custoBrl,
@@ -111,6 +115,10 @@ export default function ImportarPropostasPanel({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const inputReselecaoRef = useRef<HTMLInputElement>(null);
+  const inputPrintRef = useRef<HTMLInputElement>(null);
+  const [lendoPrint, setLendoPrint] = useState(false);
+  // Arquivos da última extração que falhou — saem da fila quando o print resolve.
+  const ultimosEnviadosRef = useRef<Set<string>>(new Set());
   const idReselecaoRef = useRef<string | null>(null);
   const restauradoRef = useRef(false);
 
@@ -652,6 +660,7 @@ export default function ImportarPropostasPanel({
     const lista = Array.isArray(itensParaExtrair) ? (itensParaExtrair as ItemFila[]) : itensSelecionados;
     if (!lista || lista.length === 0) return;
     onArquivosEnviados?.(lista.map(i => ({ nome: i.nome, file: i.file })));
+    ultimosEnviadosRef.current = new Set(lista.map(i => i.id));
 
     const md = consolidarMarkdown(lista.map(i => ({ nome: i.nome, markdown: i.resultado!.markdown })));
     const label = lista.length === 1 ? lista[0].nome : `${lista.length} arquivos`;
@@ -668,6 +677,61 @@ export default function ImportarPropostasPanel({
       return next;
     });
   };
+
+  /**
+   * Plano B para cotação que veio como imagem dentro do PDF: o comprador manda
+   * um print (arquivo ou Ctrl+V), o OCR lê o print e o texto segue pela mesma
+   * extração. Sucesso tira da fila os arquivos da tentativa que não rendeu.
+   */
+  const enviarPrints = async (arquivos: File[]) => {
+    const imagens = arquivos.filter(f => f.type.startsWith('image/'));
+    if (imagens.length === 0) {
+      toast.warning('Envie o print da cotação como imagem (PNG ou JPG).');
+      return;
+    }
+    if (lendoPrint || processando) return;
+    setLendoPrint(true);
+    try {
+      const partes: { nome: string; markdown: string }[] = [];
+      const enviados: { nome: string; file: File | null }[] = [];
+      for (const [idx, original] of imagens.entries()) {
+        const nome = original.name && original.name !== 'image.png' ? original.name : `print-cotacao-${Date.now()}-${idx + 1}.png`;
+        // Print tem letra miúda: comprime, mas sem reduzir tanto quanto uma foto de campo.
+        const blob = await comprimirImagemUpload(original, { maxDimensao: 2400, qualidade: 0.9 });
+        const file = new File([blob], blob === original ? nome : nome.replace(/\.[^.]+$/, '') + '.jpg', { type: blob.type || original.type });
+        const resultado = await converterComIA(file);
+        partes.push({ nome: file.name, markdown: resultado.markdown });
+        enviados.push({ nome: file.name, file });
+      }
+      onArquivosEnviados?.(enviados);
+      const label = enviados.length === 1 ? enviados[0].nome : `${enviados.length} prints`;
+      const sucesso = await onProcessar(consolidarMarkdown(partes), label);
+      if (sucesso) {
+        const antigos = ultimosEnviadosRef.current;
+        setItens(prev => prev.filter(i => !antigos.has(i.id)));
+        ultimosEnviadosRef.current = new Set();
+      }
+    } catch (err) {
+      toast.error((err as Error).message || 'Não foi possível ler o print.');
+    } finally {
+      setLendoPrint(false);
+    }
+  };
+
+  // Ctrl+V de um print em qualquer ponto da tela (fora de campos de texto).
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const alvo = e.target as HTMLElement | null;
+      if (alvo?.closest('input, textarea, [contenteditable="true"]')) return;
+      const files = Array.from(e.clipboardData?.files ?? []).filter(f => f.type.startsWith('image/'));
+      if (files.length === 0) return;
+      e.preventDefault();
+      enviarPrints(files);
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lendoPrint, processando]);
 
   const handleExtrairCotacao = async (itensParaExtrair?: ItemFila[] | unknown) => {
     const alvos = Array.isArray(itensParaExtrair) ? (itensParaExtrair as ItemFila[]) : itensSelecionados;
@@ -762,6 +826,42 @@ export default function ImportarPropostasPanel({
           <p className="text-[11px] text-slate-400">
             Conversão automática: os arquivos são convertidos para Markdown ao carregar. Clique em <strong>"Extrair cotação com IA"</strong> para processar as propostas.
           </p>
+        </div>
+
+        <input
+          ref={inputPrintRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={e => { if (e.target.files) enviarPrints(Array.from(e.target.files)); e.target.value = ''; }}
+        />
+        <div className={`mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 ${
+          semItens
+            ? 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30'
+            : 'border-slate-200 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-950/40'
+        }`}>
+          <div className="min-w-0 flex-1">
+            <p className={`text-xs font-semibold ${semItens ? 'text-amber-800 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>
+              {semItens ? 'A cotação está em imagem?' : 'Cotação em imagem ou PDF sem texto?'}
+            </p>
+            <p className={`mt-0.5 text-[11px] ${semItens ? 'text-amber-700 dark:text-amber-400' : 'text-slate-400'}`}>
+              Envie um print da cotação (ou cole com Ctrl+V). A IA lê a imagem por OCR e extrai os itens.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => inputPrintRef.current?.click()}
+            disabled={lendoPrint || processando}
+            className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold disabled:pointer-events-none disabled:opacity-50 ${
+              semItens
+                ? 'bg-amber-600 text-white hover:bg-amber-700'
+                : 'border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+            }`}
+          >
+            {lendoPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+            {lendoPrint ? 'Lendo o print...' : 'Enviar print da cotação'}
+          </button>
         </div>
 
         {total > 0 && (

@@ -406,6 +406,7 @@ export function exportarSolicitacoes(selecionadas: Request[], sectors: Sector[])
       'Unidade': it.unit,
       'Marca': it.brand || '',
       'Aceita similar': sim(it.is_similar_allowed),
+      'Sugere estoque mínimo': sim(it.sugere_estoque_minimo),
       'Fornecedor sugerido': it.suggested_supplier || '',
       'Valor estimado': it.estimated_value || 0,
       'Observação': it.observation || '',

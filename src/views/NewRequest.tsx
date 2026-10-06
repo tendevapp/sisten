@@ -320,6 +320,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [sectorId, setSectorId] = useState('');
   // Tipo de compra inicia nulo para exigir escolha explícita do usuário:
   const [tipoCompra, setTipoCompra] = useState<'Direta' | 'Estoque' | 'Serviço' | null>(null);
+  // Compra Direta: solicitante sugere cadastrar os itens com estoque mínimo.
+  const [sugereEstoqueMinimo, setSugereEstoqueMinimo] = useState(false);
   // Alinhamento prévio com o almoxarifado caso tipo de compra seja Estoque
   const [almoxarifadoAvisado, setAlmoxarifadoAvisado] = useState<boolean | null>(null);
   // Serviço não tem catálogo SAP para consultar neste momento: a descrição é
@@ -633,6 +635,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
     const itensExistentes = localDb.getRequestItems(req.id);
     if (itensExistentes.length > 0) {
+      setSugereEstoqueMinimo(itensExistentes.some(it => it.sugere_estoque_minimo));
       // O id vem do banco e é preservado: é o que mantém os anexos colados ao
       // item certo depois de salvar.
       setItems(itensExistentes.map(it => ({
@@ -799,6 +802,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     setActiveTab('compra');
     setSectorId('');
     setTipoCompra(null);
+    setSugereEstoqueMinimo(false);
     setAlmoxarifadoAvisado(null);
     setCriticality(null);
     setDataNecessidade('');
@@ -1512,6 +1516,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               sap_code: it.sap_code,
               has_no_sap_code: !it.sap_code || it.sap_code.trim().length !== 8,
               is_generic: ehGen,
+              sugere_estoque_minimo: tipoCompra === 'Direta' && !ehGen && sugereEstoqueMinimo,
               observation,
               reference_link: it.reference_link || '',
               quantity: normalizarQuantidadeSolicitacao(it.quantity),
@@ -1958,6 +1963,18 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       </button>
                     ))}
                   </div>
+                  {tipoCompra === 'Direta' && (
+                    <label className="mt-2 inline-flex items-center gap-2 text-sm font-semibold cursor-pointer select-none" style={{ color: 'var(--ink-secondary)' }}>
+                      <input
+                        type="checkbox"
+                        checked={sugereEstoqueMinimo}
+                        onChange={(e) => setSugereEstoqueMinimo(e.target.checked)}
+                        className="rounded cursor-pointer"
+                        style={{ accentColor: 'var(--brand)' }}
+                      />
+                      Sugerir os itens para cadastro de estoque mínimo
+                    </label>
+                  )}
                 </div>
               </div>
 

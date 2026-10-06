@@ -648,7 +648,12 @@ export default function TorresEntregaVisual({
 
       {/* 5b. Visão WIP — quantos tramos há em cada etapa da planta */}
       {modoExibicao === 'wip' && (
-        <VisaoWipChaoFabrica tramos={tramosFiltrados} todosTramos={tramos} aoAbrirTramo={handleAbrirTramoWip} />
+        <VisaoWipChaoFabrica
+          tramos={tramosFiltrados}
+          todosTramos={tramos}
+          aoAbrirTramo={handleAbrirTramoWip}
+          aoAtualizarTramo={handleSalvarTramo}
+        />
       )}
 
       {/* 6. Modal de Detalhe e Tomada de Decisão */}

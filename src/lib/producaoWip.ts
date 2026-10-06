@@ -13,7 +13,8 @@
  * 2. Apontamentos (`prod_apt_operacoes`): o processo mais avançado já
  *    apontado para o código do tramo diz onde ele está agora.
  * 3. Controle de Entrega (categoria da etapa): usado quando o tramo ainda
- *    não tem apontamento.
+ *    não tem apontamento, ou quando a entrada na etapa (`data_entrada_etapa`,
+ *    gravada ao mover o tramo no mapa) é mais recente que o último apontamento.
  */
 
 import { avaliarCriticidadeEspera, type NivelCriticidadeEspera, type TramoEntrega } from './producaoEntrega';
@@ -154,7 +155,12 @@ export function distribuirWip(
       continue;
     }
 
-    const op = operacoes.get(tramo.id);
+    const opApontada = operacoes.get(tramo.id);
+    // Vale a informação mais recente: um movimento manual posterior ao apontamento o substitui.
+    const op =
+      opApontada && new Date(tramo.data_entrada_etapa).getTime() > new Date(opApontada.data_apontamento).getTime()
+        ? undefined
+        : opApontada;
     let zona: ZonaWipId | null;
     let dias: number;
     let origem: ItemWip['origem'];
@@ -186,4 +192,37 @@ export function distribuirWip(
   }
 
   return { porZona, total, criticos, fora };
+}
+
+/** Zonas que recebem tramo ao arrastar no mapa (Corte guarda chapa, que ainda não tem código de tramo). */
+export const ZONAS_DESTINO_WIP: ZonaWipId[] = ['montagem', 'acabamento', 'internos', 'saw', 'calandra_saw1'];
+
+const ETAPA_PADRAO_ZONA: Record<string, Pick<TramoEntrega, 'etapa_categoria' | 'etapa_nome'>> = {
+  montagem: { etapa_categoria: 'white', etapa_nome: 'MONTAGEM' },
+  acabamento: { etapa_categoria: 'white', etapa_nome: 'LIB.JATO' },
+  internos: { etapa_categoria: 'internos', etapa_nome: 'INTERNOS' },
+  saw: { etapa_categoria: 'saw02', etapa_nome: 'SAW02' },
+  calandra_saw1: { etapa_categoria: 'nav01', etapa_nome: 'NAV01' },
+};
+
+/**
+ * Campos do Controle de Entrega que mudam quando o tramo é arrastado para uma zona.
+ * Se o controle já classifica o tramo naquela zona, mantém categoria e nome da etapa.
+ * Zera a espera e o "o que está aguardando", que descreviam a etapa anterior.
+ */
+export function camposAoMoverParaZona(
+  tramo: Pick<TramoEntrega, 'etapa_categoria' | 'etapa_nome'>,
+  zona: ZonaWipId,
+  agora: Date = new Date(),
+): Pick<TramoEntrega, 'etapa_categoria' | 'etapa_nome' | 'status_aguardando' | 'dias_espera' | 'data_entrada_etapa'> | null {
+  const padrao = ETAPA_PADRAO_ZONA[zona];
+  if (!padrao) return null;
+  const jaNaZona = zonaPorControleEntrega(tramo) === zona;
+  return {
+    etapa_categoria: jaNaZona ? tramo.etapa_categoria : padrao.etapa_categoria,
+    etapa_nome: jaNaZona ? tramo.etapa_nome : padrao.etapa_nome,
+    status_aguardando: null,
+    dias_espera: 0,
+    data_entrada_etapa: agora.toISOString(),
+  };
 }

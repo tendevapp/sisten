@@ -1318,6 +1318,11 @@ function ItemLinha({
             : <><Info className="mr-0.5 inline h-3.5 w-3.5" /> sem código SAP</>}
           {item.brand && ` · ${item.brand}${item.is_similar_allowed ? ' ou similar' : ''}`}
         </p>
+        {item.sugere_estoque_minimo && (
+          <p className="text-xs font-semibold" style={{ color: 'var(--brand)' }}>
+            Solicitante sugere cadastro de estoque mínimo
+          </p>
+        )}
 
         {sinais && sinais.length > 0 && <SinalChips chips={sinais} />}
         {!sinais && carregandoSinais && item.sap_code && (

@@ -1,10 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Maximize2, RefreshCw, X } from 'lucide-react';
+import { useToast } from '../ui/Toast';
+import { atualizarTramoEntrega } from '../../lib/producaoApi';
 import { listarOperacoesComTramo } from '../../lib/producaoTorresApi';
 import { ORDEM_TRAMOS_VISUAL, type TramoEntrega, type TramoId } from '../../lib/producaoEntrega';
 import {
   ORDEM_ZONAS_WIP,
+  ZONAS_DESTINO_WIP,
   ZONAS_WIP,
+  camposAoMoverParaZona,
   distribuirWip,
   ultimaOperacaoPorTramo,
   type DistribuicaoWip,
@@ -30,7 +34,31 @@ interface VisaoWipChaoFabricaProps {
   /** Todos os tramos do Controle de Entrega, para apontar códigos sem cadastro. */
   todosTramos: TramoEntrega[];
   aoAbrirTramo: (tramo: TramoEntrega) => void;
+  /** Atualiza o tramo na lista da página depois de movê-lo no mapa. */
+  aoAtualizarTramo: (tramo: TramoEntrega) => void;
 }
+
+interface Arrasto {
+  item: ItemWip;
+  x: number;
+  y: number;
+  zonaAlvo: ZonaWipId | null;
+}
+
+interface ContextoArrasto {
+  arrasto: Arrasto | null;
+  iniciar: (item: ItemWip, e: React.PointerEvent) => void;
+  cliqueBloqueado: () => boolean;
+}
+
+/** Distância (px) que o ponteiro precisa andar para a pressão virar arrasto e não clique. */
+const LIMIAR_ARRASTO_PX = 6;
+
+const ArrastoContext = createContext<ContextoArrasto>({
+  arrasto: null,
+  iniciar: () => undefined,
+  cliqueBloqueado: () => false,
+});
 
 const COR_PILULA = {
   normal: 'border-slate-900 text-slate-900',
@@ -51,13 +79,22 @@ function textoTooltip(item: ItemWip): string {
  * com a quantidade de tramos, sem rolagem.
  */
 function PilulaTramo({ item, aoClicar }: { item: ItemWip; aoClicar: () => void }) {
+  const { arrasto, iniciar, cliqueBloqueado } = useContext(ArrastoContext);
+  const sendoArrastada = arrasto?.item.tramo.id === item.tramo.id;
+
   return (
     <button
       type="button"
-      onClick={aoClicar}
-      title={textoTooltip(item)}
-      className={`relative flex items-center justify-center rounded-full bg-white shadow-sm transition hover:scale-110 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${COR_PILULA[item.nivel]}`}
+      onClick={() => {
+        if (!cliqueBloqueado()) aoClicar();
+      }}
+      onPointerDown={e => iniciar(item, e)}
+      title={`${textoTooltip(item)}\nArraste para outra etapa para mover`}
+      className={`relative flex cursor-grab select-none items-center justify-center rounded-full bg-white shadow-sm transition hover:scale-110 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:cursor-grabbing ${
+        sendoArrastada ? 'opacity-30' : ''
+      } ${COR_PILULA[item.nivel]}`}
       style={{
+        touchAction: 'none',
         height: `calc(var(--k) * ${PILULA_ALTURA_CQW}cqw)`,
         width: `calc(var(--k) * ${PILULA_LARGURA_CQW}cqw)`,
         paddingLeft: 'calc(var(--k) * 0.9cqw)',
@@ -75,7 +112,7 @@ function PilulaTramo({ item, aoClicar }: { item: ItemWip; aoClicar: () => void }
           {item.tramo.tramo}
         </span>
         <span className="font-semibold opacity-80" style={{ fontSize: 'max(3px, calc(var(--k) * 0.62cqw))' }}>
-          Torre {item.tramo.torre_numero}
+          {item.tramo.serie}
         </span>
       </span>
     </button>
@@ -95,10 +132,13 @@ function ZonaSobrePlanta({
   const config = ZONAS_WIP[zona];
   const criticos = itens.filter(i => i.nivel === 'critico').length;
   const escala = escalaPilulas(zona, itens.length);
+  const { arrasto } = useContext(ArrastoContext);
+  const alvo = arrasto?.zonaAlvo === zona;
 
   return (
     <div
-      className="absolute"
+      data-zona-wip={zona}
+      className={`absolute transition-colors ${alvo ? 'bg-blue-500/20 ring-4 ring-inset ring-blue-600' : ''}`}
       title={`${config.rotulo} — ${config.descricao}`}
       style={
         {
@@ -171,11 +211,20 @@ function MapaPlanta({
   );
 }
 
-export default function VisaoWipChaoFabrica({ tramos, todosTramos, aoAbrirTramo }: VisaoWipChaoFabricaProps) {
+export default function VisaoWipChaoFabrica({
+  tramos,
+  todosTramos,
+  aoAbrirTramo,
+  aoAtualizarTramo,
+}: VisaoWipChaoFabricaProps) {
+  const toast = useToast();
   const [operacoes, setOperacoes] = useState<OperacaoTramo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [tiposSelecionados, setTiposSelecionados] = useState<TramoId[]>([]);
   const [expandido, setExpandido] = useState(false);
+  const [arrasto, setArrasto] = useState<Arrasto | null>(null);
+  const pressao = useRef<{ item: ItemWip; x0: number; y0: number; ativo: boolean } | null>(null);
+  const bloquearClique = useRef(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -226,6 +275,74 @@ export default function VisaoWipChaoFabrica({ tramos, todosTramos, aoAbrirTramo 
 
   const alternarTipo = (tipo: TramoId) =>
     setTiposSelecionados(atual => (atual.includes(tipo) ? atual.filter(t => t !== tipo) : [...atual, tipo]));
+
+  /** Atualiza na hora e desfaz se o banco recusar, para o tramo não "voltar" depois de solto. */
+  const moverTramo = async (item: ItemWip, zona: ZonaWipId) => {
+    const campos = camposAoMoverParaZona(item.tramo, zona);
+    if (!campos) return;
+    const original = item.tramo;
+    aoAtualizarTramo({ ...original, ...campos, updated_at: new Date().toISOString() });
+    try {
+      await atualizarTramoEntrega(original.id, campos);
+      toast.success(`Tramo ${original.tramo} (série ${original.serie}) movido para ${ZONAS_WIP[zona].rotulo}.`);
+    } catch (e) {
+      aoAtualizarTramo(original);
+      toast.error(e instanceof Error ? e.message : 'Não foi possível mover o tramo.');
+    }
+  };
+  const moverTramoRef = useRef(moverTramo);
+  moverTramoRef.current = moverTramo;
+
+  const iniciarArraste = useCallback((item: ItemWip, e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    pressao.current = { item, x0: e.clientX, y0: e.clientY, ativo: false };
+
+    // Zona sob o ponteiro: o fantasma tem pointer-events: none, então enxergamos o mapa por baixo.
+    const zonaEm = (x: number, y: number): ZonaWipId | null => {
+      const el = document
+        .elementsFromPoint(x, y)
+        .find((n): n is HTMLElement => n instanceof HTMLElement && !!n.dataset.zonaWip);
+      const zona = el?.dataset.zonaWip as ZonaWipId | undefined;
+      return zona && ZONAS_DESTINO_WIP.includes(zona) ? zona : null;
+    };
+
+    const aoMover = (ev: PointerEvent) => {
+      const p = pressao.current;
+      if (!p) return;
+      if (!p.ativo && Math.hypot(ev.clientX - p.x0, ev.clientY - p.y0) < LIMIAR_ARRASTO_PX) return;
+      p.ativo = true;
+      setArrasto({ item: p.item, x: ev.clientX, y: ev.clientY, zonaAlvo: zonaEm(ev.clientX, ev.clientY) });
+    };
+
+    const encerrar = (ev: PointerEvent, soltou: boolean) => {
+      window.removeEventListener('pointermove', aoMover);
+      window.removeEventListener('pointerup', aoSoltar);
+      window.removeEventListener('pointercancel', aoCancelar);
+      const p = pressao.current;
+      pressao.current = null;
+      setArrasto(null);
+      if (!p?.ativo) return;
+      // O clique que o navegador dispara depois de um arrasto não deve abrir o detalhe.
+      bloquearClique.current = true;
+      setTimeout(() => {
+        bloquearClique.current = false;
+      }, 0);
+      if (!soltou) return;
+      const alvo = zonaEm(ev.clientX, ev.clientY);
+      if (alvo && alvo !== p.item.zona) void moverTramoRef.current(p.item, alvo);
+    };
+    const aoSoltar = (ev: PointerEvent) => encerrar(ev, true);
+    const aoCancelar = (ev: PointerEvent) => encerrar(ev, false);
+
+    window.addEventListener('pointermove', aoMover);
+    window.addEventListener('pointerup', aoSoltar);
+    window.addEventListener('pointercancel', aoCancelar);
+  }, []);
+
+  const contextoArrasto = useMemo<ContextoArrasto>(
+    () => ({ arrasto, iniciar: iniciarArraste, cliqueBloqueado: () => bloquearClique.current }),
+    [arrasto, iniciarArraste],
+  );
 
   const semCadastro = useMemo(() => {
     const cadastrados = new Set(todosTramos.map(t => t.id));
@@ -317,12 +434,13 @@ export default function VisaoWipChaoFabrica({ tramos, todosTramos, aoAbrirTramo 
   );
 
   return (
+    <ArrastoContext.Provider value={contextoArrasto}>
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">WIP no Chão de Fábrica</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Quantos tramos há em cada etapa agora. Toque num tramo para ver o detalhe.
+            Quantos tramos há em cada etapa agora. Toque num tramo para ver o detalhe ou arraste para outra etapa para mover.
           </p>
         </div>
         {resumo}
@@ -365,7 +483,9 @@ export default function VisaoWipChaoFabrica({ tramos, todosTramos, aoAbrirTramo 
       {expandido && (
         <div
           className="fixed inset-0 z-40 bg-slate-950/70 p-3 backdrop-blur-sm"
-          onClick={() => setExpandido(false)}
+          onClick={() => {
+            if (!bloquearClique.current) setExpandido(false);
+          }}
           role="dialog"
           aria-modal="true"
           aria-label="Mapa WIP expandido"
@@ -403,6 +523,20 @@ export default function VisaoWipChaoFabrica({ tramos, todosTramos, aoAbrirTramo 
           </div>
         </div>
       )}
+
+      {arrasto && (
+        <div
+          aria-hidden="true"
+          className={`pointer-events-none fixed z-[70] flex h-10 w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-2 bg-white leading-none shadow-xl ${COR_PILULA[arrasto.item.nivel]} ${
+            arrasto.zonaAlvo && arrasto.zonaAlvo !== arrasto.item.zona ? '' : 'opacity-70'
+          }`}
+          style={{ left: arrasto.x, top: arrasto.y }}
+        >
+          <span className="text-xs font-black">{arrasto.item.tramo.tramo}</span>
+          <span className="text-[9px] font-semibold opacity-80">{arrasto.item.tramo.serie}</span>
+        </div>
+      )}
     </section>
+    </ArrastoContext.Provider>
   );
 }

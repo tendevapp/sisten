@@ -21,7 +21,10 @@ import PropostaCard from '../components/cotacoes/PropostaCard';
 import MapaComparativo from '../components/cotacoes/MapaComparativo';
 import RevisaoPedidoCompra from '../components/cotacoes/RevisaoPedidoCompra';
 import { limparComprasMemoryCache } from './Compras';
-import { RASCUNHO_COTACAO_KEY, chaveRascunhoPropostas, normalizarProposta, aplicarSugestoes, normalizarDescricao, propostaSalvaParaDraft } from '../lib/cotacoes';
+import { converterComIA } from '../lib/converterMarkdownApi';
+import { consolidarMarkdown } from '../lib/markdownConvert';
+import { comprimirImagemUpload } from '../lib/imageCompression';
+import { RASCUNHO_COTACAO_KEY, chaveRascunhoPropostas, normalizarProposta, complementarPropostaComPrint, aplicarSugestoes, normalizarDescricao, propostaSalvaParaDraft } from '../lib/cotacoes';
 import { aplicarVinculosIa, revisarDivergencias } from '../lib/vinculoCotacao';
 import { simularFreteCotacao, aplicarFreteTeorico, alinharPesoComVinculo, chavePesoAlinhado } from '../lib/freteCotacao';
 import {
@@ -79,6 +82,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
 
   const [extraindo, setExtraindo] = useState(false);
   const [erroExtracao, setErroExtracao] = useState<string | null>(null);
+  const [extracaoSemItens, setExtracaoSemItens] = useState(false);
   const [usoExtracao, setUsoExtracao] = useState<ExtracaoUso | null>(null);
   const [modeloExtracao, setModeloExtracao] = useState<string | null>(null);
   const [custoExtracaoBrl, setCustoExtracaoBrl] = useState<number | null>(null);
@@ -349,6 +353,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     if (!processo) return false;
     setExtraindo(true);
     setErroExtracao(null);
+    setExtracaoSemItens(false);
     setUsoExtracao(null);
     setModeloExtracao(null);
     setCustoExtracaoBrl(null);
@@ -365,6 +370,15 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       setCustoExtracaoBrl(custoBrl);
       if (resposta.truncado) {
         toast.warning('A resposta da IA foi cortada por estourar o limite de tokens — mostrando o que veio completo.');
+      }
+
+      // PDF que é só imagem costuma voltar do OCR sem tabela de itens: nada útil
+      // para analisar. Não adiciona proposta vazia; o painel oferece enviar um print.
+      const totalItensExtraidos = resposta.propostas.reduce((acc, p) => acc + (Array.isArray(p.itens) ? p.itens.length : 0), 0);
+      if (totalItensExtraidos === 0) {
+        setExtracaoSemItens(true);
+        setErroExtracao('A IA não encontrou nenhum item nesta cotação. Se o PDF é uma imagem, envie um print da cotação abaixo para ler por OCR.');
+        return false;
       }
 
       const novasDrafts = resposta.propostas.map(bruta => {
@@ -660,6 +674,59 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     );
   };
 
+  /**
+   * Complementa UMA proposta ainda em rascunho com um print da cotação: o
+   * print passa pelo OCR e pela extração, e o resultado só PREENCHE o que está
+   * em branco no card (tabela, quantidades, preços, impostos) — vínculos e
+   * edições do comprador ficam. Itens do print sem par entram no fim. O print
+   * vira o arquivo original da proposta e sobe junto quando ela for salva.
+   */
+  const handleReextrairComPrint = async (key: string, arquivos: File[]) => {
+    if (!processo) return;
+    const imagens = arquivos.filter(f => f.type.startsWith('image/'));
+    if (imagens.length === 0) { toast.warning('Envie o print da cotação como imagem (PNG ou JPG).'); return; }
+    try {
+      const partes: { nome: string; markdown: string }[] = [];
+      const preparados: File[] = [];
+      for (const [idx, original] of imagens.entries()) {
+        const nome = original.name && original.name !== 'image.png' ? original.name : `print-cotacao-${Date.now()}-${idx + 1}.png`;
+        // Print tem letra miúda: comprime sem reduzir tanto quanto uma foto de campo.
+        const blob = await comprimirImagemUpload(original, { maxDimensao: 2400, qualidade: 0.9 });
+        const file = new File([blob], blob === original ? nome : nome.replace(/\.[^.]+$/, '') + '.jpg', { type: blob.type || original.type });
+        const conversao = await converterComIA(file);
+        partes.push({ nome: file.name, markdown: conversao.markdown });
+        preparados.push(file);
+      }
+      const markdown = consolidarMarkdown(partes);
+      const arquivoOrigem = preparados.length === 1 ? preparados[0].name : `${preparados.length} prints`;
+
+      const resposta = await extrairCotacao({ markdown, arquivoOrigem, processoId: processo.id, escopo });
+      const melhor = [...resposta.propostas].sort((a, b) => (b.itens?.length ?? 0) - (a.itens?.length ?? 0))[0];
+      if (!melhor || !(melhor.itens?.length)) {
+        toast.error('A IA não encontrou itens no print. Tente um print mais nítido ou com a tabela inteira visível.');
+        return;
+      }
+      setUsoExtracao(resposta.uso);
+      setModeloExtracao(resposta.modelo);
+
+      const doPrint = normalizarProposta(melhor, { arquivoOrigem, arquivoMarkdown: markdown });
+      const atual = propostas.find(p => p._key === key);
+      if (!atual || atual._salvo) return;
+      const { proposta, itensPreenchidos, itensNovos, camposCabecalho } = complementarPropostaComPrint(atual, doPrint);
+      proposta.arquivo_origem = arquivoOrigem;
+      proposta.arquivo_markdown = [atual.arquivo_markdown, `# Print: ${arquivoOrigem}\n\n${markdown}`].filter(Boolean).join('\n\n---\n\n');
+      proposta.extracao_id = resposta.extracao_id ?? atual.extracao_id;
+      // O print passa a ser o arquivo original desta proposta (sobe ao salvar).
+      setArquivosOriginais(prev => new Map(prev).set(arquivoOrigem, preparados[0]));
+      const complementada = comFreteTeorico(alinharPeso(await resolverVinculos(proposta)));
+      setPropostas(prev => prev.map(p => (p._key === key && !p._salvo ? complementada : p)));
+      const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
+      toast.success(`Print lido: ${plural(itensPreenchidos, 'item completado', 'itens completados')}, ${plural(itensNovos, 'item novo', 'itens novos')}, ${plural(camposCabecalho, 'campo', 'campos')} do cabeçalho.`);
+    } catch (err) {
+      toast.error((err as Error).message || 'Não foi possível ler o print.');
+    }
+  };
+
   const handleArquivosEnviados = (arquivos: { nome: string; file: File | null }[]) => {
     setArquivosOriginais(prev => {
       const next = new Map(prev);
@@ -841,6 +908,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
               processoId={processo.id}
               processando={extraindo}
               erro={erroExtracao}
+              semItens={extracaoSemItens}
               uso={usoExtracao}
               modelo={modeloExtracao}
               custoBrl={custoExtracaoBrl}
@@ -863,6 +931,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
                 arquivoOriginal={p.arquivo_origem ? arquivosOriginais.get(p.arquivo_origem) : undefined}
                 tabelaFrete={tabelaFrete}
                 onEditarMarkdown={md => handleEditarMarkdown(p._key, md)}
+                onReextrairComPrint={arquivos => handleReextrairComPrint(p._key, arquivos)}
                 processoId={processo.id}
               />
             ))}

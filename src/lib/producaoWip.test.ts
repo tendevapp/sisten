@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CategoriaEtapa, TramoEntrega, TramoId } from './producaoEntrega';
 import {
+  camposAoMoverParaZona,
   distribuirWip,
   ultimaOperacaoPorTramo,
   zonaPorControleEntrega,
@@ -27,7 +28,7 @@ function tramo(
     etapa_categoria: categoria,
     etapa_nome: etapa,
     status_aguardando: null,
-    data_entrada_etapa: AGORA.toISOString(),
+    data_entrada_etapa: '2026-09-01T00:00:00Z',
     dias_espera: diasEspera,
     observacao: null,
     updated_at: AGORA.toISOString(),
@@ -163,5 +164,53 @@ describe('producaoWip - distribuição do WIP', () => {
     const r = distribuirWip(tramos, new Map(), AGORA);
 
     expect(r.porZona.internos.map(i => i.dias)).toEqual([4, 2, 1]);
+  });
+});
+
+describe('producaoWip - mover tramo no mapa', () => {
+  it('um movimento manual mais recente vence o apontamento antigo', () => {
+    const movido = { ...tramo(3, 'T5', 3192, 'internos', 'INTERNOS', 0), data_entrada_etapa: '2026-10-05T10:00:00Z' };
+    const ops = ultimaOperacaoPorTramo([op('T5-3192', 'saw_2_3', '2026-10-05T08:00:00Z')]);
+    const r = distribuirWip([movido], ops, AGORA);
+
+    expect(r.porZona.internos).toHaveLength(1);
+    expect(r.porZona.saw).toHaveLength(0);
+    expect(r.porZona.internos[0].origem).toBe('controle');
+  });
+
+  it('um apontamento posterior ao movimento volta a mandar', () => {
+    const movido = { ...tramo(3, 'T5', 3192, 'internos', 'INTERNOS', 0), data_entrada_etapa: '2026-10-05T10:00:00Z' };
+    const ops = ultimaOperacaoPorTramo([op('T5-3192', 'saw_2_3', '2026-10-05T11:00:00Z')]);
+    const r = distribuirWip([movido], ops, AGORA);
+
+    expect(r.porZona.saw).toHaveLength(1);
+  });
+
+  it('grava a etapa padrão da zona de destino e zera a espera', () => {
+    const campos = camposAoMoverParaZona({ etapa_categoria: 'saw02', etapa_nome: 'MARCO PORTA' }, 'internos', AGORA);
+
+    expect(campos).toEqual({
+      etapa_categoria: 'internos',
+      etapa_nome: 'INTERNOS',
+      status_aguardando: null,
+      dias_espera: 0,
+      data_entrada_etapa: AGORA.toISOString(),
+    });
+  });
+
+  it('mantém a etapa quando o controle já classifica o tramo na zona', () => {
+    const campos = camposAoMoverParaZona({ etapa_categoria: 'white', etapa_nome: 'PINTURA' }, 'acabamento', AGORA);
+
+    expect(campos?.etapa_categoria).toBe('white');
+    expect(campos?.etapa_nome).toBe('PINTURA');
+  });
+
+  it('separa Montagem de Acabamento dentro de white', () => {
+    expect(camposAoMoverParaZona({ etapa_categoria: 'white', etapa_nome: 'PINTURA' }, 'montagem', AGORA)?.etapa_nome).toBe('MONTAGEM');
+    expect(camposAoMoverParaZona({ etapa_categoria: 'white', etapa_nome: 'MONTAGEM' }, 'acabamento', AGORA)?.etapa_nome).toBe('LIB.JATO');
+  });
+
+  it('não aceita mover para Corte', () => {
+    expect(camposAoMoverParaZona({ etapa_categoria: 'nav01', etapa_nome: 'NAV01' }, 'corte', AGORA)).toBeNull();
   });
 });

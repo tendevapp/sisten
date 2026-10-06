@@ -198,6 +198,7 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
                       <Field label="Marca" value={it.brand} />
                       <Field label="Item Genérico" value={it.is_generic ? 'Sim' : 'Não'} />
                       <Field label="Aceita Similar" value={it.is_similar_allowed ? 'Sim' : 'Não'} />
+                      {it.sugere_estoque_minimo && <Field label="Sugere estoque mínimo" value="Sim" />}
                       <Field label="Fornecedor Sugerido" value={it.suggested_supplier} />
                       <Field label="Valor Estimado" value={it.estimated_value ? formatBRL(it.estimated_value) : undefined} />
                       {it.observation && <Field label="Observação" value={it.observation} />}

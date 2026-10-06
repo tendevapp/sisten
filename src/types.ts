@@ -192,6 +192,7 @@ export interface RequestItem {
   sap_code?: string; // Optional, can trigger autocomplete
   has_no_sap_code: boolean;
   is_generic?: boolean;
+  sugere_estoque_minimo?: boolean;
   observation?: string;
   reference_link?: string;
   quantity: number;

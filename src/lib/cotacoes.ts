@@ -746,3 +746,92 @@ export function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft
   };
 }
 
+/* Complemento de uma proposta com os dados lidos de um print ---------------- */
+
+const CAMPOS_INTERNOS_PROPOSTA = new Set<string>([
+  '_key', '_salvo', '_extraido_em', 'itens', 'extraido_raw', 'extracao_id', 'campos_faltantes', 'revisado',
+  'arquivo_origem', 'arquivo_storage_path', 'arquivo_mime_type', 'arquivo_tamanho_bytes',
+  'arquivo_markdown', 'arquivo_markdown_editado_em', 'arquivo_markdown_editado_por',
+  'cod_vendor', 'contato_id', 'fornecedor_match',
+]);
+
+const CAMPOS_ITEM_COMPLEMENTAVEIS = [
+  'codigo_produto', 'marca_fabricante', 'unidade_medida', 'ncm', 'cst', 'cfop', 'quantidade',
+  'preco_unitario', 'preco_total_item', 'aliquota_icms_pct', 'aliquota_pis_pct', 'aliquota_cofins_pct',
+  'aliquota_ipi_pct',
+] as const;
+
+const vazio = (v: unknown) => v === null || v === undefined || v === '';
+
+function tokensDescricao(d: string): Set<string> {
+  return new Set(normalizarDescricao(d).split(/[^A-Z0-9]+/).filter(t => t.length > 1));
+}
+
+function descricoesParecidas(a: string, b: string): boolean {
+  const na = normalizarDescricao(a);
+  const nb = normalizarDescricao(b);
+  if (!na || !nb) return false;
+  if (na === nb || na.includes(nb) || nb.includes(na)) return true;
+  const ta = tokensDescricao(a);
+  const tb = tokensDescricao(b);
+  if (ta.size === 0 || tb.size === 0) return false;
+  let comuns = 0;
+  for (const t of ta) if (tb.has(t)) comuns++;
+  return comuns / Math.min(ta.size, tb.size) >= 0.6;
+}
+
+/**
+ * Complementa uma proposta em rascunho com o que foi lido de um print da
+ * cotação — não a substitui. O que o comprador já tem (cabeçalho, vínculo com a
+ * RM, edições, peso) fica; o print só preenche o que está em branco: campos do
+ * cabeçalho, e quantidade/preço/impostos dos itens que ele reconhece. Item do
+ * print sem par na proposta entra no fim, para ser vinculado depois.
+ *
+ * Par de item: nº do item, depois código do produto, depois descrição parecida;
+ * se a proposta e o print têm um item cada, são o mesmo.
+ */
+export function complementarPropostaComPrint(
+  atual: CotacaoPropostaDraft,
+  doPrint: CotacaoPropostaDraft,
+): { proposta: CotacaoPropostaDraft; itensPreenchidos: number; itensNovos: number; camposCabecalho: number } {
+  const proposta: CotacaoPropostaDraft = { ...atual };
+  let camposCabecalho = 0;
+  for (const chave of Object.keys(doPrint)) {
+    if (CAMPOS_INTERNOS_PROPOSTA.has(chave)) continue;
+    const k = chave as keyof CotacaoPropostaDraft;
+    if (vazio(proposta[k]) && !vazio(doPrint[k])) {
+      (proposta as any)[k] = doPrint[k];
+      camposCabecalho++;
+    }
+  }
+
+  const itens = atual.itens.map(i => ({ ...i }));
+  const livres = new Set(itens.map(i => i._key));
+  const porChave = new Map(itens.map(i => [i._key, i]));
+  let itensPreenchidos = 0;
+  const novos: CotacaoPropostaItemDraft[] = [];
+
+  const achar = (n: CotacaoPropostaItemDraft): CotacaoPropostaItemDraft | undefined => {
+    const candidatos = [...livres].map(k => porChave.get(k)!);
+    return (
+      candidatos.find(a => a.item_numero != null && a.item_numero === n.item_numero)
+      ?? candidatos.find(a => !vazio(a.codigo_produto) && a.codigo_produto === n.codigo_produto)
+      ?? candidatos.find(a => descricoesParecidas(a.descricao_produto, n.descricao_produto))
+      ?? (atual.itens.length === 1 && doPrint.itens.length === 1 ? candidatos[0] : undefined)
+    );
+  };
+
+  for (const n of doPrint.itens) {
+    const par = achar(n);
+    if (!par) { novos.push(n); continue; }
+    livres.delete(par._key);
+    let mudou = false;
+    for (const c of CAMPOS_ITEM_COMPLEMENTAVEIS) {
+      if (vazio(par[c]) && !vazio(n[c])) { (par as any)[c] = n[c]; mudou = true; }
+    }
+    if (mudou) itensPreenchidos++;
+  }
+
+  proposta.itens = [...itens, ...novos];
+  return { proposta, itensPreenchidos, itensNovos: novos.length, camposCabecalho };
+}

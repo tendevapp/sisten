@@ -9,8 +9,8 @@
  * casamento por CNPJ, cobertura do escopo e a grade de itens.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { FileText, AlertTriangle, EyeOff, Eye, Trash2, Save, Loader2, Clock, FileSearch, Truck, Ban, Sparkles } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { FileText, AlertTriangle, EyeOff, Eye, Trash2, Save, Loader2, Clock, FileSearch, Truck, Ban, Sparkles, ImagePlus } from 'lucide-react';
 import PropostaItensGrid from './PropostaItensGrid';
 import FornecedorMatchBadge from './FornecedorMatchBadge';
 import CoberturaEscopoPanel from './CoberturaEscopoPanel';
@@ -107,11 +107,13 @@ interface PropostaCardProps {
   onEditarMarkdown?: (novoMarkdown: string) => Promise<void>;
   /** Processo desta proposta — só para telemetria do "Pedir à IA" (sup_cotacao_extracoes). */
   processoId?: string;
+  /** Complementa esta proposta (ainda em rascunho) com um print da cotação — OCR + extração preenchem o que está em branco; o print vira o arquivo original dela. */
+  onReextrairComPrint?: (arquivos: File[]) => Promise<void>;
 }
 
 export default function PropostaCard({
   proposta, escopo, onChange, onChangeItem, onRemover, onSalvar, salvando, onExcluirSalva, arquivoOriginal,
-  tabelaFrete, onEditarMarkdown, processoId,
+  tabelaFrete, onEditarMarkdown, processoId, onReextrairComPrint,
 }: PropostaCardProps) {
   const toast = useToast();
   const [soFaltando, setSoFaltando] = useState(false);
@@ -120,6 +122,36 @@ export default function PropostaCard({
   const [confirmExcluirAberto, setConfirmExcluirAberto] = useState(false);
   const [confirmRemoverAberto, setConfirmRemoverAberto] = useState(false);
   const [pedindoVinculoIa, setPedindoVinculoIa] = useState(false);
+  const inputPrintRef = useRef<HTMLInputElement>(null);
+  const [printsPendentes, setPrintsPendentes] = useState<File[] | null>(null);
+  const [lendoPrint, setLendoPrint] = useState(false);
+
+  // Ctrl+V de um print com o mouse sobre este card. Em fase de captura e com
+  // stopImmediatePropagation, para ganhar do "colar print" global do painel de importação.
+  const [mouseSobre, setMouseSobre] = useState(false);
+  const podeRefazerComPrint = !proposta._salvo && !!onReextrairComPrint;
+  useEffect(() => {
+    if (!mouseSobre || !podeRefazerComPrint) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const alvo = e.target as HTMLElement | null;
+      if (alvo?.closest('input, textarea, [contenteditable="true"]')) return;
+      const files = Array.from(e.clipboardData?.files ?? []).filter(f => f.type.startsWith('image/'));
+      if (files.length === 0) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setPrintsPendentes(files);
+    };
+    document.addEventListener('paste', onPaste, true);
+    return () => document.removeEventListener('paste', onPaste, true);
+  }, [mouseSobre, podeRefazerComPrint]);
+
+  const complementarComPrint = async () => {
+    const arquivos = printsPendentes;
+    setPrintsPendentes(null);
+    if (!arquivos || !onReextrairComPrint) return;
+    setLendoPrint(true);
+    try { await onReextrairComPrint(arquivos); } finally { setLendoPrint(false); }
+  };
 
   const validacao = useMemo(() => validarProposta(proposta), [proposta]);
   const totais = useMemo(() => conferirTotais(proposta), [proposta]);
@@ -218,7 +250,11 @@ export default function PropostaCard({
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <div
+      onMouseEnter={() => setMouseSobre(true)}
+      onMouseLeave={() => setMouseSobre(false)}
+      className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+    >
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
         <FileText className="h-4 w-4 shrink-0 text-indigo-500" />
         <span className="text-sm font-semibold text-slate-900 dark:text-slate-50">
@@ -366,6 +402,28 @@ export default function PropostaCard({
               {itensDesconsiderados.length} desconsiderado(s)
             </span>
           )}
+          {!proposta._salvo && onReextrairComPrint && (
+            <>
+              <input
+                ref={inputPrintRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={e => { if (e.target.files?.length) setPrintsPendentes(Array.from(e.target.files)); e.target.value = ''; }}
+              />
+              <button
+                type="button"
+                onClick={() => inputPrintRef.current?.click()}
+                disabled={lendoPrint}
+                title="A cotação veio como imagem e a leitura saiu incompleta? Envie um print (ou cole com Ctrl+V com o mouse sobre este card): a IA lê por OCR e completa esta proposta"
+                className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50"
+              >
+                {lendoPrint ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+                {lendoPrint ? 'Lendo o print…' : 'Complementar com print (ou Ctrl+V)'}
+              </button>
+            </>
+          )}
         </div>
         {!proposta._salvo && itensSemVinculo.length > 0 && (
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -443,6 +501,15 @@ export default function PropostaCard({
         />
       )}
 
+      {printsPendentes && (
+        <ConfirmDialog
+          titulo="Complementar esta proposta com o print?"
+          mensagem="A IA lê o print e preenche o que está em branco neste card (tabela, quantidades, preços, impostos). O que você já tem — vínculos e edições — é mantido; itens do print sem par entram no fim. O print passa a ser o arquivo original desta proposta."
+          confirmarLabel="Complementar"
+          onConfirmar={complementarComPrint}
+          onCancelar={() => setPrintsPendentes(null)}
+        />
+      )}
       {confirmSalvarAberto && (
         <ConfirmDialog
           titulo="Salvar com pendências?"
