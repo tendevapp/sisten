@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   KeyRound, Search, Filter, CheckCircle, Clock, AlertTriangle, ArrowRight, UserPlus, HelpCircle, Check, Info, FileText,
-  MessageSquare, Send, Loader2, Trash2
+  MessageSquare, Send, Loader2, Trash2, ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request, RequestComment, Sector } from '../types';
@@ -73,28 +73,45 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
   const [indicacaoConta, setIndicacaoConta] = useState('');
   
   // Carrega do cache
-  const pageCache = localDb.getPageCache('cadastros_sap', {
+  const pageCache = localDb.getPageCache('cadastros_sap_v2', {
     viewTab: 'fila',
     statusFilter: 'todos',
-    typeFilter: 'todos',
-    search: ''
+    typeFilter: 'Item',
+    search: '',
+    sortBy: 'criticidade',
+    sortDir: 'desc'
   });
 
   // Filter state
-  const [viewTab, setViewTab] = useState<'meus' | 'fila' | 'todos'>(pageCache.viewTab as 'meus' | 'fila' | 'todos');
+  const [viewTab, setViewTab] = useState<'meus' | 'fila' | 'todos' | 'resolvidos'>(pageCache.viewTab as 'meus' | 'fila' | 'todos' | 'resolvidos');
   const [statusFilter, setStatusFilter] = useState<string>(pageCache.statusFilter);
   const [typeFilter, setTypeFilter] = useState<string>(pageCache.typeFilter);
   const [search, setSearch] = useState(pageCache.search);
+  const [sortBy, setSortBy] = useState<'criticidade' | 'data'>(pageCache.sortBy === 'data' ? 'data' : 'criticidade');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(pageCache.sortDir === 'asc' ? 'asc' : 'desc');
 
   // Efeito para salvar no cache
   useEffect(() => {
-    localDb.setPageCache('cadastros_sap', {
+    localDb.setPageCache('cadastros_sap_v2', {
       viewTab,
       statusFilter,
       typeFilter,
-      search
+      search,
+      sortBy,
+      sortDir
     });
-  }, [viewTab, statusFilter, typeFilter, search]);
+  }, [viewTab, statusFilter, typeFilter, search, sortBy, sortDir]);
+
+  // Clicar no critério ativo inverte a direção; trocar de critério começa
+  // pelo mais urgente (criticidade alta / data mais antiga primeiro).
+  const handleSort = (campo: 'criticidade' | 'data') => {
+    if (sortBy === campo) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(campo);
+      setSortDir(campo === 'criticidade' ? 'desc' : 'asc');
+    }
+  };
 
   // Action fields
   const [observacao, setObservacao] = useState('');
@@ -120,6 +137,8 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
         const found = localDb.getRequests().find(r => r.id === idParam && r.type === 'cadastro_sap');
         if (found) {
           setViewTab('todos');
+          setTypeFilter('todos');
+          setStatusFilter('todos');
           setSelectedReq(found);
           setTicketExterno(found.ticket_externo || '');
           setComments(localDb.getRequestComments(found.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
@@ -130,22 +149,25 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
 
   useEffect(() => {
     loadData();
-  }, [viewTab, statusFilter, typeFilter]);
+  }, [viewTab, statusFilter, typeFilter, search, sortBy, sortDir]);
 
   const loadData = () => {
+    // Encerradas (resolvida, fechada, cancelada, rejeitada) ficam na aba "Resolvidos".
+    const ehEncerrada = (r: Request) => ['resolvido', 'fechado', 'cancelada', 'rejeitada'].includes(r.status);
     let list = localDb.getRequests().filter(r => r.type === 'cadastro_sap');
     const allSectors = localDb.getSectors();
     setSectors(allSectors);
 
-    // Apply View tab filter
-    if (viewTab === 'meus') {
-      list = list.filter(r => r.atendente_id === user.id);
-    } else if (viewTab === 'fila') {
-      list = list.filter(r => 
-        !['cancelada', 'rejeitada', 'resolvido', 'fechado'].includes(r.status) &&
-        (!r.atendente_id || r.status === 'aberto')
-      );
+    if (viewTab === 'fila') {
+      // Pendente: abertas que ninguém clicou para atender ainda.
+      list = list.filter(r => r.status === 'aberto' && !r.atendente_id);
+    } else if (viewTab === 'meus') {
+      // Meus atendimentos: tudo que assumi e ainda não encerrou (em atendimento, aguardando/pausado).
+      list = list.filter(r => r.atendente_id === user.id && !ehEncerrada(r));
+    } else if (viewTab === 'resolvidos') {
+      list = list.filter(ehEncerrada);
     }
+    // 'todos': sem filtro, mostra tudo.
 
     // Apply Status filter
     if (statusFilter !== 'todos') {
@@ -169,12 +191,15 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
       );
     }
 
-    // Sort: criticality desc, then created_at asc
+    // Ordenação: o critério escolhido manda; o outro desempata (mais antiga primeiro).
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const porData = (a: Request, b: Request) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
     list.sort((a, b) => {
-      if (b.criticality !== a.criticality) {
-        return b.criticality - a.criticality;
+      if (sortBy === 'data') {
+        return dir * porData(a, b) || b.criticality - a.criticality;
       }
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return dir * (a.criticality - b.criticality) || porData(a, b);
     });
 
     setRequests(list);
@@ -186,7 +211,6 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
-    loadData();
   };
 
   const handleSelectRequest = (req: Request) => {
@@ -583,7 +607,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
           
           {/* Filter Bar */}
           <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col gap-3">
-            <div className="flex flex-col sm:flex-row items-center gap-2 justify-between">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-center gap-2">
               {/* Toggles */}
               <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs w-full sm:w-auto">
                 <button
@@ -604,10 +628,30 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 >
                   Ver Todos
                 </button>
+                <button
+                  onClick={() => setViewTab('resolvidos')}
+                  className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-md font-bold transition-all cursor-pointer ${viewTab === 'resolvidos' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                >
+                  Resolvidos
+                </button>
+              </div>
+
+              {/* Tipo: botões ao lado das abas */}
+              <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs w-full sm:w-auto" role="group" aria-label="Tipo de cadastro">
+                {([['todos', 'Todos'], ['Item', 'Item'], ['Fornecedor', 'Fornecedor']] as const).map(([valor, label]) => (
+                  <button
+                    key={valor}
+                    onClick={() => setTypeFilter(valor)}
+                    aria-pressed={typeFilter === valor}
+                    className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-md font-bold transition-all cursor-pointer ${typeFilter === valor ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
 
               {/* Text Search */}
-              <div className="relative w-full sm:w-64">
+              <div className="relative w-full sm:w-64 sm:ml-auto">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
@@ -640,16 +684,24 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 <option value="rejeitada">Rejeitada</option>
               </select>
 
-              {/* Type Filter */}
-              <select
-                value={typeFilter}
-                onChange={(e) => { setTypeFilter(e.target.value); }}
-                className="rounded border border-slate-200 p-1 bg-white focus:outline-none focus:border-emerald-500 text-slate-700"
-              >
-                <option value="todos">Todos os Tipos</option>
-                <option value="Item">Item</option>
-                <option value="Fornecedor">Fornecedor</option>
-              </select>
+              {/* Ordenação */}
+              <div className="flex items-center gap-1 sm:ml-auto text-slate-500 font-semibold">
+                <ArrowUpDown className="h-3.5 w-3.5" /> Ordenar por:
+                {([['criticidade', 'Criticidade'], ['data', 'Data de abertura']] as const).map(([campo, label]) => {
+                  const ativo = sortBy === campo;
+                  return (
+                    <button
+                      key={campo}
+                      onClick={() => handleSort(campo)}
+                      aria-pressed={ativo}
+                      className={`ml-1 flex items-center gap-1 px-2.5 py-1 rounded-md border font-bold cursor-pointer transition-colors ${ativo ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'}`}
+                    >
+                      {label}
+                      {ativo && (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -663,7 +715,18 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                     <th className="py-3 px-4">Tipo</th>
                     <th className="py-3 px-4">Item</th>
                     <th className="py-3 px-4">Solicitante</th>
-                    <th className="py-3 px-4">Criticidade</th>
+                    <th className="py-3 px-4" aria-sort={sortBy === 'data' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                      <button onClick={() => handleSort('data')} className="inline-flex items-center gap-1 font-bold uppercase tracking-wider cursor-pointer hover:text-slate-800">
+                        Abertura
+                        {sortBy === 'data' ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-40" />}
+                      </button>
+                    </th>
+                    <th className="py-3 px-4" aria-sort={sortBy === 'criticidade' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                      <button onClick={() => handleSort('criticidade')} className="inline-flex items-center gap-1 font-bold uppercase tracking-wider cursor-pointer hover:text-slate-800">
+                        Criticidade
+                        {sortBy === 'criticidade' ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-40" />}
+                      </button>
+                    </th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4">SLA</th>
                     <th className="py-3 px-4 text-center">Ações</th>
@@ -672,7 +735,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 <tbody className="divide-y divide-slate-100">
                   {requests.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-8 text-center text-slate-400 font-medium">
+                      <td colSpan={9}className="py-8 text-center text-slate-400 font-medium">
                         Nenhuma solicitação de cadastro SAP encontrada.
                       </td>
                     </tr>
@@ -714,6 +777,12 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                             <p className="font-bold text-slate-700">{req.solicitante_name}</p>
                             <p className="text-[10px] text-slate-400">{getSectorName(req.solicitante_sector_id)}</p>
                           </div>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <p className="font-semibold text-slate-700">{new Date(req.created_at).toLocaleDateString('pt-BR')}</p>
+                          <p className="text-[10px] text-slate-400">
+                            {new Date(req.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </p>
                         </td>
                         <td className="py-3 px-4">{getCriticalityBadge(req.criticality)}</td>
                         <td className="py-3 px-4">
