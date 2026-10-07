@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { describe, expect, it } from 'vitest';
-import { lerPlanilhaTramos } from './producaoTramosImportacao';
+import { lerPlanilhaTramos, montarLoteCatalogoTramos } from './producaoTramosImportacao';
 
 const DATA_INICIO = '2026-04-22';
 const DATA_NAV02 = '2026-05-01';
@@ -32,7 +32,7 @@ function criarPlanilhaTramos(): ArrayBuffer {
     torre[indice + 1][11] = item.tramo;
   });
 
-  const tramos = [
+  const tramos: unknown[][] = [
     ['', '', 'Setor', 'Tramo', 'Sequencial', 'Atividade', 'Reparo de Solda', 'Inicio', 'Liberado P/ NAV02', '', '', 'Liberado P/ Jato', '', '', '', 'Liberado P/ Pátio', '', '', '', '', 'Expedido'],
   ];
   const sequenciais = cadastro.map(item => (item.sequencial === 3102 ? 3202 : item.sequencial));
@@ -76,5 +76,16 @@ describe('lerPlanilhaTramos', () => {
       sequencial: 3202,
       bloqueante: false,
     }));
+  });
+
+  it('normaliza a confirmação de 3202 ao montar o lote auditável', () => {
+    const resultado = lerPlanilhaTramos(criarPlanilhaTramos());
+    const lote = montarLoteCatalogoTramos(resultado, 'a'.repeat(64), 'origem.xlsx');
+
+    expect(lote.arquivo).toBe('origem.xlsx');
+    expect(lote.sha256).toHaveLength(64);
+    expect(lote.itens).toHaveLength(115);
+    expect(lote.itens).toContainEqual(expect.objectContaining({ torreNumero: 8, tramo: 'T5', sequencial: 3202 }));
+    expect(lote.itens.some(item => item.sequencial === 3102)).toBe(false);
   });
 });

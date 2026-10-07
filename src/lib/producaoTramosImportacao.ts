@@ -46,6 +46,17 @@ export interface ResultadoLeituraPlanilhaTramos {
   divergencias: DivergenciaImportacaoTramos[];
 }
 
+export interface LoteCatalogoTramos {
+  arquivo: string;
+  sha256: string;
+  itens: Array<{
+    linhaOrigem: number;
+    sequencial: number;
+    torreNumero: number;
+    tramo: CadastroTorreTramo['tramo'];
+  }>;
+}
+
 type Planilha = XLSX.WorkSheet;
 
 const MARCOS: Array<{ marco: MarcoTramo; cabecalho: string }> = [
@@ -235,5 +246,23 @@ export function resumoImportacao(resultado: ResultadoLeituraPlanilhaTramos, dive
     ...resultado.totaisDiretos,
     bloqueios: divergencias.filter(divergencia => divergencia.bloqueante).length,
     avisos: divergencias.filter(divergencia => !divergencia.bloqueante).length,
+  };
+}
+
+/** A confirmação do responsável torna 3202 a série canônica de T8/T5. */
+export function montarLoteCatalogoTramos(
+  resultado: ResultadoLeituraPlanilhaTramos,
+  sha256: string,
+  arquivo: string,
+): LoteCatalogoTramos {
+  return {
+    arquivo,
+    sha256,
+    itens: resultado.cadastro.map(item => ({
+      linhaOrigem: item.torreNumero + 3,
+      sequencial: item.sequencial === 3102 ? 3202 : item.sequencial,
+      torreNumero: item.torreNumero,
+      tramo: item.tramo,
+    })),
   };
 }

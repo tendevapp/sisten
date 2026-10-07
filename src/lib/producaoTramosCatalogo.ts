@@ -1,5 +1,5 @@
 import { supabase } from '../db/supabaseClient';
-import type { CadastroTorreTramo } from './producaoTramosImportacao';
+import type { CadastroTorreTramo, LoteCatalogoTramos } from './producaoTramosImportacao';
 
 export interface CatalogoTramo {
   id: string;
@@ -64,4 +64,18 @@ export async function listarCatalogoTramos(): Promise<CatalogoTramo[]> {
     .order('tramo');
   if (error) throw new Error(error.message);
   return (data ?? []).map(normalizarCatalogoTramo);
+}
+
+export async function prepararImportacaoCatalogoTramos(lote: LoteCatalogoTramos): Promise<string> {
+  const { data, error } = await (supabase.rpc as any)('prod_preparar_importacao_catalogo_tramos', { p: lote });
+  if (error) throw new Error(error.message);
+  return String(data);
+}
+
+export async function reconciliarCatalogoTramos(loteId: string): Promise<void> {
+  const { error } = await (supabase.rpc as any)('prod_reconciliar_catalogo_tramos', {
+    p_lote: loteId,
+    p_confirmacao_3202: true,
+  });
+  if (error) throw new Error(error.message);
 }

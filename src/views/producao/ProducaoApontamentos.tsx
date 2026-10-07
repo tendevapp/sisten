@@ -45,7 +45,7 @@ import TabelaProgramadoRealizado from '../../components/producao/apontamentos/Ta
 import RelatoriosApontamento from '../../components/producao/apontamentos/RelatoriosApontamento';
 import ProgramacaoSemanal from '../../components/producao/apontamentos/ProgramacaoSemanal';
 import CadastroEtapas from '../../components/producao/apontamentos/CadastroEtapas';
-import ApontamentosTorresFluxo from '../../components/producao/apontamentos/ApontamentosTorresFluxo';
+import ImportarPlanilhaTramos from '../../components/producao/apontamentos/ImportarPlanilhaTramos';
 import { btnSecundario, inputCls } from '../../components/producao/apontamentos/estilos';
 import type { Profile } from '../../types';
 
@@ -298,9 +298,11 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
         ))}
       </div>
 
-      {aba === 'lancar' && (
-        <ApontamentosTorresFluxo user={user} onNavegarAlmoxarifado={() => onNavigate('/almoxarifado')} />
-      )}
+      {aba === 'lancar' && (podeCadastros ? <ImportarPlanilhaTramos /> : (
+        <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+          O apontamento por tramo está sendo preparado. Solicite ao responsável pelo cadastro a importação da planilha de produção.
+        </div>
+      ))}
 
       {aba !== 'lancar' && (!etapas || !matriz ? (
         <div className="flex justify-center py-16">
