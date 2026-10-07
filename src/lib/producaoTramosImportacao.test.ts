@@ -52,7 +52,7 @@ function criarPlanilhaTramos(): ArrayBuffer {
 
   const workbook = XLSX.utils.book_new();
   const torreSheet = XLSX.utils.aoa_to_sheet(torre);
-  torreSheet.A5 = { t: 'n', f: 'A4+1', v: 2 };
+  torreSheet.A5 = { t: 'n', f: 'A4+1', v: 2 as any };
   XLSX.utils.book_append_sheet(workbook, torreSheet, 'TORRE');
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(tramos), 'TRAMOS');
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });

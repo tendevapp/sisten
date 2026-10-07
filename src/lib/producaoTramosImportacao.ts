@@ -128,7 +128,9 @@ function lerCadastro(sheet: Planilha): { cadastro: CadastroTorreTramo[]; lookup:
   for (let linha = limite.s.r; linha <= limite.e.r; linha += 1) {
     const sequencial = valorDireto(sheet, linha, 10);
     const tramo = valorDireto(sheet, linha, 11);
-    if (typeof sequencial === 'number' && tramoValido(tramo)) lookup.set(sequencial, tramo.trim());
+    if (typeof sequencial === 'number' && tramoValido(tramo)) {
+      lookup.set(sequencial, tramo.trim() as SnapshotTramoPlanilha['tramo']);
+    }
   }
 
   const divergencias: DivergenciaImportacaoTramos[] = [];
