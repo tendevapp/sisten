@@ -195,6 +195,8 @@ export function normalizarLinhaControleEstoque(row: Record<string, unknown>): Co
     ultimo_movimento: row.ultimo_movimento == null ? null : String(row.ultimo_movimento),
     config_id: row.config_id == null ? null : String(row.config_id),
     config_updated_at: row.config_updated_at == null ? null : String(row.config_updated_at),
+    fora_zl0024: row.fora_zl0024 === true,
+    ultimo_movimento_geral: row.ultimo_movimento_geral == null ? null : String(row.ultimo_movimento_geral),
   };
 }
 

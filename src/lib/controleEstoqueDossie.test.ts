@@ -3,6 +3,7 @@ import type { ControleEstoqueItem } from '../types';
 import { calcularFaixaDoItem } from './controleEstoque';
 import {
   COLUNAS_DOSSIE,
+  calcularAlertaZerado,
   calcularSituacaoChegada,
   criarWorkbookDossie,
   montarDossie,
@@ -142,6 +143,68 @@ describe('controleEstoqueDossie', () => {
     const linhas = montarDossie([analisar(item)], new Map());
     expect(linhas.map(l => l.pedido)).toEqual(['4100000001', '4100000002']);
     expect(linhas[1]).toMatchObject({ existeRm: false, rm: null });
+  });
+
+  it('classifica a RM em aguardando pedido, em pedido ou já atendida', () => {
+    const item = criarItem({
+      rms: [rm('1', null), rm('2', '4100000002'), rm('3', '4100000003')],
+      pedidos: [
+        pedido('4100000002'),
+        pedido('4100000003', { quantidade_pendente: 0, quantidade_recebida_mb51: 10 }),
+      ],
+    });
+    const linhas = montarDossie([analisar(item)], new Map());
+    expect(linhas.map(l => [l.rm, l.situacaoRm])).toEqual([['1', 'SEM_PEDIDO'], ['2', 'EM_PEDIDO'], ['3', 'ATENDIDA']]);
+  });
+
+  it('marca o pedido atrasado quando falta chegar e a remessa prevista passou', () => {
+    const item = criarItem({
+      pedidos: [
+        pedido('4100000001', { remessa_prevista: '2026-09-05' }),
+        pedido('4100000002', { remessa_prevista: '2026-10-20' }),
+      ],
+    });
+    const linhas = montarDossie([analisar(item)], new Map(), '2026-10-07');
+    expect(linhas.map(l => [l.pedido, l.pedidoAtrasado])).toEqual([['4100000001', true], ['4100000002', false]]);
+  });
+
+  describe('estoque zerado', () => {
+    const zerado = (extra: Partial<ControleEstoqueItem>) => criarItem({
+      saldo_total: 0, saldo_reposicao: 0, fora_zl0024: true, ultimo_movimento_geral: '2026-08-11', ...extra,
+    });
+    const alerta = (item: ControleEstoqueItem) => montarDossie([analisar(item)], new Map())[0].alertaZerado;
+
+    it('com PO aberta, mesmo havendo RM sem pedido', () => {
+      expect(alerta(zerado({ rms: [rm('1', null)], pedidos: [pedido('4100000001')] }))).toBe('ZERADO_COM_PO');
+    });
+
+    it('com RM aguardando pedido', () => {
+      expect(alerta(zerado({ rms: [rm('1', null)] }))).toBe('ZERADO_COM_RM');
+    });
+
+    it('sem reposição quando a única RM já foi atendida por pedido encerrado', () => {
+      const item = zerado({
+        rms: [rm('1', '4100000001')],
+        pedidos: [pedido('4100000001', { quantidade_pendente: 0, quantidade_recebida_mb51: 10 })],
+      });
+      const linhas = montarDossie([analisar(item)], new Map());
+      expect(linhas.every(l => l.alertaZerado === 'ZERADO_SEM_REPOSICAO')).toBe(true);
+      expect(linhas[0]).toMatchObject({ foraZl0024: true, ultimoMovimento: '2026-08-11', situacaoRm: 'ATENDIDA' });
+    });
+
+    it('fora das visões sem consumo (sem mínimo) ou com saldo', () => {
+      expect(alerta(zerado({ consumo_total: 0 }))).toBeNull();
+      expect(alerta(criarItem({}))).toBeNull();
+    });
+
+    it('usa o mínimo SISTEN quando a planilha não tem mínimo', () => {
+      expect(calcularAlertaZerado({
+        saldo: 0, temPedidoAberto: false, temRmSemPedido: false, teveMovimento: true, minimo: null, minimoSisten: 4,
+      })).toBe('ZERADO_SEM_REPOSICAO');
+      expect(calcularAlertaZerado({
+        saldo: 0, temPedidoAberto: false, temRmSemPedido: false, teveMovimento: false, minimo: 4, minimoSisten: null,
+      })).toBeNull();
+    });
   });
 
   it('exporta o dossiê com os cabeçalhos, situação da chegada e código SAP como texto', () => {

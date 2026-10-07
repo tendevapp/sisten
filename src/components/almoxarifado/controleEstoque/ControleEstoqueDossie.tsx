@@ -1,8 +1,10 @@
 import React, { Fragment, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, CornerDownRight, Download, ShieldAlert } from 'lucide-react';
 import {
+  ROTULO_ALERTA_ZERADO,
   ROTULO_SITUACAO_CHEGADA,
   exportarDossieExcel,
+  type AlertaZerado,
   type EntregaDossie,
   type LinhaDossie,
   type ResumoCompraDossie,
@@ -20,6 +22,28 @@ interface Props {
 }
 
 const PAGE_SIZE = 50;
+
+type VisaoDossie = 'REPOSICAO' | 'TODOS' | AlertaZerado;
+
+const VISOES: { id: VisaoDossie; rotulo: string; dica: string }[] = [
+  { id: 'REPOSICAO', rotulo: 'Crítico ou Alerta', dica: 'Materiais abaixo do mínimo ou perto dele.' },
+  { id: 'ZERADO_COM_PO', rotulo: ROTULO_ALERTA_ZERADO.ZERADO_COM_PO, dica: 'Saldo zerado e pedido com quantidade a chegar.' },
+  { id: 'ZERADO_COM_RM', rotulo: ROTULO_ALERTA_ZERADO.ZERADO_COM_RM, dica: 'Saldo zerado, nenhum pedido em aberto e RM aguardando compra.' },
+  { id: 'ZERADO_SEM_REPOSICAO', rotulo: ROTULO_ALERTA_ZERADO.ZERADO_SEM_REPOSICAO, dica: 'Saldo zerado, já movimentou, tem estoque mínimo e não tem pedido em aberto nem RM aguardando compra. RM já atendida por pedido encerrado não conta como reposição.' },
+  { id: 'TODOS', rotulo: 'Todos', dica: 'Todos os materiais do recorte.' },
+];
+
+const naVisao = (linha: LinhaDossie, id: VisaoDossie) => {
+  if (id === 'TODOS') return true;
+  if (id === 'REPOSICAO') return linha.status === 'CRITICO' || linha.status === 'ALERTA';
+  return linha.alertaZerado === id;
+};
+
+const COR_ALERTA: Record<AlertaZerado, string> = {
+  ZERADO_COM_PO: 'var(--status-warning)',
+  ZERADO_COM_RM: 'var(--status-warning)',
+  ZERADO_SEM_REPOSICAO: 'var(--status-critical)',
+};
 
 const tom = (token: string, pct = 14) => `color-mix(in srgb, ${token} ${pct}%, transparent)`;
 
@@ -54,6 +78,48 @@ const SituacaoBadge = ({ situacao }: { situacao: SituacaoChegada }) => (
   <span className="inline-flex rounded px-2 py-0.5 text-[10px] font-black whitespace-nowrap" style={{ color: COR_SITUACAO[situacao], background: tom(COR_SITUACAO[situacao], 12) }}>
     {ROTULO_SITUACAO_CHEGADA[situacao]}
   </span>
+);
+
+const AlertaBadge = ({ linha }: { linha: LinhaDossie }) => {
+  if (!linha.alertaZerado) return null;
+  const cor = COR_ALERTA[linha.alertaZerado];
+  const detalhes = [
+    linha.foraZl0024 ? 'Material fora da ZL0024 (sem saldo em nenhum depósito).' : null,
+    linha.ultimoMovimento ? `Último movimento na MB51: ${formatDateBR(linha.ultimoMovimento)}.` : null,
+  ].filter(Boolean).join(' ');
+  return (
+    <span className="mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider whitespace-nowrap" style={{ color: cor, background: tom(cor, 12) }} title={detalhes || undefined}>
+      {ROTULO_ALERTA_ZERADO[linha.alertaZerado]}
+    </span>
+  );
+};
+
+const TagRm = ({ linha }: { linha: LinhaDossie }) => {
+  if (linha.rmRepetida || (linha.situacaoRm !== 'ATENDIDA' && linha.situacaoRm !== 'SEM_PEDIDO')) return null;
+  const atendida = linha.situacaoRm === 'ATENDIDA';
+  return (
+    <span
+      className="ml-1.5 rounded px-1 py-0.5 text-[9px] font-sans font-bold whitespace-nowrap"
+      style={atendida ? { background: 'var(--surface-sunken)', color: 'var(--ink-muted)' } : { background: tom('var(--status-warning)', 12), color: 'var(--status-warning)' }}
+      title={atendida ? 'A RM segue aberta na ME5A, mas o pedido dela já foi entregue ou encerrado: não há reposição a caminho.' : 'RM ainda sem pedido.'}
+    >
+      {atendida ? 'já atendida' : 'aguardando pedido'}
+    </span>
+  );
+};
+
+const TagAtrasado = ({ linha }: { linha: LinhaDossie }) => (
+  linha.pedidoAtrasado
+    ? (
+      <span
+        className="ml-1.5 rounded px-1 py-0.5 text-[9px] font-sans font-bold whitespace-nowrap"
+        style={{ background: tom('var(--status-critical)', 12), color: 'var(--status-critical)' }}
+        title={linha.remessaPrevista ? `Remessa prevista para ${formatDateBR(linha.remessaPrevista)} e ainda falta chegar.` : undefined}
+      >
+        atrasado
+      </span>
+    )
+    : null
 );
 
 const SimNao = ({ valor }: { valor: boolean }) => {
@@ -128,14 +194,21 @@ const ListaEntregas = ({ entregas }: { entregas: EntregaDossie[] }) => (
 );
 
 export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }: Props) {
-  const [somenteReposicao, setSomenteReposicao] = useState(true);
+  const [visao, setVisao] = useState<VisaoDossie>('REPOSICAO');
   const [pagina, setPagina] = useState(0);
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
 
-  const visiveis = useMemo(
-    () => (somenteReposicao ? linhas.filter(l => l.status === 'CRITICO' || l.status === 'ALERTA') : linhas),
-    [linhas, somenteReposicao],
-  );
+  const materiaisPorVisao = useMemo(() => {
+    const contagem = new Map<VisaoDossie, number>();
+    linhas.forEach(linha => {
+      if (!linha.primeiraDoMaterial) return;
+      VISOES.forEach(v => { if (naVisao(linha, v.id)) contagem.set(v.id, (contagem.get(v.id) ?? 0) + 1); });
+    });
+    return contagem;
+  }, [linhas]);
+
+  const visiveis = useMemo(() => linhas.filter(l => naVisao(l, visao)), [linhas, visao]);
+  const dicaVisao = VISOES.find(v => v.id === visao)?.dica;
   const materiais = useMemo(() => new Set(visiveis.map(l => l.material)).size, [visiveis]);
   useEffect(() => { setPagina(0); setAbertas(new Set()); }, [visiveis]);
 
@@ -173,10 +246,27 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="inline-flex items-center gap-2 text-xs font-bold cursor-pointer" style={{ color: 'var(--ink-secondary)' }}>
-          <input type="checkbox" checked={somenteReposicao} onChange={e => setSomenteReposicao(e.target.checked)} className="h-4 w-4 accent-[var(--brand)]" />
-          Só materiais Crítico ou Alerta
-        </label>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Visão do dossiê">
+          {VISOES.map(v => {
+            const ativa = visao === v.id;
+            return (
+              <button
+                key={v.id}
+                type="button"
+                aria-pressed={ativa}
+                onClick={() => setVisao(v.id)}
+                title={v.dica}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer hover:opacity-90"
+                style={ativa
+                  ? { borderColor: 'var(--brand)', background: tom('var(--brand)', 12), color: 'var(--brand)' }
+                  : { borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-secondary)' }}
+              >
+                {v.rotulo}
+                <span className="tabular text-[10px] font-black" style={{ color: ativa ? 'var(--brand)' : 'var(--ink-muted)' }}>{formatInt(materiaisPorVisao.get(v.id) ?? 0)}</span>
+              </button>
+            );
+          })}
+        </div>
         <div className="flex items-center gap-3">
           <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
             {formatInt(materiais)} materiais · {formatInt(visiveis.length)} linhas
@@ -196,13 +286,14 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
       <p className="text-[11px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
         Cada linha liga uma RM ao pedido que a atendeu. RM dividida em vários pedidos ocupa uma linha por pedido; pedido em aberto sem RM entra como linha própria.
         Chegada: <strong>SIM</strong> = recebido tudo, <strong>PARCIAL</strong> = entrega incompleta, <strong>NÃO</strong> = nada recebido. Abra <em>Entregas</em> para ver cada lançamento da MB51, com estornos.
+        {dicaVisao && <> <strong>{VISOES.find(v => v.id === visao)?.rotulo}:</strong> {dicaVisao}</>}
       </p>
 
       {visiveis.length === 0 ? (
         <div className="rounded-xl border p-10 text-center" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
           <ShieldAlert className="mx-auto h-8 w-8 mb-2" style={{ color: 'var(--ink-muted)' }} />
           <p className="font-bold" style={{ color: 'var(--ink-primary)' }}>Nenhum material neste recorte</p>
-          <p className="text-xs mt-1" style={{ color: 'var(--ink-muted)' }}>Ajuste os filtros ou desmarque "Só materiais Crítico ou Alerta".</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--ink-muted)' }}>Ajuste os filtros ou escolha outra visão.</p>
         </div>
       ) : (
         <>
@@ -254,8 +345,9 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                         <td className="px-3 py-2 max-w-72">
                           <p className="truncate" title={linha.descricao ?? ''} style={esmaecido}>{linha.descricao || 'Sem descrição'}</p>
                           {linha.resumo && <ResumoMaterial resumo={linha.resumo} />}
+                          {linha.primeiraDoMaterial && <AlertaBadge linha={linha} />}
                         </td>
-                        <td className="px-3 py-2 text-right tabular font-bold" style={esmaecido} title={linha.saldoTotal !== linha.saldo ? `Saldo total ${formatQtd(linha.saldoTotal)} (inclui depósitos fora da reposição)` : undefined}>{formatQtd(linha.saldo)}</td>
+                        <td className="px-3 py-2 text-right tabular font-bold" style={esmaecido} title={linha.foraZl0024 ? 'Material fora da ZL0024: saldo zero em todos os depósitos' : linha.saldoTotal !== linha.saldo ? `Saldo total ${formatQtd(linha.saldoTotal)} (inclui depósitos fora da reposição)` : undefined}>{formatQtd(linha.saldo)}</td>
                         <td className="px-3 py-2" style={esmaecido}>{linha.umb ?? '—'}</td>
                         <td className="px-3 py-2 text-right tabular border-l" style={esmaecido}>{qtd(linha.minimo)}</td>
                         <td className="px-3 py-2 text-right tabular font-black" style={repetida ? esmaecido : { color: linha.propostaRm ? 'var(--status-critical)' : undefined }}>{qtd(linha.propostaRm)}</td>
@@ -267,7 +359,7 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                           {linha.rmRepetida
                             ? <span className="inline-flex items-center gap-1 text-[10px] font-sans" style={{ color: 'var(--ink-muted)' }} title="Mesma RM da linha acima, atendida por outro pedido"><CornerDownRight className="h-3 w-3" aria-hidden="true" /> mesma RM</span>
                             : linha.rm
-                              ? <>{linha.rm}{linha.itemRm && <span style={{ color: 'var(--ink-muted)' }}> /{linha.itemRm}</span>}</>
+                              ? <>{linha.rm}{linha.itemRm && <span style={{ color: 'var(--ink-muted)' }}> /{linha.itemRm}</span>}<TagRm linha={linha} /></>
                               : vazio}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">{!linha.rmRepetida && linha.dataRm ? formatDateBR(linha.dataRm) : vazio}</td>
@@ -278,6 +370,7 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                           {linha.pedido
                             ? <>{linha.pedido}{linha.itemPedido && <span style={{ color: 'var(--ink-muted)' }}> /{linha.itemPedido}</span>}</>
                             : vazio}
+                          <TagAtrasado linha={linha} />
                           {linha.pedidoCompartilhado && <span className="ml-1.5 rounded px-1 py-0.5 text-[9px] font-sans font-bold" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }} title="Este pedido atende mais de uma RM do material; é contado uma vez nos totais.">compartilhado</span>}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">{linha.dataPedido ? formatDateBR(linha.dataPedido) : vazio}</td>
@@ -325,6 +418,7 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                       </div>
                       <p className="text-xs truncate mt-0.5" style={{ color: 'var(--ink-muted)' }}>{linha.descricao || 'Sem descrição'}</p>
                       {linha.resumo && <ResumoMaterial resumo={linha.resumo} />}
+                      <AlertaBadge linha={linha} />
                     </div>
                     <StatusBadge status={linha.status} />
                   </div>
@@ -334,9 +428,9 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                     ))}
                   </div>
                   <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                    <div><dt className="text-[9px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>RM</dt><dd className="font-mono">{linha.rmRepetida ? 'mesma RM' : linha.rm ?? 'Sem RM'}{!linha.rmRepetida && linha.dataRm ? ` · ${formatDateBR(linha.dataRm)}` : ''}</dd></div>
+                    <div><dt className="text-[9px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>RM</dt><dd className="font-mono">{linha.rmRepetida ? 'mesma RM' : linha.rm ?? 'Sem RM'}{!linha.rmRepetida && linha.dataRm ? ` · ${formatDateBR(linha.dataRm)}` : ''}<TagRm linha={linha} /></dd></div>
                     <div><dt className="text-[9px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>Solicitado</dt><dd>{linha.rmRepetida ? '—' : <>{qtd(linha.quantidadeSolicitada)}{linha.requisitante ? ` · ${linha.requisitante}` : ''}</>}</dd></div>
-                    <div><dt className="text-[9px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>Pedido</dt><dd className="font-mono">{linha.pedido ?? '—'}{linha.itemPedido ? ` /${linha.itemPedido}` : ''}{linha.dataPedido ? ` · ${formatDateBR(linha.dataPedido)}` : ''}</dd></div>
+                    <div><dt className="text-[9px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>Pedido</dt><dd className="font-mono">{linha.pedido ?? '—'}{linha.itemPedido ? ` /${linha.itemPedido}` : ''}{linha.dataPedido ? ` · ${formatDateBR(linha.dataPedido)}` : ''}<TagAtrasado linha={linha} /></dd></div>
                     <div><dt className="text-[9px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>Chegada</dt><dd><SituacaoBadge situacao={linha.situacao} /> {linha.quantidadePedida !== null ? `${formatQtd(linha.quantidadeChegou ?? 0)} / ${formatQtd(linha.quantidadePedida)}` : ''}</dd></div>
                   </dl>
                 </button>
