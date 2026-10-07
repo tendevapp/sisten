@@ -59,6 +59,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
     cardDescriptions: {
       planejamento_acompanhamento_geral: 'Importe a base operacional e consulte o dashboard, PCP, motor, auxiliares e dados de origem.',
       planejamento_acompanhamento_diario_tv: 'Painel em tela cheia para TV, com escala automática, atualização periódica e leitura à distância.',
+      prod_entrega: 'Etapa de cada tramo por torre, gargalos, checklist de expedição e mapa do chão de fábrica.',
     },
   },
   {

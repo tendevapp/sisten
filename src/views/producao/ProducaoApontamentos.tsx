@@ -2,23 +2,24 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Produção › Apontamentos — Programado × Realizado por etapa, nas três naves.
+ * Produção › Apontamentos — o que era a planilha "PROD — Avanço de Produção".
  *
  * Abas:
- *   - Programado × Realizado: a tabela da planilha (TOTAL do ano + semanas);
- *   - Lançar realizado: os três formulários (Nave 1, Nave 2, White) — qualquer
- *     usuário com acesso à página;
- *   - Relatórios: Indicador Previsto × Realizado e aderência semanal;
- *   - Programação: grade semanal do Planejamento (flag prod_apt_programar);
- *   - Etapas: cadastro (flag prod_apt_cadastros).
+ *   - Apontar: quadro por etapa, um tramo ou vários (razão prod_apt_tramo_eventos);
+ *   - Avanço: Plan × Real por marco, ritmo, curva S e grade de torres;
+ *   - Gargalos: lead time entre marcos e tramos parados agora;
+ *   - Qualidade: reparos de solda e retrabalhos;
+ *   - Por nave: Programado × Realizado por etapa e semana (modelo agregado);
+ *   - Programação: metas por marco e grade semanal por etapa (prod_apt_programar);
+ *   - Cadastros: situações, etapas e carga da planilha (prod_apt_cadastros).
  *
- * Começo simples, por decisão do usuário: só o realizado, sem travar etapas
- * nem vincular peças. Offline: o lançamento novo vai para o outbox quando a
- * rede cai e é reenviado ao voltar online / ganhar foco.
+ * Design: docs/superpowers/specs/2026-10-07-apontamento-tramos-indicadores-design.md
+ * Offline: o apontamento por tramo vai para a fila global (configFormularios);
+ * o lançamento por nave usa o outbox próprio, reenviado ao voltar online.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, CalendarRange, ClipboardPen, ListOrdered, Loader2, RefreshCw, Table2, Trash2, WifiOff } from 'lucide-react';
+import { CalendarRange, ClipboardPen, Factory, Gauge, ListOrdered, Loader2, RefreshCw, Timer, Trash2, WifiOff, Wrench } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import { canAccessPage } from '../../lib/pages';
@@ -47,7 +48,16 @@ import ProgramacaoSemanal from '../../components/producao/apontamentos/Programac
 import CadastroEtapas from '../../components/producao/apontamentos/CadastroEtapas';
 import ImportarPlanilhaTramos from '../../components/producao/apontamentos/ImportarPlanilhaTramos';
 import ApontamentosTorresFluxo from '../../components/producao/apontamentos/ApontamentosTorresFluxo';
-import { btnSecundario, inputCls } from '../../components/producao/apontamentos/estilos';
+import QuadroTramos from '../../components/producao/apontamentos/tramos/QuadroTramos';
+import AvancoTramos from '../../components/producao/apontamentos/tramos/AvancoTramos';
+import GargalosTramos from '../../components/producao/apontamentos/tramos/GargalosTramos';
+import QualidadeTramos from '../../components/producao/apontamentos/tramos/QualidadeTramos';
+import MetasMarco from '../../components/producao/apontamentos/tramos/MetasMarco';
+import CadastroSituacoes from '../../components/producao/apontamentos/tramos/CadastroSituacoes';
+import SheetApontamento from '../../components/producao/apontamentos/tramos/SheetApontamento';
+import { useDadosTramos } from '../../components/producao/apontamentos/tramos/useDadosTramos';
+import type { TramoAtual } from '../../lib/producaoTramos';
+import { btnSecundario } from '../../components/producao/apontamentos/estilos';
 import type { Profile } from '../../types';
 
 interface Props {
@@ -55,7 +65,11 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-type Aba = 'lancar' | 'painel' | 'relatorios' | 'programacao' | 'etapas';
+type Aba = 'apontar' | 'avanco' | 'gargalos' | 'qualidade' | 'naves' | 'programacao' | 'cadastros';
+
+// inputCls traz w-full, que vence o w-auto: os seletores de período ocupavam a linha inteira.
+const selectPeriodoCls =
+  'rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100';
 
 /** A planilha da fábrica vai até a W52 — é o horizonte padrão da tabela. */
 const ULTIMA_SEMANA_PADRAO = 52;
@@ -66,7 +80,15 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
   const podeProgramar = canAccessPage(user, 'prod_apt_programar');
   const podeCadastros = canAccessPage(user, 'prod_apt_cadastros');
 
-  const [aba, setAba] = useState<Aba>('lancar');
+  const hoje = useMemo(() => hojeLocal(), []);
+  const [aba, setAba] = useState<Aba>('apontar');
+  const [vistaNave, setVistaNave] = useState<'tabela' | 'graficos'>('tabela');
+  const [vistaProgramacao, setVistaProgramacao] = useState<'marcos' | 'etapas'>('marcos');
+  const [vistaCadastro, setVistaCadastro] = useState<'situacoes' | 'etapas' | 'importar'>('situacoes');
+  // O fluxo por nave (POC) fica acessível até a tela nova fechar um ciclo.
+  const [fluxoAntigo, setFluxoAntigo] = useState(false);
+  const [tramoAberto, setTramoAberto] = useState<TramoAtual | null>(null);
+  const { dados: dadosTramos, recarregar: recarregarTramos } = useDadosTramos();
   const [ano, setAno] = useState(semanaAtual.ano);
   const [de, setDe] = useState(Math.max(1, semanaAtual.semana - 4));
   const [ate, setAte] = useState(ULTIMA_SEMANA_PADRAO);
@@ -151,12 +173,31 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
   }, [tentarEnviar]);
 
   const abas: Array<{ id: Aba; rotulo: string; Icone: LucideIcon }> = [
-    { id: 'lancar', rotulo: 'Lançar Realizado', Icone: ClipboardPen },
-    { id: 'painel', rotulo: 'Programado × Realizado', Icone: Table2 },
-    { id: 'relatorios', rotulo: 'Relatórios', Icone: BarChart3 },
+    { id: 'apontar', rotulo: 'Apontar', Icone: ClipboardPen },
+    { id: 'avanco', rotulo: 'Avanço', Icone: Gauge },
+    { id: 'gargalos', rotulo: 'Gargalos', Icone: Timer },
+    { id: 'qualidade', rotulo: 'Qualidade', Icone: Wrench },
+    { id: 'naves', rotulo: 'Por nave', Icone: Factory },
     { id: 'programacao', rotulo: 'Programação', Icone: CalendarRange },
-    ...(podeCadastros ? [{ id: 'etapas' as Aba, rotulo: 'Etapas', Icone: ListOrdered }] : []),
+    ...(podeCadastros ? [{ id: 'cadastros' as Aba, rotulo: 'Cadastros', Icone: ListOrdered }] : []),
   ];
+
+  const segmento = <T extends string>(valor: T, opcoes: Array<[T, string]>, mudar: (v: T) => void) => (
+    <div className="flex w-fit flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+      {opcoes.map(([id, rotulo]) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => mudar(id)}
+          className={`min-h-[36px] rounded-lg px-3 text-xs font-bold ${
+            valor === id ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-50' : 'text-slate-500 dark:text-slate-400'
+          }`}
+        >
+          {rotulo}
+        </button>
+      ))}
+    </div>
+  );
 
   const opcoesSemana = Array.from({ length: totalSemanas }, (_, i) => i + 1);
   const atalho = (cls: boolean) =>
@@ -195,7 +236,7 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
       >
         Últimas 5
       </button>
-      <select value={ano} onChange={e => setAno(Number(e.target.value))} className={`${inputCls} w-auto py-1.5`} aria-label="Ano">
+      <select value={ano} onChange={e => setAno(Number(e.target.value))} className={selectPeriodoCls} aria-label="Ano">
         {[semanaAtual.ano - 1, semanaAtual.ano].map(a => (
           <option key={a} value={a}>
             {a}
@@ -210,7 +251,7 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
           setDe(v);
           if (v > ate) setAte(v);
         }}
-        className={`${inputCls} w-auto py-1.5`}
+        className={selectPeriodoCls}
         aria-label="Da semana"
       >
         {opcoesSemana.map(n => (
@@ -229,7 +270,7 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
             setDe(v);
           }
         }}
-        className={`${inputCls} w-auto py-1.5`}
+        className={selectPeriodoCls}
         aria-label="Até a semana"
       >
         {opcoesSemana.map(n => (
@@ -251,9 +292,9 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
       <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 dark:border-slate-800 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="font-display text-xl font-bold text-slate-900 dark:text-slate-50">Apontamentos de Produção</h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Programado pelo Planejamento × realizado lançado pela produção, por etapa e semana.</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Avanço dos tramos por etapa, metas do Planejamento e indicadores — o que era a planilha de avanço.</p>
         </div>
-        {(aba === 'painel' || aba === 'relatorios') && seletorPeriodo}
+        {aba === 'naves' && seletorPeriodo}
       </div>
 
       {pendentes.length > 0 && (
@@ -299,30 +340,87 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
         ))}
       </div>
 
-      {aba === 'lancar' && (
-        <div className="space-y-4">
-          {podeCadastros && <ImportarPlanilhaTramos />}
-          <ApontamentosTorresFluxo user={user} onNavegarAlmoxarifado={() => onNavigate('/almoxarifado')} />
-        </div>
-      )}
-
-      {aba !== 'lancar' && (!etapas || !matriz ? (
+      {['apontar', 'avanco', 'gargalos', 'qualidade'].includes(aba) && !fluxoAntigo && !dadosTramos && (
         <div className="flex justify-center py-16">
           <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
         </div>
-      ) : (
-        <>
-          {aba === 'painel' && <TabelaProgramadoRealizado matriz={matriz} semanaAtual={semanaAtual} />}
+      )}
 
-          {aba === 'relatorios' && <RelatoriosApontamento matriz={matriz} />}
-
-          {aba === 'programacao' && (
-            <ProgramacaoSemanal etapas={etapas} semanaAtual={semanaAtual} podeEditar={podeProgramar} usuarioNome={user.name ?? ''} onSalvo={carregar} />
+      {aba === 'apontar' && (
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <button type="button" onClick={() => setFluxoAntigo(v => !v)} className="text-[11px] font-semibold text-slate-500 hover:underline">
+              {fluxoAntigo ? '← Voltar ao quadro por tramo' : 'Abrir fluxo antigo por nave (demonstração)'}
+            </button>
+          </div>
+          {fluxoAntigo ? (
+            <ApontamentosTorresFluxo user={user} onNavegarAlmoxarifado={() => onNavigate('/almoxarifado')} />
+          ) : (
+            dadosTramos && (
+              <QuadroTramos tramos={dadosTramos.tramos} situacoes={dadosTramos.situacoes} hoje={hoje} user={user} onRegistrado={recarregarTramos} />
+            )
           )}
+        </div>
+      )}
 
-          {aba === 'etapas' && podeCadastros && <CadastroEtapas etapas={etapas} onAlterado={carregar} />}
-        </>
-      ))}
+      {dadosTramos && aba === 'avanco' && <AvancoTramos tramos={dadosTramos.tramos} metas={dadosTramos.metas} prazos={dadosTramos.prazos} hoje={hoje} />}
+      {dadosTramos && aba === 'gargalos' && <GargalosTramos tramos={dadosTramos.tramos} hoje={hoje} onAbrir={setTramoAberto} />}
+      {dadosTramos && aba === 'qualidade' && <QualidadeTramos tramos={dadosTramos.tramos} onAbrir={setTramoAberto} />}
+
+      {aba === 'naves' && (
+        <div className="space-y-3">
+          {segmento<typeof vistaNave>(vistaNave, [['tabela', 'Programado × Realizado'], ['graficos', 'Relatórios']], setVistaNave)}
+          {!etapas || !matriz ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+            </div>
+          ) : vistaNave === 'tabela' ? (
+            <TabelaProgramadoRealizado matriz={matriz} semanaAtual={semanaAtual} />
+          ) : (
+            <RelatoriosApontamento matriz={matriz} />
+          )}
+        </div>
+      )}
+
+      {aba === 'programacao' && (
+        <div className="space-y-3">
+          {segmento<typeof vistaProgramacao>(vistaProgramacao, [['marcos', 'Metas por marco (tramos)'], ['etapas', 'Grade semanal por etapa']], setVistaProgramacao)}
+          {vistaProgramacao === 'marcos' ? (
+            dadosTramos && (
+              <MetasMarco metas={dadosTramos.metas} prazos={dadosTramos.prazos} podeEditar={podeProgramar} anoInicial={semanaAtual.ano} onSalvo={recarregarTramos} />
+            )
+          ) : etapas ? (
+            <ProgramacaoSemanal etapas={etapas} semanaAtual={semanaAtual} podeEditar={podeProgramar} usuarioNome={user.name ?? ''} onSalvo={carregar} />
+          ) : (
+            <div className="flex justify-center py-16">
+              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {aba === 'cadastros' && podeCadastros && (
+        <div className="space-y-3">
+          {segmento<typeof vistaCadastro>(vistaCadastro, [['situacoes', 'Situações do tramo'], ['etapas', 'Etapas por nave'], ['importar', 'Importar planilha']], setVistaCadastro)}
+          {vistaCadastro === 'situacoes' && dadosTramos && <CadastroSituacoes situacoes={dadosTramos.situacoes} onAlterado={recarregarTramos} />}
+          {vistaCadastro === 'etapas' && etapas && <CadastroEtapas etapas={etapas} onAlterado={carregar} />}
+          {vistaCadastro === 'importar' && <ImportarPlanilhaTramos onImportado={recarregarTramos} />}
+        </div>
+      )}
+
+      {tramoAberto && dadosTramos && (
+        <SheetApontamento
+          tramos={[tramoAberto]}
+          situacoes={dadosTramos.situacoes}
+          hoje={hoje}
+          user={user}
+          onClose={() => setTramoAberto(null)}
+          onSalvo={() => {
+            setTramoAberto(null);
+            recarregarTramos();
+          }}
+        />
+      )}
     </div>
   );
 }

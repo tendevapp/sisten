@@ -650,7 +650,6 @@ export default function TorresEntregaVisual({
       {modoExibicao === 'wip' && (
         <VisaoWipChaoFabrica
           tramos={tramosFiltrados}
-          todosTramos={tramos}
           aoAbrirTramo={handleAbrirTramoWip}
           aoAtualizarTramo={handleSalvarTramo}
         />
@@ -661,7 +660,6 @@ export default function TorresEntregaVisual({
         <ModalDetalheTramoEntrega
           tramo={tramoSelecionado}
           torre={torreSelecionada}
-          todosTramos={tramos}
           aoFechar={() => {
             setTramoSelecionado(null);
             setTorreSelecionada(null);

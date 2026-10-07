@@ -22,7 +22,7 @@ async function calcularSha256(arquivo: File): Promise<string> {
   return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export default function ImportarPlanilhaTramos() {
+export default function ImportarPlanilhaTramos({ onImportado }: { onImportado?: () => void } = {}) {
   const toast = useToast();
   const [resultado, setResultado] = useState<ResultadoLeituraPlanilhaTramos | null>(null);
   const [arquivo, setArquivo] = useState<File | null>(null);
@@ -70,8 +70,13 @@ export default function ImportarPlanilhaTramos() {
       const loteId = await prepararImportacaoCatalogoTramos(lote);
       await reconciliarCatalogoTramos(loteId);
       const importacao = await importarHistoricoTramos(loteId, resultado.snapshots);
-      toast.success(`Cadastro reconciliado e ${importacao.eventosInseridos} marcos históricos importados.`);
+      toast.success(
+        importacao.jaImportado
+          ? 'Esta planilha já foi importada; nada foi duplicado.'
+          : `Cadastro reconciliado e ${importacao.eventosInseridos} apontamentos históricos importados.`,
+      );
       setDivergenciasCatalogo(0);
+      onImportado?.();
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : 'Não foi possível importar o cadastro de tramos.');
     } finally {

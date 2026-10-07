@@ -1,8 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Maximize2, RefreshCw, X } from 'lucide-react';
+import { Maximize2, X } from 'lucide-react';
 import { useToast } from '../ui/Toast';
 import { atualizarTramoEntrega } from '../../lib/producaoApi';
-import { listarOperacoesComTramo } from '../../lib/producaoTorresApi';
 import { ORDEM_TRAMOS_VISUAL, type TramoEntrega, type TramoId } from '../../lib/producaoEntrega';
 import {
   ORDEM_ZONAS_WIP,
@@ -10,10 +9,8 @@ import {
   ZONAS_WIP,
   camposAoMoverParaZona,
   distribuirWip,
-  ultimaOperacaoPorTramo,
   type DistribuicaoWip,
   type ItemWip,
-  type OperacaoTramo,
   type ZonaWipId,
 } from '../../lib/producaoWip';
 import {
@@ -31,8 +28,6 @@ import {
 interface VisaoWipChaoFabricaProps {
   /** Tramos já filtrados (subprojeto, busca, gargalos) pela Visão Torres. */
   tramos: TramoEntrega[];
-  /** Todos os tramos do Controle de Entrega, para apontar códigos sem cadastro. */
-  todosTramos: TramoEntrega[];
   aoAbrirTramo: (tramo: TramoEntrega) => void;
   /** Atualiza o tramo na lista da página depois de movê-lo no mapa. */
   aoAtualizarTramo: (tramo: TramoEntrega) => void;
@@ -211,33 +206,22 @@ function MapaPlanta({
   );
 }
 
+// O Controle de Entrega é do Planejamento e tem fonte própria: a posição no mapa
+// vem só da etapa lançada aqui, sem os apontamentos da Produção (dados separados
+// por decisão de 07/10/2026; integrar depois é trocar este mapa vazio).
+const SEM_APONTAMENTOS = new Map<string, never>();
+
 export default function VisaoWipChaoFabrica({
   tramos,
-  todosTramos,
   aoAbrirTramo,
   aoAtualizarTramo,
 }: VisaoWipChaoFabricaProps) {
   const toast = useToast();
-  const [operacoes, setOperacoes] = useState<OperacaoTramo[]>([]);
-  const [carregando, setCarregando] = useState(true);
   const [tiposSelecionados, setTiposSelecionados] = useState<TramoId[]>([]);
   const [expandido, setExpandido] = useState(false);
   const [arrasto, setArrasto] = useState<Arrasto | null>(null);
   const pressao = useRef<{ item: ItemWip; x0: number; y0: number; ativo: boolean } | null>(null);
   const bloquearClique = useRef(false);
-
-  const carregar = useCallback(async () => {
-    setCarregando(true);
-    try {
-      setOperacoes(await listarOperacoesComTramo());
-    } finally {
-      setCarregando(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void carregar();
-  }, [carregar]);
 
   // Janela expandida: Esc fecha e a página de trás não rola.
   useEffect(() => {
@@ -254,7 +238,7 @@ export default function VisaoWipChaoFabrica({
     };
   }, [expandido]);
 
-  const ultimas = useMemo(() => ultimaOperacaoPorTramo(operacoes), [operacoes]);
+  const ultimas = SEM_APONTAMENTOS;
 
   // Contagem por tipo sempre sobre o WIP completo, para o botão mostrar quanto há de cada um.
   const wipCompleto = useMemo(() => distribuirWip(tramos, ultimas), [tramos, ultimas]);
@@ -344,11 +328,6 @@ export default function VisaoWipChaoFabrica({
     [arrasto, iniciarArraste],
   );
 
-  const semCadastro = useMemo(() => {
-    const cadastrados = new Set(todosTramos.map(t => t.id));
-    return [...ultimas.keys()].filter(codigo => !cadastrados.has(codigo));
-  }, [todosTramos, ultimas]);
-
   const resumo = (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <span className="rounded-full bg-slate-900 px-3 py-1 font-bold text-white dark:bg-slate-100 dark:text-slate-900">
@@ -359,15 +338,6 @@ export default function VisaoWipChaoFabrica({
           {wip.criticos} parado{wip.criticos > 1 ? 's' : ''} há 5d+
         </span>
       )}
-      <button
-        type="button"
-        onClick={() => void carregar()}
-        disabled={carregando}
-        title="Atualizar apontamentos"
-        className="rounded-xl border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400"
-      >
-        {carregando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-      </button>
     </div>
   );
 
@@ -466,18 +436,7 @@ export default function VisaoWipChaoFabrica({
       {legenda}
 
       <p className="text-[11px] text-slate-500 dark:text-slate-400">
-        A posição vem do último apontamento do tramo; sem apontamento, vale a etapa do Controle de Entrega. Tramo
-        expedido ou no pátio sai do WIP.
-        {semCadastro.length > 0 && (
-          <>
-            {' '}
-            <strong className="text-amber-700 dark:text-amber-400">
-              {semCadastro.length} código{semCadastro.length > 1 ? 's' : ''} apontado{semCadastro.length > 1 ? 's' : ''}{' '}
-              sem cadastro no Controle de Entrega ({semCadastro.slice(0, 5).join(', ')}
-              {semCadastro.length > 5 ? '…' : ''}) não aparece{semCadastro.length > 1 ? 'm' : ''} aqui.
-            </strong>
-          </>
-        )}
+        A posição vem da etapa lançada no Controle de Entrega. Tramo expedido ou no pátio sai do WIP.
       </p>
 
       {expandido && (

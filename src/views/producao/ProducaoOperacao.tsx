@@ -19,7 +19,7 @@ type Modo = 'pendencias' | 'entrega' | 'painel' | 'cadastros';
 
 const CONFIG: Record<Modo, { titulo: string; descricao: string; Icone: typeof ClipboardList }> = {
   pendencias: { titulo: 'Controle de Liberações', descricao: 'Reprovações que aguardam correção e nova inspeção.', Icone: AlertTriangle },
-  entrega: { titulo: 'Controle de Entrega', descricao: 'Prontidão de UT por torre e tramo para a Expedição.', Icone: CheckCircle2 },
+  entrega: { titulo: 'Controle de Entrega', descricao: 'Planejamento — etapa de cada tramo por torre, lançada aqui (independente dos apontamentos da Produção).', Icone: CheckCircle2 },
   painel: { titulo: 'Painel de Qualidade', descricao: 'Indicadores calculados dos lançamentos de produção.', Icone: BarChart3 },
   cadastros: { titulo: 'Cadastros de Qualidade', descricao: 'Tolerâncias e taxonomia usadas pelos lançamentos.', Icone: Settings2 },
 };

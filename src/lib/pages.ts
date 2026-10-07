@@ -73,6 +73,10 @@ export const PAGES: PageDef[] = [
   { id: 'planejamento_home', group: 'PLANEJAMENTO', label: 'Planejamento', path: '/planejamento', icon: CalendarDays, defaultRoles: ['admin', 'coordenador_suprimentos'] },
   { id: 'planejamento_acompanhamento_geral', group: 'PLANEJAMENTO', label: 'Acompanhamento Geral', path: '/planejamento/acompanhamento-geral', icon: Activity, defaultRoles: ['admin', 'coordenador_suprimentos'] },
   { id: 'planejamento_acompanhamento_diario_tv', group: 'PLANEJAMENTO', label: 'Acomp Diário', path: '/planejamento/acompanhamento-diario-tv', icon: MonitorPlay, defaultRoles: ['admin', 'coordenador_suprimentos'] },
+  // Controle de Entrega saiu da Produção (/producao/entrega) em 07/10/2026. O `id`
+  // é chave de `profiles.page_access` e não muda: quem tinha acesso continua tendo.
+  // Os dados ficam separados dos apontamentos da Produção (entrada própria).
+  { id: 'prod_entrega', group: 'PLANEJAMENTO', label: 'Controle de Entrega', path: '/planejamento/controle-entrega', icon: KanbanSquare, defaultRoles: ['admin'] },
 
   { id: 'suprimentos_home', group: 'SUPRIMENTOS', label: 'Suprimentos', path: '/suprimentos', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_cadastros_sap', group: 'SUPRIMENTOS', label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },
@@ -126,7 +130,6 @@ export const PAGES: PageDef[] = [
   { id: 'prod_apontamentos', group: 'PRODUÇÃO', label: 'Apontamentos', path: '/producao/apontamentos', icon: Timer, defaultRoles: ['admin'] },
   { id: 'prod_pendencias', group: 'PRODUÇÃO', label: 'Controle de Liberações', path: '/producao/pendencias', icon: ListChecks, defaultRoles: ['admin'] },
   { id: 'prod_consulta', group: 'PRODUÇÃO', label: 'Consulta', path: '/producao/consulta', icon: Search, defaultRoles: ['admin'] },
-  { id: 'prod_entrega', group: 'PRODUÇÃO', label: 'Controle de Entrega', path: '/producao/entrega', icon: KanbanSquare, defaultRoles: ['admin'] },
   { id: 'prod_expedicao', group: 'PRODUÇÃO', label: 'Plano de Expedição', path: '/producao/expedicao', icon: Truck, defaultRoles: [] },
   { id: 'prod_painel', group: 'PRODUÇÃO', label: 'Painel de Qualidade', path: '/producao/painel', icon: Activity, defaultRoles: ['admin'] },
   { id: 'prod_dashboards', group: 'PRODUÇÃO', label: 'Dashboards', path: '/producao/dashboards', icon: LayoutDashboard, defaultRoles: ['admin'] },

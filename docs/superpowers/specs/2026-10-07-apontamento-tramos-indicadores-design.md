@@ -272,3 +272,53 @@ fixture: 43/39/82/116 na linha 3147 e 27/53/79 de saldo.
    *Recomendo sim.* É o único jeito de as telas não se contradizerem.
 6. **Aposentar o POC** (`prod_apt_tramos` / `prod_apt_operacoes`, 8 tramos
    e 28 operações de demonstração) depois de um ciclo usando a tela nova.
+
+## 8. O que foi implementado (07/10/2026)
+
+Migration `20261007154742_apontamento_tramos_quadro_metas.sql`, aplicada no
+`supabase-sisten`. As decisões do §7, como ficaram:
+
+1. **Montagem:** não virou marco. A planilha mostra que o caminho real passa
+   por vários setores (Corte → Calandra → NAV01 → SAW02/03 → Internos → Jato
+   → Pintura → Acabamento → Montagem → Pátio → Expedido). Esses setores viram
+   **situações datadas** (`prod_apt_situacoes`, 21 semeadas da planilha), o
+   que permite medir o tempo em qualquer setor, e não só na Montagem.
+2. **NAV01 = 80.** Pelas datas de "Liberado p/ NAV02": Mai 16, Jun 12, Jul 14,
+   Ago 19, Set 16, Out 3. O 88 da planilha vem de Junho e Julho digitados
+   como 25 (iguais à meta).
+3. **Pátio só pela Qualidade:** *não aplicado*. O lançamento segue a regra
+   de acesso da página. Fica pendente de confirmação.
+4. **Prazos:** a carga inicial usa o fim do último mês com meta (NAV01
+   31/10, Jato 30/11, Greentag 31/12). O Planejamento ajusta em Programação
+   → Metas por marco.
+5. **O cilindro segue o razão:** um trigger atualiza `prod_tramos_entrega` a
+   cada apontamento manual. Na carga, 18 tramos SP01 tinham marcação manual
+   contraditória com a planilha, porque foram marcados pela posição
+   torre/tramo de antes da reconciliação. Esses tramos foram alinhados ao
+   razão. O backup ficou em `private.bkp_prod_tramos_entrega_20261007`.
+6. **POC:** saiu da aba e fica num botão "fluxo antigo" dentro de Apontar.
+   As tabelas `prod_apt_tramos`/`prod_apt_operacoes` continuam intactas.
+
+Carga histórica: 447 eventos (88/80/62/36/26 marcos, 98 situações, 57
+lançamentos de reparo = 325 reparos).
+
+Fora deste escopo: modo TV e feriados no cálculo de dias úteis (hoje conta
+seg–sex).
+
+### Revisão de 07/10/2026 (tarde): Controle de Entrega separado
+
+A pedido do usuário, o Controle de Entrega saiu da Produção e foi para o
+Planejamento: `/planejamento/controle-entrega`, com o mesmo id de acesso
+`prod_entrega`. O endereço antigo redireciona. **Por enquanto os dados ficam
+separados**, com entradas e fontes diferentes.
+
+- A migration `20261007165027_separar_controle_entrega_apontamentos.sql`
+  remove o trigger que copiava cada apontamento por tramo para
+  `prod_tramos_entrega` e tira a cópia "só avança" da carga histórica. Isso
+  revoga o item 5 do §8.
+- A Visão WIP do Controle de Entrega usa só a etapa lançada no próprio
+  Controle; não lê mais `prod_apt_operacoes`.
+- `prod_apt_situacoes.categoria_entrega` fica no banco, sem uso na tela.
+- Os ajustes que a carga e o alinhamento de hoje fizeram em
+  `prod_tramos_entrega` continuam lá. O estado antes do alinhamento está em
+  `private.bkp_prod_tramos_entrega_20261007`.

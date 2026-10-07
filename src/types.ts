@@ -3496,6 +3496,10 @@ export interface ControleEstoqueItem {
   ultimo_movimento: string | null;
   config_id: string | null;
   config_updated_at: string | null;
+  /** Material zerado que saiu da ZL0024 e volta pela MB51 ou por RM/PO aberta. */
+  fora_zl0024: boolean;
+  /** Último lançamento na MB51 em qualquer data (não só na janela). */
+  ultimo_movimento_geral: string | null;
 }
 
 export interface ControleEstoqueConfig {

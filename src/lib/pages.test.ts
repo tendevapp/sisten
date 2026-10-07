@@ -16,8 +16,8 @@ import {
 } from './pages';
 import type { Profile } from '../types';
 
-function mockUser(overrides: Partial<Profile> = {}): Profile {
-  const sectorId = overrides.sector_id || (overrides as any).setor_id || 'sec-1';
+function mockUser(overrides: Partial<Profile> & { setor_id?: string } = {}): Profile {
+  const sectorId = overrides.sector_id || overrides.setor_id || 'sec-1';
   return {
     id: 'usr-1',
     name: 'Usuario Teste',
@@ -335,6 +335,13 @@ describe('pages.ts - Controle de Acesso', () => {
   });
 
   describe('GROUP_ORDER — ordem dos módulos no menu', () => {
+    it('Controle de Entrega fica no Planejamento com o mesmo id de acesso', () => {
+      expect(PAGES.find(page => page.id === 'prod_entrega')).toMatchObject({
+        path: '/planejamento/controle-entrega',
+        group: 'PLANEJAMENTO',
+      });
+    });
+
     it('registra as duas telas de acompanhamento do Planejamento', () => {
       expect(PAGES.find(page => page.id === 'planejamento_acompanhamento_geral')).toMatchObject({
         path: '/planejamento/acompanhamento-geral',

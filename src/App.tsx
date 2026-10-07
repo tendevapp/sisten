@@ -169,6 +169,7 @@ const LEGACY_PATH_REDIRECTS: Record<string, string> = {
   '/formularios/qualidade': '/qualidade',
   '/formularios/qualidade-rnc': '/qualidade/rnc',
   '/formularios/qualidade/rnc': '/qualidade/rnc',
+  '/producao/entrega': '/planejamento/controle-entrega',
 };
 
 // Telas com layout mestre-detalhe (lista + painel) que preenchem toda a
@@ -1298,7 +1299,7 @@ export default function App() {
         if (canAccessPage(user, 'prod_pendencias')) return <ProducaoOperacao modo="pendencias" user={user} onNavigate={handleNavigate} />;
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      case '/producao/entrega':
+      case '/planejamento/controle-entrega':
         if (canAccessPage(user, 'prod_entrega')) return <ProducaoOperacao modo="entrega" user={user} onNavigate={handleNavigate} />;
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

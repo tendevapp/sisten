@@ -239,6 +239,19 @@ const RPCS: Record<string, ConfigRpc> = {
       },
     },
   },
+  // Produção — apontamento por tramo. O loteId vem do aparelho e torna o
+  // reenvio idempotente; o código APT sai do banco no envio.
+  prod_apt_registrar_tramos: {
+    rotulo: 'Apontamento de tramo',
+    resumo: args => `${(args?.p?.tramoIds || []).length} tramo(s) · ${args?.p?.dataOperacional || ''}`,
+    respostaProvisoria: args => ({ id: args?.p?.loteId, codigos: [], [MARCA_OFFLINE]: true }),
+  },
+  prod_apt_corrigir_evento_tramo: {
+    rotulo: 'Apontamento de tramo — correção',
+    resumo: args => String(args?.p?.motivo || ''),
+    respostaProvisoria: () => ({ id: null, codigo: null, [MARCA_OFFLINE]: true }),
+  },
+
   ssma_ficha_epi_registrar_devolucao: { rotulo: 'Ficha de EPI — devolução', respostaProvisoria: () => null },
   ssma_ficha_epi_assinar: { rotulo: 'Ficha de EPI — assinatura', respostaProvisoria: () => null },
 };
