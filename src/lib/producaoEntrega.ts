@@ -295,6 +295,23 @@ export function avaliarCriticidadeEspera(dias: number): {
   };
 }
 
+export const SUBPROJETOS_ENTREGA = [
+  { id: 'SP01', rotulo: 'SP01 (Torres 1 a 23)' },
+  { id: 'SP02', rotulo: 'SP02 (Torres 24 a 39)' },
+  { id: 'SP03', rotulo: 'SP03 (Torres 40 a 69)' },
+] as const;
+
+/**
+ * Subprojetos que o Controle de Entrega mostra. Por decisão de 07/10/2026,
+ * só a 1ª fase (SP01, torres 1–23); as torres novas serão cadastradas depois.
+ * As linhas de SP02/SP03 continuam no banco — para voltar a exibi-las, inclua
+ * o id aqui.
+ */
+export const SUBPROJETOS_EXIBIDOS_ENTREGA: readonly string[] = ['SP01'];
+
+export const exibirNoControleEntrega = (t: Pick<TramoEntrega, 'subprojeto_id'>): boolean =>
+  SUBPROJETOS_EXIBIDOS_ENTREGA.includes(t.subprojeto_id ?? '');
+
 /** Determina o subprojeto da torre (SP01: 1..23, SP02: 24..39, SP03: 40..69) */
 export function determinarSubprojetoPorTorre(torreNumero: number): string {
   if (torreNumero <= 23) return 'SP01';

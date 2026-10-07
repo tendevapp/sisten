@@ -11,7 +11,7 @@ import {
   type EntregaTramoProducao,
   type PendenciaProducao,
 } from '../../lib/producaoApi';
-import type { TramoEntrega } from '../../lib/producaoEntrega';
+import { exibirNoControleEntrega, type TramoEntrega } from '../../lib/producaoEntrega';
 import CadastrosQualidade from '../../components/producao/CadastrosQualidade';
 import TorresEntregaVisual from '../../components/producao/TorresEntregaVisual';
 
@@ -43,7 +43,8 @@ export default function ProducaoOperacao({ modo, user }: { modo: Modo; user: Pro
     if (!silencioso) { setCarregando(true); setErro(''); }
     try {
       if (modo === 'pendencias') setPendencias(await listarPendencias());
-      if (modo === 'entrega') setTramosEntrega(await listarTramosEntrega());
+      // Só os subprojetos exibidos (hoje, a 1ª fase): todas as visões e indicadores partem daqui.
+      if (modo === 'entrega') setTramosEntrega((await listarTramosEntrega()).filter(exibirNoControleEntrega));
       if (modo === 'painel') {
         const linhas = await listarLancamentos();
         setIndicadores(calcularIndicadoresQualidade(linhas.map(l => ({ etapaId: l.etapa_id, status: l.status, tentativa: l.tentativa }))));

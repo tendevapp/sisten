@@ -9,6 +9,7 @@ import {
   Eye,
   Filter,
   Flame,
+  History,
   LayoutGrid,
   ListChecks,
   ListOrdered,
@@ -22,6 +23,8 @@ import {
 import {
   CONFIG_CATEGORIAS,
   ORDEM_TRAMOS_VISUAL,
+  SUBPROJETOS_ENTREGA,
+  SUBPROJETOS_EXIBIDOS_ENTREGA,
   agruparTramosPorTorre,
   avaliarCriticidadeEspera,
   calcularIndicadoresDecisao,
@@ -32,6 +35,8 @@ import {
 } from '../../lib/producaoEntrega';
 import ModalDetalheTramoEntrega from './ModalDetalheTramoEntrega';
 import ModalGerenciarTramosEntrega from './ModalGerenciarTramosEntrega';
+import HistoricoAlteracoesEntrega from './HistoricoAlteracoesEntrega';
+import Modal, { ModalBody, ModalHeader } from '../ui/Modal';
 import VisaoExpedicaoChecklist from './VisaoExpedicaoChecklist';
 import VisaoWipChaoFabrica from './VisaoWipChaoFabrica';
 
@@ -47,6 +52,7 @@ export default function TorresEntregaVisual({
   recarregar,
 }: TorresEntregaVisualProps) {
   const [subprojetoFiltro, setSubprojetoFiltro] = useState<string>('todos');
+  const subprojetosExibidos = SUBPROJETOS_ENTREGA.filter(s => SUBPROJETOS_EXIBIDOS_ENTREGA.includes(s.id));
   const [somenteGargalos, setSomenteGargalos] = useState(false);
   const [buscaTorre, setBuscaTorre] = useState('');
   const [modoExibicao, setModoExibicao] = useState<'cilindros' | 'gargalos' | 'expedicao' | 'wip'>('cilindros');
@@ -54,6 +60,7 @@ export default function TorresEntregaVisual({
   const [tramoSelecionado, setTramoSelecionado] = useState<TramoEntrega | null>(null);
   const [torreSelecionada, setTorreSelecionada] = useState<TorreEntregaAgrupada | null>(null);
   const [modalGerenciarTramos, setModalGerenciarTramos] = useState(false);
+  const [modalHistorico, setModalHistorico] = useState(false);
 
   // Agrupamento de torres
   const todasTorres = useMemo(() => agruparTramosPorTorre(tramos), [tramos]);
@@ -178,6 +185,15 @@ export default function TorresEntregaVisual({
               <SlidersHorizontal className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               Editar Tramos
             </button>
+            <button
+              type="button"
+              onClick={() => setModalHistorico(true)}
+              title="Quem alterou o quê, e quando"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+            >
+              <History className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+              Histórico
+            </button>
             {recarregar && (
               <button
                 type="button"
@@ -285,16 +301,24 @@ export default function TorresEntregaVisual({
           {/* Filtro de Subprojeto */}
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-semibold text-slate-500">Subprojeto:</span>
-            <select
-              value={subprojetoFiltro}
-              onChange={e => setSubprojetoFiltro(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-            >
-              <option value="todos">Todos os Subprojetos</option>
-              <option value="SP01">SP01 (Torres 1 a 23)</option>
-              <option value="SP02">SP02 (Torres 24 a 39)</option>
-              <option value="SP03">SP03 (Torres 40 a 69)</option>
-            </select>
+            {subprojetosExibidos.length > 1 ? (
+              <select
+                value={subprojetoFiltro}
+                onChange={e => setSubprojetoFiltro(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              >
+                <option value="todos">Todos os Subprojetos</option>
+                {subprojetosExibidos.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.rotulo}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                {subprojetosExibidos[0]?.rotulo ?? '—'} · 1ª fase
+              </span>
+            )}
           </div>
 
           {/* Toggle de Apenas Gargalos */}
@@ -676,6 +700,21 @@ export default function TorresEntregaVisual({
           aoFechar={() => setModalGerenciarTramos(false)}
           recarregar={recarregar}
         />
+      )}
+
+      {/* 8. Histórico de alterações (log gravado pelo banco) */}
+      {modalHistorico && (
+        <Modal onClose={() => setModalHistorico(false)} ariaLabel="Histórico de alterações" maxWidth="max-w-4xl">
+          <ModalHeader onClose={() => setModalHistorico(false)}>
+            <h2 className="flex items-center gap-2 font-display text-base font-bold text-slate-900 dark:text-slate-50">
+              <History className="h-5 w-5 text-violet-600" /> Histórico de alterações — Controle de Entrega
+            </h2>
+            <p className="text-xs text-slate-500">Toda mudança de tramo e do checklist de expedição, com autor, data e hora.</p>
+          </ModalHeader>
+          <ModalBody>
+            <HistoricoAlteracoesEntrega tramos={tramos} />
+          </ModalBody>
+        </Modal>
       )}
     </div>
   );

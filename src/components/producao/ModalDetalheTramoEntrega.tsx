@@ -28,6 +28,7 @@ import {
   reassociarOuTrocarTramoEntrega,
 } from '../../lib/producaoApi';
 import { RefreshCw } from 'lucide-react';
+import HistoricoAlteracoesEntrega from './HistoricoAlteracoesEntrega';
 
 interface ModalDetalheTramoEntregaProps {
   tramo: TramoEntrega | null;
@@ -494,6 +495,9 @@ export default function ModalDetalheTramoEntrega({
               className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-800 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
+
+          {/* Quem mudou o quê neste tramo (log gravado pelo banco) */}
+          <HistoricoAlteracoesEntrega tramoId={tramo.id} tramos={todosTramos} compacto />
         </div>
 
         {/* Rodapé de Ações */}
