@@ -38,6 +38,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-10-07',
+    resumo: 'Suprimentos > Central de Compras — Filtro por Balão de Vencidos e Quebra de Texto na Observação em "Sem MIGO" (`DiligenciamentoSemMigoTable.tsx`, `diligenciamento.ts`, `diligenciamento.test.ts`, `diretrizes.ts`): 1. O balão de estatística de "Vencidos" agora é interativo e filtra a tabela/cartões para exibir apenas os itens com previsão de entrega vencida ao ser clicado, com realce visual de seleção, contador atualizado e opção de remoção do filtro pelo próprio balão ou barra de aviso; 2. O balão de "Sem previsão" e "Pendentes" também suportam alternância rápida de filtro; 3. O campo de Observação foi convertido para textarea com suporte a quebra de texto (wrap) e ajuste dinâmico de altura, permitindo visualizar e editar textos longos e notas por completo sem truncamento horizontal.',
+  },
+  {
     data: '2026-10-05',
     resumo: 'Solicitações > Nova Solicitação de Compras — Suporte a Quantidades Fracionárias / Dízimas (`NewRequest.tsx`, `solicitacoes.ts`, `solicitacoes.test.ts`, `AbrirRm.tsx`, `Aprovacoes.tsx`, `RequestDetailPanel.tsx`, `RequestDetailsModal.tsx`, `exportCompraPdf.ts`, `diretrizes.ts`): 1. Campo de quantidade dos itens na criação de solicitação de compras atualizado para permitir a digitação de dízimas/fracionários (ex.: 0,35, 1,5), aceitando vírgula ou ponto sem bloqueio nativo do browser; 2. Implementada função `normalizarQuantidadeSolicitacao` para converter e higienizar com segurança entradas decimais para float nativo antes da persistência no banco; 3. Formatação visual padronizada com `formatQtd` em todo o ciclo de vida da solicitação (Aprovações, Detalhes, Painel Lateral, Exportação PDF e Abertura de RM no Almoxarifado).',
   },

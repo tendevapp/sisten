@@ -486,8 +486,8 @@ export function itemAtendeFiltroPromessa(
 }
 
 /**
- * Filtra a lista de itens de diligenciamento por transportadoras (seleção múltipla)
- * e opcionalmente por intervalo de promessa/previsão de entrega.
+ * Filtra a lista de itens de diligenciamento por transportadoras (seleção múltipla),
+ * intervalo de promessa/previsão de entrega, itens vencidos ou itens sem previsão.
  */
 export function filtrarItensDiligenciamento(
   itens: ItemDiligenciamento[],
@@ -495,6 +495,8 @@ export function filtrarItensDiligenciamento(
     transportadoras?: Set<string>;
     sentinelaSemTransportadora?: string;
     promessa?: FiltroPromessaValor | null;
+    apenasVencidos?: boolean;
+    apenasSemPrevisao?: boolean;
     hojeISO?: string;
   },
 ): ItemDiligenciamento[] {
@@ -515,6 +517,13 @@ export function filtrarItensDiligenciamento(
       const hoje = filtros.hojeISO || new Date().toISOString().slice(0, 10);
       resultado = resultado.filter(item => itemAtendeFiltroPromessa(item, filtros.promessa, hoje));
     }
+  }
+
+  if (filtros.apenasVencidos) {
+    const hoje = filtros.hojeISO || new Date().toISOString().slice(0, 10);
+    resultado = resultado.filter(item => !item.chegou && !!item.previsaoEfetiva && item.previsaoEfetiva < hoje);
+  } else if (filtros.apenasSemPrevisao) {
+    resultado = resultado.filter(item => !item.chegou && !item.previsaoEfetiva);
   }
 
   return resultado;

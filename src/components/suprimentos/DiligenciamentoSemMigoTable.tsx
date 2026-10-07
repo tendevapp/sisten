@@ -240,12 +240,10 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   const hojeISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   /**
-   * Recorte visível = fila ordenada filtrada por transportadora (seleção múltipla)
-   * e por promessa/previsão de entrega. Tudo abaixo (resumo, seleção, tabela e
-   * cartões) trabalha em cima dele, para que "selecionar todos" nunca marque
-   * um item que o comprador não está vendo.
+   * Recorte base = fila ordenada filtrada por transportadora (seleção múltipla)
+   * e por promessa/previsão de entrega.
    */
-  const itensVisiveis = useMemo(() => {
+  const itensBase = useMemo(() => {
     return filtrarItensDiligenciamento(itensOrdenados, {
       transportadoras: transpFilter,
       sentinelaSemTransportadora: SEM_TRANSPORTADORA,
@@ -253,6 +251,52 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
       hojeISO,
     });
   }, [itensOrdenados, transpFilter, promessaFilter, hojeISO]);
+
+  /**
+   * Resumo da fila — o comprador precisa saber, antes de rolar a tabela,
+   * quantos itens estão vencidos, quantos não têm previsão nenhuma e quanto
+   * valor ainda está em trânsito. Calculado sobre os itens do recorte base
+   * para manter as métricas globais visíveis ao filtrar por um dos balões.
+   */
+  const resumo = useMemo(() => {
+    let pendentes = 0, vencidos = 0, semPrevisao = 0, valorTransito = 0;
+    for (const it of itensBase) {
+      if (it.chegou) continue;
+      pendentes++;
+      valorTransito += it.valor || 0;
+      if (!it.previsaoEfetiva) semPrevisao++;
+      else if (it.previsaoEfetiva < hojeISO) vencidos++;
+    }
+    return { pendentes, vencidos, semPrevisao, valorTransito };
+  }, [itensBase, hojeISO]);
+
+  /**
+   * Filtro rápido ao clicar nos balões de resumo (ex.: apenas vencidos ou apenas sem previsão).
+   */
+  const [filtroRapido, setFiltroRapido] = useState<'vencidos' | 'sem_previsao' | null>(null);
+
+  // Se o filtro rápido estiver ativo mas a quantidade correspondente cair para 0, reseta para ver tudo.
+  useEffect(() => {
+    if (filtroRapido === 'vencidos' && resumo.vencidos === 0) {
+      setFiltroRapido(null);
+    } else if (filtroRapido === 'sem_previsao' && resumo.semPrevisao === 0) {
+      setFiltroRapido(null);
+    }
+  }, [filtroRapido, resumo.vencidos, resumo.semPrevisao]);
+
+  /**
+   * Recorte visível final = itensBase com aplicação de filtro rápido dos balões (se ativo).
+   * Tudo abaixo (seleção, tabela, cartões e contagem) trabalha em cima dele,
+   * para que "selecionar todos" nunca marque um item que o comprador não está vendo.
+   */
+  const itensVisiveis = useMemo(() => {
+    if (!filtroRapido) return itensBase;
+    return filtrarItensDiligenciamento(itensBase, {
+      apenasVencidos: filtroRapido === 'vencidos',
+      apenasSemPrevisao: filtroRapido === 'sem_previsao',
+      hojeISO,
+    });
+  }, [itensBase, filtroRapido, hojeISO]);
 
   useEffect(() => {
     onCountChange?.(itensVisiveis.length);
@@ -294,23 +338,6 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
       return mudou ? proximo : prev;
     });
   }, [selecionaveis]);
-
-  /**
-   * Resumo da fila — o comprador precisa saber, antes de rolar a tabela,
-   * quantos itens estão vencidos, quantos não têm previsão nenhuma e quanto
-   * valor ainda está em trânsito. Só conta o que ainda não chegou.
-   */
-  const resumo = useMemo(() => {
-    let pendentes = 0, vencidos = 0, semPrevisao = 0, valorTransito = 0;
-    for (const it of itensVisiveis) {
-      if (it.chegou) continue;
-      pendentes++;
-      valorTransito += it.valor || 0;
-      if (!it.previsaoEfetiva) semPrevisao++;
-      else if (it.previsaoEfetiva < hojeISO) vencidos++;
-    }
-    return { pendentes, vencidos, semPrevisao, valorTransito };
-  }, [itensVisiveis, hojeISO]);
 
   /* Agrupamento por PO ---------------------------------------------------- */
 
@@ -704,19 +731,60 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
       </div>
 
       {resumo.pendentes > 0 && (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <ResumoStat rotulo="Pendentes" valor={String(resumo.pendentes)} />
-          <ResumoStat
-            rotulo="Vencidos"
-            valor={String(resumo.vencidos)}
-            cor={resumo.vencidos > 0 ? 'var(--status-critical)' : undefined}
-          />
-          <ResumoStat
-            rotulo="Sem previsão"
-            valor={String(resumo.semPrevisao)}
-            cor={resumo.semPrevisao > 0 ? 'var(--status-warning)' : undefined}
-          />
-          <ResumoStat rotulo="Valor em trânsito" valor={formatBRL(resumo.valorTransito)} />
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <ResumoStat
+              rotulo="Pendentes"
+              valor={String(resumo.pendentes)}
+              ativo={filtroRapido === null}
+              onClick={filtroRapido !== null ? () => setFiltroRapido(null) : undefined}
+              title={filtroRapido ? 'Clique para exibir todos os itens pendentes' : 'Exibindo todos os itens pendentes'}
+            />
+            <ResumoStat
+              rotulo="Vencidos"
+              valor={String(resumo.vencidos)}
+              cor={resumo.vencidos > 0 ? 'var(--status-critical)' : undefined}
+              ativo={filtroRapido === 'vencidos'}
+              onClick={resumo.vencidos > 0 ? () => setFiltroRapido(prev => prev === 'vencidos' ? null : 'vencidos') : undefined}
+              title={resumo.vencidos > 0 ? (filtroRapido === 'vencidos' ? 'Clique para remover o filtro de vencidos' : 'Clique para filtrar apenas os itens vencidos') : 'Nenhum item vencido'}
+            />
+            <ResumoStat
+              rotulo="Sem previsão"
+              valor={String(resumo.semPrevisao)}
+              cor={resumo.semPrevisao > 0 ? 'var(--status-warning)' : undefined}
+              ativo={filtroRapido === 'sem_previsao'}
+              onClick={resumo.semPrevisao > 0 ? () => setFiltroRapido(prev => prev === 'sem_previsao' ? null : 'sem_previsao') : undefined}
+              title={resumo.semPrevisao > 0 ? (filtroRapido === 'sem_previsao' ? 'Clique para remover o filtro de sem previsão' : 'Clique para filtrar apenas os itens sem previsão') : 'Nenhum item sem previsão'}
+            />
+            <ResumoStat rotulo="Valor em trânsito" valor={formatBRL(resumo.valorTransito)} />
+          </div>
+
+          {filtroRapido && (
+            <div
+              className="flex items-center justify-between gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold animate-in fade-in"
+              style={{
+                background: filtroRapido === 'vencidos'
+                  ? 'color-mix(in srgb, var(--status-critical) 12%, var(--surface-card))'
+                  : 'color-mix(in srgb, var(--status-warning) 12%, var(--surface-card))',
+                border: `1px solid color-mix(in srgb, ${filtroRapido === 'vencidos' ? 'var(--status-critical)' : 'var(--status-warning)'} 30%, transparent)`,
+                color: 'var(--ink-primary)',
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle className={`h-4 w-4 shrink-0 ${filtroRapido === 'vencidos' ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`} />
+                <span>
+                  Filtrando por <strong>{filtroRapido === 'vencidos' ? 'itens com previsão vencida' : 'itens sem previsão de entrega'}</strong> ({itensVisiveis.length} {itensVisiveis.length === 1 ? 'item localizado' : 'itens localizados'})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFiltroRapido(null)}
+                className="inline-flex items-center gap-1 text-xs font-bold underline hover:opacity-80 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" /> Limpar filtro
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -909,7 +977,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                                 <Th label="Remessa & Previsão" />
                                 <Th label="Fat. Transportadora" />
                                 <Th label="Transportadora" />
-                                <Th label="Observação" />
+                                <Th label="Observação" className="min-w-[160px]" />
                                 <Th label="Chegada (Rastreio)" />
                               </tr>
                             </thead>
@@ -991,7 +1059,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                                         onSalvar={nome => salvarTransportadora(item, nome)}
                                       />
                                     </Td>
-                                    <Td>
+                                    <Td className="min-w-[160px] max-w-xs">
                                       <CampoObservacao
                                         valor={obsLocal[item.ri] ?? item.observacao ?? reg?.obs_comprador ?? ''}
                                         desabilitado={item.chegou}
@@ -1036,7 +1104,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                     <Th label="Remessa & Previsão" />
                     <Th label="Fat. Transportadora" />
                     <Th label="Transportadora" />
-                    <Th label="Observação" />
+                    <Th label="Observação" className="min-w-[160px]" />
                     <Th label="Chegada (Rastreio)" />
                     <Th label="Cobrar" />
                   </TableHeadRow>
@@ -1136,7 +1204,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                               onSalvar={nome => salvarTransportadora(item, nome)}
                             />
                           </Td>
-                          <Td>
+                          <Td className="min-w-[160px] max-w-xs">
                             <CampoObservacao
                               valor={obsLocal[item.ri] ?? item.observacao ?? reg?.obs_comprador ?? ''}
                               desabilitado={item.chegou}
@@ -1392,20 +1460,66 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
 /* Peças ------------------------------------------------------------------- */
 
-/** Número/valor único da faixa de resumo acima da tabela. */
-function ResumoStat({ rotulo, valor, cor }: { rotulo: string; valor: string; cor?: string }) {
+/** Número/valor único da faixa de resumo acima da tabela — suporta clique para filtrar. */
+function ResumoStat({
+  rotulo,
+  valor,
+  cor,
+  ativo,
+  onClick,
+  title,
+}: {
+  rotulo: string;
+  valor: string;
+  cor?: string;
+  ativo?: boolean;
+  onClick?: () => void;
+  title?: string;
+}) {
+  const clicavel = !!onClick;
   return (
-    <div
-      className="rounded-lg border px-3 py-2"
-      style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
+    <button
+      type="button"
+      disabled={!clicavel}
+      onClick={onClick}
+      title={title}
+      className={`rounded-lg border px-3 py-2 text-left transition-all ${
+        clicavel ? 'cursor-pointer active:scale-95' : 'cursor-default'
+      } ${
+        ativo
+          ? 'ring-2 shadow-xs'
+          : clicavel
+          ? 'hover:border-slate-400 dark:hover:border-slate-600 hover:shadow-xs'
+          : ''
+      }`}
+      style={{
+        borderColor: ativo ? (cor || 'var(--brand)') : 'var(--hairline)',
+        background: ativo
+          ? (cor ? `color-mix(in srgb, ${cor} 10%, var(--surface-raised))` : 'color-mix(in srgb, var(--brand) 10%, var(--surface-raised))')
+          : 'var(--surface-raised)',
+        outline: 'none',
+      }}
     >
-      <span className="block text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-        {rotulo}
-      </span>
+      <div className="flex items-center justify-between gap-1">
+        <span className="block text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+          {rotulo}
+        </span>
+        {ativo && (
+          <span
+            className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+            style={{
+              background: cor ? `color-mix(in srgb, ${cor} 20%, transparent)` : 'color-mix(in srgb, var(--brand) 20%, transparent)',
+              color: cor || 'var(--brand)',
+            }}
+          >
+            Filtrando
+          </span>
+        )}
+      </div>
       <span className="mt-0.5 block text-lg font-black tabular" style={{ color: cor || 'var(--ink-primary)' }}>
         {valor}
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -1770,33 +1884,59 @@ function CampoTransportadora({
 }
 
 /**
- * Campo de observação: texto livre salvo ao sair do campo (onBlur) ou pressionar Enter,
- * apenas se o valor de fato foi alterado.
+ * Campo de observação: texto livre salvo ao sair do campo (onBlur) ou pressionar Enter (sem Shift).
+ * Suporta múltiplas linhas e quebra automática de texto para exibir o conteúdo por completo.
  */
 function CampoObservacao({
   valor, desabilitado, onSalvar,
 }: { valor: string; desabilitado?: boolean; onSalvar: (texto: string) => void }) {
   const [rascunho, setRascunho] = useState(valor);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => setRascunho(valor), [valor]);
 
+  const ajustarAltura = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const novaAltura = Math.min(140, Math.max(30, el.scrollHeight));
+    el.style.height = `${novaAltura}px`;
+  };
+
+  useEffect(() => {
+    ajustarAltura();
+    window.addEventListener('resize', ajustarAltura);
+    return () => window.removeEventListener('resize', ajustarAltura);
+  }, [rascunho]);
+
   return (
-    <input
-      type="text"
+    <textarea
+      ref={textareaRef}
+      rows={1}
       aria-label="Observação"
       value={rascunho}
       disabled={desabilitado}
       placeholder="Observação…"
       title={rascunho || 'Observação'}
-      onChange={e => setRascunho(e.target.value)}
+      onChange={e => {
+        setRascunho(e.target.value);
+        ajustarAltura();
+      }}
       onBlur={() => {
         if (rascunho.trim() !== (valor || '').trim()) onSalvar(rascunho.trim());
       }}
       onKeyDown={e => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
       }}
-      className="w-full min-w-[130px] rounded border px-1.5 py-1 text-[11px]"
-      style={campo}
+      className="w-full min-w-[140px] max-w-sm rounded border px-2 py-1 text-[11px] leading-snug break-words whitespace-pre-wrap resize-y transition-[border-color,box-shadow] focus:ring-1 focus:ring-blue-500 disabled:opacity-70 disabled:cursor-not-allowed"
+      style={{
+        ...campo,
+        wordBreak: 'break-word',
+        overflowWrap: 'break-word',
+      }}
     />
   );
 }

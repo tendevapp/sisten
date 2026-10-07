@@ -411,4 +411,27 @@ describe('itemAtendeFiltroPromessa e filtrarItensDiligenciamento', () => {
     });
     expect(semMatch).toHaveLength(0);
   });
+
+  it('filtra apenas itens vencidos quando apenasVencidos for true', () => {
+    const hoje = '2026-06-01';
+    // itemAbril tem previsaoEfetiva 2026-04-26 (< hoje) e não chegou -> vencido
+    // itemAgosto tem previsaoEfetiva 2026-08-15 (> hoje) -> futuro
+    // itemSemData tem previsaoEfetiva null -> sem previsão
+    const itemChegado = {
+      ...itemAbril,
+      riPo: 'po-chegado',
+      chegou: true,
+    };
+
+    const resultado = filtrarItensDiligenciamento(
+      [...lista, itemChegado],
+      { apenasVencidos: true, hojeISO: hoje },
+    );
+    expect(resultado.map(i => i.riPo)).toEqual(['po-abril']);
+  });
+
+  it('filtra apenas itens sem previsão quando apenasSemPrevisao for true', () => {
+    const resultado = filtrarItensDiligenciamento(lista, { apenasSemPrevisao: true });
+    expect(resultado.map(i => i.riPo)).toEqual(['po-sem-data']);
+  });
 });
