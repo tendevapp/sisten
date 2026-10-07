@@ -8,7 +8,7 @@ import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
   LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send,
-  MessageCircle, Flag, MapPin, Boxes, Sparkles, PackageCheck, HelpCircle, Bug, Lightbulb, ExternalLink
+  MessageCircle, Flag, MapPin, Boxes, Sparkles, PackageCheck, HelpCircle, Bug, Lightbulb, ExternalLink, Warehouse
 } from 'lucide-react';
 
 import * as XLSX from 'xlsx';
@@ -25,6 +25,14 @@ import { latestPriorityByRi, priorityMeta, grupoMercadoriaDesc, isProjetoItem, t
 import { avaliarEntregaParcial, temDivergenciaDeEntrega } from '../lib/entregaParcial';
 import { ehItemDeContrato, numeroContratoPO, itemContratoPO } from '../lib/contratoPedido';
 import { formatDateBR, formatDateTimeBR, formatInt } from '../lib/format';
+import {
+  ORDEM_TAG_ESTOQUE,
+  ROTULO_TAG_ESTOQUE,
+  buscarSituacoesEstoque,
+  situacaoEstoqueDoMaterial,
+  type SituacaoEstoqueMaterial,
+  type TagEstoque,
+} from '../lib/estoqueSituacaoCompras';
 import { sanitizeTechnicalText } from '../lib/materiais';
 import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../lib/buscaKeywords';
 import { RASCUNHO_COTACAO_KEY } from '../lib/cotacoes';
@@ -307,6 +315,38 @@ const ClipboardCopyButton = ({ text, label, size = 'sm' }: { text: string; label
 // Badge compacto de MIGO por fornecedor histórico — mesmo texto/cor usado no
 // resto da tela, extraído para módulo porque o card de fornecedor abaixo
 // também é usado fora do componente `Compras` (dentro do modal de histórico).
+// Situação de estoque do material (Controle de Estoque): o comprador enxerga
+// o que está zerado ou abaixo do mínimo e prioriza a compra.
+const ESTILO_TAG_ESTOQUE: Record<TagEstoque, string> = {
+  ZERO: 'bg-red-600 text-white border-red-600 dark:bg-red-500 dark:border-red-500',
+  CRITICO: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900',
+  ALERTA: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900',
+};
+
+const formatarQtdEstoque = (valor: number | null) => (valor === null ? '—' : valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 }));
+
+const descreverSituacaoEstoque = (s: SituacaoEstoqueMaterial): string => [
+  `Saldo ${formatarQtdEstoque(s.saldo)}${s.umb ? ` ${s.umb}` : ''}`,
+  s.minimo !== null ? `mínimo ${formatarQtdEstoque(s.minimo)}` : null,
+  s.maximo !== null ? `máximo ${formatarQtdEstoque(s.maximo)}` : null,
+  s.coberturaDias !== null ? `cobertura ${formatInt(s.coberturaDias)} dias` : null,
+].filter(Boolean).join(' · ');
+
+const EstoqueTagBadge = ({ situacao }: { situacao: SituacaoEstoqueMaterial | null }) => {
+  if (!situacao?.tag) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-black tracking-wide uppercase whitespace-nowrap ${ESTILO_TAG_ESTOQUE[situacao.tag]}`}
+      title={`${ROTULO_TAG_ESTOQUE[situacao.tag]} — ${descreverSituacaoEstoque(situacao)} (Controle de Estoque)`}
+    >
+      <Warehouse className="h-2.5 w-2.5" aria-hidden="true" />
+      {ROTULO_TAG_ESTOQUE[situacao.tag]}
+    </span>
+  );
+};
+
+const SEM_TAG_ESTOQUE = 'SEM';
+
 const MigoBadge = ({ dataMigo }: { dataMigo?: string }) => (
   <span className={`flex items-center gap-0.5 ${dataMigo ? 'text-emerald-600 dark:text-emerald-450' : 'text-amber-600 dark:text-amber-450'}`}>
     {dataMigo ? `MIGO: ${formatDateBR(dataMigo)}` : 'Sem MIGO'}
@@ -733,6 +773,24 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // diferente do Rastreio, o comprador cota os dois tipos no mesmo lugar.
   const [tipoItemFilter, setTipoItemFilter] = useState<TipoItemFilter>('todos');
   const [prioridadeFilter, setPrioridadeFilter] = useState<Set<string>>(new Set());
+  const [estoqueFilter, setEstoqueFilter] = useState<Set<string>>(new Set());
+  // Situação de estoque por material (Controle de Estoque). Complementar: se
+  // falhar, a Central segue sem as tags.
+  const [situacoesEstoque, setSituacoesEstoque] = useState<Map<string, SituacaoEstoqueMaterial>>(new Map());
+  const carregarSituacoesEstoque = useCallback((forcar = false) => {
+    buscarSituacoesEstoque(forcar)
+      .then(setSituacoesEstoque)
+      .catch(e => console.warn('Situação de estoque indisponível na Central de Compras:', e));
+  }, []);
+  useEffect(() => { carregarSituacoesEstoque(); }, [carregarSituacoesEstoque]);
+  const situacaoEstoqueDe = useCallback(
+    (r: EnrichedSAPRecord) => situacaoEstoqueDoMaterial(situacoesEstoque, r.material_code),
+    [situacoesEstoque],
+  );
+  const tagEstoqueDe = useCallback(
+    (r: EnrichedSAPRecord): string => situacaoEstoqueDe(r)?.tag ?? SEM_TAG_ESTOQUE,
+    [situacaoEstoqueDe],
+  );
   const [promessaFilter, setPromessaFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
   const [semMigoCount, setSemMigoCount] = useState<number | null>(null);
 
@@ -811,7 +869,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   useEffect(() => {
     setVisibleCount(40);
-  }, [searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, promessaFilter, poFilter, kpiFilter, viewMode, tipoItemFilter]);
+  }, [searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, estoqueFilter, promessaFilter, poFilter, kpiFilter, viewMode, tipoItemFilter]);
 
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
@@ -1641,8 +1699,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // Opções de filtro — dependentes entre si: cada lista considera os demais filtros
   // ativos (menos o próprio), então escolher um comprador restringe as RMs exibidas,
   // escolher uma RM restringe os compradores, e assim por diante.
-  const { rmOptions, poOptions, buyerOptions, statusOptions, alertOptions, prioridadeOptions, grupoMercOptions } = useMemo(() => {
-    type Campo = 'rm' | 'po' | 'buyer' | 'status' | 'alert' | 'prioridade' | 'grupoMerc';
+  const { rmOptions, poOptions, buyerOptions, statusOptions, alertOptions, prioridadeOptions, grupoMercOptions, estoqueOptions } = useMemo(() => {
+    type Campo = 'rm' | 'po' | 'buyer' | 'status' | 'alert' | 'prioridade' | 'grupoMerc' | 'estoque';
     const passa = (rm: string, it: RMGroup['items'][number], exceto: Campo) => {
       const r = it.record;
       const poNum = (r.documento_compra || r.pedido || '').trim();
@@ -1656,6 +1714,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         const nivel = prioridadesMap.get(r.ri)?.nivel;
         if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
       }
+      if (exceto !== 'estoque' && estoqueFilter.size > 0 && !estoqueFilter.has(tagEstoqueDe(r))) return false;
       if (poFilter !== 'Sem MIGO' && !matchesPromessaFilter(r.ri, r)) return false;
       return true;
     };
@@ -1667,6 +1726,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     const alerts = new Set<string>();
     const prioridades = new Set<string>();
     const gruposMerc = new Set<string>();
+    const tagsEstoque = new Set<string>();
 
     rmGroups.forEach(g => g.items.forEach(it => {
       const r = it.record;
@@ -1686,6 +1746,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         const nivel = prioridadesMap.get(r.ri)?.nivel;
         prioridades.add(nivel === undefined ? 'Nenhuma' : String(nivel));
       }
+      if (passa(g.rm, it, 'estoque')) tagsEstoque.add(tagEstoqueDe(r));
     }));
 
     return {
@@ -1697,8 +1758,9 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       grupoMercOptions: Array.from(gruposMerc).sort((a, b) => a.localeCompare(b, 'pt-BR')),
       // Ordem fixa (mais urgente primeiro), mantendo só os graus presentes.
       prioridadeOptions: ['5', '4', '3', '2', '1', 'Nenhuma'].filter(n => prioridades.has(n)),
+      estoqueOptions: [...ORDEM_TAG_ESTOQUE, SEM_TAG_ESTOQUE].filter(t => tagsEstoque.has(t)),
     };
-  }, [rmGroups, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, poFilter]);
+  }, [rmGroups, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, estoqueFilter, tagEstoqueDe, grupoMercDe, matchesPromessaFilter, poFilter]);
 
   // Se um valor marcado deixar de existir nas opções (por causa de outro filtro
   // selecionado depois), ele é descartado em vez de zerar a listagem.
@@ -1709,6 +1771,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   useSaneamento(alertFilter, setAlertFilter, alertOptions);
   useSaneamento(grupoMercFilter, setGrupoMercFilter, grupoMercOptions);
   useSaneamento(prioridadeFilter, setPrioridadeFilter, prioridadeOptions);
+  useSaneamento(estoqueFilter, setEstoqueFilter, estoqueOptions);
 
   // Itens "Sem PO" sempre antes dos que já possuem PO (Processado), preservando a ordem
   // original entre itens do mesmo status.
@@ -1739,6 +1802,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           const nivel = prioridadesMap.get(r.ri)?.nivel;
           if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
         }
+        if (estoqueFilter.size > 0 && !estoqueFilter.has(tagEstoqueDe(r))) return false;
         if (poFilter !== 'Sem MIGO' && !matchesPromessaFilter(r.ri, r)) return false;
         if (tokens.length > 0) {
           const cotacoesItem = obterCotacoesDoItem(r);
@@ -1764,7 +1828,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem]);
+  }, [rmGroups, searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, estoqueFilter, tagEstoqueDe, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -1941,6 +2005,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           'Grupo Comprador': r.grupo_comprador || '—',
           'Grupo de Materiais': grupoMercDe(r) || '—',
           'Tipo do Item': isProjetoItem(r.material_code) ? 'Projeto' : 'Consumo',
+          'Situação Estoque': (() => {
+            const situacao = situacaoEstoqueDe(r);
+            return situacao?.tag ? ROTULO_TAG_ESTOQUE[situacao.tag] : '—';
+          })(),
           'Natureza': r.natureza || '—',
           'Status': r.status_atualizado || '—',
           'Alerta': r.alerta || '—',
@@ -2427,7 +2495,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             <Sparkles className="h-3.5 w-3.5" /> Novidades
           </button>
           <button
-            onClick={() => buildSuppliersData(true)}
+            onClick={() => { buildSuppliersData(true); carregarSituacoesEstoque(true); }}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all disabled:opacity-50 h-9 cursor-pointer active:scale-95 active:translate-y-[1px]"
           >
@@ -2664,6 +2732,17 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               searchable={false}
               className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
             />
+            <MultiSelectFilter
+              label="Estoque"
+              icon={Warehouse}
+              allLabel="Todos"
+              options={estoqueOptions}
+              selected={estoqueFilter}
+              onChange={setEstoqueFilter}
+              renderOption={t => (t === SEM_TAG_ESTOQUE ? 'Sem alerta' : ROTULO_TAG_ESTOQUE[t as TagEstoque])}
+              searchable={false}
+              className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
+            />
             <DateRangeFilter
               label="Promessa"
               icon={Calendar}
@@ -2883,6 +2962,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                           </button>
                           {renderPOBadge(r)}
                           {renderEntregaParcialBadge(r)}
+                          <EstoqueTagBadge situacao={situacaoEstoqueDe(r)} />
                           {r.status_requisicao !== 'Processado' && r.alerta && (
                             <span className={`px-2 py-0.5 rounded text-[9px] font-black tracking-wide uppercase ${alertStyle.chip}`}>
                               {r.alerta}
@@ -3283,6 +3363,9 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             {r.material_code}
                             <ArrowUpRight className="h-3.5 w-3.5" />
                           </button>
+                          {situacaoEstoqueDe(r)?.tag && (
+                            <div className="mt-1 font-sans"><EstoqueTagBadge situacao={situacaoEstoqueDe(r)} /></div>
+                          )}
                         </td>
 
                         {/* Description (Clickable) — ganha o espaço tirado de
