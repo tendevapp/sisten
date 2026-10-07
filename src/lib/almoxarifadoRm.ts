@@ -168,6 +168,8 @@ export interface ContextoRm {
   grupoComprasPorMercadoria: Map<string, string>;
   /** Setor solicitante (id ou nome) → grupo de compras (EKGRP) do responsável. (Regra ativa) */
   grupoComprasPorSetor?: Map<string, string>;
+  /** Comprador fixo (Admin → Cadastros Gerais): sobrepõe setor e grupo de mercadorias. */
+  grupoComprasFixo?: string;
 }
 
 /**
@@ -183,6 +185,9 @@ export function grupoComprasRm(
   ctx: ContextoRm,
   solicitacaoOuSetor?: Request | { solicitante_sector_id?: string } | string | null,
 ): string | null {
+  // 0. Comprador fixo configurado no admin: vale para toda RM, acima do setor
+  if (ctx.grupoComprasFixo) return ctx.grupoComprasFixo;
+
   // 1. Regra primária ativa: pelo setor dono da solicitação
   if (ctx.grupoComprasPorSetor && ctx.grupoComprasPorSetor.size > 0) {
     let setorId: string | undefined;

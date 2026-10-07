@@ -28,7 +28,21 @@
 
 import { AlmoxarifadoChegada, CidadeForn, DiligenciamentoItem, EnrichedSAPRecord, PrazoTransporte } from '../types';
 import { isServicoItem } from './rastreio';
+import { ehItemDeContrato } from './contratoPedido';
 import { normalizePoNumber, type ResumoBahiaSulPorPo } from './bahiasul';
+
+/**
+ * Item que não conta como "sem MIGO": remessa final dada (CRF) ou pedido de contrato
+ * (call-off, que o comprador não diligencia por aqui).
+ */
+export function foraDeSemMigo(r: EnrichedSAPRecord): boolean {
+  return temRemessaFinal(r) || ehItemDeContrato(r);
+}
+
+/** CRF = 'X' na ZL0132: o fornecedor deu a remessa final, então o PO não fica mais "sem MIGO". */
+export function temRemessaFinal(r: { crf_po?: string | null }): boolean {
+  return String(r.crf_po ?? '').trim().toUpperCase() === 'X';
+}
 
 /** Nome canônico da transportadora no cadastro (`sup_transportadoras`). */
 export const TRANSPORTADORA_BAHIA_SUL = 'Bahia Sul';
@@ -230,7 +244,7 @@ export function montarItens(
   bahiaSulPorPo?: Map<string, ResumoBahiaSulPorPo>,
 ): ItemDiligenciamento[] {
   return registros
-    .filter(r => !!r.documento_compra && r.status_requisicao === 'Processado' && r.eflag_po !== 'L' && !dataValida(r.data_migo))
+    .filter(r => !!r.documento_compra && r.status_requisicao === 'Processado' && r.eflag_po !== 'L' && !dataValida(r.data_migo) && !foraDeSemMigo(r))
     .filter(r => !isServicoItem(r.requisicao_de_compra || r.ri))
     .map(r => {
       const dilig = diligenciamentoPorRi.get(r.ri_po);

@@ -56,6 +56,7 @@ import {
 } from '../lib/almoxarifadoRmApi';
 import { mapaGrupoComprasPorMercadoria } from '../lib/grupoCompradorApi';
 import { mapaGrupoComprasPorSetor } from '../lib/setorCompradorApi';
+import { compradorFixoRm, obterRmConfig } from '../lib/rmConfigApi';
 import { ESTAGIOS_AUTOMATICOS_COMPRA } from '../lib/statusAutomaticoCompra';
 import { useToast } from '../components/ui/Toast';
 import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../lib/buscaKeywords';
@@ -286,6 +287,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   const [grupoMercadoriaPorMaterial, setGrupoMercadoriaPorMaterial] = useState<Map<string, string>>(new Map());
   const [grupoComprasPorMercadoria, setGrupoComprasPorMercadoria] = useState<Map<string, string>>(new Map());
   const [grupoComprasPorSetor, setGrupoComprasPorSetor] = useState<Map<string, string>>(new Map());
+  const [grupoComprasFixo, setGrupoComprasFixo] = useState<string | undefined>();
 
   const [marcas, setMarcas] = useState<AlmoxRmExportacaoSolicitacao[]>([]);
   const [exportacoes, setExportacoes] = useState<AlmoxRmExportacao[]>([]);
@@ -385,12 +387,14 @@ export default function AbrirRm({ user, onNavigate }: Props) {
     try {
       // Carrega compradores por setor (regra primária ativa) e por grupo de mercadorias
       // para garantir que a planilha saia com o EKGRP correto.
-      const [marcasDb, lotes, compradoresMercadorias, compradoresSetores] = await Promise.all([
+      const [marcasDb, lotes, compradoresMercadorias, compradoresSetores, rmConfig] = await Promise.all([
         listarMarcasExportacaoRm(),
         listarExportacoesRm(),
         mapaGrupoComprasPorMercadoria(),
         mapaGrupoComprasPorSetor(),
+        obterRmConfig(),
       ]);
+      setGrupoComprasFixo(compradorFixoRm(rmConfig));
       setMarcas(marcasDb);
       setExportacoes(lotes);
       setGrupoComprasPorMercadoria(compradoresMercadorias);
@@ -425,8 +429,9 @@ export default function AbrirRm({ user, onNavigate }: Props) {
       grupoMercadoriaPorMaterial,
       grupoComprasPorMercadoria,
       grupoComprasPorSetor,
+      grupoComprasFixo,
     }),
-    [sectors, grupoMercadoriaPorMaterial, grupoComprasPorMercadoria, grupoComprasPorSetor],
+    [sectors, grupoMercadoriaPorMaterial, grupoComprasPorMercadoria, grupoComprasPorSetor, grupoComprasFixo],
   );
 
   const nomeSetor = (id?: string) => (id ? sectors.find(s => s.id === id)?.name || id : '—');

@@ -4691,6 +4691,7 @@ class LocalDatabase {
           tipo_doc_po,
           criado_por_pedido: hasPO ? (raw.criado_por_pedido || activePf?.criado_por_pedido || undefined) : undefined,
           data_migo: hasPO ? (raw.data_migo || activePf?.data_migo || undefined) : undefined,
+          crf_po: hasPO ? (raw.crf_po || undefined) : undefined,
           preco_unitario,
           valor_total,
           qtd_po,

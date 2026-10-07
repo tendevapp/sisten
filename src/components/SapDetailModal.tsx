@@ -11,6 +11,7 @@ import { supabase } from '../db/supabaseClient';
 import { sanitizeTechnicalText } from '../lib/materiais';
 import { desformatarObservacaoItemGenerico } from '../lib/solicitacoes';
 import type { VinculoSistenRm } from '../lib/centralComprasSisten';
+import { listarImagensCatalogoPorCodigoSap, obterUrlFotoCatalogo } from '../lib/almoxCatalogoApi';
 import { useToast } from './ui/Toast';
 
 interface SapDetailModalProps {
@@ -68,6 +69,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
   const [imagensItem, setImagensItem] = useState<Array<{ anexo: RequestAttachment; url: string }>>([]);
   const [carregandoImagens, setCarregandoImagens] = useState(false);
   const [imagemCopiada, setImagemCopiada] = useState<string | null>(null);
+  const [imagemDoCadastro, setImagemDoCadastro] = useState(false);
 
   // Edição inline de Status do Item e Observações do comprador
   const [statusInput, setStatusInput] = useState<ItemStatus | ''>(record.item_status || 'Aguardando Cotação');
@@ -144,12 +146,26 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
         return true;
       });
 
+      // Solicitante não anexou foto: usa a do cadastro de itens para o comprador
+      // copiar. As fotos do Book de EPIs já vêm para o cadastro, então não são
+      // buscadas à parte (apareciam duplicadas).
+      let doCadastro = false;
+      let candidatos = unicos;
+      if (candidatos.length === 0) {
+        candidatos = await listarImagensCatalogoPorCodigoSap(record.material_code).catch(() => []);
+        doCadastro = candidatos.length > 0;
+      }
+
       const resolvidas: Array<{ anexo: RequestAttachment; url: string }> = [];
-      for (const a of unicos) {
-        const url = await localDb.getAttachmentUrl(a.storage_path || a.url);
+      for (const a of candidatos) {
+        const path = a.storage_path || a.url;
+        const url = a.request_id.startsWith('almox-catalogo-')
+          ? await obterUrlFotoCatalogo(path)
+          : await localDb.getAttachmentUrl(path);
         if (url) resolvidas.push({ anexo: a, url });
       }
       if (!cancelado) {
+        setImagemDoCadastro(doCadastro && resolvidas.length > 0);
         setImagensItem(resolvidas);
         setCarregandoImagens(false);
       }
@@ -457,7 +473,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
             <div className="bg-slate-50/60 dark:bg-slate-950 p-4.5 rounded-xl border border-slate-150 dark:border-slate-850 space-y-3">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
                 <ImageIcon className="h-3.5 w-3.5" />
-                {ehGenerico ? 'Foto anexada ao item' : 'Imagem do item'}
+                {imagemDoCadastro ? 'Imagem do cadastro de itens' : ehGenerico ? 'Foto anexada ao item' : 'Imagem do item'}
               </span>
               {carregandoImagens ? (
                 <p className="text-xs text-slate-400 flex items-center gap-1.5">

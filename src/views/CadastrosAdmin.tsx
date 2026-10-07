@@ -25,6 +25,7 @@ import Modal, { ModalBody, ModalFooter } from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import GestaoGrupoComprador from '../components/admin/GestaoGrupoComprador';
 import GestaoNiveisMercadorias from '../components/admin/GestaoNiveisMercadorias';
+import ConfigAberturaRm from '../components/admin/ConfigAberturaRm';
 import { supabase } from '../db/supabaseClient';
 
 interface Props {
@@ -34,7 +35,7 @@ interface Props {
 
 type TabType = 'emails_envios' | 'suprimentos';
 /** Sub-cadastros do módulo Suprimentos (botões dentro da aba). */
-type SubSuprimentos = 'lead_time' | 'transportadoras' | 'grupos_compradores' | 'niveis_mercadorias';
+type SubSuprimentos = 'lead_time' | 'transportadoras' | 'grupos_compradores' | 'niveis_mercadorias' | 'abertura_rm';
 
 const SUGESTOES_GATILHOS = [
   { chave: 'cadastro_sap', nome: 'Cadastro SAP — Itens', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Cadastro SAP - Item' },
@@ -69,7 +70,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
     if (abaParamInicial === 'emails' || abaParamInicial === 'emails_envios' || abaParamInicial === 'outlook') {
       return 'emails_envios';
     }
-    if (['suprimentos', 'lead_time', 'prazos', 'transportadoras', 'grupos_compradores', 'compradores', 'comprador', 'niveis_mercadorias', 'niveis', 'agrupamento_niveis', 'mercadorias'].includes(abaParamInicial || '')) {
+    if (['suprimentos', 'lead_time', 'prazos', 'transportadoras', 'grupos_compradores', 'compradores', 'comprador', 'niveis_mercadorias', 'niveis', 'agrupamento_niveis', 'mercadorias', 'abertura_rm'].includes(abaParamInicial || '')) {
       return 'suprimentos';
     }
     return 'emails_envios';
@@ -78,6 +79,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
     if (['niveis_mercadorias', 'niveis', 'agrupamento_niveis', 'mercadorias'].includes(abaParamInicial || '')) {
       return 'niveis_mercadorias';
     }
+    if (abaParamInicial === 'abertura_rm') return 'abertura_rm';
     if (['grupos_compradores', 'compradores', 'comprador'].includes(abaParamInicial || '')) {
       return 'grupos_compradores';
     }
@@ -1015,6 +1017,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
               { chave: 'transportadoras' as const, icone: Truck, rotulo: 'Transportadoras', contagem: transportadoras.length },
               { chave: 'grupos_compradores' as const, icone: Boxes, rotulo: 'Grupos Compradores', contagem: totalGruposCompradores ?? '123' },
               { chave: 'niveis_mercadorias' as const, icone: Layers, rotulo: 'Níveis de Mercadorias', contagem: totalNiveisMercadorias ?? '1.404' },
+              { chave: 'abertura_rm' as const, icone: UserCheck, rotulo: 'Abertura de RM', contagem: 'EKGRP' },
             ]).map(({ chave, icone: Icone, rotulo, contagem }) => (
               <button
                 key={chave}
@@ -1321,6 +1324,10 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
 
           {subSuprimentos === 'niveis_mercadorias' && (
             <GestaoNiveisMercadorias user={user} />
+          )}
+
+          {subSuprimentos === 'abertura_rm' && (
+            <ConfigAberturaRm user={user} />
           )}
         </div>
       )}

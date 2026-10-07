@@ -20,6 +20,7 @@ import {
   CotacaoHistoricoEntry
 } from '../types';
 
+import { foraDeSemMigo } from '../lib/diligenciamento';
 import { latestPriorityByRi, priorityMeta, grupoMercadoriaDesc, isProjetoItem, type TipoItemFilter } from '../lib/rastreio';
 import { avaliarEntregaParcial, temDivergenciaDeEntrega } from '../lib/entregaParcial';
 import { ehItemDeContrato, numeroContratoPO, itemContratoPO } from '../lib/contratoPedido';
@@ -823,7 +824,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       return rawRmGroups.map(g => {
         const items = g.items.filter(it => {
           const hasPO = it.record.status_requisicao === 'Processado';
-          const hasMigo = !!it.record.data_migo;
+          const hasMigo = !!it.record.data_migo || foraDeSemMigo(it.record);
           return hasPO && !hasMigo && !isServicoRM(it.record.requisicao_de_compra);
         });
         return { rm: g.rm, items };
@@ -2251,7 +2252,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       if (poFilter === 'Sem PO' && it.record.status_requisicao !== 'Sem PO') return;
       if (poFilter === 'Sem MIGO') {
         const hasPO = it.record.status_requisicao === 'Processado';
-        const hasMigo = !!it.record.data_migo;
+        const hasMigo = !!it.record.data_migo || foraDeSemMigo(it.record);
         if (!hasPO || hasMigo || isServicoRM(it.record.requisicao_de_compra)) return;
       }
       if (poFilter === 'Contrato' && !ehItemDeContrato(it.record)) return;

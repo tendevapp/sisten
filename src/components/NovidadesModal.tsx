@@ -9,6 +9,7 @@ import { localDb } from '../db/localDb';
 import { Profile, SAPImportLog } from '../types';
 import Modal, { ModalBody, ModalHeader } from './ui/Modal';
 import { formatDateTimeBR } from '../lib/format';
+import { foraDeSemMigo } from '../lib/diligenciamento';
 
 interface NovidadesModalProps {
   user: Profile;
@@ -84,7 +85,7 @@ export default function NovidadesModal({ user, onClose }: NovidadesModalProps) {
 
   const semMigoItens = useMemo(
     () => scopedActive.filter(
-      r => r.status_requisicao === 'Processado' && !r.data_migo && !r.requisicao_de_compra.startsWith('17')
+      r => r.status_requisicao === 'Processado' && !r.data_migo && !foraDeSemMigo(r) && !r.requisicao_de_compra.startsWith('17')
     ).length,
     [scopedActive]
   );

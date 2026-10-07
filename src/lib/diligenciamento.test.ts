@@ -113,6 +113,12 @@ describe('montarItens', () => {
     expect(itens.map(i => i.ri)).toEqual(['ok']);
   });
 
+  it('tira o item com remessa final (CRF = X) mesmo sem MIGO', () => {
+    const registros = [registro({ ri: 'crf', crf_po: 'X' }), registro({ ri: 'ok' })];
+    const itens = montarItens(registros, semDiligenciamento, semChegadas, semCidades, semRegiao, []);
+    expect(itens.map(i => i.ri)).toEqual(['ok']);
+  });
+
   it('calcula a previsão como remessa + prazo quando há prazo cadastrado', () => {
     const prazos: PrazoTransporte[] = [{ id: '1', uf: 'SP', transportadora: '', dias_corridos: 8 }];
     const cidades = indexarCidadesPorCodigo([{ forn_codigo: 'F1', estado_uf: 'SP' } as CidadeForn]);

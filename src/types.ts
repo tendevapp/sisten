@@ -437,6 +437,8 @@ export interface SAPRequisicao {
 }
 
 export interface EnrichedSAPRecord extends SAPRequisicao {
+  /** 'X' quando a ZL0132 marca CRF (remessa final) em todas as linhas ativas do PO — tira o item de "sem MIGO". */
+  crf_po?: string | null;
   documento_compra?: string;
   item_pedido?: string;
   fornecedor_code?: string;

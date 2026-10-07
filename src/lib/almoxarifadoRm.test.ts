@@ -236,6 +236,16 @@ describe('grupo de compras (EKGRP)', () => {
   it('grupo de mercadorias sem comprador vinculado não tem como resolver', () => {
     expect(grupoComprasRm(item({ sap_code: '7777777' }), ctx)).toBeNull();
   });
+
+  it('comprador fixo sobrepõe setor e grupo de mercadorias, até item sem código SAP', () => {
+    const fixo: ContextoRm = {
+      ...ctx,
+      grupoComprasPorSetor: new Map([['set-1', '610']]),
+      grupoComprasFixo: '358',
+    };
+    expect(grupoComprasRm(item({ sap_code: '1456972' }), fixo, 'set-1')).toBe('358');
+    expect(grupoComprasRm(item({ sap_code: undefined }), fixo, 'set-1')).toBe('358');
+  });
 });
 
 describe('itens sem comprador responsável', () => {
