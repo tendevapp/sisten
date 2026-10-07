@@ -14,6 +14,7 @@ import {
   validarPlanilhaTramos,
   type ResultadoLeituraPlanilhaTramos,
 } from '../../../lib/producaoTramosImportacao';
+import { importarHistoricoTramos } from '../../../lib/producaoTramosApi';
 
 async function calcularSha256(arquivo: File): Promise<string> {
   const bytes = await arquivo.arrayBuffer();
@@ -68,7 +69,8 @@ export default function ImportarPlanilhaTramos() {
       const lote = montarLoteCatalogoTramos(resultado, sha256, arquivo.name);
       const loteId = await prepararImportacaoCatalogoTramos(lote);
       await reconciliarCatalogoTramos(loteId);
-      toast.success('Cadastro de 115 tramos reconciliado e registrado no lote auditável.');
+      const importacao = await importarHistoricoTramos(loteId, resultado.snapshots);
+      toast.success(`Cadastro reconciliado e ${importacao.eventosInseridos} marcos históricos importados.`);
       setDivergenciasCatalogo(0);
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : 'Não foi possível importar o cadastro de tramos.');
@@ -99,7 +101,7 @@ export default function ImportarPlanilhaTramos() {
             ))}
           </div>
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-            {divergenciasCatalogo} divergência(s) de cadastro serão reconciliadas. Os marcos históricos ainda não são lançados nesta ação.
+            {divergenciasCatalogo} divergência(s) de cadastro serão reconciliadas. Os marcos históricos serão carregados no mesmo razão por tramo usado nos próximos lançamentos.
           </div>
           <button type="button" onClick={importarCadastro} disabled={importando} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60">
             {importando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Importar e reconciliar cadastro
