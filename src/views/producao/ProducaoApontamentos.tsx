@@ -46,7 +46,7 @@ import RelatoriosApontamento from '../../components/producao/apontamentos/Relato
 import ProgramacaoSemanal from '../../components/producao/apontamentos/ProgramacaoSemanal';
 import CadastroEtapas from '../../components/producao/apontamentos/CadastroEtapas';
 import ImportarPlanilhaTramos from '../../components/producao/apontamentos/ImportarPlanilhaTramos';
-import ApontamentoTramos from '../../components/producao/apontamentos/ApontamentoTramos';
+import ApontamentosTorresFluxo from '../../components/producao/apontamentos/ApontamentosTorresFluxo';
 import { btnSecundario, inputCls } from '../../components/producao/apontamentos/estilos';
 import type { Profile } from '../../types';
 
@@ -299,7 +299,12 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
         ))}
       </div>
 
-      {aba === 'lancar' && <div className="space-y-4">{podeCadastros && <ImportarPlanilhaTramos />}<ApontamentoTramos /></div>}
+      {aba === 'lancar' && (
+        <div className="space-y-4">
+          {podeCadastros && <ImportarPlanilhaTramos />}
+          <ApontamentosTorresFluxo user={user} onNavegarAlmoxarifado={() => onNavigate('/almoxarifado')} />
+        </div>
+      )}
 
       {aba !== 'lancar' && (!etapas || !matriz ? (
         <div className="flex justify-center py-16">
