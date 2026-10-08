@@ -13,6 +13,7 @@
 
 import * as XLSX from 'xlsx';
 import type { Request, RequestItem, Sector } from '../types';
+import { ESTAGIOS_AUTOMATICOS_COMPRA } from './statusAutomaticoCompra';
 
 /* Constantes da planilha ---------------------------------------------------
  *
@@ -35,6 +36,16 @@ export const RM_CENTRO = 'TEN2';
  * porque uma RM sem EKGRP não entra no SAP de jeito nenhum.
  */
 export const RM_GRUPO_COMPRAS_PADRAO = '575';
+
+/**
+ * Grupos de mercadorias de EPI e uniformes no catálogo SAP (ZL0169/162): os
+ * dois pares são o mesmo assunto com códigos de famílias antigas (B7…) e novas
+ * (M11…). Item destes grupos vai para o comprador de EPI, não para o do setor.
+ */
+export const RM_GRUPOS_MERCADORIA_EPI: ReadonlySet<string> = new Set([
+  'B7001', 'M11003002', // EPI
+  'B7003', 'M11003004', // Uniformes profissionais
+]);
 
 /** Categoria de remessa (ELPEI). Sempre D nas RMs abertas por esta tela. */
 export const RM_CAT_REMESSA = 'D';
@@ -83,11 +94,37 @@ export function normalizarSap(texto: string): string {
     .toUpperCase();
 }
 
-/** Depósito (LGOBE): compra de estoque vai para 0001, o resto para 0050. */
+/** Depósito (LGOBE): compra de estoque vai para 0001, compra direta para 0050. */
 export function depositoRm(tipoCompra?: string | null): string {
   return (tipoCompra || '').trim().toLowerCase() === 'estoque'
     ? RM_DEPOSITO_ESTOQUE
     : RM_DEPOSITO_DIRETA;
+}
+
+/**
+ * Verifica se uma compra é do tipo Serviço.
+ * Compras de serviço não geram RM de materiais no Almoxarifado.
+ */
+export function ehSolicitacaoServico(tipoCompra?: string | null): boolean {
+  const normalizado = (tipoCompra || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+  return normalizado === 'servico';
+}
+
+/**
+ * Critério de elegibilidade para a fila de Almoxarifado > Abrir RM.
+ * Apenas compras de materiais (Direta ou Estoque) nos estágios pós-aprovação.
+ * Solicitações de serviço são tratadas diretamente por Suprimentos e não entram nesta fila.
+ */
+export function ehElegivelAbrirRm(req: Pick<Request, 'type' | 'tipo_compra' | 'status'>): boolean {
+  return (
+    req.type === 'compra' &&
+    !ehSolicitacaoServico(req.tipo_compra) &&
+    ESTAGIOS_AUTOMATICOS_COMPRA.includes(req.status)
+  );
 }
 
 /** Classificação: criticidade 1–3 é Normal, 4–5 é Urgente. */
@@ -117,6 +154,16 @@ export function campoZRm(setor?: Sector | null): string {
   // Setor Facilities utiliza ADMI no SAP (ZZKOKRS) em vez de FACI
   if (normalizado === 'FACI' || letras.startsWith('FACILIT') || setor?.id === '3') {
     return 'ADMI';
+  }
+
+  // Setor Seguranca utiliza SEGT no SAP (ZZKOKRS) em vez de SEGU
+  if (
+    normalizado === 'SEGU' ||
+    letras.startsWith('SEGURAN') ||
+    setor?.id === '13' ||
+    (normalizado || letras.slice(0, 4)) === 'SEGU'
+  ) {
+    return 'SEGT';
   }
 
   if (normalizado) return normalizado;
@@ -168,8 +215,8 @@ export interface ContextoRm {
   grupoComprasPorMercadoria: Map<string, string>;
   /** Setor solicitante (id ou nome) → grupo de compras (EKGRP) do responsável. (Regra ativa) */
   grupoComprasPorSetor?: Map<string, string>;
-  /** Comprador fixo (Admin → Cadastros Gerais): sobrepõe setor e grupo de mercadorias. */
-  grupoComprasFixo?: string;
+  /** Comprador de EPI/uniformes (Admin → Cadastros Gerais): sobrepõe o setor só para esses itens. */
+  grupoComprasEpi?: string;
 }
 
 /**
@@ -185,8 +232,12 @@ export function grupoComprasRm(
   ctx: ContextoRm,
   solicitacaoOuSetor?: Request | { solicitante_sector_id?: string } | string | null,
 ): string | null {
-  // 0. Comprador fixo configurado no admin: vale para toda RM, acima do setor
-  if (ctx.grupoComprasFixo) return ctx.grupoComprasFixo;
+  // 0. EPI e uniformes: comprador próprio configurado no admin, acima do setor.
+  // Os demais itens seguem o cadastro de comprador por setor.
+  if (ctx.grupoComprasEpi) {
+    const grupo = ctx.grupoMercadoriaPorMaterial?.get((item.sap_code || '').trim());
+    if (grupo && RM_GRUPOS_MERCADORIA_EPI.has(grupo.trim().toUpperCase())) return ctx.grupoComprasEpi;
+  }
 
   // 1. Regra primária ativa: pelo setor dono da solicitação
   if (ctx.grupoComprasPorSetor && ctx.grupoComprasPorSetor.size > 0) {

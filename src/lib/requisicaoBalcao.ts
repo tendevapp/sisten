@@ -135,6 +135,20 @@ export interface MaterialNoDeposito extends MaterialDisponivel {
 }
 
 /**
+ * Depósitos que existem só como destino de transferência: nunca há saída
+ * deles, então não entram nas listas de escolha de item (0105 = Transferência
+ * Produção).
+ */
+export const DEPOSITOS_SEM_SAIDA: ReadonlySet<string> = new Set(['0105']);
+
+/** Índice de estoque sem os depósitos dos quais não se dá saída. */
+export function semDepositosSemSaida(
+  estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
+): Map<string, Map<string, MaterialDisponivel>> {
+  return new Map([...estoquePorDeposito].filter(([dep]) => !DEPOSITOS_SEM_SAIDA.has(chaveDeposito(dep))));
+}
+
+/**
  * Busca de material em todos os depósitos — escolher o item define o depósito
  * de saída, sem o almoxarife precisar saber onde ele está. Com
  * `depositoFixo` a busca fica só nele: depois do primeiro item a requisição
@@ -352,7 +366,7 @@ export function itensRequisicaoDaFicha(
 
   // material normalizado → onde ele existe
   const ondeTem = new Map<string, { deposito: string; material: MaterialDisponivel }[]>();
-  for (const [deposito, mapa] of estoquePorDeposito) {
+  for (const [deposito, mapa] of semDepositosSemSaida(estoquePorDeposito)) {
     for (const material of mapa.values()) {
       const k = semZeros(material.material);
       const lista = ondeTem.get(k) ?? [];

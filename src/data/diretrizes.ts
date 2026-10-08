@@ -38,6 +38,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-10-08',
+    resumo: 'Almoxarifado > Importação ZL0024 — Inclusão da Coluna Posição de Estoque / Pos.dpst. (`sap_zl0024_stk`, `localDb.ts`, `types.ts`, `database.types.ts`, `Estoque.tsx`, `importZL0024.test.ts`, `20261008133000_add_posicao_estoque_to_sap_zl0024_stk.sql`, `diretrizes.ts`): 1. Adicionada coluna `posicao_estoque` na tabela `sap_zl0024_stk` e na view `estoque` no Supabase (`supabase-sisten`), representando a localização física do item nas prateleiras; 2. Lógica de importação (`importZL0024Raw` e `ESTOQUE_COLUMNS`) atualizada para ler a nova coluna SAP "Pos.dpst." com suporte a fallbacks tolerantes ("posição_estoque", etc.); 3. Visualização de Estoque (`Estoque.tsx`) atualizada para exibir a coluna "Pos. Depósito", indexar no filtro de busca por termos e incluir na exportação XLSX; 4. Migration e testes unitários criados e validados.',
+  },
+  {
+    data: '2026-10-08',
+    resumo: 'Almoxarifado > Abrir RM — Exclusão de Solicitações de Serviço da Fila de Abertura de RM (`almoxarifadoRm.ts`, `AbrirRm.tsx`, `localDb.ts`, `solicitacoesTabelaHelpers.ts`, `almoxarifadoRm.test.ts`, `diretrizes.ts`): 1. Solicitações de compra do tipo "Serviço" (`tipo_compra = "Serviço"`) não geram requisição de materiais no almoxarifado e foram excluídas da fila de "Abrir RM" (`ehSolicitacaoServico`, `ehElegivelAbrirRm`); 2. Desativada notificação de "Abrir RM: nova demanda" para compras de serviço aprovadas pelo gestor; 3. Central de Solicitações atualizada para exibir badge "Aprovada" em compras de serviço aprovadas em vez de "Aguardando RM"; 4. Testes unitários adicionados e validados.',
+  },
+  {
+    data: '2026-10-08',
+    resumo: 'Almoxarifado > Abrir RM — Mapeamento do Setor Segurança para Código SEGT no Campo Z / ZZKOKRS (`almoxarifadoRm.ts`, `almoxarifadoRm.test.ts`, `sectors.ts`, `diretrizes.ts`): 1. Atualizada a regra de conversão de `campoZRm` na exportação e pré-visualização da planilha de abertura de RM para atribuir "SEGT" em vez de "SEGU" às solicitações originadas pelo setor Segurança (id 13 ou área "SEGU"); 2. Atualizado o cadastro base de setores (`sectors.ts`) com `sap_area_code: \'SEGT\'`; 3. Cobertura de testes unitários atualizada e validada.',
+  },
+  {
     data: '2026-10-07',
     resumo: 'Suprimentos > Central de Compras — Filtro por Balão de Vencidos e Quebra de Texto na Observação em "Sem MIGO" (`DiligenciamentoSemMigoTable.tsx`, `diligenciamento.ts`, `diligenciamento.test.ts`, `diretrizes.ts`): 1. O balão de estatística de "Vencidos" agora é interativo e filtra a tabela/cartões para exibir apenas os itens com previsão de entrega vencida ao ser clicado, com realce visual de seleção, contador atualizado e opção de remoção do filtro pelo próprio balão ou barra de aviso; 2. O balão de "Sem previsão" e "Pendentes" também suportam alternância rápida de filtro; 3. O campo de Observação foi convertido para textarea com suporte a quebra de texto (wrap) e ajuste dinâmico de altura, permitindo visualizar e editar textos longos e notas por completo sem truncamento horizontal.',
   },
@@ -1539,14 +1551,14 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           {
             titulo: 'Visão geral e fluxo de abertura',
             itens: [
-              'Converte solicitações de compra já aprovadas em planilhas padronizadas de abertura de Requisição de Materiais (RM) prontas para processamento no SAP.',
+              'Converte solicitações de compra de materiais já aprovadas (Direta ou Estoque) em planilhas padronizadas de abertura de Requisição de Materiais (RM) prontas para processamento no SAP. Solicitações de serviço são excluídas desta fila pois seguem fluxo de contratação direto com Suprimentos.',
               'Gera arquivo XLSX com layout posicional exato: ID Req, Classificação, Item, Material (MATNR), Quantidade (MENGE), Depósito (LGOBE), Centro (NAME1), Grupo Compras (EKGRP).'
             ]
           },
           {
             titulo: 'Regras de conversão e campos padrão',
             itens: [
-              'Depósito (LGOBE): "0001" para materiais com destino a estoque; "0050" para compras diretas e itens de serviço.',
+              'Depósito (LGOBE): "0001" para materiais com destino a estoque; "0050" para compras diretas.',
               'Centro operacional (NAME1): fixado em "TEN2" (unidade fabril única). Categoria de remessa (ELPEI): fixada em "D".',
               'Grupo de Compras (EKGRP): atribuído dinamicamente pelo vínculo de grupo de mercadorias x comprador responsável (`sup_grupo_comprador_mercadorias`). Em caso de ausência de vínculo ou item fora de catálogo, aplica o fallback padrão "575" com aviso prévio em tela.',
               'Tratamento de itens genéricos: se o item foi sinalizado como genérico, o código SAP selecionado como referência é mantido na coluna MATNR e o texto técnico/observação recebe o prefixo obrigatório "ITEM GENÉRICO: [OBS]", alertando a equipe de compras sobre a especificação sob medida sem invalidar a linha no SAP.'

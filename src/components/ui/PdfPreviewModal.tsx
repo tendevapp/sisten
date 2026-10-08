@@ -72,7 +72,7 @@ export default function PdfPreviewModal({ gerar, onClose, tituloPadrao }: PdfPre
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-stretch justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:p-4"
+      className="fixed inset-0 z-[150] flex items-stretch justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

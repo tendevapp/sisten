@@ -4,7 +4,7 @@ import {
   alertaDaLinha, atualizarQtdItemDoGrupo, buscarMateriais, buscarMateriaisEmDepositos, criarGrupoPep,
   definirDepositoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
   removerItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao, type LinhaBalcao,
-  DEPOSITO_PADRAO_BALCAO, DEPOSITO_EPI, PEP_EPI_DEMAIS_SETORES, PEP_EPI_PRODUCAO, itensRequisicaoDaFicha, sugerirPepEpi,
+  DEPOSITO_PADRAO_BALCAO, DEPOSITO_EPI, semDepositosSemSaida, PEP_EPI_DEMAIS_SETORES, PEP_EPI_PRODUCAO, itensRequisicaoDaFicha, sugerirPepEpi,
 } from './requisicaoBalcao';
 import type { EstoqueItem } from '../types';
 
@@ -64,6 +64,15 @@ describe('buscarMateriaisEmDepositos', () => {
   it('depósito inativo vai para o fim', () => {
     const r = buscarMateriaisEmDepositos(idx, '1291134', null, (d) => d === '0002');
     expect(r.map((m) => m.deposito)).toEqual(['0105', '0002']);
+  });
+});
+
+describe('depósitos sem saída', () => {
+  it('0105 (só destino de transferência) não entra nas opções de item', () => {
+    const idx = indexarEstoquePorDeposito(estoque);
+    const sem = semDepositosSemSaida(idx);
+    expect([...sem.keys()]).not.toContain('0105');
+    expect(buscarMateriaisEmDepositos(sem, '1291134').map((m) => m.deposito)).toEqual(['0002']);
   });
 });
 

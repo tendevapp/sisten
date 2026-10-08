@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  campoZRm, classificacaoRm, classificarVinculoRm, depositoRm, escolherAbaRmPreenchida,
-  grupoComprasRm, itensSemCodigoSap, itensSemGrupoComprador, lerPlanilhaRmPreenchida,
-  montarLinhasRm, nomeArquivoRm, requisitanteRm, textoCabecalhoRm, RM_COLUNAS,
+  campoZRm, classificacaoRm, classificarVinculoRm, depositoRm, ehElegivelAbrirRm,
+  ehSolicitacaoServico, escolherAbaRmPreenchida, grupoComprasRm, itensSemCodigoSap,
+  itensSemGrupoComprador, lerPlanilhaRmPreenchida, montarLinhasRm, nomeArquivoRm,
+  requisitanteRm, textoCabecalhoRm, RM_COLUNAS,
   type ContextoRm,
 } from './almoxarifadoRm';
 import type { Request, RequestItem, Sector } from '../types';
@@ -77,6 +78,34 @@ describe('depósito (LGOBE)', () => {
   });
 });
 
+describe('elegibilidade para Abrir RM', () => {
+  it('identifica compras de servico', () => {
+    expect(ehSolicitacaoServico('Serviço')).toBe(true);
+    expect(ehSolicitacaoServico('servico')).toBe(true);
+    expect(ehSolicitacaoServico('SERVIÇO')).toBe(true);
+    expect(ehSolicitacaoServico('Direta')).toBe(false);
+    expect(ehSolicitacaoServico('Estoque')).toBe(false);
+    expect(ehSolicitacaoServico(null)).toBe(false);
+    expect(ehSolicitacaoServico(undefined)).toBe(false);
+  });
+
+  it('exclui compras de servico da fila de Abrir RM', () => {
+    expect(ehElegivelAbrirRm(req({ tipo_compra: 'Serviço' }))).toBe(false);
+    expect(ehElegivelAbrirRm(req({ tipo_compra: 'Direta' }))).toBe(true);
+    expect(ehElegivelAbrirRm(req({ tipo_compra: 'Estoque' }))).toBe(true);
+  });
+
+  it('so aceita solicitacoes de compra nos estagios automaticos pos-aprovacao', () => {
+    expect(ehElegivelAbrirRm(req({ status: 'pendente' }))).toBe(false);
+    expect(ehElegivelAbrirRm(req({ status: 'rejeitada' }))).toBe(false);
+    expect(ehElegivelAbrirRm(req({ type: 'chamado' }))).toBe(false);
+    expect(ehElegivelAbrirRm(req({ status: 'aprovada' }))).toBe(true);
+    expect(ehElegivelAbrirRm(req({ status: 'em_cotacao' }))).toBe(true);
+    expect(ehElegivelAbrirRm(req({ status: 'pedido_emitido' }))).toBe(true);
+    expect(ehElegivelAbrirRm(req({ status: 'concluida' }))).toBe(true);
+  });
+});
+
 describe('classificação', () => {
   it('criticidade 1 a 3 é Normal', () => {
     [1, 2, 3].forEach(c => expect(classificacaoRm(c)).toBe('Normal'));
@@ -116,6 +145,14 @@ describe('campo Z (ZZKOKRS)', () => {
     expect(campoZRm({ id: '3', name: 'Facilities', is_support: true, helpdesk_enabled: true })).toBe('ADMI');
     expect(campoZRm({ id: '3', name: 'Facilities', is_support: true, helpdesk_enabled: true, sap_area_code: 'FACI' })).toBe('ADMI');
     expect(campoZRm({ id: '3', name: 'Facilities', is_support: true, helpdesk_enabled: true, sap_area_code: 'ADMI' })).toBe('ADMI');
+  });
+
+  it('setor Seguranca usa SEGT em vez de SEGU', () => {
+    expect(campoZRm({ id: '13', name: 'Segurança', is_support: true, helpdesk_enabled: false })).toBe('SEGT');
+    expect(campoZRm({ id: '13', name: 'Segurança', is_support: true, helpdesk_enabled: false, sap_area_code: 'SEGU' })).toBe('SEGT');
+    expect(campoZRm({ id: '13', name: 'Segurança', is_support: true, helpdesk_enabled: false, sap_area_code: 'SEGT' })).toBe('SEGT');
+    expect(campoZRm({ id: '99', name: 'Segurança Patrimonial', is_support: false, helpdesk_enabled: false })).toBe('SEGT');
+    expect(campoZRm({ id: '100', name: 'Qualquer', is_support: false, helpdesk_enabled: false, sap_area_code: 'SEGU' })).toBe('SEGT');
   });
 
   it('sem código, usa 4 letras do nome, ignorando pontuação', () => {
@@ -237,14 +274,17 @@ describe('grupo de compras (EKGRP)', () => {
     expect(grupoComprasRm(item({ sap_code: '7777777' }), ctx)).toBeNull();
   });
 
-  it('comprador fixo sobrepõe setor e grupo de mercadorias, até item sem código SAP', () => {
-    const fixo: ContextoRm = {
+  it('comprador de EPI sobrepõe o setor só para itens de EPI/uniforme; o resto segue o setor', () => {
+    const comEpi: ContextoRm = {
       ...ctx,
+      grupoMercadoriaPorMaterial: new Map([...ctx.grupoMercadoriaPorMaterial, ['1265647', 'M11003002'], ['1407228', 'B7003']]),
       grupoComprasPorSetor: new Map([['set-1', '610']]),
-      grupoComprasFixo: '358',
+      grupoComprasEpi: '358',
     };
-    expect(grupoComprasRm(item({ sap_code: '1456972' }), fixo, 'set-1')).toBe('358');
-    expect(grupoComprasRm(item({ sap_code: undefined }), fixo, 'set-1')).toBe('358');
+    expect(grupoComprasRm(item({ sap_code: '1265647' }), comEpi, 'set-1')).toBe('358');
+    expect(grupoComprasRm(item({ sap_code: '1407228' }), comEpi, 'set-1')).toBe('358');
+    expect(grupoComprasRm(item({ sap_code: '1456972' }), comEpi, 'set-1')).toBe('610');
+    expect(grupoComprasRm(item({ sap_code: undefined }), comEpi, 'set-1')).toBe('610');
   });
 });
 

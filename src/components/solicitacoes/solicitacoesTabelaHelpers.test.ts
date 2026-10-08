@@ -102,4 +102,10 @@ describe('solicitacoesTabelaHelpers', () => {
     // A distinção é só para compra: cadastro SAP aprovado segue "Resolvida".
     expect(obterEstilosStatus('aprovada', 'cadastro_sap').rotulo).toBe('Resolvida');
   });
+
+  it('obterEstilosStatus exibe Aprovada para compra de servico em vez de Aguardando RM', () => {
+    expect(obterEstilosStatus('aprovada', 'compra', false, 'Serviço').rotulo).toBe('Aprovada');
+    expect(obterEstilosStatus('aprovada', 'compra', false, 'servico').rotulo).toBe('Aprovada');
+    expect(obterEstilosStatus('aprovada', 'compra', false, 'Direta').rotulo).toBe('Aguardando RM');
+  });
 });

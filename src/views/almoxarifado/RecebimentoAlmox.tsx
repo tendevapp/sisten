@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, FileDown, HardHat, Loader2,
-  ClipboardList, MessageSquareReply, PackageCheck, PackageMinus, Plus, RefreshCw, Search, ShieldAlert, Truck, X,
+  ClipboardList, MessageSquareReply, PackageCheck, PackageMinus, Plus, RefreshCw, Search, ShieldAlert, ShoppingCart, Truck, X,
 } from 'lucide-react';
 import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -53,6 +53,7 @@ import {
   type NaoConformidadeRow, type NcAcao,
 } from '../../lib/recebimentoAlmoxApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { criarResolvedorCompraDireta, type TagCompraDireta } from '../../lib/estoqueOrigemCompraDireta';
 import { canAccessForm } from '../../lib/pages';
 import type { Profile } from '../../types';
 import { extrairPalavrasChave, casarTokens } from '../../lib/buscaKeywords';
@@ -898,7 +899,7 @@ function VistaContagem({
             <p className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
               {c.codigo}
               <span className="ml-2 font-medium" style={{ color: 'var(--ink-muted)' }}>
-                {pos.length ? `PO ${pos.join(' · ')}` : 'sem PO'}
+                {pos.length ? `PO ${pos.join(' · ')}` : c.retorno_remessa ? 'retorno de remessa' : 'sem PO'}
               </span>
             </p>
             <p className="text-[11px] truncate" style={{ color: 'var(--ink-secondary)' }}>
@@ -1335,6 +1336,33 @@ function StatusChip({ texto, tom }: { texto: string; tom: TomChip }) {
   );
 }
 
+/** Resolvedor RM + material → compra direta, montado uma vez a partir das solicitações do aparelho. */
+function useResolvedorCompraDireta() {
+  return useMemo(
+    () => criarResolvedorCompraDireta(localDb.getRequests(), localDb.getAllRequestItems(), localDb.getSectors()),
+    [],
+  );
+}
+
+/**
+ * Tag de compra direta: o item não vai para a prateleira, vai para quem pediu.
+ * Aparece já no lançamento para o conferente separar o volume na hora.
+ */
+function TagCompraDiretaChip({ tag }: { tag: TagCompraDireta }) {
+  const setor = tag.setores.join(' / ');
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide"
+      style={{ background: 'color-mix(in srgb, var(--brand) 14%, transparent)', color: 'var(--brand)' }}
+      title={tag.exata
+        ? `Compra direta — solicitação #${tag.solicitacao}, setor ${setor}. Separar para o solicitante.`
+        : `Compra direta (inferida pelo código do material em solicitações anteriores) — setor ${setor}. Confirme com o solicitante.`}
+    >
+      <ShoppingCart className="h-3 w-3" /> Compra direta · {setor}{tag.exata ? '' : ' (prov.)'}
+    </span>
+  );
+}
+
 const TOM_STATUS_NC: Record<string, TomChip> = {
   aberta: 'alerta', em_tratativa: 'atencao', resolvida: 'ok',
 };
@@ -1351,6 +1379,7 @@ function ModalDetalhe({
   onClose: () => void;
 }) {
   const lb = useLightbox();
+  const compraDiretaDe = useResolvedorCompraDireta();
   const toast = useToast();
   const codigo = (row as any).codigo as string;
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
@@ -1446,6 +1475,7 @@ function ModalDetalhe({
             <div className="space-y-3">
               <div>
                 <DetLinha rotulo="Data" valor={formatDateBR(c.data)} />
+                {c.retorno_remessa && <DetLinha rotulo="Natureza" valor="Retorno de remessa (sem PO)" />}
                 <DetLinha rotulo="Pedidos (PO)" valor={pos.join(' · ')} />
                 <DetLinha rotulo="Fornecedor" valor={c.fornecedor} />
                 <DetLinha rotulo="RM" valor={c.rm} />
@@ -1518,6 +1548,10 @@ function ModalDetalhe({
                       <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                         cód. {it.material_code}{it.nro_pedido ? ` · PO ${it.nro_pedido}` : ''}
                       </p>
+                      {(() => {
+                        const tag = compraDiretaDe(c.rm, it.material_code);
+                        return tag ? <div className="mt-1"><TagCompraDiretaChip tag={tag} /></div> : null;
+                      })()}
                       {parcialAnt && (
                         <p className="mt-0.5 text-[10px] font-bold tabular-nums" style={{ color: 'var(--status-serious)' }}>
                           entrega parcial no PO — já recebido {formatQtd(parcialAnt.jaRecebido)} de {formatQtd(it.qtd_pedido ?? 0)}
@@ -1977,6 +2011,8 @@ interface LinhaUI extends LinhaConferencia {
   fotos: PreparedAttachment[];
   /** Estado exclusivo da linha: só um de conferido / parcial / avaria. */
   estado: EstadoLinha;
+  /** RM da linha no SAP — liga o item à solicitação para a tag de compra direta. */
+  rm?: string | null;
 }
 
 type EstadoLinha = null | 'conferido' | 'parcial' | 'avaria';
@@ -2002,7 +2038,7 @@ const LIMITE_BUSCA_ITEM = 60;
 
 /** Linha nova da conferência a partir de uma linha do PO (busca por PO, fornecedor ou item). */
 function linhaDoPedido(
-  l: Pick<LinhaPedidoPO, 'linhaRef' | 'materialCode' | 'descricao' | 'unidade' | 'qtdPedido' | 'qtdJaFornecida'>,
+  l: Pick<LinhaPedidoPO, 'linhaRef' | 'materialCode' | 'descricao' | 'unidade' | 'qtdPedido' | 'qtdJaFornecida'> & { rm?: string | null },
   nroPedido: string,
 ): LinhaUI {
   return {
@@ -2013,6 +2049,7 @@ function linhaDoPedido(
     unidade: l.unidade,
     qtdPedido: l.qtdPedido,
     qtdJaFornecida: l.qtdJaFornecida,
+    rm: l.rm ?? null,
     qtdRecebida: pendentePedido(l.qtdPedido, l.qtdJaFornecida),
     conferido: false,
     itemManual: false,
@@ -2044,6 +2081,7 @@ interface RascunhoConferencia {
   rm: string;
   deposito: string;
   fonte: FontePedido;
+  retornoRemessa?: boolean;
   observacao: string;
   ncResponsavel: string;
   ncSeveridade: 'baixa' | 'media' | 'alta';
@@ -2179,11 +2217,14 @@ function ModalConferencia({
   const [fornPos, setFornPos] = useState<PoAberto[] | null>(null);
   /** Cache ZL0132 do aparelho — fonte da busca por fornecedor (sem rede). */
   const sapCache = useMemo(() => localDb.getEnrichedSAPRequisicoes(), []);
+  const compraDiretaDe = useResolvedorCompraDireta();
   const fornecedoresCache = useMemo(() => listarFornecedoresDoCache(sapCache), [sapCache]);
   const [fornecedor, setFornecedor] = useState(ed?.fornecedor ?? rascunho?.fornecedor ?? '');
   const [rm, setRm] = useState(ed?.rm ?? rascunho?.rm ?? '');
   const [deposito, setDeposito] = useState(ed?.deposito ?? rascunho?.deposito ?? '');
   const [fonte, setFonte] = useState<FontePedido>(ed?.fonte_pedido ?? rascunho?.fonte ?? 'sem_pedido');
+  /** Retorno de remessa: sem PO e sem fornecedor obrigatórios; itens entram à mão. */
+  const [retornoRemessa, setRetornoRemessa] = useState(ed?.retorno_remessa ?? rascunho?.retornoRemessa ?? false);
   const [linhas, setLinhas] = useState<LinhaUI[]>(() => {
     if (ed) {
       return ed.itens.map<LinhaUI>((it) => {
@@ -2326,7 +2367,7 @@ function ModalConferencia({
 
   const addManual = () =>
     setLinhas((a) => [...a, {
-      linhaRef: null, nroPedido: SO_DIGITOS(poBusca).trim() || null,
+      linhaRef: null, nroPedido: retornoRemessa ? null : SO_DIGITOS(poBusca).trim() || null,
       materialCode: '', descricao: '', unidade: 'UN',
       qtdPedido: null, qtdJaFornecida: null, qtdRecebida: 0,
       conferido: true, itemManual: true, avaria: false, parcial: false, estado: 'conferido',
@@ -2334,6 +2375,11 @@ function ModalConferencia({
     }]);
 
   const resumo = useMemo(() => resumoConferencia(linhas), [linhas]);
+  /** Linhas de compra direta, para o contador acima da lista. */
+  const qtdCompraDireta = useMemo(
+    () => linhas.filter((l) => compraDiretaDe(l.rm ?? rm, l.materialCode)).length,
+    [linhas, rm, compraDiretaDe],
+  );
 
   /** Linhas agrupadas por PO (mantém o índice real pra edição). Só usado
    *  quando a conferência junta mais de um PO — aí cada bloco é recolhível. */
@@ -2360,17 +2406,17 @@ function ModalConferencia({
     if (ed) return;
     if (debounceRascunhoRef.current != null) window.clearTimeout(debounceRascunhoRef.current);
     debounceRascunhoRef.current = window.setTimeout(() => {
-      const temAlgo = linhas.length > 0 || fornecedor.trim() || rm.trim() || deposito.trim() || observacao.trim() || !!cargaId;
+      const temAlgo = linhas.length > 0 || retornoRemessa || fornecedor.trim() || rm.trim() || deposito.trim() || observacao.trim() || !!cargaId;
       if (!temAlgo) { removerRascunhoConferencia(rascId); return; }
       salvarRascunhoConferencia({
         id: rascId,
-        data, cargaId, fornecedor, rm, deposito, fonte, observacao, ncResponsavel, ncSeveridade,
+        data, cargaId, fornecedor, rm, deposito, fonte, retornoRemessa, observacao, ncResponsavel, ncSeveridade,
         linhas: linhas.map(({ fotos, ...resto }) => resto),
         atualizadoEm: new Date().toISOString(),
       });
     }, 600);
     return () => { if (debounceRascunhoRef.current != null) window.clearTimeout(debounceRascunhoRef.current); };
-  }, [ed, rascId, data, cargaId, fornecedor, rm, deposito, fonte, observacao, ncResponsavel, ncSeveridade, linhas]);
+  }, [ed, rascId, data, cargaId, fornecedor, rm, deposito, fonte, retornoRemessa, observacao, ncResponsavel, ncSeveridade, linhas]);
 
   /** Em segundo plano: a conferência já foi salva, o catálogo é consequência e nunca a derruba. */
   const levarFotosAoCatalogo = (itensFoto: ItemParaCatalogar[]) => {
@@ -2438,6 +2484,7 @@ function ModalConferencia({
             observacao: observacao.trim() || null,
             carga_id: cargaId || null,
             tipo_item: resumoConferencia(linhas).tipoItem,
+            retorno_remessa: retornoRemessa,
             evidencias: evidCab,
           },
           itens,
@@ -2499,6 +2546,7 @@ function ModalConferencia({
         tipo_item: resumo.tipoItem,
         deposito: deposito.trim() || null,
         fonte_pedido: fonte,
+        retorno_remessa: retornoRemessa,
         evidencias: evidCab,
         observacao: observacao.trim() || null,
         criado_por_id: user.id,
@@ -2572,6 +2620,35 @@ function ModalConferencia({
             </Campo>
           </div>
 
+          <label
+            className="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3"
+            style={{
+              borderColor: retornoRemessa ? 'var(--brand)' : 'var(--hairline)',
+              background: retornoRemessa ? 'color-mix(in srgb, var(--brand) 8%, transparent)' : 'transparent',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={retornoRemessa}
+              onChange={(e) => {
+                if (e.target.checked && pedidos.length > 0) {
+                  toast.warning('Remova os POs da conferência antes de marcar retorno de remessa.');
+                  return;
+                }
+                setRetornoRemessa(e.target.checked);
+                if (e.target.checked) setFonte('sem_pedido');
+              }}
+              className="mt-0.5 h-4 w-4 cursor-pointer"
+            />
+            <span className="min-w-0">
+              <span className="block text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>Retorno de remessa</span>
+              <span className="block text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                Material que volta de remessa: lança sem PO e sem fornecedor. Adicione os itens à mão.
+              </span>
+            </span>
+          </label>
+
+          {!retornoRemessa && (
           <Campo rotulo="Pedidos (PO) — adicione um por vez">
             <div className="mb-2 flex w-full rounded-lg border p-0.5 text-[11px] font-bold sm:w-auto sm:inline-flex" style={{ borderColor: 'var(--hairline)' }}>
               {([['item', 'Por item'], ['po', 'Por número do PO'], ['fornecedor', 'Por fornecedor']] as const).map(([id, rot]) => (
@@ -2797,9 +2874,10 @@ function ModalConferencia({
               <span className="mt-1 block text-[11px]" style={{ color: 'var(--ink-muted)' }}>{FONTE_ROTULO[fonte]}</span>
             )}
           </Campo>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <Campo rotulo="Fornecedor"><input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} className={inputCls} /></Campo>
+            <Campo rotulo={retornoRemessa ? 'Fornecedor (opcional)' : 'Fornecedor'}><input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} className={inputCls} /></Campo>
             <Campo rotulo="RM"><input value={rm} onChange={(e) => setRm(e.target.value)} className={inputCls} /></Campo>
             <Campo rotulo="Depósito / localizador"><input value={deposito} onChange={(e) => setDeposito(e.target.value)} className={inputCls} /></Campo>
           </div>
@@ -2811,9 +2889,10 @@ function ModalConferencia({
                 {resumo.total} itens · <span style={{ color: 'var(--status-good)' }}>{resumo.ok} ok</span>
                 {resumo.parciais > 0 && <> · <span style={{ color: 'var(--status-serious)' }}>{resumo.parciais} parcial</span></>}
                 {resumo.divergentes > 0 && <> · <span style={{ color: 'var(--status-critical)' }}>{resumo.divergentes} diverg.</span></>}
+                {qtdCompraDireta > 0 && <> · <span style={{ color: 'var(--brand)' }}>{qtdCompraDireta} compra direta</span></>}
               </span>
               <button onClick={addManual} className="text-[11px] font-bold cursor-pointer hover:underline" style={{ color: 'var(--brand)' }}>
-                + Item fora do pedido
+                {retornoRemessa ? '+ Adicionar item' : '+ Item fora do pedido'}
               </button>
             </div>
 
@@ -2840,7 +2919,7 @@ function ModalConferencia({
 
             {!linhas.length && (
               <p className="rounded-lg border border-dashed px-3 py-4 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
-                Puxe um PO ou adicione itens à mão.
+                {retornoRemessa ? 'Adicione os itens que voltaram da remessa.' : 'Puxe um PO ou adicione itens à mão.'}
               </p>
             )}
 
@@ -2875,6 +2954,11 @@ function ModalConferencia({
                       </p>
                     </div>
                   )}
+
+                  {(() => {
+                    const tag = compraDiretaDe(l.rm ?? rm, l.materialCode);
+                    return tag ? <div className="mt-1.5"><TagCompraDiretaChip tag={tag} /></div> : null;
+                  })()}
 
                   {parcialAnt && (
                     <p className="mt-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums" style={{ background: 'color-mix(in srgb, var(--status-serious) 14%, transparent)', color: 'var(--status-serious)' }}>

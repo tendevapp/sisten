@@ -827,7 +827,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
                     const { titulo, subtitulo } = obterTituloEJustificativa(req, itens, nomeSetor);
                     const prazoInfo = calcularPrazoSolicitacao(req);
                     const criticidadeInfo = obterEstilosCriticidade(req.criticality);
-                    const statusInfo = obterEstilosStatus(req.status, req.type, !!req.linked_rm_number);
+                    const statusInfo = obterEstilosStatus(req.status, req.type, !!req.linked_rm_number, req.tipo_compra);
                     const iniciais = obterIniciaisNome(req.solicitante_name);
                     const tempoAbertura = formatarTempoRelativoAbertura(req.created_at);
 
@@ -1008,7 +1008,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
                       const { titulo, subtitulo } = obterTituloEJustificativa(req, itens, nomeSetor);
                       const prazoInfo = calcularPrazoSolicitacao(req);
                       const criticidadeInfo = obterEstilosCriticidade(req.criticality);
-                      const statusInfo = obterEstilosStatus(req.status, req.type, !!req.linked_rm_number);
+                      const statusInfo = obterEstilosStatus(req.status, req.type, !!req.linked_rm_number, req.tipo_compra);
 
                       return (
                         <div

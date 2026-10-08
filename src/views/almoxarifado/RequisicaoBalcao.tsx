@@ -35,7 +35,7 @@ import {
 } from '../../lib/almoxarifado';
 import {
   PREFIXO_REQ_BALCAO, ROTULO_TIPO_MOVIMENTO, adicionarGrupoPep, adicionarItemAoGrupo, adicionarLinha,
-  alertaDaLinha, alertasRequisicao, achatarGruposPep, agruparLinhasPorDeposito, agruparLinhasPorDestino, agruparLinhasPorPep, buscarMateriaisEmDepositos, chaveDeposito,
+  alertaDaLinha, alertasRequisicao, achatarGruposPep, agruparLinhasPorDeposito, agruparLinhasPorDestino, agruparLinhasPorPep, buscarMateriaisEmDepositos, chaveDeposito, semDepositosSemSaida,
   criarGrupoPep, definirDepositoDoGrupo, definirDestinoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
   removerItemDoGrupo, atualizarQtdItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao,
   type GrupoPepBalcao, type LinhaBalcao, type MaterialDisponivel, type MaterialNoDeposito, type PepAplicacao, type TipoMovimentoBalcao,
@@ -1701,13 +1701,15 @@ function AdicionarItem({
   const inputRefLocal = useRef<HTMLInputElement>(null);
   const inputEfetivo = refBusca ?? inputRefLocal;
 
+  // 0105 (Transferência Produção) é só destino: nunca há saída dele, então não é opção de item.
+  const estoqueComSaida = useMemo(() => semDepositosSemSaida(estoquePorDeposito), [estoquePorDeposito]);
   const resultados = useMemo(
-    () => buscarMateriaisEmDepositos(estoquePorDeposito, texto, depositoFixo, isDepositoInativo),
-    [estoquePorDeposito, texto, depositoFixo],
+    () => buscarMateriaisEmDepositos(estoqueComSaida, texto, depositoFixo, isDepositoInativo),
+    [estoqueComSaida, texto, depositoFixo],
   );
   const totalMateriais = depositoFixo
-    ? estoquePorDeposito.get(depositoFixo)?.size ?? 0
-    : new Set([...estoquePorDeposito.values()].flatMap((m) => [...m.keys()])).size;
+    ? estoqueComSaida.get(depositoFixo)?.size ?? 0
+    : new Set([...estoqueComSaida.values()].flatMap((m) => [...m.keys()])).size;
 
   const escolher = (m: MaterialNoDeposito | undefined) => {
     if (!m) return;

@@ -23,6 +23,8 @@ import PlanilhaSapUploadButton from '../components/almoxarifado/PlanilhaSapUploa
 import { canAccessPage } from '../lib/pages';
 import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../lib/buscaKeywords';
 import SearchKeywordsChips from '../components/ui/SearchKeywordsChips';
+import EstoqueItemModal from '../components/almoxarifado/EstoqueItemModal';
+import { indexarSetoresCompraDireta } from '../lib/estoqueOrigemCompraDireta';
 
 interface EstoqueProps {
   user: Profile;
@@ -47,6 +49,7 @@ interface ColumnOption {
 const COLUMNS: (ColumnOption & { defaultVisible: boolean })[] = [
   { id: 'material', label: 'Material', sortable: true, defaultVisible: true },
   { id: 'txt_breve_material', label: 'Descrição', sortable: true, defaultVisible: true },
+  { id: 'posicao_estoque', label: 'Pos. Depósito', sortable: true, defaultVisible: true },
   { id: 'classe_abc', label: 'ABC', sortable: true, defaultVisible: true },
   { id: 'deposito', label: 'Depósito', sortable: true, defaultVisible: true },
   { id: 'quantidade', label: 'Quantidade', align: 'right', sortable: true, numeric: true, defaultVisible: true },
@@ -93,6 +96,8 @@ export default function Estoque({ user }: EstoqueProps) {
   const [abcFilter, setAbcFilter] = useState<'Todos' | ClasseAbc>('Todos');
   const [grupoFilter, setGrupoFilter] = useState('Todos');
   const [apenasComSaldo, setApenasComSaldo] = useState(false);
+  // 'Todos' | 'todas' (qualquer setor) | id do setor que pediu em compra direta.
+  const [compraDiretaFilter, setCompraDiretaFilter] = useState('Todos');
 
   // Ordenação
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -111,6 +116,9 @@ export default function Estoque({ user }: EstoqueProps) {
   useEffect(() => {
     localStorage.setItem(STORAGE_COLS_KEY, JSON.stringify(visibleColumns));
   }, [visibleColumns]);
+
+  // Linha aberta na ficha de informações (endereço, estoque mínimo, setor solicitante).
+  const [itemAberto, setItemAberto] = useState<EstoqueItem | null>(null);
 
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   // PMM recalculado pelas entradas da MB51, por material normalizado.
@@ -207,6 +215,24 @@ export default function Estoque({ user }: EstoqueProps) {
     return Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [rows]);
 
+  // Material → setores que o pediram em compra direta (solicitações em cache).
+  // Depende de `rows` para recalcular depois de um "Atualizar", que também
+  // ressincroniza as solicitações.
+  const compraDiretaPorMaterial = useMemo(
+    () => indexarSetoresCompraDireta(localDb.getRequests(), localDb.getAllRequestItems()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows],
+  );
+
+  const setoresCompraDiretaOptions = useMemo(() => {
+    const ids = new Set<string>();
+    compraDiretaPorMaterial.forEach(s => s.forEach(id => ids.add(id)));
+    const nomes = new Map(localDb.getSectors().map(s => [s.id, s.name]));
+    return [...ids]
+      .map(id => ({ id, nome: nomes.get(id) ?? 'Setor não identificado' }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }, [compraDiretaPorMaterial]);
+
   // Filtragem por busca por palavras-chave, depósito, tipo, classificação, ABC, grupo e saldo.
   const filteredRows = useMemo(() => {
     const tokens = searchChips.map(normalizarParaBusca).filter(Boolean);
@@ -222,6 +248,11 @@ export default function Estoque({ user }: EstoqueProps) {
       if (abcFilter !== 'Todos' && mapaAbc.get(normalizeCode(r.material)) !== abcFilter) return false;
       if (grupoFilter !== 'Todos' && r.grupo_mercadorias !== grupoFilter) return false;
       if (apenasComSaldo && !((r.quantidade ?? 0) > 0)) return false;
+      if (compraDiretaFilter !== 'Todos') {
+        const setoresDoMaterial = compraDiretaPorMaterial.get(normalizeCode(r.material));
+        if (!setoresDoMaterial) return false;
+        if (compraDiretaFilter !== 'todas' && !setoresDoMaterial.has(compraDiretaFilter)) return false;
+      }
       if (tokens.length > 0) {
         const hit = casarTokens([
           r.material,
@@ -231,12 +262,13 @@ export default function Estoque({ user }: EstoqueProps) {
           r.texto_pedido_compra,
           r.grupo_mercadorias,
           r.deposito,
+          r.posicao_estoque,
         ], tokens);
         if (!hit) return false;
       }
       return true;
     });
-  }, [rows, searchChips, depositoFilter, tipoItemFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, mapaAbc]);
+  }, [rows, searchChips, depositoFilter, tipoItemFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, compraDiretaFilter, compraDiretaPorMaterial, mapaAbc]);
 
   const pmmMovDe = useCallback(
     (material?: string | null) => pmmMov.get(normalizeCode(material)) ?? null,
@@ -281,7 +313,7 @@ export default function Estoque({ user }: EstoqueProps) {
   const visibleRows = useMemo(() => sortedRows.slice(0, visibleCount), [sortedRows, visibleCount]);
 
   // Reinicia a paginação quando filtros/ordenação mudam.
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchChips, depositoFilter, tipoItemFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, sortColumn, sortDir]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchChips, depositoFilter, tipoItemFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, compraDiretaFilter, sortColumn, sortDir]);
 
   const toggleSort = (col: string) => {
     if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -334,6 +366,7 @@ export default function Estoque({ user }: EstoqueProps) {
       'Aplicação': r.aplicacao ?? '',
       'Texto Pedido Compra': r.texto_pedido_compra ?? '',
       'Empresa': r.empresa ?? '',
+      'Posição Estoque (Depósito)': r.posicao_estoque ?? '',
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -345,7 +378,17 @@ export default function Estoque({ user }: EstoqueProps) {
   const renderCell = (r: EstoqueItem, colId: ColumnId) => {
     switch (colId) {
       case 'material':
-        return <span className="font-mono font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">{r.material || '—'}</span>;
+        // Botão real: é o caminho de teclado/leitor de tela; o clique na linha é só conveniência de mouse.
+        return (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setItemAberto(r); }}
+            className="font-mono font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap hover:underline cursor-pointer"
+            title="Ver informações do item"
+          >
+            {r.material || '—'}
+          </button>
+        );
       case 'classe_abc': {
         const classe = mapaAbc.get(normalizeCode(r.material)) || 'C';
         return (
@@ -412,6 +455,12 @@ export default function Estoque({ user }: EstoqueProps) {
       }
       case 'valor_total':
         return <span className="font-bold text-emerald-600 dark:text-emerald-450 whitespace-nowrap">{formatPreco(r.valor_total)}</span>;
+      case 'posicao_estoque':
+        return r.posicao_estoque ? (
+          <span className="font-mono text-xs font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 whitespace-nowrap">
+            {r.posicao_estoque}
+          </span>
+        ) : '—';
       default:
         return (r[colId as keyof EstoqueItem] as string) || '—';
     }
@@ -577,6 +626,19 @@ export default function Estoque({ user }: EstoqueProps) {
                 {grupoOptions.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
+            <div className="relative shrink-0 w-[188px] lg:w-auto lg:min-w-[180px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={compraDiretaFilter}
+                onChange={(e) => setCompraDiretaFilter(e.target.value)}
+                className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+                title="Materiais pedidos em solicitação de compra direta"
+              >
+                <option value="Todos">Compra direta: Todos</option>
+                <option value="todas">Só compra direta (qualquer setor)</option>
+                {setoresCompraDiretaOptions.map(s => <option key={s.id} value={s.id}>Setor: {s.nome}</option>)}
+              </select>
+            </div>
             <label className="h-9 shrink-0 flex items-center gap-2 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none whitespace-nowrap">
               <input
                 type="checkbox"
@@ -689,7 +751,11 @@ export default function Estoque({ user }: EstoqueProps) {
                   return (
                     <div
                       key={`m-${r.id}-${idx}`}
-                      className="p-4 space-y-2.5 active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setItemAberto(r)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setItemAberto(r); } }}
+                      className="p-4 space-y-2.5 cursor-pointer active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
                       style={{ borderColor: 'var(--hairline)' }}
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -757,7 +823,7 @@ export default function Estoque({ user }: EstoqueProps) {
                         const longa = (id: ColumnId) =>
                           id === 'txt_breve_material' || id === 'texto_pedido_compra' || id === 'aplicacao';
                         return (
-                          <Tr key={`${r.id}-${idx}`}>
+                          <Tr key={`${r.id}-${idx}`} onClick={() => setItemAberto(r)}>
                             {COLUMNS.map(col => (
                               visibleColumns[col.id] ? (
                                 <Td
@@ -791,6 +857,8 @@ export default function Estoque({ user }: EstoqueProps) {
           )}
         </div>
       )}
+
+      {itemAberto && <EstoqueItemModal item={itemAberto} onClose={() => setItemAberto(null)} />}
     </div>
   );
 }

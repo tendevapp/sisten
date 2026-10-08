@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Admin → Cadastros Gerais → Suprimentos → Abertura de RM.
- * Comprador fixo (EKGRP) que sobrepõe o setor solicitante na planilha de RM.
+ * Comprador (EKGRP) dos itens de EPI e uniformes na planilha de RM; os demais itens
+ * seguem o comprador cadastrado por setor.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -42,12 +43,13 @@ export default function ConfigAberturaRm({ user }: Props) {
     <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/40">
       <div>
         <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-slate-100">
-          <UserCheck className="h-4 w-4 text-blue-600" /> Comprador padrão da abertura de RM
+          <UserCheck className="h-4 w-4 text-blue-600" /> Comprador de EPI e uniformes na abertura de RM
         </h3>
         <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-          Com a regra ligada, toda RM exportada em Abrir RM sai com este código de comprador (EKGRP),
-          <strong> ignorando o setor que abriu a solicitação</strong> e o grupo de mercadorias.
-          Desligada, volta a valer o comprador cadastrado por setor.
+          Com a regra ligada, os itens de <strong>EPI e uniformes profissionais</strong> (pelo grupo de
+          mercadorias do material) saem em Abrir RM com este código de comprador (EKGRP).
+          Todos os outros itens seguem o comprador cadastrado por setor.
+          Desligada, EPI também segue o setor.
         </p>
       </div>
 
@@ -58,7 +60,7 @@ export default function ConfigAberturaRm({ user }: Props) {
           disabled={carregando}
           onChange={(e) => setConfig(c => ({ ...c, comprador_fixo_ativo: e.target.checked }))}
         />
-        Usar comprador fixo em toda RM
+        Usar comprador específico para EPI e uniformes
       </label>
 
       <div className="max-w-xs space-y-1.5">

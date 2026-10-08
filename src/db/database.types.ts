@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -9920,6 +9920,7 @@ export type Database = {
           txt_breve_material: string | null
           umb: string | null
           valor_total: number | null
+          posicao_estoque: string | null
         }
         Insert: {
           aplicacao?: string | null
@@ -9940,6 +9941,7 @@ export type Database = {
           txt_breve_material?: string | null
           umb?: string | null
           valor_total?: number | null
+          posicao_estoque?: string | null
         }
         Update: {
           aplicacao?: string | null
@@ -9960,6 +9962,7 @@ export type Database = {
           txt_breve_material?: string | null
           umb?: string | null
           valor_total?: number | null
+          posicao_estoque?: string | null
         }
         Relationships: []
       }

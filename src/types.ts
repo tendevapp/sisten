@@ -762,6 +762,7 @@ export interface EstoqueItem {
   aplicacao?: string;
   texto_pedido_compra?: string;
   empresa?: string;
+  posicao_estoque?: string;
   imported_at?: string;
 }
 
@@ -2835,6 +2836,8 @@ export interface AlmoxRmExportacao {
   total_solicitacoes: number;
   total_itens: number;
   observacao?: string | null;
+  /** Linhas da planilha como saíram (chave = cabeçalho). Null nos lotes anteriores ao snapshot. */
+  linhas?: Record<string, string | number>[] | null;
   created_at: string;
 }
 

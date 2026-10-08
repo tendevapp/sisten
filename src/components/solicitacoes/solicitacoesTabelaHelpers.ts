@@ -246,6 +246,7 @@ export function obterEstilosStatus(
   status: RequestStatus,
   tipo: RequestType,
   rmVinculada = false,
+  tipoCompra?: string | null,
 ): {
   classes: string;
   rotulo: string;
@@ -258,6 +259,19 @@ export function obterEstilosStatus(
   }
 
   if (tipo === 'compra' && status === 'aprovada') {
+    const ehServico = (tipoCompra || '')
+      .trim()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase() === 'servico';
+
+    if (ehServico) {
+      return {
+        rotulo: 'Aprovada',
+        classes: 'bg-emerald-50 text-emerald-700 border border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/80',
+      };
+    }
+
     return rmVinculada
       ? {
           rotulo: 'RM Aberta',

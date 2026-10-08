@@ -18,7 +18,7 @@ export const INITIAL_SECTORS: Sector[] = [
   { id: '10', name: 'Engenharia', is_support: false, helpdesk_enabled: false, sap_area_code: 'ENGE' },
   { id: '11', name: 'Qualidade', is_support: false, helpdesk_enabled: false, sap_area_code: 'QUAL' },
   { id: '12', name: 'Saúde', is_support: true, helpdesk_enabled: false, sap_area_code: 'SAUD' },
-  { id: '13', name: 'Segurança', is_support: true, helpdesk_enabled: false },
+  { id: '13', name: 'Segurança', is_support: true, helpdesk_enabled: false, sap_area_code: 'SEGT' },
   { id: '14', name: 'Produção', is_support: false, helpdesk_enabled: false, sap_area_code: 'PROD' },
   { id: '15', name: 'Manutenção', is_support: true, helpdesk_enabled: false, sap_area_code: 'MANU' },
   { id: '16', name: 'Diretoria', is_support: false, helpdesk_enabled: false },

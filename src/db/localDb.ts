@@ -2705,6 +2705,11 @@ class LocalDatabase {
     return this.getStorageItem<RequestItem[]>(this.requestItemsKey, []).filter(item => item.request_id === reqId);
   }
 
+  /** Todos os itens de solicitação em cache. Mesmo motivo de `getAllRequestComments`. */
+  public getAllRequestItems(): RequestItem[] {
+    return this.getStorageItem<RequestItem[]>(this.requestItemsKey, []);
+  }
+
   public getRequestHistory(reqId: string): RequestStatusHistory[] {
     return this.getStorageItem<RequestStatusHistory[]>(this.historyKey, []).filter(h => h.request_id === reqId);
   }
@@ -3414,8 +3419,14 @@ class LocalDatabase {
 
     // Compra aprovada pelo gestor: o almoxarifado tem uma demanda nova para
     // virar RM. Sem este aviso a fila de "Abrir RM" só é vista quando alguém
-    // abre a tela por conta própria.
-    if (toStatus === 'aprovada' && fromStatus !== 'aprovada' && request.type === 'compra') {
+    // abre a tela por conta própria. Compras de serviço não geram RM no almoxarifado.
+    const ehServico = (request.tipo_compra || '')
+      .trim()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase() === 'servico';
+
+    if (toStatus === 'aprovada' && fromStatus !== 'aprovada' && request.type === 'compra' && !ehServico) {
       this.getAbrirRmNotificationRecipients().forEach(d => this.createNotification(
         d.id,
         `Abrir RM: nova demanda #${request.number}`,
@@ -5559,7 +5570,8 @@ class LocalDatabase {
     { header: 'Grupo de mercadorias', field: 'grupo_mercadorias' },
     { header: 'Grupo de mercadorias', field: 'aplicacao' },
     { header: 'Texto Pedido Compra', field: 'texto_pedido_compra' },
-    { header: 'Nome 1', field: 'empresa' }
+    { header: 'Nome 1', field: 'empresa' },
+    { header: 'Pos.dpst.', field: 'posicao_estoque' }
   ];
 
   private ME3N_COLUMNS = [
@@ -7203,6 +7215,38 @@ class LocalDatabase {
     const aplicacaoColIdx = colIdx('aplicacao');
     const textoPedidoCompraColIdx = colIdx('texto_pedido_compra');
     const empresaColIdx = colIdx('empresa');
+    let posicaoEstoqueColIdx = colIdx('posicao_estoque');
+    if (posicaoEstoqueColIdx === -1) {
+      // Fallback para variacoes de cabecalho da posicao de deposito / prateleira fisica
+      posicaoEstoqueColIdx = headers.findIndex(h => {
+        const norm = h.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return (
+          norm === 'pos.dpst.' ||
+          norm === 'pos.dpst' ||
+          norm === 'pos. dpst.' ||
+          norm === 'pos. dpst' ||
+          norm === 'posicao_estoque' ||
+          norm === 'posicao estoque' ||
+          norm === 'posicao de estoque' ||
+          norm === 'posicao deposito' ||
+          norm === 'posicao no deposito' ||
+          norm === 'pos. deposito' ||
+          norm === 'pos.deposito'
+        );
+      });
+      if (posicaoEstoqueColIdx !== -1) {
+        const matchedHeader = headers[posicaoEstoqueColIdx];
+        const newIdx = newColumns.indexOf(matchedHeader);
+        if (newIdx !== -1) newColumns.splice(newIdx, 1);
+      }
+    }
+
+    // Pos.dpst. e a localizacao fisica na prateleira: e opcional para manter compatibilidade
+    // com bases legadas do SAP que foram exportadas sem essa coluna.
+    const missingPosIdx = missingColumns.indexOf('Pos.dpst.');
+    if (missingPosIdx !== -1) {
+      missingColumns.splice(missingPosIdx, 1);
+    }
 
     const user = this.getCurrentUser();
     const dbRows: any[] = [];
@@ -7241,6 +7285,7 @@ class LocalDatabase {
         aplicacao: strAt(row, aplicacaoColIdx),
         texto_pedido_compra: strAt(row, textoPedidoCompraColIdx),
         empresa: strAt(row, empresaColIdx),
+        posicao_estoque: strAt(row, posicaoEstoqueColIdx),
         imported_at: new Date().toISOString()
       });
     });

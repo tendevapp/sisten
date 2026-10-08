@@ -44,7 +44,7 @@ import { rotuloCriticidade } from '../lib/solicitacoes';
 import { classificarMudanca, dividirMudancas, type TipoMudanca } from '../lib/solicitacoesDiff';
 import {
   RM_CENTRO, RM_GRUPO_COMPRAS_PADRAO, campoZRm, classificacaoRm, classificarVinculoRm,
-  depositoRm, escolherAbaRmPreenchida, exportarPlanilhaRm, grupoComprasRm, itensSemCodigoSap,
+  depositoRm, ehElegivelAbrirRm, escolherAbaRmPreenchida, exportarPlanilhaRm, grupoComprasRm, itensSemCodigoSap,
   itensSemGrupoComprador, lerPlanilhaRmPreenchida, montarLinhasRm, nomeArquivoRm, RM_COLUNAS,
   requisitanteRm, type ContextoRm, type LinhaRm, type SolicitacaoRm,
 } from '../lib/almoxarifadoRm';
@@ -118,7 +118,7 @@ const ABRIR_RM_TOUR_STEPS: TourStep[] = [
     target: 'abrir-rm-historico',
     icon: History,
     title: 'Histórico de exportações',
-    description: 'Todo lote exportado fica registrado com arquivo, responsável, data e volume. Abra "Solicitações" para ver os números que compuseram a planilha, e use "Reabrir" para devolver o lote (ou uma solicitação só) à fila e exportar de novo — o registro anterior continua no histórico.',
+    description: 'Todo lote exportado fica registrado com arquivo, responsável, data e volume. Abra "Detalhes" para ver a planilha exatamente como saiu (inclusive o grupo de compras de cada linha) e as solicitações que a compuseram, e use "Reabrir" para devolver o lote (ou uma solicitação só) à fila e exportar de novo — o registro anterior continua no histórico.',
   },
   {
     target: 'abrir-rm-vincular-upload',
@@ -182,6 +182,104 @@ function ListaMudancas({ motivo }: { motivo?: string | null }) {
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * Planilha de um lote como foi para o SAP, para auditoria ("por que a #3001068
+ * foi para o comprador 358?"). A busca filtra por qualquer coluna.
+ *
+ * `reconstituida` marca lotes anteriores ao snapshot: as linhas foram refeitas
+ * com os cadastros de hoje e podem divergir do que realmente saiu.
+ */
+function PlanilhaExportada({ linhas, reconstituida }: {
+  linhas: Record<string, string | number>[];
+  reconstituida: boolean;
+}) {
+  const [busca, setBusca] = useState('');
+  const termo = busca.trim().toLowerCase();
+  // O texto de cabeçalho é longo e só repete a justificativa; fica de fora da exibição.
+  const colunas = RM_COLUNAS.filter(c => c !== 'Texto Cabeçalho (Justificativa)');
+  const visiveis = termo
+    ? linhas.filter(l => colunas.some(c => String(l[c] ?? '').toLowerCase().includes(termo)))
+    : linhas;
+
+  return (
+    <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 border-b" style={{ borderColor: 'var(--hairline)' }}>
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-secondary)' }}>
+          <FileSpreadsheet className="h-3.5 w-3.5" />
+          Planilha exportada ({visiveis.length}{termo ? ` de ${linhas.length}` : ''} {linhas.length === 1 ? 'linha' : 'linhas'})
+        </span>
+        <label className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3" style={{ color: 'var(--ink-muted)' }} />
+          <input
+            type="search"
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            placeholder="Filtrar (ex.: #3001068, 358)"
+            className="pl-6 pr-2 py-1 rounded border text-[11px] w-56"
+            style={{ borderColor: 'var(--hairline)', background: 'var(--surface)', color: 'var(--ink-primary)' }}
+          />
+        </label>
+      </div>
+
+      {reconstituida && (
+        <p
+          className="px-2.5 py-1.5 text-[11px] border-b"
+          style={{
+            borderColor: 'var(--hairline)',
+            color: 'var(--status-serious)',
+            background: 'color-mix(in srgb, var(--status-serious) 8%, transparent)',
+          }}
+        >
+          Lote anterior ao registro da planilha: as linhas foram refeitas com os dados e cadastros de hoje
+          e podem diferir do que de fato saiu para o SAP.
+        </p>
+      )}
+
+      {visiveis.length === 0 ? (
+        <p className="px-2.5 py-2 text-[11px] italic" style={{ color: 'var(--ink-muted)' }}>
+          {linhas.length === 0 ? 'Nenhuma linha neste lote.' : 'Nenhuma linha bate com o filtro.'}
+        </p>
+      ) : (
+        <div className="overflow-x-auto max-h-96 overflow-y-auto">
+          <table className="w-full text-[11px]">
+            <thead className="sticky top-0" style={{ background: 'var(--surface)' }}>
+              <tr>
+                {colunas.map(c => (
+                  <th
+                    key={c}
+                    className="text-left font-bold px-2 py-1 text-[10px] whitespace-nowrap"
+                    style={{ color: 'var(--ink-muted)' }}
+                  >
+                    {c}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visiveis.map((l, i) => (
+                <tr key={i} className="border-t" style={{ borderColor: 'color-mix(in srgb, var(--hairline) 50%, transparent)' }}>
+                  {colunas.map(c => {
+                    const destaque = c === 'Grupo Compras (EKGRP)';
+                    return (
+                      <td
+                        key={c}
+                        className={`px-2 py-1 font-mono whitespace-nowrap ${destaque ? 'font-bold' : ''}`}
+                        style={{ color: destaque ? 'var(--brand)' : 'var(--ink-primary)' }}
+                      >
+                        {String(l[c] ?? '')}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -287,7 +385,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   const [grupoMercadoriaPorMaterial, setGrupoMercadoriaPorMaterial] = useState<Map<string, string>>(new Map());
   const [grupoComprasPorMercadoria, setGrupoComprasPorMercadoria] = useState<Map<string, string>>(new Map());
   const [grupoComprasPorSetor, setGrupoComprasPorSetor] = useState<Map<string, string>>(new Map());
-  const [grupoComprasFixo, setGrupoComprasFixo] = useState<string | undefined>();
+  const [grupoComprasEpi, setGrupoComprasEpi] = useState<string | undefined>();
 
   const [marcas, setMarcas] = useState<AlmoxRmExportacaoSolicitacao[]>([]);
   const [exportacoes, setExportacoes] = useState<AlmoxRmExportacao[]>([]);
@@ -343,7 +441,8 @@ export default function AbrirRm({ user, onNavigate }: Props) {
     // `concluida` — ver `lib/statusAutomaticoCompra.ts`): sem isso, uma
     // compra some desta tela (inclusive da aba "Abertas", histórico de RM já
     // exportada) assim que o comprador avança o processo no SAP.
-    const todas = localDb.getRequests().filter(r => r.type === 'compra' && ESTAGIOS_AUTOMATICOS_COMPRA.includes(r.status));
+    // Compras de serviço não geram RM no almoxarifado (ehElegivelAbrirRm).
+    const todas = localDb.getRequests().filter(ehElegivelAbrirRm);
     setRequests(todas);
     const itensMap: Record<string, RequestItem[]> = {};
     const todosItens: RequestItem[] = [];
@@ -394,7 +493,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
         mapaGrupoComprasPorSetor(),
         obterRmConfig(),
       ]);
-      setGrupoComprasFixo(compradorFixoRm(rmConfig));
+      setGrupoComprasEpi(compradorFixoRm(rmConfig));
       setMarcas(marcasDb);
       setExportacoes(lotes);
       setGrupoComprasPorMercadoria(compradoresMercadorias);
@@ -429,9 +528,9 @@ export default function AbrirRm({ user, onNavigate }: Props) {
       grupoMercadoriaPorMaterial,
       grupoComprasPorMercadoria,
       grupoComprasPorSetor,
-      grupoComprasFixo,
+      grupoComprasEpi,
     }),
-    [sectors, grupoMercadoriaPorMaterial, grupoComprasPorMercadoria, grupoComprasPorSetor, grupoComprasFixo],
+    [sectors, grupoMercadoriaPorMaterial, grupoComprasPorMercadoria, grupoComprasPorSetor, grupoComprasEpi],
   );
 
   const nomeSetor = (id?: string) => (id ? sectors.find(s => s.id === id)?.name || id : '—');
@@ -771,6 +870,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
           arquivo,
           exportado_por_id: user.id,
           exportado_por_nome: user.name,
+          linhas,
           solicitacoes: comItem.map(s => ({
             request_id: s.request.id,
             request_number: s.request.number,
@@ -1703,7 +1803,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                                     style={{ color: 'var(--brand)' }}
                                   >
                                     {abertoAqui ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                                    {abertoAqui ? 'Ocultar' : 'Solicitações'}
+                                    {abertoAqui ? 'Ocultar' : 'Detalhes'}
                                   </button>
                                 )}
                                 <button
@@ -1731,6 +1831,21 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                             <tr style={{ background: 'var(--surface)' }}>
                               <td colSpan={6} className="px-3 py-2.5">
                                 <div className="space-y-2">
+                                  {(() => {
+                                    // Lote com snapshot: o que de fato saiu. Sem ele (lotes antigos),
+                                    // refaz a planilha com os cadastros de hoje e avisa na tela.
+                                    let linhasLote = e.linhas as LinhaRm[] | null | undefined;
+                                    const reconstituida = !linhasLote;
+                                    if (!linhasLote) {
+                                      const todas = localDb.getRequests();
+                                      const solicitacoesLote: SolicitacaoRm[] = doLote.flatMap(m => {
+                                        const request = todas.find(r => r.id === m.request_id);
+                                        return request ? [{ request, itens: localDb.getRequestItems(m.request_id) }] : [];
+                                      });
+                                      linhasLote = montarLinhasRm(solicitacoesLote, contexto);
+                                    }
+                                    return <PlanilhaExportada linhas={linhasLote} reconstituida={reconstituida} />;
+                                  })()}
                                   {doLote.map(m => {
                                     const marcaOcupada = reabrindo === m.id;
                                     // Itens de agora, não os de quando saiu na planilha: a

@@ -35,6 +35,8 @@ export async function registrarExportacaoRm(dados: {
   exportado_por_id?: string | null;
   exportado_por_nome: string;
   observacao?: string | null;
+  /** Cópia das linhas da planilha, para auditar depois o que foi para o SAP. */
+  linhas?: Record<string, string | number>[];
   solicitacoes: SolicitacaoExportadaInput[];
 }): Promise<AlmoxRmExportacao> {
   const totalItens = dados.solicitacoes.reduce((acc, s) => acc + s.total_itens, 0);
@@ -47,6 +49,7 @@ export async function registrarExportacaoRm(dados: {
       total_solicitacoes: dados.solicitacoes.length,
       total_itens: totalItens,
       observacao: dados.observacao || null,
+      linhas: dados.linhas ?? null,
     })
     .select()
     .single();

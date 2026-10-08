@@ -258,6 +258,8 @@ export interface ConferenciaInput {
   tipo_item: TipoItemConferencia;
   deposito?: string | null;
   fonte_pedido: FontePedido;
+  /** Material que volta de remessa: dispensa PO e fornecedor. */
+  retorno_remessa?: boolean;
   evidencias: AnexoRecebimento[];
   observacao?: string | null;
   criado_por_id?: string | null;
@@ -341,6 +343,7 @@ export interface ConferenciaRow {
   tipo_item: TipoItemConferencia;
   deposito: string | null;
   fonte_pedido: FontePedido;
+  retorno_remessa?: boolean;
   total_itens: number;
   itens_ok: number;
   itens_divergentes: number;
@@ -574,6 +577,7 @@ export interface ConferenciaCabPatch {
   observacao?: string | null;
   carga_id?: string | null;
   tipo_item?: TipoItemConferencia;
+  retorno_remessa?: boolean;
   evidencias?: AnexoRecebimento[];
 }
 

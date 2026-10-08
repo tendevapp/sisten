@@ -206,7 +206,7 @@ export async function gerarConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCodi
       value: `${c.total_itens} itens · ${c.itens_ok} ok${parciais ? ` · ${parciais} parcial` : ''} · ${c.itens_divergentes} divergente(s)`,
       highlight: divergente,
     },
-    { label: 'Pedidos (PO)', value: pos.length ? pos.join(' · ') : '-', fullWidth: true },
+    { label: 'Pedidos (PO)', value: pos.length ? pos.join(' · ') : c.retorno_remessa ? 'Retorno de remessa (sem PO)' : '-', fullWidth: true },
     { label: 'Criado por', value: vazio(c.criado_por_nome) },
     { label: 'Registrado em', value: vazio(formatDateTimeBR(c.created_at)) },
   ], 2);
