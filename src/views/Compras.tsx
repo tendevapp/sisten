@@ -1360,21 +1360,31 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         for (let i = 0; i < codesArr.length; i += 200) {
           chunks.push(codesArr.slice(i, i + 200));
         }
-        const results = await Promise.all(
-          chunks.map(chunk =>
-            supabase!
+        // O PostgREST corta cada resposta em 1000 linhas. Um material de giro
+        // alto sozinho passa disso (mais de mil linhas de PO), e o corte, sem
+        // ordem, derrubava o PO de outros materiais do lote — o item aparecia
+        // só com fornecedor de cotação. Por isso pagina cada lote até esgotar,
+        // com ordem estável por id.
+        const TAMANHO_PAGINA = 1000;
+        const buscarLote = async (chunk: string[]): Promise<HistoricoPedidoView[]> => {
+          const linhasLote: HistoricoPedidoView[] = [];
+          for (let de = 0; ; de += TAMANHO_PAGINA) {
+            const { data, error } = await supabase!
               .from('sap_zl0132_po')
               .select('material, cod_forn:fornecedor_codigo, cnpj:cnpj_fornecedor, fornecedor:fornecedor_nome, regiao_uf, doc_compra, data_doc, qtd_pedido, valor_liquido, preco_liquido_unit, por, data_migo')
               .ilike('crf', 'x')
               .in('material', chunk)
-          )
-        );
-        const linhas: HistoricoPedidoView[] = [];
-        results.forEach(({ data, error }) => {
-          if (error) throw error;
-          if (data) linhas.push(...(data as HistoricoPedidoView[]));
-        });
-        return linhas;
+              .order('id')
+              .range(de, de + TAMANHO_PAGINA - 1);
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            linhasLote.push(...(data as unknown as HistoricoPedidoView[]));
+            if (data.length < TAMANHO_PAGINA) break;
+          }
+          return linhasLote;
+        };
+        const results = await Promise.all(chunks.map(buscarLote));
+        return results.flat();
       };
 
       // Executa as 4 consultas assíncronas em paralelo
