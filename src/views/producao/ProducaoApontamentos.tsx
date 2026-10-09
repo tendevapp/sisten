@@ -54,6 +54,7 @@ import GargalosTramos from '../../components/producao/apontamentos/tramos/Gargal
 import QualidadeTramos from '../../components/producao/apontamentos/tramos/QualidadeTramos';
 import MetasMarco from '../../components/producao/apontamentos/tramos/MetasMarco';
 import CadastroSituacoes from '../../components/producao/apontamentos/tramos/CadastroSituacoes';
+import PrazosEtapasRelatorio from '../../components/producao/apontamentos/tramos/PrazosEtapasRelatorio';
 import SheetApontamento from '../../components/producao/apontamentos/tramos/SheetApontamento';
 import { useDadosTramos } from '../../components/producao/apontamentos/tramos/useDadosTramos';
 import type { TramoAtual } from '../../lib/producaoTramos';
@@ -83,7 +84,7 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
   const hoje = useMemo(() => hojeLocal(), []);
   const [aba, setAba] = useState<Aba>('apontar');
   const [vistaNave, setVistaNave] = useState<'tabela' | 'graficos'>('tabela');
-  const [vistaProgramacao, setVistaProgramacao] = useState<'marcos' | 'etapas'>('marcos');
+  const [vistaProgramacao, setVistaProgramacao] = useState<'marcos' | 'prazos_etapas' | 'etapas'>('marcos');
   const [vistaCadastro, setVistaCadastro] = useState<'situacoes' | 'etapas' | 'importar'>('situacoes');
   // O fluxo por nave (POC) fica acessível até a tela nova fechar um ciclo.
   const [fluxoAntigo, setFluxoAntigo] = useState(false);
@@ -384,8 +385,10 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
 
       {aba === 'programacao' && (
         <div className="space-y-3">
-          {segmento<typeof vistaProgramacao>(vistaProgramacao, [['marcos', 'Metas por marco (tramos)'], ['etapas', 'Grade semanal por etapa']], setVistaProgramacao)}
-          {vistaProgramacao === 'marcos' ? (
+          {segmento<typeof vistaProgramacao>(vistaProgramacao, [['marcos', 'Metas por marco (tramos)'], ['prazos_etapas', 'Prazos por etapa (W49)'], ['etapas', 'Grade semanal por etapa']], setVistaProgramacao)}
+          {vistaProgramacao === 'prazos_etapas' ? (
+            <PrazosEtapasRelatorio podeEditar={podeProgramar} />
+          ) : vistaProgramacao === 'marcos' ? (
             dadosTramos && (
               <MetasMarco metas={dadosTramos.metas} prazos={dadosTramos.prazos} podeEditar={podeProgramar} anoInicial={semanaAtual.ano} onSalvo={recarregarTramos} />
             )

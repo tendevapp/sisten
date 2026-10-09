@@ -13,6 +13,7 @@ import { BarChart3, Loader2 } from 'lucide-react';
 import type { FinFatGwjaco } from '../types';
 import * as api from '../lib/finFaturamentoGwjacoApi';
 import FinFaturamentoWallboard from './financeiro/FinFaturamentoWallboard';
+import RelatorioPrazoEtapas from '../components/relatorios/RelatorioPrazoEtapas';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { useToast } from '../components/ui/Toast';
 
@@ -156,6 +157,9 @@ export default function Reports({ user }: ReportsProps) {
           sozinho a cada 2 minutos e segue o tema do app (para a TV, deixe no tema escuro).
         </p>
       </div>
+
+      {/* Prazo por etapa — 115 tramos prontos na W49 (a partir dos apontamentos por tramo) */}
+      <RelatorioPrazoEtapas />
 
       {/* Modal de Edição de Tramo */}
       {modalAberto && editando && (
