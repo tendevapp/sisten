@@ -58,7 +58,14 @@ interface SupplierGroup {
 }
 
 type SortDir = 'asc' | 'desc';
-type StatusFilter = 'Todos' | 'Em aberto' | 'Compensado' | 'Vencido';
+type StatusFiltro = 'Em aberto' | 'Compensado' | 'Vencido';
+
+const STATUS_OPCOES: StatusFiltro[] = ['Em aberto', 'Vencido', 'Compensado'];
+const ROTULO_STATUS: Record<string, string> = {
+  'Em aberto': 'Em aberto',
+  Vencido: 'Partidas vencidas',
+  Compensado: 'Compensado',
+};
 
 const PAGE_SIZE = 50;
 
@@ -80,9 +87,10 @@ export default function ContasPagar({ user }: ContasPagarProps) {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [fornecedoresSelecionados, setFornecedoresSelecionados] = useState<Set<string>>(new Set());
-  const [empresaFilter, setEmpresaFilter] = useState('Todas');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('Todos');
-  const [tipoDocFilter, setTipoDocFilter] = useState('Todos');
+  // Filtros de seleção múltipla: conjunto vazio = sem restrição.
+  const [empresasSelecionadas, setEmpresasSelecionadas] = useState<Set<string>>(new Set());
+  const [statusSelecionados, setStatusSelecionados] = useState<Set<string>>(new Set());
+  const [tiposDocSelecionados, setTiposDocSelecionados] = useState<Set<string>>(new Set());
   const [vencimentoDe, setVencimentoDe] = useState('');
   const [vencimentoAte, setVencimentoAte] = useState('');
 
@@ -131,7 +139,7 @@ export default function ContasPagar({ user }: ContasPagarProps) {
     return Array.from(s).sort();
   }, [lancamentos]);
 
-  const tipoDocOptions = useMemo(() => {
+  const tipoDocLabelMap = useMemo(() => {
     const map = new Map<string, string>();
     lancamentos.forEach(l => {
       const code = l.tipo_documento?.trim();
@@ -142,10 +150,19 @@ export default function ContasPagar({ user }: ContasPagarProps) {
         map.set(key, label);
       }
     });
-    return Array.from(map.entries())
-      .map(([key, label]) => ({ key, label }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+    return map;
   }, [lancamentos]);
+
+  const tipoDocOptions = useMemo(
+    () => Array.from(tipoDocLabelMap.keys()).sort((a, b) =>
+      (tipoDocLabelMap.get(a) ?? a).localeCompare(tipoDocLabelMap.get(b) ?? b, 'pt-BR')),
+    [tipoDocLabelMap],
+  );
+  const renderTipoDoc = useCallback((key: string) => tipoDocLabelMap.get(key) ?? key, [tipoDocLabelMap]);
+  const renderStatus = useCallback((key: string) => ROTULO_STATUS[key] ?? key, []);
+
+  const soVencidos = statusSelecionados.size === 1 && statusSelecionados.has('Vencido');
+  const alternarVencidos = () => setStatusSelecionados(soVencidos ? new Set() : new Set(['Vencido']));
 
   const fornecedorOptions = useMemo(() => {
     const s = new Set<string>();
@@ -175,20 +192,23 @@ export default function ContasPagar({ user }: ContasPagarProps) {
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return lancamentos.filter(l => {
-      if (empresaFilter !== 'Todas' && l.empresa !== empresaFilter) return false;
+      if (empresasSelecionadas.size > 0 && !empresasSelecionadas.has(l.empresa ?? '')) return false;
       if (fornecedoresSelecionados.size > 0) {
         const nome = l.razao_social_fornecedor?.trim() || l.fornecedor?.trim() || '';
         if (!fornecedoresSelecionados.has(nome)) return false;
       }
-      if (statusFilter === 'Em aberto' && l.data_compensacao) return false;
-      if (statusFilter === 'Compensado' && !l.data_compensacao) return false;
-      if (statusFilter === 'Vencido') {
-        if (l.data_compensacao) return false;
-        if (!l.vencimento_liquido || l.vencimento_liquido >= hoje) return false;
+      if (statusSelecionados.size > 0) {
+        const aberto = !l.data_compensacao;
+        const vencido = aberto && !!l.vencimento_liquido && l.vencimento_liquido < hoje;
+        const passa =
+          (statusSelecionados.has('Em aberto') && aberto) ||
+          (statusSelecionados.has('Vencido') && vencido) ||
+          (statusSelecionados.has('Compensado') && !aberto);
+        if (!passa) return false;
       }
-      if (tipoDocFilter !== 'Todos') {
+      if (tiposDocSelecionados.size > 0) {
         const itemKey = l.tipo_documento?.trim() || l.tipo_documento_descricao?.trim() || '';
-        if (itemKey !== tipoDocFilter) return false;
+        if (!tiposDocSelecionados.has(itemKey)) return false;
       }
       if (vencimentoDe && (!l.vencimento_liquido || l.vencimento_liquido < vencimentoDe)) return false;
       if (vencimentoAte && (!l.vencimento_liquido || l.vencimento_liquido > vencimentoAte)) return false;
@@ -203,7 +223,7 @@ export default function ContasPagar({ user }: ContasPagarProps) {
       }
       return true;
     });
-  }, [lancamentos, searchQuery, fornecedoresSelecionados, empresaFilter, statusFilter, tipoDocFilter, vencimentoDe, vencimentoAte, hoje]);
+  }, [lancamentos, searchQuery, fornecedoresSelecionados, empresasSelecionadas, statusSelecionados, tiposDocSelecionados, vencimentoDe, vencimentoAte, hoje]);
 
   const groupedSuppliers = useMemo(() => {
     const map = new Map<string, SupplierGroup>();
@@ -297,7 +317,7 @@ export default function ContasPagar({ user }: ContasPagarProps) {
 
   const visibleGroups = useMemo(() => groupedSuppliers.slice(0, visibleCount), [groupedSuppliers, visibleCount]);
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, fornecedoresSelecionados, empresaFilter, statusFilter, tipoDocFilter, vencimentoDe, vencimentoAte, sortColumn, sortDir]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, fornecedoresSelecionados, empresasSelecionadas, statusSelecionados, tiposDocSelecionados, vencimentoDe, vencimentoAte, sortColumn, sortDir]);
 
   const toggleSort = (col: string) => {
     if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -322,13 +342,14 @@ export default function ContasPagar({ user }: ContasPagarProps) {
   };
 
   const kpis = useMemo(() => {
-    const abertos = lancamentos.filter(l => !l.data_compensacao);
+    // Os cartões seguem os filtros da tela: totais sobre o que está filtrado.
+    const abertos = filtered.filter(l => !l.data_compensacao);
     const vencidos = abertos.filter(l => l.vencimento_liquido && l.vencimento_liquido < hoje);
     const totalAberto = abertos.reduce((sum, l) => sum - (l.montante_moeda_doc || 0), 0);
     const totalVencido = vencidos.reduce((sum, l) => sum - (l.montante_moeda_doc || 0), 0);
     const totalFiltrado = filtered.reduce((sum, l) => sum + (l.montante_moeda_doc || 0), 0);
     return { totalAberto, totalVencido, totalFiltrado, qtdFiltrado: filtered.length, qtdFornecedores: groupedSuppliers.length };
-  }, [lancamentos, filtered, groupedSuppliers, hoje]);
+  }, [filtered, groupedSuppliers, hoje]);
 
   const handleExportExcel = () => {
     if (filtered.length === 0) return;
@@ -415,42 +436,41 @@ export default function ContasPagar({ user }: ContasPagarProps) {
               style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
             />
           </div>
-          <select
-            value={empresaFilter}
-            onChange={e => setEmpresaFilter(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[150px] lg:w-auto truncate"
-            style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
-          >
-            <option value="Todas">Todas empresas</option>
-            {empresaOptions.map(e => <option key={e} value={e}>{e}</option>)}
-          </select>
-          <select
-            value={tipoDocFilter}
-            onChange={e => setTipoDocFilter(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[170px] lg:w-auto lg:max-w-[240px] truncate"
-            style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
-            title="Filtrar por Tipo de Documento - Descrição"
-          >
-            <option value="Todos">Todos tipos de doc.</option>
-            {tipoDocOptions.map(opt => (
-              <option key={opt.key} value={opt.key}>{opt.label}</option>
-            ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value as StatusFilter)}
-            className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[150px] lg:w-auto truncate"
-            style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
-          >
-            <option value="Todos">Todos status</option>
-            <option value="Em aberto">Em aberto</option>
-            <option value="Vencido">Partidas Vencidas</option>
-            <option value="Compensado">Compensado</option>
-          </select>
+          <MultiSelectFilter
+            label="Empresa"
+            icon={Building2}
+            allLabel="Todas empresas"
+            options={empresaOptions}
+            selected={empresasSelecionadas}
+            onChange={setEmpresasSelecionadas}
+            className="shrink-0 w-[160px] lg:w-auto lg:min-w-[150px]"
+          />
+          <MultiSelectFilter
+            label="Tipo de doc."
+            icon={Receipt}
+            allLabel="Todos tipos de doc."
+            options={tipoDocOptions}
+            selected={tiposDocSelecionados}
+            onChange={setTiposDocSelecionados}
+            renderOption={renderTipoDoc}
+            searchable
+            className="shrink-0 w-[190px] lg:w-auto lg:min-w-[190px]"
+            panelClassName="w-80 sm:w-96"
+          />
+          <MultiSelectFilter
+            label="Status"
+            icon={ListChecks}
+            allLabel="Todos status"
+            options={STATUS_OPCOES}
+            selected={statusSelecionados}
+            onChange={setStatusSelecionados}
+            renderOption={renderStatus}
+            className="shrink-0 w-[160px] lg:w-auto lg:min-w-[150px]"
+          />
           <button
-            onClick={() => setStatusFilter(prev => prev === 'Vencido' ? 'Todos' : 'Vencido')}
+            onClick={alternarVencidos}
             className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-bold transition-all cursor-pointer h-9 shrink-0 whitespace-nowrap ${
-              statusFilter === 'Vencido'
+              soVencidos
                 ? 'bg-red-600 text-white border-red-600 shadow-sm'
                 : 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-900/60'
             }`}
@@ -499,7 +519,7 @@ export default function ContasPagar({ user }: ContasPagarProps) {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
           <KpiCard label="Total em Aberto" value={kpis.totalAberto} format={formatBRL} icon={Wallet} accent="var(--brand)" />
           <div
-            onClick={() => setStatusFilter(prev => prev === 'Vencido' ? 'Todos' : 'Vencido')}
+            onClick={alternarVencidos}
             className="cursor-pointer transition-transform hover:scale-[1.01]"
             title="Clique para filtrar apenas os lançamentos vencidos"
           >
