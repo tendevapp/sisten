@@ -169,7 +169,10 @@ export async function exportFichaCegaPdf(c: CargaRow): Promise<void> {
 // Recebimento e contagem
 // ---------------------------------------------------------------------------
 
-function situacaoItem(it: ConferenciaItemRow): { texto: string; divergente: boolean; parcial: boolean } {
+function situacaoItem(it: ConferenciaItemRow, retornoRemessa?: boolean): { texto: string; divergente: boolean; parcial: boolean } {
+  if (retornoRemessa && it.tipo_divergencia === 'sem_pedido') {
+    return { texto: it.conferido ? 'Conferido' : 'Não conferido', divergente: false, parcial: false };
+  }
   if (it.divergencia) {
     const t = it.tipo_divergencia as TipoDivergencia | null | undefined;
     return { texto: (t && ROTULO_DIVERGENCIA[t]) || 'Divergente', divergente: true, parcial: false };
@@ -182,7 +185,7 @@ export async function gerarConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCodi
   const { doc, font, fontBold, logo } = await createDoc();
   const w = new PdfTextWriter(doc, font, fontBold, logo);
 
-  const divergente = c.itens_divergentes > 0;
+  const divergente = c.retorno_remessa ? false : c.itens_divergentes > 0;
   w.drawDocumentHeader({
     title: 'Recebimento e Contagem de Material',
     formCode: FORM_CODIGO_RECEBIMENTO,
@@ -203,7 +206,9 @@ export async function gerarConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCodi
     { label: 'Origem da lista', value: ROTULO_FONTE[c.fonte_pedido] ?? c.fonte_pedido },
     {
       label: 'Resumo',
-      value: `${c.total_itens} itens · ${c.itens_ok} ok${parciais ? ` · ${parciais} parcial` : ''} · ${c.itens_divergentes} divergente(s)`,
+      value: c.retorno_remessa
+        ? `${c.total_itens} itens · ${c.total_itens} ok`
+        : `${c.total_itens} itens · ${c.itens_ok} ok${parciais ? ` · ${parciais} parcial` : ''} · ${c.itens_divergentes} divergente(s)`,
       highlight: divergente,
     },
     { label: 'Pedidos (PO)', value: pos.length ? pos.join(' · ') : c.retorno_remessa ? 'Retorno de remessa (sem PO)' : '-', fullWidth: true },
@@ -214,7 +219,7 @@ export async function gerarConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCodi
   if (c.observacao) w.drawCallout('Observação', c.observacao);
 
   w.drawSectionHeader('Itens conferidos', c.itens.length);
-  const situacoes = c.itens.map(situacaoItem);
+  const situacoes = c.itens.map((it) => situacaoItem(it, c.retorno_remessa));
   w.drawTable(
     [
       { label: '#', width: 22, align: 'center' },

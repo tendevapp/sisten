@@ -104,14 +104,22 @@ export interface LinhaConferencia {
  * parcial (mesma lógica da Central de Compras); receber a MAIS ainda
  * flagra excedente.
  */
-export function classificarDivergencia(linha: {
-  qtdPedido: number | null;
-  qtdJaFornecida?: number | null;
-  qtdRecebida: number;
-  avaria?: boolean;
-  itemManual?: boolean;
-  parcial?: boolean;
-}): TipoDivergencia | null {
+export function classificarDivergencia(
+  linha: {
+    qtdPedido: number | null;
+    qtdJaFornecida?: number | null;
+    qtdRecebida: number;
+    avaria?: boolean;
+    itemManual?: boolean;
+    parcial?: boolean;
+  },
+  retornoRemessa?: boolean,
+): TipoDivergencia | null {
+  if (retornoRemessa) {
+    // Retorno de remessa não possui PO relacionado; itens manuais são o fluxo esperado.
+    // Não existe falta, excedente ou 'sem_pedido' sem PO de referência. Apenas avaria é flagrada.
+    return linha.avaria ? 'avaria' : null;
+  }
   if (linha.avaria) return 'avaria';
   if (linha.itemManual || linha.qtdPedido === null) return 'sem_pedido';
 
@@ -359,14 +367,14 @@ export interface ResumoConferencia {
 }
 
 /** Consolida o estado das linhas: contadores e se abre não conformidade. */
-export function resumoConferencia(linhas: LinhaConferencia[]): ResumoConferencia {
+export function resumoConferencia(linhas: LinhaConferencia[], retornoRemessa?: boolean): ResumoConferencia {
   const tipos = new Set<TipoDivergencia>();
   let ok = 0;
   let parciais = 0;
   let divergentes = 0;
 
   for (const l of linhas) {
-    const d = classificarDivergencia(l);
+    const d = classificarDivergencia(l, retornoRemessa);
     if (d) {
       divergentes += 1;
       tipos.add(d);
@@ -381,7 +389,7 @@ export function resumoConferencia(linhas: LinhaConferencia[]): ResumoConferencia
     ok,
     parciais,
     divergentes,
-    temNc: divergentes > 0,
+    temNc: retornoRemessa ? false : divergentes > 0,
     tipoItem: tipoItemDaLista(linhas.map((l) => l.materialCode)),
     tiposDivergencia: [...tipos],
   };

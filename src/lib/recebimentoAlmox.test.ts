@@ -79,6 +79,14 @@ describe('classificarDivergencia', () => {
   it('item fora do pedido é sem_pedido', () => {
     expect(classificarDivergencia(linha({ itemManual: true, qtdPedido: null }))).toBe('sem_pedido');
   });
+
+  it('em retorno de remessa, item manual sem PO NÃO é sem_pedido (não há divergência)', () => {
+    expect(classificarDivergencia(linha({ itemManual: true, qtdPedido: null, qtdRecebida: 1 }), true)).toBeNull();
+  });
+
+  it('em retorno de remessa, avaria continua sendo classificada como avaria', () => {
+    expect(classificarDivergencia(linha({ itemManual: true, qtdPedido: null, avaria: true }), true)).toBe('avaria');
+  });
 });
 
 describe('parcialPrecisaConfirmarNf', () => {
@@ -140,6 +148,31 @@ describe('resumoConferencia', () => {
     expect(r.temNc).toBe(false);
     expect(r.ok).toBe(2);
     expect(r.parciais).toBe(1);
+  });
+
+  it('em retorno de remessa, itens manuais contam como OK e NUNCA abre NC', () => {
+    const r = resumoConferencia(
+      [
+        linha({ itemManual: true, qtdPedido: null, qtdRecebida: 1, conferido: true }),
+        linha({ itemManual: true, qtdPedido: null, qtdRecebida: 3, conferido: true }),
+      ],
+      true,
+    );
+    expect(r.total).toBe(2);
+    expect(r.ok).toBe(2);
+    expect(r.divergentes).toBe(0);
+    expect(r.temNc).toBe(false);
+  });
+
+  it('em retorno de remessa com avaria, temNc continua false por não haver PO relacionado', () => {
+    const r = resumoConferencia(
+      [
+        linha({ itemManual: true, qtdPedido: null, qtdRecebida: 1, conferido: true, avaria: true }),
+      ],
+      true,
+    );
+    expect(r.divergentes).toBe(1);
+    expect(r.temNc).toBe(false);
   });
 });
 

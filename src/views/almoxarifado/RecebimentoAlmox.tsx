@@ -906,7 +906,7 @@ function VistaContagem({
               {c.fornecedor || '—'} · {formatDateBR(c.data)} · {c.tipo_item}
             </p>
           </div>
-          {c.tem_nc && (
+          {c.tem_nc && !c.retorno_remessa && (
             <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white" style={{ background: 'var(--status-critical)' }}>
               <AlertTriangle className="h-3 w-3" /> NCR
             </span>
@@ -915,8 +915,8 @@ function VistaContagem({
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] tabular-nums" style={{ color: 'var(--ink-muted)' }}>
           <span>{c.total_itens} itens</span>
-          <StatusChip texto={`${c.itens_ok} ok`} tom="ok" />
-          {c.itens_divergentes > 0 && <StatusChip texto={`${c.itens_divergentes} diverg.`} tom="alerta" />}
+          <StatusChip texto={`${c.retorno_remessa ? c.total_itens : c.itens_ok} ok`} tom="ok" />
+          {!c.retorno_remessa && c.itens_divergentes > 0 && <StatusChip texto={`${c.itens_divergentes} diverg.`} tom="alerta" />}
           <span className="ml-1">{FONTE_ROTULO[c.fonte_pedido] ?? c.fonte_pedido}</span>
         </div>
 
@@ -1488,11 +1488,11 @@ function ModalDetalhe({
                   valor={
                     <span className="inline-flex flex-wrap items-center gap-1.5">
                       <span>{c.total_itens} itens</span>
-                      <StatusChip texto={`${c.itens_ok} ok`} tom="ok" />
+                      <StatusChip texto={`${c.retorno_remessa ? c.total_itens : c.itens_ok} ok`} tom="ok" />
                       {c.itens.some((it) => it.parcial) && (
                         <StatusChip texto={`${c.itens.filter((it) => it.parcial).length} parcial`} tom="atencao" />
                       )}
-                      {c.itens_divergentes > 0 && <StatusChip texto={`${c.itens_divergentes} divergentes`} tom="alerta" />}
+                      {!c.retorno_remessa && c.itens_divergentes > 0 && <StatusChip texto={`${c.itens_divergentes} divergentes`} tom="alerta" />}
                     </span>
                   }
                 />
@@ -1505,8 +1505,11 @@ function ModalDetalhe({
                   const paths = (it.evidencias ?? []).map((e) => e.path);
                   const pend = pendentePedido(it.qtd_pedido ?? null, it.qtd_ja_fornecida ?? null);
                   const parcialAnt = entregaParcialAnterior(it.qtd_pedido ?? null, it.qtd_ja_fornecida ?? null);
-                  const amberParcial = it.parcial && !it.divergencia;
-                  const okVerde = it.conferido && !it.divergencia && !it.parcial;
+                  const itemDivergente = c.retorno_remessa
+                    ? (it.tipo_divergencia === 'avaria' || (it.divergencia && it.tipo_divergencia !== 'sem_pedido'))
+                    : it.divergencia;
+                  const amberParcial = it.parcial && !itemDivergente;
+                  const okVerde = (it.conferido || (c.retorno_remessa && !itemDivergente)) && !itemDivergente && !it.parcial;
                   const chegReg = it.linha_ref ? chegadasMap.get(it.linha_ref) : null;
                   return (
                     <div
@@ -1514,8 +1517,8 @@ function ModalDetalhe({
                       className="border-b p-2.5 last:border-b-0"
                       style={{
                         borderColor: 'var(--hairline)',
-                        borderLeft: `3px solid ${it.divergencia ? 'var(--status-critical)' : amberParcial ? 'var(--status-serious)' : okVerde ? 'var(--status-good)' : 'transparent'}`,
-                        background: it.divergencia ? 'color-mix(in srgb, var(--status-critical) 8%, transparent)' : amberParcial ? 'color-mix(in srgb, var(--status-serious) 10%, transparent)' : okVerde ? 'color-mix(in srgb, var(--status-good) 8%, transparent)' : undefined,
+                        borderLeft: `3px solid ${itemDivergente ? 'var(--status-critical)' : amberParcial ? 'var(--status-serious)' : okVerde ? 'var(--status-good)' : 'transparent'}`,
+                        background: itemDivergente ? 'color-mix(in srgb, var(--status-critical) 8%, transparent)' : amberParcial ? 'color-mix(in srgb, var(--status-serious) 10%, transparent)' : okVerde ? 'color-mix(in srgb, var(--status-good) 8%, transparent)' : undefined,
                       }}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -1526,7 +1529,7 @@ function ModalDetalhe({
                           {paths.length > 0 && (
                             <FotosAssinadas paths={paths} compacto legenda={`${it.material_code} — ${c.codigo}`} onAbrir={lb.abrir} />
                           )}
-                          {it.divergencia && it.tipo_divergencia && (
+                          {itemDivergente && it.tipo_divergencia && (
                             <StatusChip texto={ROTULO_DIVERGENCIA[it.tipo_divergencia as TipoDivergencia] ?? it.tipo_divergencia} tom="alerta" />
                           )}
                           {amberParcial && <StatusChip texto={it.parcial_conforme_nf ? 'parcial · conforme NF' : 'parcial · divergente da NF'} tom="atencao" />}
@@ -2374,7 +2377,7 @@ function ModalConferencia({
       observacao: '', evidencias: [], fotos: [],
     }]);
 
-  const resumo = useMemo(() => resumoConferencia(linhas), [linhas]);
+  const resumo = useMemo(() => resumoConferencia(linhas, retornoRemessa), [linhas, retornoRemessa]);
   /** Linhas de compra direta, para o contador acima da lista. */
   const qtdCompraDireta = useMemo(
     () => linhas.filter((l) => compraDiretaDe(l.rm ?? rm, l.materialCode)).length,
@@ -2445,7 +2448,7 @@ function ModalConferencia({
 
       const itens = [];
       for (const l of linhas) {
-        const tipo = classificarDivergencia(l);
+        const tipo = classificarDivergencia(l, retornoRemessa);
         const evidNovas = l.fotos.length ? await subirTodas(l.fotos, codigoTmp) : [];
         itens.push({
           linha_ref: l.linhaRef,
@@ -2483,7 +2486,7 @@ function ModalConferencia({
             deposito: deposito.trim() || null,
             observacao: observacao.trim() || null,
             carga_id: cargaId || null,
-            tipo_item: resumoConferencia(linhas).tipoItem,
+            tipo_item: resumoConferencia(linhas, retornoRemessa).tipoItem,
             retorno_remessa: retornoRemessa,
             evidencias: evidCab,
           },
@@ -2518,7 +2521,7 @@ function ModalConferencia({
       }
 
       const divergentes = itens.filter((i) => i.divergencia);
-      const nc = divergentes.length
+      const nc = (!retornoRemessa && divergentes.length)
         ? {
             tipo: tipoNcSugerido(resumo.tiposDivergencia),
             severidade: ncSeveridade,
