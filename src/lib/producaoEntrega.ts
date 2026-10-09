@@ -21,7 +21,8 @@ export type CategoriaEtapa =
   | 'saw03'
   | 'saw02'
   | 'nav01'
-  | 'pendente';
+  | 'pendente'
+  | 'pendencias';
 
 export interface TramoEntrega {
   id: string;
@@ -143,13 +144,23 @@ export const CONFIG_CATEGORIAS: Record<CategoriaEtapa, ConfiguracaoCategoria> = 
   },
   pendente: {
     id: 'pendente',
-    rotulo: 'Em Branco Pendente',
+    rotulo: 'Aberto',
     bgClasse: 'bg-white text-slate-800 border-slate-300 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-700',
     borderClasse: 'border-slate-300 dark:border-slate-600',
     textoClasse: 'text-slate-900 font-bold dark:text-slate-100',
     gradienteCilindro: 'linear-gradient(90deg, #f1f5f9 0%, #ffffff 45%, #e2e8f0 100%)',
     hexPrimario: '#ffffff',
-    descricao: 'Tramo em branco / pendente de fabricação',
+    descricao: 'Tramo em aberto: em branco, ainda sem fabricação iniciada',
+  },
+  pendencias: {
+    id: 'pendencias',
+    rotulo: 'Pendências',
+    bgClasse: 'bg-[#dc2626] text-white',
+    borderClasse: 'border-red-700',
+    textoClasse: 'text-white font-bold',
+    gradienteCilindro: 'linear-gradient(90deg, #b91c1c 0%, #f87171 45%, #991b1b 100%)',
+    hexPrimario: '#dc2626',
+    descricao: 'Tramo parado por pendência (o que falta fica em "aguardando")',
   },
 };
 
@@ -418,6 +429,7 @@ export function calcularIndicadoresDecisao(
     saw02: 0,
     nav01: 0,
     pendente: 0,
+    pendencias: 0,
   };
 
   let somaEsperaWip = 0;

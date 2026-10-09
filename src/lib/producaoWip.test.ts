@@ -43,6 +43,10 @@ describe('producaoWip - zonas pelo Controle de Entrega', () => {
   it('mapeia cada categoria para a zona da planta', () => {
     expect(zonaPorControleEntrega({ etapa_categoria: 'nav01', etapa_nome: 'NAV01' })).toBe('calandra_saw1');
     expect(zonaPorControleEntrega({ etapa_categoria: 'saw02', etapa_nome: 'MARCO PORTA' })).toBe('saw');
+    // Pendência não tira o tramo da zona: o nome da etapa decide.
+    expect(zonaPorControleEntrega({ etapa_categoria: 'pendencias', etapa_nome: 'SAW02' })).toBe('saw');
+    expect(zonaPorControleEntrega({ etapa_categoria: 'pendencias', etapa_nome: 'LIB.JATO' })).toBe('acabamento');
+    expect(zonaPorControleEntrega({ etapa_categoria: 'pendencias', etapa_nome: 'PENDÊNCIAS' })).toBeNull();
     expect(zonaPorControleEntrega({ etapa_categoria: 'saw03', etapa_nome: 'SAW03' })).toBe('saw');
     expect(zonaPorControleEntrega({ etapa_categoria: 'internos', etapa_nome: 'INTERNOS' })).toBe('internos');
   });

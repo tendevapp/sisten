@@ -113,6 +113,17 @@ export function zonaPorControleEntrega(tramo: Pick<TramoEntrega, 'etapa_categori
     case 'white':
       // White cobre Jato, Pintura e Montagem: o nome da etapa separa as duas zonas.
       return normalizar(tramo.etapa_nome).includes('MONTAGEM') ? 'montagem' : 'acabamento';
+    case 'pendencias': {
+      // Pendência é uma marca sobre o tramo, que continua parado na etapa de antes:
+      // o nome da etapa diz em que zona ele está.
+      const etapa = normalizar(tramo.etapa_nome);
+      if (etapa.includes('NAV01')) return 'calandra_saw1';
+      if (etapa.includes('SAW') || etapa.includes('MARCO PORTA')) return 'saw';
+      if (etapa.includes('INTERNOS')) return 'internos';
+      if (etapa.includes('MONTAGEM')) return 'montagem';
+      if (etapa.includes('JATO') || etapa.includes('PINTURA')) return 'acabamento';
+      return null;
+    }
     default:
       return null;
   }

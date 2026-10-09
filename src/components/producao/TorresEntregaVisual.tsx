@@ -459,10 +459,13 @@ export default function TorresEntregaVisual({
                               </div>
                             ) : tramo && tramo.etapa_categoria === 'pendente' ? (
                               <div className="mt-1.5 text-[9px] font-bold text-slate-600 dark:text-slate-300">
-                                ○ Pendente
+                                ○ Aberto
                               </div>
                             ) : tramo ? (
-                              <div className="mt-1.5 flex items-center justify-center">
+                              <div className="mt-1.5 flex flex-col items-center justify-center gap-1">
+                                {tramo.etapa_categoria === 'pendencias' && (
+                                  <span className="text-[9px] font-black uppercase tracking-wide">⚠ Pendências</span>
+                                )}
                                 <span
                                   className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold shadow-sm ${
                                     criticidade.nivel === 'critico'
@@ -550,11 +553,18 @@ export default function TorresEntregaVisual({
                   <span className="text-xs font-semibold">Nav01</span>
                 </div>
 
-                {/* Em Branco Pendente */}
+                {/* Aberto (em branco) */}
                 <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
                   <span className="h-3 w-3 rounded-full border border-slate-400 bg-white shadow-inner" />
                   <strong className="text-sm font-black">{indicadores.contagemCategorias.pendente}</strong>
-                  <span className="text-xs font-semibold">Em Branco Pendente</span>
+                  <span className="text-xs font-semibold">Aberto</span>
+                </div>
+
+                {/* Pendências */}
+                <div className="flex items-center gap-2 rounded-xl border border-red-700 bg-[#dc2626] px-3 py-1.5 text-white shadow-sm">
+                  <span className="h-3 w-3 rounded-full bg-white" />
+                  <strong className="text-sm font-black">{indicadores.contagemCategorias.pendencias}</strong>
+                  <span className="text-xs font-semibold">Pendências</span>
                 </div>
               </div>
 

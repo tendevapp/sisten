@@ -57,7 +57,7 @@ const SUGESTOES_AGUARDANDO = [
   'Pendente de fabricação (em branco)',
 ];
 
-const ETAPAS_POR_CATEGORIA: Record<CategoriaEtapa, string[]> = {
+const ETAPAS_DAS_CATEGORIAS: Record<Exclude<CategoriaEtapa, 'pendencias'>, string[]> = {
   expedido: ['EXPEDIDO'],
   patio: ['PÁTIO', 'EXPEDIDO', 'MONTAGEM', 'PINTURA'],
   white: [
@@ -74,6 +74,13 @@ const ETAPAS_POR_CATEGORIA: Record<CategoriaEtapa, string[]> = {
   saw03: ['SAW03'],
   nav01: ['NAV01'],
   pendente: ['PENDENTE', 'EM BRANCO PENDENTE', 'EM BRANCO'],
+};
+
+// Pendência é uma marca sobre o tramo, que segue parado na etapa em que estava:
+// qualquer estágio vale, e trocar para ela não apaga o estágio atual.
+const ETAPAS_POR_CATEGORIA: Record<CategoriaEtapa, string[]> = {
+  ...ETAPAS_DAS_CATEGORIAS,
+  pendencias: [...new Set(Object.values(ETAPAS_DAS_CATEGORIAS).flat())],
 };
 
 export default function ModalDetalheTramoEntrega({
@@ -126,6 +133,9 @@ export default function ModalDetalheTramoEntrega({
     } else if (novaCat === 'pendente') {
       setStatusAguardando('Aguardando início de fabricação');
       setDiasEspera(0);
+    } else if (novaCat === 'pendencias' && categoria !== 'pendencias') {
+      // Quem marca a pendência descreve o que falta no campo "aguardando".
+      setStatusAguardando('');
     }
   };
 
@@ -360,7 +370,7 @@ export default function ModalDetalheTramoEntrega({
               Processo / Categoria de Acabamento
             </label>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {(['expedido', 'patio', 'white', 'internos', 'saw02', 'saw03', 'nav01', 'pendente'] as CategoriaEtapa[]).map(catKey => {
+              {(['expedido', 'patio', 'white', 'internos', 'saw02', 'saw03', 'nav01', 'pendente', 'pendencias'] as CategoriaEtapa[]).map(catKey => {
                 const conf = CONFIG_CATEGORIAS[catKey];
                 const selecionado = categoria === catKey;
                 return (
