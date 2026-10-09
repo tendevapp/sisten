@@ -19,7 +19,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, Ban, Calendar, Check, CheckCircle, Clock, Copy,
-  ExternalLink, FileEdit, FileText, Info, Loader2, Paperclip, Pencil,
+  ExternalLink, FileEdit, FileText, Info, Loader2, Mail, Paperclip, Pencil,
   PlusCircle, RefreshCw, Send, Star, Trash2, Upload, XCircle,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
@@ -42,6 +42,7 @@ import {
   Pendencia, ehOperador, podeAlterarDecisao, podeAprovar, podeCancelar, podeVerNotaInterna,
 } from '../../lib/solicitacoesCentral';
 import HelpdeskSatisfactionCard from '../helpdesk/HelpdeskSatisfactionCard';
+import ReenviarEmailModal from './ReenviarEmailModal';
 
 interface Props {
   request: Request;
@@ -143,6 +144,7 @@ export default function RequestDetailPanel({
   const [exportandoPdf, setExportandoPdf] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [itensCopiados, setItensCopiados] = useState(false);
+  const [reenviandoEmail, setReenviandoEmail] = useState(false);
   const [sinais, setSinais] = useState<Record<string, SinalChip[]>>({});
   const [carregandoSinais, setCarregandoSinais] = useState(false);
 
@@ -172,6 +174,7 @@ export default function RequestDetailPanel({
     setSinais({});
     setModalDecisaoAberta(false);
     setModalCancelarAberta(false);
+    setReenviandoEmail(false);
     setNovaDecisaoJustificativa('');
     setMotivoCancelamento('');
     setErroModalDecisao('');
@@ -521,6 +524,10 @@ export default function RequestDetailPanel({
               <FileText className="h-4 w-4" /> Visualizar PDF
             </BotaoSecundario>
           )}
+
+          <BotaoSecundario onClick={() => setReenviandoEmail(true)} title="Enviar o conteúdo da solicitação por e-mail">
+            <Mail className="h-4 w-4" /> Reenviar por e-mail
+          </BotaoSecundario>
 
           {modulo && (
             <BotaoSecundario onClick={() => onNavigate(modulo.path)}>
@@ -1156,6 +1163,10 @@ export default function RequestDetailPanel({
             </ModalFooter>
           </form>
         </Modal>
+      )}
+
+      {reenviandoEmail && (
+        <ReenviarEmailModal request={request} sectors={sectors} onClose={() => setReenviandoEmail(false)} />
       )}
 
       {pdfPreview && (
