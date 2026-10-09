@@ -93,7 +93,11 @@ export function setoresCompraDireta(
 }
 
 export interface TagCompraDireta {
-  /** Setor(es) que pediram. Mais de um só no caso inferido pelo material. */
+  /**
+   * Setor(es) para onde o material vai: o setor destinatário escolhido no item
+   * (ou o setor solicitante, em solicitação sem destinatário). Mais de um só no
+   * caso inferido pelo material.
+   */
   setores: string[];
   /** Solicitação que originou a RM; `null` quando a tag foi inferida só pelo material. */
   solicitacao: string | null;
@@ -119,15 +123,25 @@ export function criarResolvedorCompraDireta(
   const nomeDoSetor = (id: string) => nomePorId.get(id) ?? 'Setor não identificado';
 
   const porId = new Map(requests.map(r => [r.id, r]));
-  const porRmMaterial = new Map<string, Request>();
+  const destinoDoItem = (req: Request, it: RequestItem) => it.setor_destinatario?.trim() || nomeDoSetor(req.solicitante_sector_id);
+
+  const porRmMaterial = new Map<string, { req: Request; item: RequestItem }>();
+  const porMaterial = new Map<string, Set<string>>();
   for (const it of itens) {
     if (!it.sap_code) continue;
     const req = porId.get(it.request_id);
-    if (!req || req.type !== 'compra' || !req.linked_rm_number || STATUS_SEM_COMPRA.includes(req.status)) continue;
-    const chave = `${normalizeCode(req.linked_rm_number)}::${normalizeCode(it.sap_code)}`;
-    if (!porRmMaterial.has(chave)) porRmMaterial.set(chave, req);
+    if (!req || req.type !== 'compra' || STATUS_SEM_COMPRA.includes(req.status)) continue;
+    const codigo = normalizeCode(it.sap_code);
+    if (req.linked_rm_number) {
+      const chave = `${normalizeCode(req.linked_rm_number)}::${codigo}`;
+      if (!porRmMaterial.has(chave)) porRmMaterial.set(chave, { req, item: it });
+    }
+    if (req.tipo_compra === 'Direta') {
+      const destinos = porMaterial.get(codigo) ?? new Set<string>();
+      destinos.add(destinoDoItem(req, it));
+      porMaterial.set(codigo, destinos);
+    }
   }
-  const porMaterial = indexarSetoresCompraDireta(requests, itens);
 
   return (rm, material) => {
     const codigo = normalizeCode(material);
@@ -136,15 +150,15 @@ export function criarResolvedorCompraDireta(
     const rmLimpo = normalizeCode(rm);
     const vinculada = rmLimpo ? porRmMaterial.get(`${rmLimpo}::${codigo}`) : undefined;
     if (vinculada) {
-      return vinculada.tipo_compra === 'Direta'
-        ? { setores: [nomeDoSetor(vinculada.solicitante_sector_id)], solicitacao: vinculada.number, exata: true }
+      return vinculada.req.tipo_compra === 'Direta'
+        ? { setores: [destinoDoItem(vinculada.req, vinculada.item)], solicitacao: vinculada.req.number, exata: true }
         : null;
     }
 
-    const ids = porMaterial.get(codigo);
-    if (!ids || ids.size === 0) return null;
+    const destinos = porMaterial.get(codigo);
+    if (!destinos || destinos.size === 0) return null;
     return {
-      setores: [...ids].map(nomeDoSetor).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      setores: [...destinos].sort((a, b) => a.localeCompare(b, 'pt-BR')),
       solicitacao: null,
       exata: false,
     };

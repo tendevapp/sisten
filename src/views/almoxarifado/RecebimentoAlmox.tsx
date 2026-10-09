@@ -1355,10 +1355,10 @@ function TagCompraDiretaChip({ tag }: { tag: TagCompraDireta }) {
       className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide"
       style={{ background: 'color-mix(in srgb, var(--brand) 14%, transparent)', color: 'var(--brand)' }}
       title={tag.exata
-        ? `Compra direta — solicitação #${tag.solicitacao}, setor ${setor}. Separar para o solicitante.`
+        ? `Compra direta — solicitação #${tag.solicitacao}. Separar e entregar ao setor ${setor}.`
         : `Compra direta (inferida pelo código do material em solicitações anteriores) — setor ${setor}. Confirme com o solicitante.`}
     >
-      <ShoppingCart className="h-3 w-3" /> Compra direta · {setor}{tag.exata ? '' : ' (prov.)'}
+      <ShoppingCart className="h-3 w-3" /> Compra direta → {setor}{tag.exata ? '' : ' (prov.)'}
     </span>
   );
 }

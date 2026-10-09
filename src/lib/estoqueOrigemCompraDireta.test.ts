@@ -81,4 +81,14 @@ describe('criarResolvedorCompraDireta', () => {
   it('material nunca pedido em compra direta não tem tag', () => {
     expect(resolver('10001234', '888')).toBeNull();
   });
+
+  it('usa o setor destinatário do item quando existe, em vez do solicitante', () => {
+    const r = criarResolvedorCompraDireta(
+      [req({ id: 'rd', number: '3000020', linked_rm_number: '10002000' })],
+      [item({ id: 'x', request_id: 'rd', sap_code: '321', setor_destinatario: 'MANUTENÇÃO' })],
+      setores,
+    );
+    expect(r('10002000', '321')).toEqual({ setores: ['MANUTENÇÃO'], solicitacao: '3000020', exata: true });
+    expect(r(null, '321')).toEqual({ setores: ['MANUTENÇÃO'], solicitacao: null, exata: false });
+  });
 });

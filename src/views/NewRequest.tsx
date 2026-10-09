@@ -17,6 +17,7 @@ import {
   type CatalogoItem,
 } from '../lib/almoxCatalogoApi';
 import { localDb } from '../db/localDb';
+import { listarRhSetores } from '../lib/rhApi';
 import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus, RequestAttachment } from '../types';
 import { formatBRL, formatDateBR } from '../lib/format';
@@ -191,6 +192,8 @@ interface PurchaseItemState {
   reference_link?: string;
   suggested_supplier: string;
   estimated_value: number;
+  /** Compra direta: setor que vai receber o material (nome do cadastro de setores do RH). */
+  setor_destinatario?: string;
   /**
    * Anexos já comprimidos, aguardando o submit para subir. Ficam presos ao item
    * (e não num mapa por índice à parte) para acompanharem naturalmente a
@@ -220,7 +223,7 @@ const itemVazio = (): PurchaseItemState => ({
   id: novoItemId(),
   description: '', sap_code: '', status_geral: undefined, technical_text: '', quantity: '', unit: '', brand: '',
   is_similar_allowed: true, is_generic: false, observation: '', reference_link: '',
-  suggested_supplier: '', estimated_value: 0,
+  suggested_supplier: '', estimated_value: 0, setor_destinatario: '',
 });
 
 /**
@@ -340,6 +343,19 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // criando um loop de requisições repetidas à RPC enquanto o dropdown fica
   // aberto.
   const sectors = useMemo(() => localDb.getSectors(), []);
+
+  // Setores destinatários da compra direta: o cadastro de setores do RH, o mesmo
+  // da ASE. Só ativos; se a leitura falhar a lista fica vazia e o envio avisa.
+  const [setoresDestino, setSetoresDestino] = useState<string[]>([]);
+  useEffect(() => {
+    let ativo = true;
+    listarRhSetores()
+      .then(lista => {
+        if (ativo) setSetoresDestino(lista.filter(s => s.ativo).map(s => s.nome).sort((a, b) => a.localeCompare(b, 'pt-BR')));
+      })
+      .catch(err => console.warn('Falha ao carregar os setores destinatários:', err));
+    return () => { ativo = false; };
+  }, []);
 
   // Identifica se o solicitante é do Almoxarifado (setor id 2 ou nome Almoxarifado).
   // Usuários do Almoxarifado não precisam do aviso de alinhamento consigo mesmos.
@@ -653,6 +669,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         reference_link: it.reference_link || '',
         suggested_supplier: it.suggested_supplier || '',
         estimated_value: it.estimated_value || 0,
+        setor_destinatario: it.setor_destinatario || '',
       })));
     }
 
@@ -1372,6 +1389,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         return;
       }
 
+      if (tipoCompra === 'Direta') {
+        const semDestino = items.findIndex(it => !it.setor_destinatario?.trim());
+        if (semDestino !== -1) {
+          alert(`Item ${semDestino + 1}: escolha o setor destinatário. O almoxarifado usa essa informação para separar e entregar o material.`);
+          return;
+        }
+      }
+
       const itemSemQtd = items.findIndex(it => {
         const q = normalizarQuantidadeSolicitacao(it.quantity);
         return !q || q <= 0;
@@ -1517,6 +1542,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               has_no_sap_code: !it.sap_code || it.sap_code.trim().length !== 8,
               is_generic: ehGen,
               sugere_estoque_minimo: tipoCompra === 'Direta' && !ehGen && sugereEstoqueMinimo,
+              setor_destinatario: tipoCompra === 'Direta' ? (it.setor_destinatario?.trim() || null) : null,
               observation,
               reference_link: it.reference_link || '',
               quantity: normalizarQuantidadeSolicitacao(it.quantity),
@@ -2583,6 +2609,28 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           style={fieldStyle}
                         />
                       </div>
+
+                      {/* Setor destinatário — só compra direta: o almoxarifado separa o material para ele no recebimento */}
+                      {tipoCompra === 'Direta' && (
+                        <div>
+                          <label className="text-[11px] font-bold flex items-center gap-1 mb-1" style={{ color: 'var(--ink-muted)' }}>
+                            <Building2 className="h-3 w-3" /> Setor destinatário *
+                          </label>
+                          <select
+                            value={it.setor_destinatario || ''}
+                            onChange={(e) => patchItem(index, { setor_destinatario: e.target.value })}
+                            className="w-full rounded border py-1 px-2 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                            style={fieldStyle}
+                          >
+                            <option value="">Selecione o setor…</option>
+                            {setoresDestino.map(nome => <option key={nome} value={nome}>{nome}</option>)}
+                            {/* Valor já gravado que saiu da lista (setor inativado): não some ao editar. */}
+                            {it.setor_destinatario && !setoresDestino.includes(it.setor_destinatario) && (
+                              <option value={it.setor_destinatario}>{it.setor_destinatario}</option>
+                            )}
+                          </select>
+                        </div>
+                      )}
 
                       {/* Link de Referência de Compra (opcional) */}
                       <div>

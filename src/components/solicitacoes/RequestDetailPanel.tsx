@@ -1323,6 +1323,11 @@ function ItemLinha({
             Solicitante sugere cadastro de estoque mínimo
           </p>
         )}
+        {item.setor_destinatario && (
+          <p className="text-xs font-semibold" style={{ color: 'var(--ink-secondary)' }}>
+            Setor destinatário: {item.setor_destinatario}
+          </p>
+        )}
 
         {sinais && sinais.length > 0 && <SinalChips chips={sinais} />}
         {!sinais && carregandoSinais && item.sap_code && (

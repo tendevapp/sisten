@@ -193,6 +193,8 @@ export interface RequestItem {
   has_no_sap_code: boolean;
   is_generic?: boolean;
   sugere_estoque_minimo?: boolean;
+  /** Compra direta: setor (cadastro de setores do RH, o da ASE) que recebe o material. */
+  setor_destinatario?: string | null;
   observation?: string;
   reference_link?: string;
   quantity: number;
