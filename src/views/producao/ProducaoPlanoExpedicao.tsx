@@ -12,14 +12,31 @@ import { useToast } from '../../components/ui/Toast';
 
 type ModoPlano = 'relatorio' | 'dados';
 
-const dataParaInput = (data: string | null) => data?.slice(0, 10) ?? '';
+/**
+ * Data AAAA-MM-DD de um calendário real, com ano de quatro dígitos. Um <input type="date">
+ * aceita ano com cinco dígitos ("26200-10-01") quando o usuário digita um número a mais;
+ * esse valor é gravado como texto e o `Intl.DateTimeFormat` estoura "Invalid time value"
+ * ao formatá-lo, derrubando a tela inteira. Toda data vinda da tela ou do banco passa por aqui.
+ */
+const ANO_MIN = 2000;
+const ANO_MAX = 2099;
+const dataValida = (data: string | null | undefined): data is string => {
+  if (!data || !/^\d{4}-\d{2}-\d{2}/.test(data)) return false;
+  const ano = Number(data.slice(0, 4));
+  return ano >= ANO_MIN && ano <= ANO_MAX && !Number.isNaN(new Date(`${data.slice(0, 10)}T12:00:00`).getTime());
+};
+
+const dataParaInput = (data: string | null) => (dataValida(data) ? data.slice(0, 10) : '');
 const formatarData = (data: string | null, formato: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit' }) => {
   if (!data) return '—';
+  if (!dataValida(data)) return 'data inválida';
   return new Intl.DateTimeFormat('pt-BR', formato).format(new Date(`${data.slice(0, 10)}T12:00:00`));
 };
 const nomeMes = (linha: PlanoExpedicaoProducao) => {
   const data = linha.data_carregamento ?? linha.data_expedicao;
-  return data ? new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(`${data.slice(0, 10)}T12:00:00`)).toUpperCase() : 'SEM DATA';
+  if (!data) return 'SEM DATA';
+  if (!dataValida(data)) return 'DATA INVÁLIDA';
+  return new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(`${data.slice(0, 10)}T12:00:00`)).toUpperCase();
 };
 
 const STATUS: Record<StatusPlanoExpedicao, { label: string; classe: string }> = {
@@ -131,7 +148,7 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
   const previsaoPorData = useMemo(() => {
     const grupos = new Map<string, number>();
     relatorio.forEach(linha => { if (linha.data_expedicao) grupos.set(linha.data_expedicao, (grupos.get(linha.data_expedicao) ?? 0) + 1); });
-    const anoBase = relatorio.map(linha => linha.data_expedicao ?? linha.data_carregamento).filter((data): data is string => Boolean(data)).sort()[0];
+    const anoBase = relatorio.map(linha => linha.data_expedicao ?? linha.data_carregamento).filter(dataValida).sort()[0];
     const ano = anoBase ? Number(anoBase.slice(0, 4)) : new Date().getFullYear();
     const referencia = new Date(ano, 0, 1 + (semanaRelatorio - 1) * 7);
     const diaSemana = referencia.getDay();
@@ -145,7 +162,7 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
     });
   }, [relatorio, semanaRelatorio]);
   const periodo = useMemo(() => {
-    const datas = relatorio.flatMap(linha => [linha.data_carregamento, linha.data_expedicao]).filter((data): data is string => Boolean(data)).sort();
+    const datas = relatorio.flatMap(linha => [linha.data_carregamento, linha.data_expedicao]).filter(dataValida).sort();
     return datas.length ? `${formatarData(datas[0])} a ${formatarData(datas.at(-1) ?? null)}` : 'Período sem datas';
   }, [relatorio]);
   const linhasDados = useMemo(() => {
@@ -218,6 +235,11 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
 
   const alterarData = (linhaId: string, campo: 'data_carregamento' | 'data_expedicao', valorBruto: string) => {
     const valor = valorBruto ? valorBruto.slice(0, 10) : null;
+    // Ano com cinco dígitos ou fora da faixa: descarta, em vez de gravar lixo no plano.
+    if (valorBruto && !dataValida(valorBruto)) {
+      toast.error(`Data inválida: use o ano com quatro dígitos (${ANO_MIN} a ${ANO_MAX}).`);
+      return;
+    }
     setLinhas(atuais => atuais.map(item => item.id === linhaId ? { ...item, [campo]: valor } : item));
     if (!valor || valor.length === 10) {
       void salvar(linhaId, { [campo]: valor });
@@ -276,8 +298,8 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
               <td className="p-1"><select aria-label={`Semana da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.semana} disabled={bloqueada} onChange={e => mudarSemana(linha.id, Number(e.target.value))} className="h-8 rounded-md border border-transparent bg-transparent px-1.5 text-xs font-bold text-[#173d6c] hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:text-blue-300 dark:hover:border-slate-700 dark:focus:bg-slate-950">{OPCOES_SEMANAS.map(sem => <option key={sem} value={sem} className="text-slate-800 dark:bg-slate-900 dark:text-slate-100">W{sem}</option>)}</select></td><td className="p-1"><input aria-label={`Torre do tramo ${linha.tramo} ID ${linha.identificador ?? ''}`} type="number" min={1} max={999} value={linha.torre_numero || ''} disabled={bloqueada} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, torre_numero: e.target.value ? Number(e.target.value) : ('' as any) } : item))} onBlur={e => mudarTorre(linha.id, Number(e.target.value))} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} inputMode="numeric" className="w-14 rounded border border-transparent bg-transparent px-1.5 py-1 text-xs font-semibold text-slate-800 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:text-slate-100 dark:hover:border-slate-700 dark:focus:bg-slate-950" /></td><td className="p-1"><select aria-label={`Tramo da torre ${linha.torre_numero}`} value={linha.tramo} disabled={bloqueada} onChange={e => mudarTramo(linha.id, e.target.value as PlanoExpedicaoProducao['tramo'])} className="h-8 rounded-md border border-transparent bg-transparent px-1.5 text-xs font-semibold text-slate-800 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:text-slate-100 dark:hover:border-slate-700 dark:focus:bg-slate-950">{OPCOES_TRAMOS.map(tr => <option key={tr} value={tr} className="text-slate-800 dark:bg-slate-900 dark:text-slate-100">{tr}</option>)}</select></td>
               <td className="p-1"><input aria-label={`ID da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.identificador ?? ''} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, identificador: e.target.value ? Number(e.target.value) : null } : item))} onBlur={e => void salvar(linha.id, { identificador: e.target.value ? Number(e.target.value) : null })} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} inputMode="numeric" className="w-16 rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
               <td className="p-2.5"><BotaoNf checked={linha.nf_faturamento_emitida} disabled={bloqueada} label="NF de faturamento emitida" onChange={valor => void salvar(linha.id, { nf_faturamento_emitida: valor })} /></td><td className="p-2.5"><BotaoNf checked={linha.nf_gw_emitida} disabled={bloqueada} label="NF GW emitida" onChange={valor => void salvar(linha.id, { nf_gw_emitida: valor })} /></td><td className="p-2.5"><BotaoNf checked={linha.nf_expedicao_emitida} disabled={bloqueada} label="NF de expedição emitida" onChange={valor => void salvar(linha.id, { nf_expedicao_emitida: valor })} /></td>
-              <td className="p-1"><input aria-label={`Data de carregamento da torre ${linha.torre_numero} ${linha.tramo}`} type="date" value={dataParaInput(linha.data_carregamento)} onChange={e => alterarData(linha.id, 'data_carregamento', e.target.value)} onBlur={e => alterarData(linha.id, 'data_carregamento', e.target.value)} className="rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
-              <td className="p-1"><input aria-label={`Data de expedição da torre ${linha.torre_numero} ${linha.tramo}`} type="date" value={dataParaInput(linha.data_expedicao)} onChange={e => alterarData(linha.id, 'data_expedicao', e.target.value)} onBlur={e => alterarData(linha.id, 'data_expedicao', e.target.value)} className="rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
+              <td className="p-1"><input aria-label={`Data de carregamento da torre ${linha.torre_numero} ${linha.tramo}`} type="date" min={`${ANO_MIN}-01-01`} max={`${ANO_MAX}-12-31`} value={dataParaInput(linha.data_carregamento)} onChange={e => alterarData(linha.id, 'data_carregamento', e.target.value)} onBlur={e => alterarData(linha.id, 'data_carregamento', e.target.value)} className="rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
+              <td className="p-1"><input aria-label={`Data de expedição da torre ${linha.torre_numero} ${linha.tramo}`} type="date" min={`${ANO_MIN}-01-01`} max={`${ANO_MAX}-12-31`} value={dataParaInput(linha.data_expedicao)} onChange={e => alterarData(linha.id, 'data_expedicao', e.target.value)} onBlur={e => alterarData(linha.id, 'data_expedicao', e.target.value)} className="rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
               <td className="p-1"><select aria-label={`Status da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.status} disabled={bloqueada} onChange={e => mudarStatus(linha, e.target.value as StatusPlanoExpedicao)} className={`h-8 rounded-md border border-transparent px-2 text-xs font-bold focus:border-blue-500 focus:outline-none ${STATUS[linha.status].classe}`}><option value="a_faturar">A faturar</option><option value="faturado">Faturado</option><option value="expedido">Expedido</option></select></td>
               <td className="p-1"><input aria-label={`Observação da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.observacao ?? ''} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, observacao: e.target.value || null } : item))} onBlur={e => void salvar(linha.id, { observacao: e.target.value || null })} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} className="w-44 rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
               <td className="p-2 text-slate-400">{bloqueada ? <Save className="h-4 w-4 animate-pulse text-blue-600" /> : <ChevronRight className="h-4 w-4" />}</td>
