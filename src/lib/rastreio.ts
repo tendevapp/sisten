@@ -12,8 +12,9 @@ import { toDate, formatDateBR, formatDateTimeBR, formatBRL, yearOf } from './for
 import { avaliarEntregaParcial, type EntregaParcial } from './entregaParcial';
 import { buscarVinculoSistenRm, type VinculoSistenRm } from './centralComprasSisten';
 import { desformatarObservacaoItemGenerico } from './solicitacoes';
-import { dataValida, TRANSPORTADORA_BAHIA_SUL } from './diligenciamento';
+import { dataValida, temRemessaFinal, TRANSPORTADORA_BAHIA_SUL } from './diligenciamento';
 import { normalizePoNumber, resumirBahiaSulPorPo } from './bahiasul';
+import { ehItemDeContrato } from './contratoPedido';
 
 // Re-exportadas para quem já importa daqui (RastreioCompras, RastreioTable,
 // RastreioDetailModal): a formatação em si vive em `lib/format.ts`, fonte
@@ -243,7 +244,9 @@ export const parseDate = (d?: string): Date | null => {
 };
 
 // Mapeia os registros enriquecidos do SAP para linhas da tela de rastreio,
-// ignorando RMs de serviços (que começam com 17).
+// ignorando RMs de serviços (que começam com 17), itens de PO com remessa
+// final dada (CRF = 'X' na ZL0132) — o fornecedor encerrou a entrega — e
+// pedidos de contrato (call-off), que o comprador não rastreia por aqui.
 export function buildRastreioRows(
   records: EnrichedSAPRecord[],
   vinculos?: Map<string, VinculoSistenRm>,
@@ -254,7 +257,7 @@ export function buildRastreioRows(
   return records
     .filter(r => {
       const rm = txt(r.requisicao_de_compra) !== EMPTY ? txt(r.requisicao_de_compra) : txt(r.ri);
-      return !isServicoItem(rm);
+      return !isServicoItem(rm) && !temRemessaFinal(r) && !ehItemDeContrato(r);
     })
     .map(r => {
       const raw = r as any;

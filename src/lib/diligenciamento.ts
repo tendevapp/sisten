@@ -486,8 +486,46 @@ export function itemAtendeFiltroPromessa(
 }
 
 /**
+ * Verifica se um item de diligenciamento atende ao filtro de data de faturamento da transportadora.
+ * Opera sobre `item.faturamentoTransportadora` (formato ISO YYYY-MM-DD).
+ */
+export function itemAtendeFiltroFatTransportadora(
+  item: ItemDiligenciamento,
+  filtro?: FiltroPromessaValor | null,
+  hojeISO = new Date().toISOString().slice(0, 10),
+): boolean {
+  if (!filtro) return true;
+  const { from, to, preset } = filtro;
+  const isActive = (preset && preset !== 'all') || Boolean(from) || Boolean(to);
+  if (!isActive) return true;
+
+  const data = item.faturamentoTransportadora || null;
+
+  if (preset === 'sem_data') {
+    return !data;
+  }
+  if (preset === 'com_data' && !from && !to) {
+    return Boolean(data);
+  }
+  if (preset === 'atrasadas') {
+    if (!data) return false;
+    return data < hojeISO;
+  }
+
+  if ((from || to) && !data) {
+    return false;
+  }
+
+  if (from && data < from) return false;
+  if (to && data > to) return false;
+
+  return true;
+}
+
+/**
  * Filtra a lista de itens de diligenciamento por transportadoras (seleção múltipla),
- * intervalo de promessa/previsão de entrega, itens vencidos ou itens sem previsão.
+ * intervalo de promessa/previsão de entrega, data de faturamento da transportadora,
+ * itens vencidos ou itens sem previsão.
  */
 export function filtrarItensDiligenciamento(
   itens: ItemDiligenciamento[],
@@ -495,6 +533,7 @@ export function filtrarItensDiligenciamento(
     transportadoras?: Set<string>;
     sentinelaSemTransportadora?: string;
     promessa?: FiltroPromessaValor | null;
+    fatTransportadora?: FiltroPromessaValor | null;
     apenasVencidos?: boolean;
     apenasSemPrevisao?: boolean;
     hojeISO?: string;
@@ -516,6 +555,15 @@ export function filtrarItensDiligenciamento(
     if (isActive) {
       const hoje = filtros.hojeISO || new Date().toISOString().slice(0, 10);
       resultado = resultado.filter(item => itemAtendeFiltroPromessa(item, filtros.promessa, hoje));
+    }
+  }
+
+  if (filtros.fatTransportadora) {
+    const { from, to, preset } = filtros.fatTransportadora;
+    const isActive = (preset && preset !== 'all') || Boolean(from) || Boolean(to);
+    if (isActive) {
+      const hoje = filtros.hojeISO || new Date().toISOString().slice(0, 10);
+      resultado = resultado.filter(item => itemAtendeFiltroFatTransportadora(item, filtros.fatTransportadora, hoje));
     }
   }
 

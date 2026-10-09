@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AlmoxarifadoChegada, CidadeForn, DiligenciamentoItem, EnrichedSAPRecord, PrazoTransporte } from '../types';
 import {
   agruparPorPo, filtrarItensDiligenciamento, filtrarItensPorTransportadoras, filtrarPedidos,
-  indexarCidadesPorCodigo, itemAtendeFiltroPromessa, montarItens,
+  indexarCidadesPorCodigo, itemAtendeFiltroFatTransportadora, itemAtendeFiltroPromessa, montarItens,
   normalizarChaveTransportadora, ordenarPedidos, pedidoVencido, resolverPrazoDias,
   somarDiasCorridos, transportadorasConhecidas, ufDoFornecedor,
 } from './diligenciamento';
@@ -433,5 +433,52 @@ describe('itemAtendeFiltroPromessa e filtrarItensDiligenciamento', () => {
   it('filtra apenas itens sem previsão quando apenasSemPrevisao for true', () => {
     const resultado = filtrarItensDiligenciamento(lista, { apenasSemPrevisao: true });
     expect(resultado.map(i => i.riPo)).toEqual(['po-sem-data']);
+  });
+
+  it('filtra corretamente por data de faturamento da transportadora (fatTransportadora)', () => {
+    const itemFatJulho: any = {
+      ...itemAbril,
+      riPo: 'po-fat-julho',
+      faturamentoTransportadora: '2026-07-15',
+    };
+    const itemFatAgosto: any = {
+      ...itemAgosto,
+      riPo: 'po-fat-agosto',
+      faturamentoTransportadora: '2026-08-20',
+    };
+    const itemSemFat: any = {
+      ...itemSemData,
+      riPo: 'po-sem-fat',
+      faturamentoTransportadora: undefined,
+    };
+    const itensFat = [itemFatJulho, itemFatAgosto, itemSemFat];
+
+    // Sem filtro -> todos
+    expect(filtrarItensDiligenciamento(itensFat, {})).toHaveLength(3);
+
+    // Intervalo de datas
+    const filtradosIntervalo = filtrarItensDiligenciamento(itensFat, {
+      fatTransportadora: { from: '2026-08-01', to: '2026-08-31' },
+    });
+    expect(filtradosIntervalo.map(i => i.riPo)).toEqual(['po-fat-agosto']);
+
+    // Preset sem_data
+    const filtradosSemData = filtrarItensDiligenciamento(itensFat, {
+      fatTransportadora: { preset: 'sem_data' },
+    });
+    expect(filtradosSemData.map(i => i.riPo)).toEqual(['po-sem-fat']);
+
+    // Preset com_data
+    const filtradosComData = filtrarItensDiligenciamento(itensFat, {
+      fatTransportadora: { preset: 'com_data' },
+    });
+    expect(filtradosComData.map(i => i.riPo)).toEqual(['po-fat-julho', 'po-fat-agosto']);
+
+    // Preset atrasadas em relação a hoje
+    const filtradosAtrasadas = filtrarItensDiligenciamento(itensFat, {
+      fatTransportadora: { preset: 'atrasadas' },
+      hojeISO: '2026-08-01',
+    });
+    expect(filtradosAtrasadas.map(i => i.riPo)).toEqual(['po-fat-julho']);
   });
 });

@@ -34,7 +34,7 @@
  */
 
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Boxes, Check, ChevronDown, ChevronRight, Copy, ExternalLink, Layers, Mail, PackageCheck, Settings2, Truck, X } from 'lucide-react';
+import { AlertTriangle, Boxes, Calendar, Check, ChevronDown, ChevronRight, Copy, ExternalLink, Layers, Mail, PackageCheck, Settings2, Truck, X } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { AlmoxarifadoChegada, BahiaSulEntrega, DiligenciamentoItem, EnrichedSAPRecord, PrazoTransporte, Profile, Transportadora } from '../../types';
 import { resumirBahiaSulPorPo } from '../../lib/bahiasul';
@@ -44,6 +44,7 @@ import { numeroContratoPO } from '../../lib/contratoPedido';
 import { TableBody, TableEmpty, TableHeadRow, TableShell, TableSkeleton, Td, Th, Tr } from '../ui/DataTable';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import MultiSelectFilter from '../ui/MultiSelectFilter';
+import DateRangeFilter, { type DateRangeValue } from '../ui/DateRangeFilter';
 import {
   ItemDiligenciamento, dataValida, filtrarItensDiligenciamento, indexarCidadesPorCodigo, montarItens,
   normalizarChaveTransportadora, resolverPrazoDias, somarDiasCorridos, transportadorasConhecidas,
@@ -161,6 +162,11 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
    */
   const [transpFilter, setTranspFilter] = useState<Set<string>>(new Set());
 
+  /**
+   * Filtro por data de faturamento da transportadora.
+   */
+  const [fatTranspFilter, setFatTranspFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
+
   const cidades = useMemo(() => localDb.getCidadeForn(), []);
   const cidadesPorCodigo = useMemo(() => indexarCidadesPorCodigo(cidades), [cidades]);
   const contatos = useMemo(() => localDb.getContatosForn(), []);
@@ -240,17 +246,18 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   const hojeISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   /**
-   * Recorte base = fila ordenada filtrada por transportadora (seleção múltipla)
-   * e por promessa/previsão de entrega.
+   * Recorte base = fila ordenada filtrada por transportadora (seleção múltipla),
+   * promessa/previsão de entrega e data de faturamento da transportadora.
    */
   const itensBase = useMemo(() => {
     return filtrarItensDiligenciamento(itensOrdenados, {
       transportadoras: transpFilter,
       sentinelaSemTransportadora: SEM_TRANSPORTADORA,
       promessa: promessaFilter,
+      fatTransportadora: fatTranspFilter,
       hojeISO,
     });
-  }, [itensOrdenados, transpFilter, promessaFilter, hojeISO]);
+  }, [itensOrdenados, transpFilter, promessaFilter, fatTranspFilter, hojeISO]);
 
   /**
    * Resumo da fila — o comprador precisa saber, antes de rolar a tabela,
@@ -718,6 +725,14 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
             searchable={true}
             panelClassName="w-80"
             className="shrink-0 min-w-[200px]"
+          />
+          <DateRangeFilter
+            label="Fat. Transportadora"
+            icon={Calendar}
+            allLabel="Todas as datas"
+            value={fatTranspFilter}
+            onChange={setFatTranspFilter}
+            className="shrink-0 min-w-[170px]"
           />
           <button
             type="button"

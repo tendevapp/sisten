@@ -302,3 +302,22 @@ describe('filtros rápidos de PO e Prazo de entrega', () => {
 });
 
 
+
+describe('buildRastreioRows com remessa final (CRF = X)', () => {
+  it('tira da exibição o item do PO com CRF dado e mantém os demais', () => {
+    const linhas = buildRastreioRows([
+      registro({ ri: '120009412500010', documento_compra: '4100000001', crf_po: 'X' }),
+      registro({ ri: '120009412500020', item_reqc: '20', documento_compra: '4100000002', crf_po: null }),
+      registro({ ri: '120009412500030', item_reqc: '30', documento_compra: '4100000003', crf_po: 'x' }),
+    ]);
+    expect(linhas.map(l => l.po)).toEqual(['4100000002']);
+  });
+
+  it('tira da exibição o pedido de contrato (call-off)', () => {
+    const linhas = buildRastreioRows([
+      registro({ ri: '120009412500010', documento_compra: '4100000001', contrato_po: '4600001234' } as any),
+      registro({ ri: '120009412500020', item_reqc: '20', documento_compra: '4100000002' }),
+    ]);
+    expect(linhas.map(l => l.po)).toEqual(['4100000002']);
+  });
+});
