@@ -16,6 +16,7 @@ import {
 import { useToast } from '../ui/Toast';
 import {
   CONFIG_CATEGORIAS,
+  ETAPAS_POR_CATEGORIA,
   avaliarCriticidadeEspera,
   determinarSubprojetoPorTorre,
   type CategoriaEtapa,
@@ -56,32 +57,6 @@ const SUGESTOES_AGUARDANDO = [
   'Aguardando início de fabricação',
   'Pendente de fabricação (em branco)',
 ];
-
-const ETAPAS_DAS_CATEGORIAS: Record<Exclude<CategoriaEtapa, 'pendencias'>, string[]> = {
-  expedido: ['EXPEDIDO'],
-  patio: ['PÁTIO', 'EXPEDIDO', 'MONTAGEM', 'PINTURA'],
-  white: [
-    'MONTAGEM',
-    'MONTAGEM (PÁTIO)',
-    'PINTURA',
-    'PINTURA (PÁTIO)',
-    'LIB.JATO',
-    'LIB.JATO (PÁTIO)',
-    'CAB.JATO',
-  ],
-  internos: ['INTERNOS', 'INTERNOS (PÁTIO)'],
-  saw02: ['MARCO PORTA', 'SAW02'],
-  saw03: ['SAW03'],
-  nav01: ['NAV01'],
-  pendente: ['PENDENTE', 'EM BRANCO PENDENTE', 'EM BRANCO'],
-};
-
-// Pendência é uma marca sobre o tramo, que segue parado na etapa em que estava:
-// qualquer estágio vale, e trocar para ela não apaga o estágio atual.
-const ETAPAS_POR_CATEGORIA: Record<CategoriaEtapa, string[]> = {
-  ...ETAPAS_DAS_CATEGORIAS,
-  pendencias: [...new Set(Object.values(ETAPAS_DAS_CATEGORIAS).flat())],
-};
 
 export default function ModalDetalheTramoEntrega({
   tramo,

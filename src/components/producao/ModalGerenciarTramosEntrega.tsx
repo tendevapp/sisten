@@ -15,7 +15,10 @@ import {
 import { useToast } from '../ui/Toast';
 import {
   CONFIG_CATEGORIAS,
+  ETAPAS_POR_CATEGORIA,
+  ORDEM_CATEGORIAS,
   determinarSubprojetoPorTorre,
+  type CategoriaEtapa,
   type TramoEntrega,
   type TramoId,
 } from '../../lib/producaoEntrega';
@@ -46,6 +49,7 @@ export default function ModalGerenciarTramosEntrega({
   // Estado para edição inline de série
   const [serieEditando, setSerieEditando] = useState<Record<string, string>>({});
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
+  const [salvandoEtapaId, setSalvandoEtapaId] = useState<string | null>(null);
 
   // Estado para sub-modal de reatribuição de um tramo específico
   const [tramoParaReatribuir, setTramoParaReatribuir] = useState<TramoEntrega | null>(null);
@@ -121,6 +125,43 @@ export default function ModalGerenciarTramosEntrega({
       toast.error(e instanceof Error ? e.message : 'Falha ao salvar série.');
     } finally {
       setSalvandoId(null);
+    }
+  };
+
+  // Trocar processo/etapa inline (mesmas regras de status do modal de detalhe)
+  const handleSalvarEtapaInline = async (tramo: TramoEntrega, valor: string) => {
+    const [categoria, ...resto] = valor.split('|');
+    const etapaNome = resto.join('|');
+    if (categoria === tramo.etapa_categoria && etapaNome === tramo.etapa_nome) return;
+
+    const novaCategoria = categoria as CategoriaEtapa;
+    const campos: Partial<TramoEntrega> = {
+      etapa_categoria: novaCategoria,
+      etapa_nome: etapaNome,
+    };
+    if (novaCategoria !== tramo.etapa_categoria) {
+      if (novaCategoria === 'expedido') {
+        campos.status_aguardando = 'Expedido para o parque';
+        campos.dias_espera = 0;
+      } else if (novaCategoria === 'patio' && !tramo.status_aguardando) {
+        campos.status_aguardando = 'Liberado no pátio, aguardando carreta';
+      } else if (novaCategoria === 'pendente') {
+        campos.status_aguardando = 'Aguardando início de fabricação';
+        campos.dias_espera = 0;
+      } else if (novaCategoria === 'pendencias') {
+        campos.status_aguardando = null;
+      }
+    }
+
+    setSalvandoEtapaId(tramo.id);
+    try {
+      await atualizarTramoEntrega(tramo.id, campos);
+      toast.success(`Torre ${tramo.torre_numero} · ${tramo.tramo}: processo alterado para ${etapaNome}.`);
+      if (recarregar) recarregar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Falha ao salvar processo.');
+    } finally {
+      setSalvandoEtapaId(null);
     }
   };
 
@@ -373,15 +414,37 @@ export default function ModalGerenciarTramosEntrega({
 
                         {/* Processo / Etapa */}
                         <td className="py-2.5 px-2">
-                          <span
-                            className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold"
-                            style={{
-                              backgroundColor: conf.hexPrimario,
-                              color: conf.textoClasse.includes('text-white') ? '#fff' : '#000',
-                            }}
-                          >
-                            {tramo.etapa_nome}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={`${tramo.etapa_categoria}|${tramo.etapa_nome}`}
+                              onChange={e => handleSalvarEtapaInline(tramo, e.target.value)}
+                              disabled={salvandoEtapaId === tramo.id}
+                              title="Alterar processo / etapa"
+                              className="max-w-[170px] cursor-pointer rounded px-2 py-1 text-[10px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-400/40 disabled:opacity-60"
+                              style={{
+                                backgroundColor: conf.hexPrimario,
+                                color: conf.textoClasse.includes('text-white') ? '#fff' : '#000',
+                              }}
+                            >
+                              {!(ETAPAS_POR_CATEGORIA[tramo.etapa_categoria] ?? []).includes(tramo.etapa_nome) && (
+                                <option value={`${tramo.etapa_categoria}|${tramo.etapa_nome}`} className="bg-white text-slate-900">
+                                  {tramo.etapa_nome}
+                                </option>
+                              )}
+                              {ORDEM_CATEGORIAS.map(cat => (
+                                <optgroup key={cat} label={CONFIG_CATEGORIAS[cat].rotulo}>
+                                  {ETAPAS_POR_CATEGORIA[cat].map(etapa => (
+                                    <option key={etapa} value={`${cat}|${etapa}`} className="bg-white text-slate-900">
+                                      {etapa}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                            {salvandoEtapaId === tramo.id && (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+                            )}
+                          </div>
                         </td>
 
                         {/* Botão de Reatribuir Torre/Tramo */}
