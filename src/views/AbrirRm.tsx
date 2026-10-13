@@ -612,6 +612,30 @@ export default function AbrirRm({ user, onNavigate }: Props) {
     filtroSetor, filtroClassificacao, filtroDeposito, buscaChips,
   ]);
 
+  /**
+   * Histórico de exportações no mesmo recorte da busca por palavras-chave: um lote
+   * fica se algum termo-conjunto bate no arquivo, em quem exportou, nas linhas da
+   * planilha como saiu ou nas solicitações/itens que o compuseram. Setor,
+   * classificação e depósito não entram: valem para a fila, não para o log.
+   */
+  const exportacoesFiltradas = useMemo(() => {
+    const tokens = buscaChips.map(normalizarParaBusca).filter(Boolean);
+    if (tokens.length === 0) return exportacoes;
+
+    const solicitacoes = new Map(localDb.getRequests().map(r => [r.id, r]));
+    return exportacoes.filter(e => {
+      const alvos: (string | number | undefined | null)[] = [e.arquivo, e.exportado_por_nome, e.observacao];
+      for (const linha of e.linhas ?? []) alvos.push(...Object.values(linha));
+      for (const m of marcasPorLote.get(e.id) ?? []) {
+        alvos.push(m.request_number);
+        const request = solicitacoes.get(m.request_id);
+        if (request) alvos.push(request.number, request.solicitante_name, request.justificativa);
+        for (const it of localDb.getRequestItems(m.request_id)) alvos.push(it.description, it.sap_code);
+      }
+      return casarTokens(alvos.map(a => (a == null ? null : String(a))), tokens);
+    });
+  }, [exportacoes, marcasPorLote, buscaChips]);
+
   /** A lista de sempre, sem quem precisa de ajuste manual no SAP — esses têm grupo próprio. */
   const filtradasPrincipais = useMemo(
     () => filtradas.filter(r => !idsPendentesAjusteSap.has(r.id) && !idsConcluidos.has(r.id)),
@@ -1744,7 +1768,9 @@ export default function AbrirRm({ user, onNavigate }: Props) {
         >
           <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--ink-secondary)' }}>
             <History className="h-4 w-4" />
-            Histórico de exportações ({exportacoes.length})
+            Histórico de exportações ({exportacoesFiltradas.length === exportacoes.length
+              ? exportacoes.length
+              : `${exportacoesFiltradas.length} de ${exportacoes.length}`})
           </span>
           {historicoAberto ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
@@ -1754,6 +1780,10 @@ export default function AbrirRm({ user, onNavigate }: Props) {
             {exportacoes.length === 0 ? (
               <p className="px-3 py-4 text-xs italic" style={{ color: 'var(--ink-muted)' }}>
                 Nenhuma planilha de RM exportada ainda.
+              </p>
+            ) : exportacoesFiltradas.length === 0 ? (
+              <p className="px-3 py-4 text-xs italic" style={{ color: 'var(--ink-muted)' }}>
+                Nenhuma planilha exportada bate com os termos da busca.
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -1772,7 +1802,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {exportacoes.map(e => {
+                    {exportacoesFiltradas.map(e => {
                       const doLote = marcasPorLote.get(e.id) || [];
                       const vigentesNoLote = doLote.filter(m => !m.reaberto_em);
                       const abertoAqui = loteExpandido === e.id;
