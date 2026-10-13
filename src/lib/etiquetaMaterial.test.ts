@@ -3,31 +3,35 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   ETIQUETA_ALTURA,
   ETIQUETA_LARGURA,
   ETIQUETAS_POR_FOLHA,
   codigoDoQr,
+  consumirItemQrPendente,
   conteudoQrEtiqueta,
   dadosEtiquetaDoItem,
+  guardarItemQrPendente,
+  haItemQrPendente,
+  hashSemItem,
+  itemDaRota,
   posicaoDaEtiqueta,
 } from './etiquetaMaterial';
 
 describe('QR da etiqueta', () => {
-  it('leva só a identificação do item, sem link', () => {
-    expect(conteudoQrEtiqueta(' 1437274 ')).toBe('SISTEN-ITEM:1437274');
+  it('leva o link curto de produção (sisten.site), nunca localhost', () => {
+    expect(conteudoQrEtiqueta(' 1437274 ')).toBe('https://sisten.site/#/balcao?item=1437274');
   });
 
-  it('o leitor tira o código do QR da etiqueta', () => {
-    expect(codigoDoQr('SISTEN-ITEM:1437274')).toBe('1437274');
+  it('o leitor do formulário tira o código do link do QR', () => {
     expect(codigoDoQr(conteudoQrEtiqueta('1418654'))).toBe('1418654');
-    expect(codigoDoQr('sisten-item:1418654')).toBe('1418654');
+    expect(codigoDoQr('https://sisten.site/#/formularios/almoxarifado-requisicao-balcao?item=1437274')).toBe('1437274');
   });
 
-  it('aceita as etiquetas de teste (link com ?item=) e o código de barras das etiquetas antigas', () => {
-    expect(codigoDoQr('https://sisten.site/#/formularios/almoxarifado-requisicao-balcao?item=1437274')).toBe('1437274');
-    expect(codigoDoQr('http://localhost:3000/#/formularios/almoxarifado-requisicao-balcao?item=1418654')).toBe('1418654');
+  it('aceita a 1ª leva (SISTEN-ITEM:) e o código de barras das etiquetas antigas', () => {
+    expect(codigoDoQr('SISTEN-ITEM:1437274')).toBe('1437274');
+    expect(codigoDoQr('sisten-item:1418654')).toBe('1418654');
     expect(codigoDoQr('1427577')).toBe('1427577');
   });
 
@@ -36,6 +40,42 @@ describe('QR da etiqueta', () => {
     expect(codigoDoQr('PASTILHA INTERC')).toBeNull();
     expect(codigoDoQr('SISTEN-ITEM:')).toBeNull();
     expect(codigoDoQr('   ')).toBeNull();
+  });
+
+  it('lê e tira o item do hash da rota', () => {
+    expect(itemDaRota('#/balcao?item=1437274')).toBe('1437274');
+    expect(itemDaRota('#/formularios/almoxarifado-requisicao-balcao')).toBeNull();
+    expect(hashSemItem('#/f/balcao?x=2&item=1')).toBe('#/f/balcao?x=2');
+    expect(hashSemItem('#/f/balcao?item=1')).toBe('#/f/balcao');
+  });
+});
+
+describe('item do QR pendente (sobrevive ao login)', () => {
+  const memoria = new Map<string, string>();
+  beforeEach(() => {
+    memoria.clear();
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      value: {
+        getItem: (k: string) => memoria.get(k) ?? null,
+        setItem: (k: string, v: string) => { memoria.set(k, v); },
+        removeItem: (k: string) => { memoria.delete(k); },
+      },
+    });
+  });
+
+  it('guarda, avisa que há pendente e entrega uma vez só', () => {
+    guardarItemQrPendente('1437274', 1_000);
+    expect(haItemQrPendente(2_000)).toBe(true);
+    expect(consumirItemQrPendente(2_000)).toBe('1437274');
+    expect(consumirItemQrPendente(2_000)).toBeNull();
+    expect(haItemQrPendente(2_000)).toBe(false);
+  });
+
+  it('expira em 30 minutos', () => {
+    guardarItemQrPendente('1437274', 0);
+    expect(haItemQrPendente(31 * 60 * 1000)).toBe(false);
+    expect(consumirItemQrPendente(31 * 60 * 1000)).toBeNull();
   });
 });
 
@@ -102,7 +142,7 @@ describe('QR impresso × leitor do formulário', () => {
       }
     }
     const lido = jsQR(rgba, lado, lado);
-    expect(lido?.data).toBe('SISTEN-ITEM:1437274');
+    expect(lido?.data).toBe('https://sisten.site/#/balcao?item=1437274');
     expect(codigoDoQr(lido!.data)).toBe('1437274');
   });
 });

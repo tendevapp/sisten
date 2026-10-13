@@ -24,6 +24,7 @@ import ResumoLoginGate from './components/solicitacoes/ResumoLoginGate';
 import Login from './views/Login';
 import Signup from './views/Signup';
 import ResetPassword from './views/ResetPassword';
+import { ROTA_CURTA_QR, ROTA_REQUISICAO_BALCAO, guardarItemQrPendente, haItemQrPendente, itemDaRota } from './lib/etiquetaMaterial';
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const Materials = lazy(() => import('./views/Materials'));
 const NewRequest = lazy(() => import('./views/NewRequest'));
@@ -170,6 +171,8 @@ const LEGACY_PATH_REDIRECTS: Record<string, string> = {
   '/formularios/qualidade-rnc': '/qualidade/rnc',
   '/formularios/qualidade/rnc': '/qualidade/rnc',
   '/producao/entrega': '/planejamento/controle-entrega',
+  // QR da etiqueta de prateleira (link curto = QR menor): `#/balcao?item=1437274`.
+  [ROTA_CURTA_QR]: ROTA_REQUISICAO_BALCAO,
 };
 
 // Telas com layout mestre-detalhe (lista + painel) que preenchem toda a
@@ -466,6 +469,11 @@ export default function App() {
       const pathWithParams = hash.slice(1); // remove '#'
       const pathOnly = pathWithParams.split('?')[0] || '/';
 
+      // QR da etiqueta lido pela câmera comum: guarda o item já, porque o login
+      // (ou a ida para /login da sessão vencida) troca o endereço e perderia o `?item=`.
+      const itemQr = itemDaRota(pathWithParams);
+      if (itemQr) guardarItemQrPendente(itemQr);
+
       const destinoLegado = LEGACY_PATH_REDIRECTS[pathOnly];
       if (destinoLegado) {
         // `replace` em vez de atribuir o hash: não deixa o endereço antigo no
@@ -619,6 +627,9 @@ export default function App() {
     marcarDiaSessao();
     if (usuarioSessaoPermanente(authenticatedUser)) {
       handleNavigate('/financeiro/faturamento-gwjaco');
+    } else if (haItemQrPendente()) {
+      // Chegou pelo QR de uma etiqueta: volta para a requisição com o item.
+      handleNavigate(ROTA_REQUISICAO_BALCAO);
     } else {
       handleNavigate('/');
     }

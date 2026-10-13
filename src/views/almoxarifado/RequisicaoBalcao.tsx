@@ -54,7 +54,7 @@ import { listarRhPessoas, listarRhTurnos } from '../../lib/rhApi';
 import { hojeISO } from '../../lib/recebimentoAlmox';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { CHAVE_ABRIR_REQUISICAO_BALCAO } from '../../lib/fichaEpiRequisicao';
-import { codigoDoQr } from '../../lib/etiquetaMaterial';
+import { codigoDoQr, consumirItemQrPendente, hashSemItem, itemDaRota } from '../../lib/etiquetaMaterial';
 import LeitorQrModal from '../../components/ui/LeitorQrModal';
 import type { EstoqueItem, Profile, RhPessoa, RhTurno } from '../../types';
 
@@ -115,6 +115,9 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const [turnos, setTurnos] = useState<RhTurno[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<{ registro?: ReqBalcaoRow } | null>(null);
+  // Item do QR da etiqueta lido pela câmera comum (link `?item=` ou guardado
+  // antes do login). `n` muda a cada leitura: o mesmo código lido duas vezes entra de novo.
+  const [itemQr, setItemQr] = useState<{ codigo: string; n: number } | null>(null);
   const [detalhe, setDetalhe] = useState<ReqBalcaoRow | null>(null);
   const [busca, setBusca] = useState('');
   const [soPendentes, setSoPendentes] = useState(false);
@@ -204,6 +207,26 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     exportadas: requisicoes.filter((r) => r.exportacao_id).length,
     todas: requisicoes.length,
   };
+
+  // Link do QR: tira o `?item=` do endereço (F5 não repete) e consome o pendente do login.
+  useEffect(() => {
+    const lerQr = () => {
+      const doEndereco = itemDaRota(window.location.hash || '');
+      if (doEndereco) window.history.replaceState(null, '', hashSemItem(window.location.hash));
+      const pendente = consumirItemQrPendente();
+      const codigo = doEndereco ?? pendente;
+      if (codigo) setItemQr((atual) => ({ codigo, n: (atual?.n ?? 0) + 1 }));
+    };
+    lerQr();
+    window.addEventListener('hashchange', lerQr);
+    return () => window.removeEventListener('hashchange', lerQr);
+  }, []);
+
+  // Com a tela carregada, abre uma requisição nova (ou usa a aberta) para o item lido.
+  useEffect(() => {
+    if (loading || !itemQr) return;
+    setForm((f) => f ?? {});
+  }, [loading, itemQr]);
 
   // A ficha de EPI deixa o código da requisição que gerou: ao chegar aqui, abre
   // direto para o almoxarife conferir o PEP e confirmar.
@@ -572,9 +595,10 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
           peps={peps}
           turnos={turnos}
           historico={requisicoes}
-          onClose={() => setForm(null)}
+          itemQr={itemQr}
+          onClose={() => { setForm(null); setItemQr(null); }}
           onSalvo={async (continuar) => {
-            if (!continuar) setForm(null);
+            if (!continuar) { setForm(null); setItemQr(null); }
             await recarregarRequisicoes();
           }}
         />
@@ -836,7 +860,7 @@ function CartaoRequisicao({
 // ===========================================================================
 
 function ModalRequisicao({
-  user, registro, estoquePorDeposito, pessoas, peps, turnos, historico, onClose, onSalvo,
+  user, registro, estoquePorDeposito, pessoas, peps, turnos, historico, itemQr, onClose, onSalvo,
 }: {
   user: Profile;
   registro?: ReqBalcaoRow;
@@ -845,6 +869,8 @@ function ModalRequisicao({
   peps: PepAplicacao[];
   turnos: RhTurno[];
   historico: ReqBalcaoRow[];
+  /** Item do QR lido pela câmera comum — fica escolhido no 1º grupo, esperando a quantidade. */
+  itemQr?: { codigo: string; n: number } | null;
   onClose: () => void;
   onSalvo: (continuar: boolean) => Promise<void>;
 }) {
@@ -1416,6 +1442,7 @@ function ModalRequisicao({
 
                   {/* Input de Adicionar Item ao Grupo */}
                   <AdicionarItem
+                    codigoLido={gIdx === 0 ? itemQr : null}
                     estoquePorDeposito={estoquePorDepositoModal}
                     depositoFixo={null}
                     depositoPadrao={tipo === 'saida' ? depOrigemCabecalho || null : null}
@@ -1683,9 +1710,11 @@ function SeletorColaborador({
  * Permite adicionar itens com ou sem saldo na ZL0024 (sinalizados como alerta).
  */
 function AdicionarItem({
-  refBusca, estoquePorDeposito, depositoFixo, depositoPadrao, jaLancado, onAdicionar,
+  refBusca, codigoLido, estoquePorDeposito, depositoFixo, depositoPadrao, jaLancado, onAdicionar,
 }: {
   refBusca?: React.RefObject<HTMLInputElement | null>;
+  /** Código vindo do link do QR (fora deste seletor); `n` muda a cada leitura. */
+  codigoLido?: { codigo: string; n: number } | null;
   estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>;
   depositoFixo: string | null;
   /** Depósito do item digitado sem saldo na ZL0024 (o do 1º item da requisição). */
@@ -1729,13 +1758,7 @@ function AdicionarItem({
    * o cursor para a quantidade. Código fora da ZL0024 entra como o digitado
    * "sem saldo", com o mesmo alerta.
    */
-  const aoLerQr = (texto: string) => {
-    setLendoQr(false);
-    const codigo = codigoDoQr(texto);
-    if (!codigo) {
-      toast.error('Este QR não é de etiqueta de material do SISTEN.');
-      return;
-    }
+  const escolherPorCodigo = (codigo: string) => {
     const achado = localizarMaterialParaSaida(estoqueComSaida, codigo, depositoFixo || depositoPadrao, isDepositoInativo);
     if (achado) {
       escolher(achado);
@@ -1750,6 +1773,25 @@ function AdicionarItem({
       deposito: depositoFixo || depositoPadrao || '0002',
     });
   };
+
+  const aoLerQr = (texto: string) => {
+    setLendoQr(false);
+    const codigo = codigoDoQr(texto);
+    if (!codigo) {
+      toast.error('Este QR não é de etiqueta de material do SISTEN.');
+      return;
+    }
+    escolherPorCodigo(codigo);
+  };
+
+  // Link do QR aberto pela câmera comum: escolhe assim que o estoque carregar.
+  const codigoAplicado = useRef(0);
+  useEffect(() => {
+    if (!codigoLido || codigoLido.n <= codigoAplicado.current || estoqueComSaida.size === 0) return;
+    codigoAplicado.current = codigoLido.n;
+    escolherPorCodigo(codigoLido.codigo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codigoLido, estoqueComSaida]);
 
   const leitor = lendoQr && (
     <LeitorQrModal onLido={aoLerQr} onClose={() => setLendoQr(false)} />

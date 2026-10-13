@@ -4,24 +4,50 @@
  *
  * Etiqueta de identificação de material (prateleira do almoxarifado).
  *
- * O QR leva só a identificação do item (`SISTEN-ITEM:1437274`). Quem lê é o
- * botão "Ler QR" da Requisição no Balcão, com o formulário já aberto e o
- * usuário logado: o item fica escolhido e falta só a quantidade. Descrição,
- * depósito e saldo vêm do cadastro e da ZL0024 na hora da leitura — a etiqueta
- * não fica velha quando o texto muda; só o impresso precisa de reimpressão.
+ * O QR leva um link curto (`https://sisten.site/#/balcao?item=1437274`) que
+ * serve aos dois jeitos de ler:
+ * - câmera comum do celular: abre o SISTEN numa Requisição no Balcão nova com o
+ *   item escolhido, faltando só a quantidade (se pedir login, o item espera);
+ * - botão "Ler QR" do formulário já aberto: o leitor tira o código do link.
+ * Descrição, depósito e saldo vêm do cadastro e da ZL0024 na hora da leitura —
+ * a etiqueta não fica velha quando o texto muda; só o impresso pede reimpressão.
  */
 
+export const ROTA_REQUISICAO_BALCAO = '/formularios/almoxarifado-requisicao-balcao';
+/** Rota curta do QR (App redireciona para a Requisição no Balcão): QR menor, mais fácil de ler. */
+export const ROTA_CURTA_QR = '/balcao';
+export const PARAMETRO_ITEM = 'item';
+/** Endereço de produção — fixo, não o de onde o PDF foi gerado (senão sairia QR de localhost). */
+export const ORIGEM_SISTEN = 'https://sisten.site';
+/** Formato da 1ª leva de etiquetas (só o código); o leitor ainda aceita. */
 export const PREFIXO_QR_ITEM = 'SISTEN-ITEM:';
 
 /** Conteúdo gravado no QR da etiqueta. */
 export function conteudoQrEtiqueta(codigoSap: string): string {
-  return `${PREFIXO_QR_ITEM}${codigoSap.trim()}`;
+  return `${ORIGEM_SISTEN}/#${ROTA_CURTA_QR}?${PARAMETRO_ITEM}=${encodeURIComponent(codigoSap.trim())}`;
+}
+
+/** Código SAP do parâmetro `item` de uma rota/endereço (`...?item=1437274`), ou null. */
+export function itemDaRota(endereco: string): string | null {
+  const consulta = endereco.includes('?') ? endereco.slice(endereco.lastIndexOf('?') + 1) : '';
+  const codigo = (new URLSearchParams(consulta).get(PARAMETRO_ITEM) ?? '').trim();
+  return codigo || null;
+}
+
+/** Hash sem o parâmetro `item` — para o F5 não escolher o item de novo. */
+export function hashSemItem(hash: string): string {
+  const idx = hash.indexOf('?');
+  if (idx < 0) return hash;
+  const params = new URLSearchParams(hash.slice(idx + 1));
+  params.delete(PARAMETRO_ITEM);
+  const resto = params.toString();
+  return resto ? `${hash.slice(0, idx)}?${resto}` : hash.slice(0, idx);
 }
 
 /**
  * Código SAP de um texto lido pela câmera. Aceita:
- * - o QR da etiqueta (`SISTEN-ITEM:1437274`);
- * - as etiquetas de teste, que levavam o link `...?item=1437274`;
+ * - o link do QR da etiqueta (`...#/balcao?item=1437274`, ou a rota longa);
+ * - a 1ª leva de etiquetas (`SISTEN-ITEM:1437274`);
  * - código puro, como o código de barras das etiquetas antigas (`1427577`).
  * Qualquer outro QR (link de fornecedor, texto livre) devolve null.
  */
@@ -32,12 +58,53 @@ export function codigoDoQr(texto: string): string | null {
     const codigo = t.slice(PREFIXO_QR_ITEM.length).trim();
     return codigo || null;
   }
-  if (/^https?:\/\//i.test(t) || t.includes('#/')) {
-    const consulta = t.includes('?') ? t.slice(t.lastIndexOf('?') + 1) : '';
-    const codigo = (new URLSearchParams(consulta).get('item') ?? '').trim();
-    return codigo || null;
-  }
+  if (/^https?:\/\//i.test(t) || t.includes('#/')) return itemDaRota(t);
   return /^[0-9]{5,12}$/.test(t) ? t : null;
+}
+
+// ---------------------------------------------------------------------------
+// Item lido pela câmera comum antes do login
+//
+// A sessão cai na virada do dia, então a 1ª leitura do dia costuma pedir login
+// — e o login (ou o redirecionamento para /login) troca o endereço e perde o
+// `?item=`. O App guarda o código assim que o link abre; depois do login vai
+// para a Requisição no Balcão, que consome o pendente. Expira em 30 min para
+// um item esquecido não aparecer horas depois.
+// ---------------------------------------------------------------------------
+
+export const CHAVE_ITEM_QR_PENDENTE = 'sisten_qr_item_pendente';
+const VALIDADE_PENDENTE_MS = 30 * 60 * 1000;
+
+export function guardarItemQrPendente(codigo: string, agora = Date.now()): void {
+  try {
+    sessionStorage.setItem(CHAVE_ITEM_QR_PENDENTE, JSON.stringify({ codigo, em: agora }));
+  } catch { /* sem storage: o link ainda funciona se já estiver logado */ }
+}
+
+function lerPendente(agora: number): string | null {
+  try {
+    const bruto = sessionStorage.getItem(CHAVE_ITEM_QR_PENDENTE);
+    if (!bruto) return null;
+    const { codigo, em } = JSON.parse(bruto) as { codigo?: string; em?: number };
+    if (!codigo || typeof em !== 'number' || agora - em > VALIDADE_PENDENTE_MS) {
+      sessionStorage.removeItem(CHAVE_ITEM_QR_PENDENTE);
+      return null;
+    }
+    return codigo;
+  } catch {
+    return null;
+  }
+}
+
+export function haItemQrPendente(agora = Date.now()): boolean {
+  return lerPendente(agora) !== null;
+}
+
+/** Lê e apaga o pendente (cada leitura entra uma vez só). */
+export function consumirItemQrPendente(agora = Date.now()): string | null {
+  const codigo = lerPendente(agora);
+  try { sessionStorage.removeItem(CHAVE_ITEM_QR_PENDENTE); } catch { /* ignora */ }
+  return codigo;
 }
 
 export interface DadosEtiqueta {
