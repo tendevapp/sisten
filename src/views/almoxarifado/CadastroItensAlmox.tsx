@@ -16,7 +16,7 @@ import {
   ArrowLeft, RefreshCw, Search, Camera, ImageIcon, CheckCircle2,
   AlertCircle, X, Download, Filter, Eye, Trash2, Layers,
   Boxes, Sparkles, Tag, ShieldCheck, FileText, Check,
-  ChevronRight, ClipboardPaste, Upload, Plus
+  ChevronRight, ClipboardPaste, Upload, Plus, Pencil, Printer
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import {
@@ -27,11 +27,18 @@ import {
   obterUrlFotoCatalogo,
   excluirItemCatalogo,
   obterListaFixaCatalogoLocal,
+  mapaPosicoesEstoque,
+  posicaoDoMaterial,
+  marcarEtiquetasImpressas,
   type ItemConsumivelZl0024,
   type CatalogoItem,
   type MaterialCandidatoCatalogo,
   type DadosCatalogoCompleto,
 } from '../../lib/almoxCatalogoApi';
+import { dadosEtiquetaDoItem, type DadosEtiqueta } from '../../lib/etiquetaMaterial';
+import { gerarPdfEtiquetasMaterial } from '../../lib/pdfExport/exportEtiquetasMaterialPdf';
+import PdfPreviewModal, { type PdfGerado } from '../../components/ui/PdfPreviewModal';
+import CompletarEtiquetasModal, { type LinhaFaltante, type ValoresPreenchidos } from '../../components/almoxarifado/CompletarEtiquetasModal';
 import type { Profile } from '../../types';
 import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../../lib/buscaKeywords';
 import FotosRecebimentoSugeridas from '../../components/almoxarifado/FotosRecebimentoSugeridas';
@@ -82,6 +89,16 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [fotoArquivoSap, setFotoArquivoSap] = useState<File | null>(null);
   const [fotoPreviewUrlSap, setFotoPreviewUrlSap] = useState<string | null>(null);
   const [observacaoSap, setObservacaoSap] = useState('');
+  const [posicaoSap, setPosicaoSap] = useState('');
+  const [posicaoFoto, setPosicaoFoto] = useState('');
+  const [etiquetaDescricao, setEtiquetaDescricao] = useState('');
+  const [etiquetaAplicacao, setEtiquetaAplicacao] = useState('');
+  // Itens marcados para imprimir etiqueta (por código SAP)
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  // Pré-visualização do PDF (gerador estável para o modal não refazer o PDF a cada render)
+  const [previewEtiquetas, setPreviewEtiquetas] = useState<{ gerar: () => Promise<PdfGerado>; codigos: string[] } | null>(null);
+  // Pergunta de informação faltante antes de abrir o PDF
+  const [completarEtiquetas, setCompletarEtiquetas] = useState<{ itens: ItemConsumivelZl0024[]; linhas: LinhaFaltante[] } | null>(null);
   const [salvandoSap, setSalvandoSap] = useState(false);
 
   // Filtros
@@ -142,6 +159,17 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [itens]);
 
+  // Localização física (Pos.dpst. da ZL0024) por código SAP — a última conhecida,
+  // então o item que zerou e saiu da ZL0024 continua com a posição.
+  const posicoesPorMaterial = useMemo(
+    () => dadosCompletos?.posicoes ?? mapaPosicoesEstoque(dadosCompletos?.estoqueCompleto ?? []),
+    [dadosCompletos],
+  );
+  const posicaoDoItem = useCallback(
+    (item: ItemConsumivelZl0024) => posicaoDoMaterial(item.codigo_sap, item.item_catalogo, posicoesPorMaterial),
+    [posicoesPorMaterial],
+  );
+
   // Itens filtrados
   const itensFiltrados = useMemo(() => {
     const tokens = buscaChips.map(normalizarParaBusca).filter(Boolean);
@@ -156,6 +184,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           it.grp_mercad,
           it.grupo_mercadorias,
           it.classificacao_nivel2,
+          posicaoDoItem(it),
         ], tokens);
         if (!hit) return false;
       }
@@ -172,7 +201,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
       return true;
     });
-  }, [itens, buscaChips, filtroFoto, filtroNivel2, filtroGrupo]);
+  }, [itens, buscaChips, filtroFoto, filtroNivel2, filtroGrupo, posicaoDoItem]);
 
   // Estatísticas e KPIs
   const kpis = useMemo(() => {
@@ -241,6 +270,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setFotoArquivoSap(null);
     setFotoPreviewUrlSap(null);
     setObservacaoSap('');
+    setPosicaoSap('');
     setModalSapAberto(true);
     setSugestoesAbertas(false);
   };
@@ -254,6 +284,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setFotoArquivoSap(null);
     setFotoPreviewUrlSap(null);
     setObservacaoSap('');
+    setPosicaoSap('');
     setTermoBuscaSap('');
     setResultadosBuscaSap([]);
   };
@@ -296,6 +327,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setFotoArquivoSap(null);
     setFotoPreviewUrlSap(candidato.url_foto || null);
     setObservacaoSap('');
+    setPosicaoSap('');
   };
 
   const handleTrocarItemSap = () => {
@@ -306,6 +338,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setFotoArquivoSap(null);
     setFotoPreviewUrlSap(null);
     setObservacaoSap('');
+    setPosicaoSap('');
   };
 
   const handleSelecionarArquivoSap = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -337,6 +370,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setFotoArquivo(null);
     setFotoPreviewUrl(item.url_foto || null);
     setObservacao(item.item_catalogo?.observacao || '');
+    setPosicaoFoto(item.item_catalogo?.posicao_estoque || '');
+    setEtiquetaDescricao(item.item_catalogo?.etiqueta_descricao || '');
+    setEtiquetaAplicacao(item.item_catalogo?.etiqueta_aplicacao || '');
   };
 
   const fecharModalFoto = () => {
@@ -347,6 +383,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setFotoArquivo(null);
     setFotoPreviewUrl(null);
     setObservacao('');
+    setPosicaoFoto('');
+    setEtiquetaDescricao('');
+    setEtiquetaAplicacao('');
   };
 
   // Selecionar foto do arquivo ou captura
@@ -378,11 +417,153 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     toast.success('Imagem colada da área de transferência.');
   };
 
+  /** Posição ou dados da etiqueta diferentes do que está gravado — dá para salvar sem foto. */
+  const cadastroDoItemMudou = (item: ItemConsumivelZl0024) => {
+    const cat = item.item_catalogo;
+    return posicaoFoto.trim() !== (cat?.posicao_estoque || '').trim()
+      || etiquetaDescricao.trim() !== (cat?.etiqueta_descricao || '').trim()
+      || etiquetaAplicacao.trim() !== (cat?.etiqueta_aplicacao || '').trim();
+  };
+
+  /** Abre a pré-visualização; a data de impressão só é carimbada ao baixar. */
+  const abrirPreviewEtiquetas = (dados: DadosEtiqueta[]) => {
+    if (dados.length === 0) {
+      toast.warning('Marque ao menos um item para imprimir a etiqueta.');
+      return;
+    }
+    const nomeArquivo = `etiquetas_material_${new Date().toISOString().slice(0, 10)}.pdf`;
+    setPreviewEtiquetas({
+      codigos: dados.map(d => d.codigo_sap),
+      gerar: async () => {
+        const doc = await gerarPdfEtiquetasMaterial(dados);
+        const folhas = Math.ceil(dados.length / 10);
+        return {
+          bytes: await doc.save(),
+          nomeArquivo,
+          titulo: `Etiquetas de material — ${dados.length} etiqueta(s), ${folhas} folha(s) A4`,
+        };
+      },
+    });
+  };
+
+  const aoBaixarEtiquetas = async (codigos: string[]) => {
+    const impressaEm = await marcarEtiquetasImpressas(codigos);
+    if (!impressaEm) return;
+    const marcados = new Set(codigos);
+    setItens(prev => prev.map(it => (marcados.has(it.codigo_sap) && it.item_catalogo
+      ? { ...it, item_catalogo: { ...it.item_catalogo, etiqueta_impressa_em: impressaEm } }
+      : it)));
+  };
+
+  /** Etiquetas dos itens: se faltar localização, aplicação ou foto, pergunta antes de abrir o PDF. */
+  const prepararEtiquetas = (lista: ItemConsumivelZl0024[]) => {
+    const linhas: LinhaFaltante[] = lista
+      .map(it => {
+        const d = dadosEtiquetaDoItem(it, posicaoDoItem(it));
+        return { codigo_sap: d.codigo_sap, descricao: d.descricao, localizacao: d.localizacao, aplicacao: d.aplicacao, temFoto: Boolean(d.url_foto) };
+      })
+      .filter(l => !l.localizacao || !l.aplicacao || !l.temFoto);
+    if (linhas.length > 0) {
+      setCompletarEtiquetas({ itens: lista, linhas });
+      return;
+    }
+    abrirPreviewEtiquetas(lista.map(it => dadosEtiquetaDoItem(it, posicaoDoItem(it))));
+  };
+
+  const imprimirSelecionadas = () => {
+    prepararEtiquetas(itens.filter(it => selecionados.has(it.codigo_sap)));
+  };
+
+  /** Grava no cadastro o que foi preenchido na pergunta e abre o PDF já com os valores novos. */
+  const salvarFaltantesEAbrir = async (valores: Map<string, ValoresPreenchidos>) => {
+    if (!completarEtiquetas) return;
+    const originais = new Map(completarEtiquetas.linhas.map(l => [l.codigo_sap, l]));
+    const atualizados = new Map<string, CatalogoItem>();
+    const falhas: string[] = [];
+    for (const [codigo, v] of valores) {
+      const item = completarEtiquetas.itens.find(it => it.codigo_sap === codigo);
+      const orig = originais.get(codigo);
+      if (!item || !orig) continue;
+      try {
+        const salvo = await salvarItemCatalogo({
+          codigo_sap: item.codigo_sap,
+          descricao: item.descricao,
+          texto_tecnico: item.texto_tecnico,
+          grp_mercad: item.grp_mercad,
+          grupo_mercadorias: item.grupo_mercadorias,
+          classificacao_nivel1: item.classificacao_nivel1,
+          classificacao_nivel2: item.classificacao_nivel2,
+          umb: item.umb,
+          saldo_zl0024: item.saldo_total,
+          // Só o campo mexido: localização que veio da ZL0024 não vira digitada à toa.
+          posicao_estoque: v.localizacao !== orig.localizacao ? v.localizacao : undefined,
+          etiqueta_aplicacao: v.aplicacao !== orig.aplicacao ? v.aplicacao : undefined,
+        }, user);
+        atualizados.set(codigo, salvo);
+      } catch (err: any) {
+        falhas.push(`${codigo}: ${err?.message || 'falha ao salvar'}`);
+      }
+    }
+    if (falhas.length > 0) {
+      toast.error(`Não salvou ${falhas.length} item(ns): ${falhas[0]}`);
+      return;
+    }
+
+    const comCadastroNovo = (it: ItemConsumivelZl0024): ItemConsumivelZl0024 => {
+      const salvo = atualizados.get(it.codigo_sap);
+      return salvo ? { ...it, item_catalogo: { ...salvo, url_imagem: it.item_catalogo?.url_imagem ?? salvo.url_imagem } } : it;
+    };
+    setItens(prev => prev.map(comCadastroNovo));
+    if (atualizados.size > 0) {
+      setDadosCompletos(dc => (dc
+        ? { ...dc, itensCatalogo: [...dc.itensCatalogo.filter(c => !atualizados.has(c.codigo_sap)), ...atualizados.values()] }
+        : dc));
+      toast.success(`${atualizados.size} item(ns) atualizado(s) no cadastro.`);
+    }
+    const lista = completarEtiquetas.itens.map(comCadastroNovo);
+    setCompletarEtiquetas(null);
+    abrirPreviewEtiquetas(lista.map(it => dadosEtiquetaDoItem(it, posicaoDoItem(it))));
+  };
+
+  /** Etiqueta do item aberto no modal, com o que está digitado (salvo ou não). */
+  const imprimirEtiquetaDoModal = () => {
+    if (!itemSelecionado) return;
+    const posicaoDigitada = posicaoFoto.trim();
+    const dados = dadosEtiquetaDoItem(
+      {
+        ...itemSelecionado,
+        item_catalogo: { etiqueta_descricao: etiquetaDescricao.trim(), etiqueta_aplicacao: etiquetaAplicacao.trim() },
+      },
+      posicaoDigitada || posicaoDoMaterial(itemSelecionado.codigo_sap, null, posicoesPorMaterial),
+    );
+    const comFoto = { ...dados, url_foto: fotoArquivo ? fotoPreviewUrl : itemSelecionado.url_foto ?? null };
+    const faltando = [
+      !comFoto.localizacao && 'localização',
+      !comFoto.aplicacao && 'aplicação',
+      !comFoto.url_foto && 'foto',
+    ].filter(Boolean);
+    if (faltando.length > 0
+        && window.confirm(`Esta etiqueta está sem ${faltando.join(', ')}.\n\nQuer preencher antes de abrir o PDF?\n(OK = voltar e preencher · Cancelar = abrir assim mesmo)`)) {
+      return;
+    }
+    abrirPreviewEtiquetas([comFoto]);
+  };
+
+  const alternarSelecao = (codigoSap: string) => {
+    setSelecionados(prev => {
+      const novo = new Set(prev);
+      if (novo.has(codigoSap)) novo.delete(codigoSap);
+      else novo.add(codigoSap);
+      return novo;
+    });
+  };
+
   // Salvar foto no catálogo
   const handleSalvarFoto = async () => {
     if (!itemSelecionado) return;
-    if (!fotoArquivo && !itemSelecionado.tem_foto) {
-      toast.warning('Tire uma foto ou selecione um arquivo de imagem.');
+    const cadastroMudou = cadastroDoItemMudou(itemSelecionado);
+    if (!fotoArquivo && !itemSelecionado.tem_foto && !cadastroMudou) {
+      toast.warning('Tire uma foto, selecione um arquivo de imagem ou preencha a posição ou a etiqueta.');
       return;
     }
 
@@ -399,6 +580,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         umb: itemSelecionado.umb,
         saldo_zl0024: itemSelecionado.saldo_total,
         observacao,
+        posicao_estoque: posicaoFoto,
+        etiqueta_descricao: etiquetaDescricao,
+        etiqueta_aplicacao: etiquetaAplicacao,
         fotoArquivo,
       }, user);
 
@@ -439,7 +623,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         });
       }
 
-      toast.success(`Foto do material ${salvo.codigo_sap} vinculada ao catálogo com sucesso!`);
+      toast.success(fotoArquivo || !cadastroMudou
+        ? `Foto do material ${salvo.codigo_sap} vinculada ao catálogo com sucesso!`
+        : `Cadastro do material ${salvo.codigo_sap} salvo no catálogo.`);
       fecharModalFoto();
     } catch (err: any) {
       console.error('[CadastroItensAlmox] Erro ao salvar foto:', err);
@@ -451,8 +637,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
   const handleSalvarItemSap = async () => {
     if (!itemSapSelecionado) return;
-    if (!fotoArquivoSap && !itemSapSelecionado.tem_foto) {
-      toast.warning('Tire uma foto ou anexe uma imagem para vincular ao material.');
+    if (!fotoArquivoSap && !itemSapSelecionado.tem_foto && !posicaoSap.trim()) {
+      toast.warning('Tire uma foto, anexe uma imagem ou informe a posição no depósito.');
       return;
     }
 
@@ -469,6 +655,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         umb: itemSapSelecionado.umb || 'UN',
         saldo_zl0024: itemSapSelecionado.saldo_total || 0,
         observacao: observacaoSap.trim() || null,
+        posicao_estoque: posicaoSap.trim() || undefined,
         fotoArquivo: fotoArquivoSap,
       }, user);
 
@@ -564,6 +751,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       'Saldo ZL0024',
       'UMB',
       'Depósitos',
+      'Posição no Depósito',
       'Tem Foto',
       'Código Registro',
     ];
@@ -579,6 +767,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       it.saldo_total,
       `"${it.umb}"`,
       `"${it.depositos.join(', ')}"`,
+      `"${posicaoDoItem(it)}"`,
       it.tem_foto ? 'SIM' : 'NÃO',
       `"${it.item_catalogo?.codigo_registro || ''}"`,
     ]);
@@ -1010,6 +1199,49 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         </div>
       </div>
 
+      {/* Etiquetas de prateleira: seleção e impressão */}
+      {!carregando && itensFiltrados.length > 0 && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2"
+          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
+        >
+          <label className="inline-flex flex-wrap items-center gap-2 text-xs font-bold cursor-pointer" style={{ color: 'var(--ink-secondary)' }}>
+            <input
+              type="checkbox"
+              checked={itensFiltrados.every(it => selecionados.has(it.codigo_sap))}
+              onChange={(e) => setSelecionados(e.target.checked ? new Set(itensFiltrados.map(it => it.codigo_sap)) : new Set())}
+              className="h-4 w-4 cursor-pointer accent-amber-600"
+            />
+            Marcar os {itensFiltrados.length} filtrados
+            <span className="font-normal" style={{ color: 'var(--ink-muted)' }}>
+              · {selecionados.size} marcado(s) para etiqueta
+            </span>
+          </label>
+          <div className="flex items-center gap-2">
+            {selecionados.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelecionados(new Set())}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+              >
+                Limpar
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={imprimirSelecionadas}
+              disabled={selecionados.size === 0}
+              title="PDF A4 com 10 etiquetas por folha. O QR de cada uma é lido pelo botão Ler QR da Requisição no Balcão"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 shadow-xs transition cursor-pointer disabled:opacity-50"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Imprimir etiquetas ({selecionados.size})
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Conteúdo: Listagem de Itens */}
       {carregando ? (
         <div className="rounded-xl border p-12 text-center" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
@@ -1052,6 +1284,14 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                   style={{ borderColor: 'var(--hairline)' }}
                 >
                   <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={selecionados.has(item.codigo_sap)}
+                      onChange={() => alternarSelecao(item.codigo_sap)}
+                      title="Marcar para imprimir etiqueta"
+                      aria-label={`Marcar ${item.codigo_sap} para imprimir etiqueta`}
+                      className="h-4 w-4 cursor-pointer accent-amber-600"
+                    />
                     <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-900 text-white dark:bg-slate-800 shadow-xs">
                       {item.codigo_sap}
                     </span>
@@ -1161,11 +1401,25 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         {item.depositos.join(', ') || 'Principal'}
                       </span>
                     </div>
+                    <div className="flex items-center justify-between">
+                      <span style={{ color: 'var(--ink-muted)' }}>Posição no depósito:</span>
+                      <span className="font-mono font-bold truncate max-w-[190px]" style={{ color: 'var(--ink-secondary)' }} title={posicaoDoItem(item)}>
+                        {posicaoDoItem(item) || '—'}
+                      </span>
+                    </div>
                     {item.item_catalogo?.codigo_registro && (
                       <div className="flex items-center justify-between">
                         <span style={{ color: 'var(--ink-muted)' }}>Registro:</span>
                         <span className="font-mono text-[10px] font-bold text-slate-500">
                           {item.item_catalogo.codigo_registro}
+                        </span>
+                      </div>
+                    )}
+                    {item.item_catalogo?.etiqueta_impressa_em && (
+                      <div className="flex items-center justify-between">
+                        <span style={{ color: 'var(--ink-muted)' }}>Etiqueta impressa:</span>
+                        <span className="text-[10px] font-bold text-slate-500">
+                          {new Date(item.item_catalogo.etiqueta_impressa_em).toLocaleDateString('pt-BR')}
                         </span>
                       </div>
                     )}
@@ -1189,8 +1443,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                   }`}
                   style={item.tem_foto ? { borderColor: 'var(--hairline)', color: 'var(--ink-primary)' } : undefined}
                 >
-                  <Camera className="h-3.5 w-3.5" />
-                  {item.tem_foto ? 'Alterar foto' : 'Tirar / Vincular foto'}
+                  {item.tem_foto ? <Pencil className="h-3.5 w-3.5" /> : <Camera className="h-3.5 w-3.5" />}
+                  {item.tem_foto ? 'Editar' : 'Tirar / Vincular foto'}
                 </button>
               </div>
             </div>
@@ -1203,11 +1457,22 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
             <table className="w-full text-left text-xs">
               <thead className="border-b" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
                 <tr>
+                  <th className="py-2.5 pl-3 w-8">
+                    <input
+                      type="checkbox"
+                      checked={itensFiltrados.length > 0 && itensFiltrados.every(it => selecionados.has(it.codigo_sap))}
+                      onChange={(e) => setSelecionados(e.target.checked ? new Set(itensFiltrados.map(it => it.codigo_sap)) : new Set())}
+                      title="Marcar todos os itens filtrados"
+                      aria-label="Marcar todos os itens filtrados"
+                      className="h-4 w-4 cursor-pointer accent-amber-600"
+                    />
+                  </th>
                   <th className="py-2.5 px-3 font-bold" style={{ color: 'var(--ink-muted)' }}>Foto</th>
                   <th className="py-2.5 px-3 font-bold" style={{ color: 'var(--ink-muted)' }}>Código SAP</th>
                   <th className="py-2.5 px-3 font-bold" style={{ color: 'var(--ink-muted)' }}>Descrição do Material</th>
                   <th className="py-2.5 px-3 font-bold" style={{ color: 'var(--ink-muted)' }}>Texto Técnico</th>
                   <th className="py-2.5 px-3 font-bold" style={{ color: 'var(--ink-muted)' }}>Grupo & Subcategoria (Nível 2)</th>
+                  <th className="py-2.5 px-3 font-bold" style={{ color: 'var(--ink-muted)' }}>Posição</th>
                   <th className="py-2.5 px-3 font-bold text-right" style={{ color: 'var(--ink-muted)' }}>Saldo ZL0024</th>
                   <th className="py-2.5 px-3 font-bold text-center" style={{ color: 'var(--ink-muted)' }}>Ações</th>
                 </tr>
@@ -1215,6 +1480,15 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               <tbody className="divide-y" style={{ borderColor: 'var(--hairline)' }}>
                 {itensFiltrados.map((item) => (
                   <tr key={item.codigo_sap} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition">
+                    <td className="py-2 pl-3">
+                      <input
+                        type="checkbox"
+                        checked={selecionados.has(item.codigo_sap)}
+                        onChange={() => alternarSelecao(item.codigo_sap)}
+                        aria-label={`Marcar ${item.codigo_sap} para imprimir etiqueta`}
+                        className="h-4 w-4 cursor-pointer accent-amber-600"
+                      />
+                    </td>
                     <td className="py-2 px-3">
                       {item.url_foto ? (
                         <button
@@ -1256,6 +1530,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                       <div className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>
                         {item.grp_mercad} - {item.grupo_mercadorias}
                       </div>
+                    </td>
+                    <td className="py-2 px-3 font-mono text-[11px] font-bold whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
+                      {posicaoDoItem(item) || '—'}
                     </td>
                     <td className="py-2 px-3 text-right tabular-nums">
                       <span className="font-bold text-slate-800 dark:text-slate-100">
@@ -1442,6 +1719,61 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                 </div>
               </div>
 
+              {/* Posição no depósito */}
+              <div>
+                <label className="text-xs font-bold block mb-1" style={{ color: 'var(--ink-primary)' }}>
+                  Posição no Depósito (Localização)
+                </label>
+                <input
+                  type="text"
+                  value={posicaoFoto}
+                  onChange={(e) => setPosicaoFoto(e.target.value.toUpperCase())}
+                  placeholder={posicaoDoItem(itemSelecionado) || 'Ex: 101.A10'}
+                  className="w-full p-2.5 text-xs font-mono rounded-lg border focus:outline-2 focus:outline-offset-1"
+                  style={{
+                    borderColor: 'var(--hairline)',
+                    background: 'var(--surface-raised)',
+                    color: 'var(--ink-primary)',
+                  }}
+                />
+                <p className="mt-1 text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+                  Em branco, vale a última posição vinda da ZL0024 (continua valendo se o item zerar).
+                </p>
+              </div>
+
+              {/* Etiqueta de prateleira */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-bold block mb-1" style={{ color: 'var(--ink-primary)' }}>
+                    Descrição na etiqueta
+                  </label>
+                  <input
+                    type="text"
+                    value={etiquetaDescricao}
+                    onChange={(e) => setEtiquetaDescricao(e.target.value.toUpperCase())}
+                    placeholder={itemSelecionado.descricao || 'Descrição do SAP'}
+                    className="w-full p-2.5 text-xs rounded-lg border focus:outline-2 focus:outline-offset-1"
+                    style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold block mb-1" style={{ color: 'var(--ink-primary)' }}>
+                    Aplicação
+                  </label>
+                  <input
+                    type="text"
+                    value={etiquetaAplicacao}
+                    onChange={(e) => setEtiquetaAplicacao(e.target.value.toUpperCase())}
+                    placeholder="Ex: PRODUÇÃO"
+                    className="w-full p-2.5 text-xs rounded-lg border focus:outline-2 focus:outline-offset-1"
+                    style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+                  />
+                </div>
+                <p className="sm:col-span-3 text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+                  Descrição em branco usa a do SAP. O mínimo sai em branco na etiqueta, para preencher à mão.
+                </p>
+              </div>
+
               {/* Campo de Observação Adicional */}
               <div>
                 <label className="text-xs font-bold block mb-1" style={{ color: 'var(--ink-primary)' }}>
@@ -1488,8 +1820,19 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                 </button>
                 <button
                   type="button"
+                  onClick={imprimirEtiquetaDoModal}
+                  disabled={salvando}
+                  title="Gera a etiqueta deste item com o que está digitado agora"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+                  style={{ borderColor: 'var(--hairline)', color: 'var(--ink-primary)' }}
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  Etiqueta
+                </button>
+                <button
+                  type="button"
                   onClick={handleSalvarFoto}
-                  disabled={salvando || (!fotoArquivo && !itemSelecionado.tem_foto)}
+                  disabled={salvando || (!fotoArquivo && !itemSelecionado.tem_foto && !cadastroDoItemMudou(itemSelecionado))}
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-xs transition cursor-pointer disabled:opacity-50"
                 >
                   {salvando ? (
@@ -1508,6 +1851,29 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
             </div>
           </div>
         </div>
+      )}
+
+      {completarEtiquetas && (
+        <CompletarEtiquetasModal
+          linhas={completarEtiquetas.linhas}
+          total={completarEtiquetas.itens.length}
+          onCancelar={() => setCompletarEtiquetas(null)}
+          onAbrirSemPreencher={() => {
+            const lista = completarEtiquetas.itens;
+            setCompletarEtiquetas(null);
+            abrirPreviewEtiquetas(lista.map(it => dadosEtiquetaDoItem(it, posicaoDoItem(it))));
+          }}
+          onSalvarEAbrir={salvarFaltantesEAbrir}
+        />
+      )}
+
+      {previewEtiquetas && (
+        <PdfPreviewModal
+          gerar={previewEtiquetas.gerar}
+          tituloPadrao="Etiquetas de material"
+          onClose={() => setPreviewEtiquetas(null)}
+          onBaixar={() => void aoBaixarEtiquetas(previewEtiquetas.codigos)}
+        />
       )}
 
       {/* Modal: Visualizador em Alta Resolução (Zoom) */}
@@ -1920,6 +2286,21 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         setFotoPreviewUrlSap(URL.createObjectURL(file));
                       }}
                     />
+
+                    {/* Posição no depósito */}
+                    <div className="space-y-1 pt-1">
+                      <label className="text-[11px] font-bold block" style={{ color: 'var(--ink-secondary)' }}>
+                        Posição no Depósito (Localização)
+                      </label>
+                      <input
+                        type="text"
+                        value={posicaoSap}
+                        onChange={(e) => setPosicaoSap(e.target.value.toUpperCase())}
+                        placeholder={(itemSapSelecionado && posicoesPorMaterial.get(itemSapSelecionado.codigo_sap)?.join(', ')) || 'Ex: 101.A10'}
+                        className="w-full px-3 py-2 text-xs font-mono rounded-lg border focus:outline-2"
+                        style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+                      />
+                    </div>
 
                     {/* Observações Internas (Opcional) */}
                     <div className="space-y-1 pt-1">

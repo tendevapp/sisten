@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowLeftRight, Check, CheckSquare, ChevronDown, Download, FileCheck2, FolderPlus, History, Layers, Loader2, LogOut, Plus,
-  RefreshCw, RotateCcw, Search, Square, Trash2, Upload, User, X,
+  QrCode, RefreshCw, RotateCcw, Search, Square, Trash2, Upload, User, X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
@@ -35,7 +35,7 @@ import {
 } from '../../lib/almoxarifado';
 import {
   PREFIXO_REQ_BALCAO, ROTULO_TIPO_MOVIMENTO, adicionarGrupoPep, adicionarItemAoGrupo, adicionarLinha,
-  alertaDaLinha, alertasRequisicao, achatarGruposPep, agruparLinhasPorDeposito, agruparLinhasPorDestino, agruparLinhasPorPep, buscarMateriaisEmDepositos, chaveDeposito, semDepositosSemSaida,
+  alertaDaLinha, alertasRequisicao, achatarGruposPep, agruparLinhasPorDeposito, agruparLinhasPorDestino, agruparLinhasPorPep, buscarMateriaisEmDepositos, chaveDeposito, localizarMaterialParaSaida, semDepositosSemSaida,
   criarGrupoPep, definirDepositoDoGrupo, definirDestinoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
   removerItemDoGrupo, atualizarQtdItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao,
   type GrupoPepBalcao, type LinhaBalcao, type MaterialDisponivel, type MaterialNoDeposito, type PepAplicacao, type TipoMovimentoBalcao,
@@ -54,6 +54,8 @@ import { listarRhPessoas, listarRhTurnos } from '../../lib/rhApi';
 import { hojeISO } from '../../lib/recebimentoAlmox';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { CHAVE_ABRIR_REQUISICAO_BALCAO } from '../../lib/fichaEpiRequisicao';
+import { codigoDoQr } from '../../lib/etiquetaMaterial';
+import LeitorQrModal from '../../components/ui/LeitorQrModal';
 import type { EstoqueItem, Profile, RhPessoa, RhTurno } from '../../types';
 
 interface Props {
@@ -1697,6 +1699,8 @@ function AdicionarItem({
   const [ativo, setAtivo] = useState(0);
   const [escolhido, setEscolhido] = useState<MaterialNoDeposito | null>(null);
   const [qtd, setQtd] = useState('');
+  const [lendoQr, setLendoQr] = useState(false);
+  const toast = useToast();
   const qtdRef = useRef<HTMLInputElement>(null);
   const inputRefLocal = useRef<HTMLInputElement>(null);
   const inputEfetivo = refBusca ?? inputRefLocal;
@@ -1719,6 +1723,37 @@ function AdicionarItem({
     setQtd('');
     setTimeout(() => qtdRef.current?.focus(), 0);
   };
+
+  /**
+   * QR da etiqueta de prateleira: escolhe o item (no depósito com saldo) e leva
+   * o cursor para a quantidade. Código fora da ZL0024 entra como o digitado
+   * "sem saldo", com o mesmo alerta.
+   */
+  const aoLerQr = (texto: string) => {
+    setLendoQr(false);
+    const codigo = codigoDoQr(texto);
+    if (!codigo) {
+      toast.error('Este QR não é de etiqueta de material do SISTEN.');
+      return;
+    }
+    const achado = localizarMaterialParaSaida(estoqueComSaida, codigo, depositoFixo || depositoPadrao, isDepositoInativo);
+    if (achado) {
+      escolher(achado);
+      return;
+    }
+    toast.warning(`Item ${codigo} não está na ZL0024 — entra sem saldo (alerta).`);
+    escolher({
+      material: codigo,
+      descricao: `Material ${codigo}`,
+      unidade: 'UN',
+      saldo: 0,
+      deposito: depositoFixo || depositoPadrao || '0002',
+    });
+  };
+
+  const leitor = lendoQr && (
+    <LeitorQrModal onLido={aoLerQr} onClose={() => setLendoQr(false)} />
+  );
 
   const quantidade = parseFloat(qtd.replace(',', '.'));
   const restante = escolhido ? escolhido.saldo - jaLancado(escolhido.material, escolhido.deposito) : 0;
@@ -1798,7 +1833,19 @@ function AdicionarItem({
   const maxAtivo = resultados.length + (temSugestaoAvulsa ? 0 : -1);
 
   return (
-    <div className="relative">
+    <div className="flex items-stretch gap-2">
+    {leitor}
+    <button
+      type="button"
+      onClick={() => setLendoQr(true)}
+      title="Ler o QR da etiqueta da prateleira com a câmera"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-white"
+      style={{ background: 'var(--brand)' }}
+    >
+      <QrCode className="h-4 w-4" />
+      <span>Ler QR</span>
+    </button>
+    <div className="relative min-w-0 flex-1">
       <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
       <input
         ref={inputEfetivo}
@@ -1878,6 +1925,7 @@ function AdicionarItem({
           )}
         </ul>
       )}
+    </div>
     </div>
   );
 }

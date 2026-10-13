@@ -3,7 +3,7 @@ import {
   achatarGruposPep, adicionarGrupoPep, adicionarItemAoGrupo, adicionarLinha, agruparLinhasPorDeposito, agruparLinhasPorDestino, agruparLinhasPorPep,
   alertaDaLinha, atualizarQtdItemDoGrupo, buscarMateriais, buscarMateriaisEmDepositos, criarGrupoPep,
   definirDepositoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
-  removerItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao, type LinhaBalcao,
+  removerItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao, type LinhaBalcao, localizarMaterialParaSaida,
   DEPOSITO_PADRAO_BALCAO, DEPOSITO_EPI, semDepositosSemSaida, PEP_EPI_DEMAIS_SETORES, PEP_EPI_PRODUCAO, itensRequisicaoDaFicha, sugerirPepEpi,
 } from './requisicaoBalcao';
 import type { EstoqueItem } from '../types';
@@ -323,5 +323,27 @@ describe('requisição gerada pela ficha de EPI', () => {
     ], estoqueEpi);
     expect(r.itens).toEqual([{ material: '999', quantidade: 3, descricao: 'LUVA X', unidade: 'UN', deposito: '0002' }]);
     expect(r.semCodigo).toEqual(['PROTETOR AURICULAR']);
+  });
+});
+
+describe('localizarMaterialParaSaida (QR da etiqueta)', () => {
+  const idx = () => indexarEstoquePorDeposito([
+    ...estoque,
+    { id: 6, deposito: '0004', material: '1357300', txt_breve_material: 'MÁSCARA SOLDA ESCUDO', quantidade: 2, umb: 'UN' },
+  ]);
+
+  it('acha o material com saldo e nunca no depósito sem saída (0105)', () => {
+    const m = localizarMaterialParaSaida(idx(), '1291134');
+    expect(m).toMatchObject({ material: '1291134', deposito: '0002', saldo: 3030 });
+  });
+
+  it('prefere o depósito que a requisição já usa, se lá tiver saldo', () => {
+    expect(localizarMaterialParaSaida(idx(), '1357300')?.deposito).toBe('0002');
+    expect(localizarMaterialParaSaida(idx(), '1357300', '4')?.deposito).toBe('0004');
+  });
+
+  it('item zerado ainda volta (o formulário avisa), e código fora da ZL0024 volta null', () => {
+    expect(localizarMaterialParaSaida(idx(), '9999999')).toMatchObject({ deposito: '0004', saldo: 0 });
+    expect(localizarMaterialParaSaida(idx(), '0000000')).toBeNull();
   });
 });

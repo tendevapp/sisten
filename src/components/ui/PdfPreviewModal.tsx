@@ -21,9 +21,11 @@ export interface PdfPreviewModalProps {
   gerar: () => Promise<PdfGerado>;
   onClose: () => void;
   tituloPadrao?: string;
+  /** Chamado ao clicar em "Baixar PDF" (ex.: registrar que o documento saiu). */
+  onBaixar?: (pdf: PdfGerado) => void;
 }
 
-export default function PdfPreviewModal({ gerar, onClose, tituloPadrao }: PdfPreviewModalProps) {
+export default function PdfPreviewModal({ gerar, onClose, tituloPadrao, onBaixar }: PdfPreviewModalProps) {
   const [pdf, setPdf] = useState<(PdfGerado & { url: string }) | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [gerando, setGerando] = useState(true);
@@ -68,6 +70,7 @@ export default function PdfPreviewModal({ gerar, onClose, tituloPadrao }: PdfPre
     link.href = pdf.url;
     link.download = pdf.nomeArquivo;
     link.click();
+    onBaixar?.(pdf);
   };
 
   return (

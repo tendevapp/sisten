@@ -44,6 +44,12 @@ export interface CatalogoItem {
   imagem_mime: string | null;
   imagem_tamanho: number | null;
   observacao: string | null;
+  /** Posição no depósito digitada no cadastro; vale mais que a da ZL0024. */
+  posicao_estoque?: string | null;
+  /** Etiqueta de prateleira: descrição impressa (vazia = a do SAP) e aplicação. */
+  etiqueta_descricao?: string | null;
+  etiqueta_aplicacao?: string | null;
+  etiqueta_impressa_em?: string | null;
   ativo: boolean;
   criado_por: string;
   criado_por_nome: string | null;
@@ -103,6 +109,8 @@ export interface DadosCatalogoCompleto {
   grupos: CadastroGrupoMercadoria[];
   itensCatalogo: CatalogoItem[];
   mapaEpis: Map<string, EpiFotoInfo>;
+  /** Posição no depósito por código SAP (última conhecida, mesmo sem saldo). */
+  posicoes?: Map<string, string[]>;
 }
 
 export interface SalvarItemCatalogoPayload {
@@ -116,6 +124,9 @@ export interface SalvarItemCatalogoPayload {
   umb?: string | null;
   saldo_zl0024?: number | null;
   observacao?: string | null;
+  posicao_estoque?: string | null;
+  etiqueta_descricao?: string | null;
+  etiqueta_aplicacao?: string | null;
   fotoArquivo?: File | null;
   removerFoto?: boolean;
 }
@@ -510,6 +521,65 @@ export async function listarImagensCatalogoPorCodigoSap(codigoSap: string): Prom
   if (!item || !item.imagem_path) return [];
 
   return [converterItemCatalogoEmAnexo(item)];
+}
+
+/**
+ * Localização física de cada material (coluna "Pos.dpst." da ZL0024), por código SAP.
+ * Um material em mais de um depósito pode ter mais de uma posição; repetidas e vazias saem.
+ * Lida do estoque na hora, não da lista fixa: a lista fixa é cópia local e fica velha a cada importação.
+ */
+export function mapaPosicoesEstoque(estoque: EstoqueItem[]): Map<string, string[]> {
+  const mapa = new Map<string, string[]>();
+  for (const row of estoque) {
+    const material = String(row.material || '').trim();
+    const posicao = String(row.posicao_estoque || '').trim();
+    if (!material || !posicao) continue;
+    const lista = mapa.get(material);
+    if (!lista) mapa.set(material, [posicao]);
+    else if (!lista.includes(posicao)) lista.push(posicao);
+  }
+  for (const lista of mapa.values()) lista.sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  return mapa;
+}
+
+/**
+ * Posição que a tela mostra: a digitada no cadastro (se houver) ou, na falta dela,
+ * a última conhecida da ZL0024 — que continua valendo para o item que zerou.
+ */
+export function posicaoDoMaterial(
+  codigoSap: string,
+  catalogo: Pick<CatalogoItem, 'posicao_estoque'> | null | undefined,
+  posicoes: Map<string, string[]> | undefined,
+): string {
+  const digitada = (catalogo?.posicao_estoque ?? '').trim();
+  if (digitada) return digitada;
+  return (posicoes?.get(codigoSap) ?? []).join(', ');
+}
+
+/**
+ * Última posição conhecida de cada material, guardada em `alm_posicao_material`
+ * (um trigger anota a cada importação da ZL0024). Vale também para o material que
+ * zerou e saiu da ZL0024: a prateleira é a mesma. A view devolve só as posições da
+ * última importação em que o material apareceu.
+ */
+export async function carregarPosicoesMaterial(): Promise<Map<string, string[]>> {
+  const mapa = new Map<string, string[]>();
+  if (!supabase) return mapa;
+  try {
+    const { data, error } = await (supabase.from as any)('alm_posicao_material_atual')
+      .select('codigo_sap, posicao')
+      .range(0, 19999);
+    if (error) throw error;
+    for (const row of (data ?? []) as Array<{ codigo_sap: string; posicao: string }>) {
+      const lista = mapa.get(row.codigo_sap);
+      if (!lista) mapa.set(row.codigo_sap, [row.posicao]);
+      else if (!lista.includes(row.posicao)) lista.push(row.posicao);
+    }
+    for (const lista of mapa.values()) lista.sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  } catch (err) {
+    console.warn('[almoxCatalogoApi] Falha ao carregar as posições de estoque guardadas:', err);
+  }
+  return mapa;
 }
 
 /**
@@ -1165,9 +1235,18 @@ export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<Da
     }
   }
 
+  const estoqueCompleto = (localDb.getEstoque() || []) as EstoqueItem[];
+
+  // Posição guardada no banco; o estoque local só completa o que o banco ainda não tem.
+  const posicoes = await carregarPosicoesMaterial();
+  for (const [material, lista] of mapaPosicoesEstoque(estoqueCompleto)) {
+    if (!posicoes.has(material)) posicoes.set(material, lista);
+  }
+
   return {
     itens: itensAtualizados,
-    estoqueCompleto: (localDb.getEstoque() || []) as EstoqueItem[],
+    estoqueCompleto,
+    posicoes,
     grupos,
     itensCatalogo,
     mapaEpis,
@@ -1241,6 +1320,9 @@ function linhaDoPayload(
     saldo_zl0024: payload.saldo_zl0024 !== undefined ? payload.saldo_zl0024 ?? 0 : existente?.saldo_zl0024 ?? 0,
     ...imagem,
     observacao: texto('observacao'),
+    posicao_estoque: texto('posicao_estoque'),
+    etiqueta_descricao: texto('etiqueta_descricao'),
+    etiqueta_aplicacao: texto('etiqueta_aplicacao'),
     ativo: true,
     criado_por: existente?.criado_por || user.id,
     criado_por_nome: existente?.criado_por_nome || user.name,
@@ -1367,6 +1449,26 @@ export async function salvarItemCatalogo(
     itemSalvo.url_imagem = await obterUrlFotoCatalogo(itemSalvo.imagem_path);
   }
   return itemSalvo;
+}
+
+/**
+ * Carimba a data da última impressão da etiqueta nos itens que têm registro no
+ * catálogo (item sem registro imprime com os dados do SAP e não guarda a data).
+ * Falha aqui não desfaz o PDF já baixado — só não marca.
+ */
+export async function marcarEtiquetasImpressas(codigosSap: string[]): Promise<string | null> {
+  const codigos = [...new Set(codigosSap.map(c => c.trim()).filter(Boolean))];
+  if (codigos.length === 0 || !supabase) return null;
+  const agora = new Date().toISOString();
+  const { error } = await tabelaCatalogo()
+    .update({ etiqueta_impressa_em: agora })
+    .in('codigo_sap', codigos)
+    .eq('ativo', true);
+  if (error) {
+    console.warn('[almoxCatalogoApi] Falha ao marcar etiquetas impressas:', error);
+    return null;
+  }
+  return agora;
 }
 
 /**

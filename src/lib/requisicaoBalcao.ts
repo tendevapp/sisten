@@ -184,6 +184,34 @@ export function buscarMateriaisEmDepositos(
 }
 
 /**
+ * Material lido do QR da etiqueta de prateleira: em qual depósito ele sai.
+ * Ordem de preferência: o depósito que a requisição já usa (`preferido`),
+ * depois com saldo positivo, depósito ativo e maior saldo. Depósitos sem
+ * saída (0105) ficam fora. Null se o código não está na ZL0024.
+ */
+export function localizarMaterialParaSaida(
+  estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
+  codigo: string,
+  preferido?: string | null,
+  depositoInativo: (dep: string) => boolean = () => false,
+): MaterialNoDeposito | null {
+  const alvo = codigo.trim();
+  const achados: MaterialNoDeposito[] = [];
+  for (const [deposito, mapa] of semDepositosSemSaida(estoquePorDeposito)) {
+    const item = mapa.get(alvo);
+    if (item) achados.push({ ...item, deposito });
+  }
+  if (achados.length === 0) return null;
+  const pref = preferido ? chaveDeposito(preferido) : '';
+  const peso = (m: MaterialNoDeposito) =>
+    (pref && m.deposito === pref && m.saldo > 0 ? 0 : 1) * 100
+    + (m.saldo > 0 ? 0 : 10)
+    + (depositoInativo(m.deposito) ? 1 : 0);
+  achados.sort((a, b) => peso(a) - peso(b) || b.saldo - a.saldo || a.deposito.localeCompare(b.deposito));
+  return achados[0];
+}
+
+/**
  * Adiciona um material à lista. Se já estiver lá, soma a quantidade na linha
  * existente em vez de duplicar.
  */

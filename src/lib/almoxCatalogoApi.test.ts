@@ -11,6 +11,8 @@ import {
   pesquisarCatalogoSapOnline,
   PREFIXO_CAT_ITEM,
   extensaoDaImagem,
+  mapaPosicoesEstoque,
+  posicaoDoMaterial,
   type CatalogoItem,
   type DadosCatalogoCompleto,
 } from './almoxCatalogoApi';
@@ -382,5 +384,42 @@ describe('extensaoDaImagem', () => {
     expect(extensaoDaImagem(semTipo, semTipo)).toBe('heic');
     const semNada = new File(['x'], 'image');
     expect(extensaoDaImagem(semNada, semNada)).toBe('jpg');
+  });
+});
+
+describe('mapaPosicoesEstoque', () => {
+  const linha = (material: string, posicao: string | null | undefined) =>
+    ({ material, posicao_estoque: posicao }) as unknown as EstoqueItem;
+
+  it('junta as posições do mesmo material sem repetir nem trazer vazias', () => {
+    const mapa = mapaPosicoesEstoque([
+      linha('1001', '101.B2'),
+      linha('1001', ' 101.A10 '),
+      linha('1001', '101.B2'),
+      linha('1001', ''),
+      linha('1002', null),
+      linha('1003', '102.ARAMES'),
+    ]);
+    expect(mapa.get('1001')).toEqual(['101.A10', '101.B2']);
+    expect(mapa.has('1002')).toBe(false);
+    expect(mapa.get('1003')).toEqual(['102.ARAMES']);
+  });
+});
+
+describe('posicaoDoMaterial', () => {
+  const posicoes = new Map([['1001', ['101.A10', '101.B2']]]);
+
+  it('usa a posição digitada no cadastro antes da vinda da ZL0024', () => {
+    expect(posicaoDoMaterial('1001', { posicao_estoque: ' 205.X1 ' }, posicoes)).toBe('205.X1');
+  });
+
+  it('sem posição digitada, mostra a última conhecida (mesmo com o item zerado)', () => {
+    expect(posicaoDoMaterial('1001', { posicao_estoque: null }, posicoes)).toBe('101.A10, 101.B2');
+    expect(posicaoDoMaterial('1001', null, posicoes)).toBe('101.A10, 101.B2');
+  });
+
+  it('devolve vazio quando não há nenhuma', () => {
+    expect(posicaoDoMaterial('9999', null, posicoes)).toBe('');
+    expect(posicaoDoMaterial('9999', undefined, undefined)).toBe('');
   });
 });

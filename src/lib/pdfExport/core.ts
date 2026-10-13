@@ -1209,7 +1209,7 @@ export async function createDoc(
   return { doc, font, fontBold, logo };
 }
 
-async function toEmbeddablePng(bytes: ArrayBuffer, mimeType: string | undefined): Promise<ArrayBuffer> {
+export async function toEmbeddablePng(bytes: ArrayBuffer, mimeType: string | undefined): Promise<ArrayBuffer> {
   const bitmap = await createImageBitmap(new Blob([bytes], { type: mimeType || 'image/jpeg' }));
   try {
     const canvas = document.createElement('canvas');
