@@ -68,6 +68,12 @@ export function sanitizeText(text: string): string {
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
     .replace(/[•·]/g, '-')
+    // Caracteres de controle (TAB colado do SAP/Excel, \r, C1) não existem no
+    // WinAnsi das fontes padrão e derrubam o PDF inteiro. \n fica: quem quebra
+    // linha (wrapText) separa por ele.
+    .replace(/\r\n?/g, '\n')
+    .replace(/\t/g, ' ')
+    .replace(/[\x00-\x09\x0B-\x1F\x7F-\x9F]/g, '')
     .replace(/[^\x00-\xFF]/g, '?');
 }
 
