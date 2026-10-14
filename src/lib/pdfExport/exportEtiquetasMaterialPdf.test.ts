@@ -28,6 +28,18 @@ describe('gerarPdfEtiquetasMaterial', () => {
     }
   });
 
+  it('gera nas seis cores', async () => {
+    for (const cor of ['cinza', 'azul', 'vermelho', 'preto', 'amarelo', 'verde'] as const) {
+      const doc = await gerarPdfEtiquetasMaterial([etiqueta(0), etiqueta(1)], cor);
+      expect(doc.getPageCount()).toBe(1);
+      const bytes = await doc.save();
+      if (process.env.ETIQUETA_AMOSTRA_CORES) {
+        const { writeFileSync } = await import('node:fs');
+        writeFileSync(`${process.env.ETIQUETA_AMOSTRA_CORES}-${cor}.pdf`, bytes);
+      }
+    }
+  });
+
   it('sem etiqueta, sai sem páginas', async () => {
     const doc = await gerarPdfEtiquetasMaterial([]);
     expect(doc.getPageCount()).toBe(0);

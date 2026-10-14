@@ -35,7 +35,10 @@ import {
   type MaterialCandidatoCatalogo,
   type DadosCatalogoCompleto,
 } from '../../lib/almoxCatalogoApi';
-import { dadosEtiquetaDoItem, numeroOuNull, type DadosEtiqueta } from '../../lib/etiquetaMaterial';
+import {
+  CORES_ETIQUETA, ORDEM_CORES_ETIQUETA, dadosEtiquetaDoItem, ehCorEtiqueta, numeroOuNull,
+  type CorEtiqueta, type DadosEtiqueta,
+} from '../../lib/etiquetaMaterial';
 import { gerarPdfEtiquetasMaterial } from '../../lib/pdfExport/exportEtiquetasMaterialPdf';
 import PdfPreviewModal, { type PdfGerado } from '../../components/ui/PdfPreviewModal';
 import CompletarEtiquetasModal, { type LinhaFaltante, type ValoresPreenchidos } from '../../components/almoxarifado/CompletarEtiquetasModal';
@@ -96,8 +99,31 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [estoqueMinimo, setEstoqueMinimo] = useState('');
   // Itens marcados para imprimir etiqueta (por código SAP)
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
-  // Pré-visualização do PDF (gerador estável para o modal não refazer o PDF a cada render)
-  const [previewEtiquetas, setPreviewEtiquetas] = useState<{ gerar: () => Promise<PdfGerado>; codigos: string[] } | null>(null);
+  // Pré-visualização do PDF das etiquetas
+  const [previewEtiquetas, setPreviewEtiquetas] = useState<{ dados: DadosEtiqueta[]; codigos: string[] } | null>(null);
+  // Cor escolhida na impressão — lembrada no aparelho (conveniência, não dado)
+  const [corEtiqueta, setCorEtiqueta] = useState<CorEtiqueta>(() => {
+    try {
+      const salva = localStorage.getItem('sisten_etiqueta_cor');
+      return ehCorEtiqueta(salva) ? salva : 'cinza';
+    } catch {
+      return 'cinza';
+    }
+  });
+  const escolherCorEtiqueta = (cor: CorEtiqueta) => {
+    setCorEtiqueta(cor);
+    try { localStorage.setItem('sisten_etiqueta_cor', cor); } catch { /* sem storage: só não lembra */ }
+  };
+  // Gerador estável: o modal refaz o PDF só quando os itens ou a cor mudam.
+  const gerarPdfEtiquetas = useCallback(async (): Promise<PdfGerado> => {
+    const dados = previewEtiquetas?.dados ?? [];
+    const doc = await gerarPdfEtiquetasMaterial(dados, corEtiqueta);
+    return {
+      bytes: await doc.save(),
+      nomeArquivo: `etiquetas_material_${new Date().toISOString().slice(0, 10)}.pdf`,
+      titulo: `Etiquetas de material — ${dados.length} etiqueta(s), ${Math.ceil(dados.length / 10)} folha(s) A4`,
+    };
+  }, [previewEtiquetas, corEtiqueta]);
   // Pergunta de informação faltante antes de abrir o PDF
   const [completarEtiquetas, setCompletarEtiquetas] = useState<{ itens: ItemConsumivelZl0024[]; linhas: LinhaFaltante[] } | null>(null);
   const [salvandoSap, setSalvandoSap] = useState(false);
@@ -352,11 +378,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setFotoPreviewUrlSap(URL.createObjectURL(file));
   };
 
-  const handlePasteImagemSap = (e: React.ClipboardEvent) => {
-    const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'));
-    if (!item) return;
-    const file = item.getAsFile();
-    if (!file) return;
+  const colarImagemSap = (file: File) => {
     if (fotoPreviewUrlSap && fotoPreviewUrlSap.startsWith('blob:')) {
       URL.revokeObjectURL(fotoPreviewUrlSap);
     }
@@ -406,12 +428,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   };
 
   // Suporte a colar imagem (Ctrl+V)
-  const handlePasteImagem = (e: React.ClipboardEvent) => {
-    const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'));
-    if (!item) return;
-    const file = item.getAsFile();
-    if (!file) return;
-
+  const colarImagem = (file: File) => {
     if (fotoPreviewUrl && fotoPreviewUrl.startsWith('blob:')) {
       URL.revokeObjectURL(fotoPreviewUrl);
     }
@@ -420,6 +437,29 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setFotoPreviewUrl(URL.createObjectURL(file));
     toast.success('Imagem colada da área de transferência.');
   };
+
+  // Ctrl+V com imagem cola a foto em qualquer ponto da janela aberta, sem
+  // depender do foco estar dentro dela (quem abre pelo cartão fica com o foco na
+  // página de trás e o onPaste da janela nunca disparava). Colar texto num campo
+  // segue normal: só intercepta quando há imagem na área de transferência.
+  const colarRef = useRef<(file: File) => boolean>(() => false);
+  colarRef.current = (file: File) => {
+    if (itemSelecionado) { colarImagem(file); return true; }
+    if (modalSapAberto && itemSapSelecionado) { colarImagemSap(file); return true; }
+    return false;
+  };
+  const algumaJanelaDeFoto = Boolean(itemSelecionado) || (modalSapAberto && Boolean(itemSapSelecionado));
+  useEffect(() => {
+    if (!algumaJanelaDeFoto) return;
+    const aoColar = (e: ClipboardEvent) => {
+      const item = Array.from(e.clipboardData?.items ?? []).find(i => i.kind === 'file' && i.type.startsWith('image/'));
+      const arquivo = item?.getAsFile();
+      if (!arquivo) return;
+      if (colarRef.current(arquivo)) e.preventDefault();
+    };
+    document.addEventListener('paste', aoColar);
+    return () => document.removeEventListener('paste', aoColar);
+  }, [algumaJanelaDeFoto]);
 
   /** Posição ou dados da etiqueta diferentes do que está gravado — dá para salvar sem foto. */
   const cadastroDoItemMudou = (item: ItemConsumivelZl0024) => {
@@ -436,19 +476,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       toast.warning('Marque ao menos um item para imprimir a etiqueta.');
       return;
     }
-    const nomeArquivo = `etiquetas_material_${new Date().toISOString().slice(0, 10)}.pdf`;
-    setPreviewEtiquetas({
-      codigos: dados.map(d => d.codigo_sap),
-      gerar: async () => {
-        const doc = await gerarPdfEtiquetasMaterial(dados);
-        const folhas = Math.ceil(dados.length / 10);
-        return {
-          bytes: await doc.save(),
-          nomeArquivo,
-          titulo: `Etiquetas de material — ${dados.length} etiqueta(s), ${folhas} folha(s) A4`,
-        };
-      },
-    });
+    setPreviewEtiquetas({ dados, codigos: dados.map(d => d.codigo_sap) });
   };
 
   const aoBaixarEtiquetas = async (codigos: string[]) => {
@@ -1579,7 +1607,6 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in"
           role="dialog"
           aria-modal="true"
-          onPaste={handlePasteImagem}
         >
           <div
             className="w-full max-w-lg max-h-[90vh] rounded-2xl border shadow-2xl flex flex-col overflow-hidden animate-scale-up"
@@ -1731,6 +1758,10 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                     Escolher da Galeria
                   </button>
                 </div>
+                <p className="mt-1.5 flex items-center justify-center gap-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                  <ClipboardPaste className="h-3.5 w-3.5" />
+                  Ou cole uma imagem com <kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-700 font-mono text-[10px]">Ctrl+V</kbd> — print ou foto copiada
+                </p>
               </div>
 
               {/* Posição no depósito */}
@@ -1897,8 +1928,37 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
       {previewEtiquetas && (
         <PdfPreviewModal
-          gerar={previewEtiquetas.gerar}
+          gerar={gerarPdfEtiquetas}
           tituloPadrao="Etiquetas de material"
+          acoesExtras={(
+            <div className="flex items-center gap-1.5 rounded-xl border px-2 py-1" style={{ borderColor: 'var(--hairline)' }} role="radiogroup" aria-label="Cor da etiqueta">
+              <span className="text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>Cor:</span>
+              {ORDEM_CORES_ETIQUETA.map(cor => {
+                const tema = CORES_ETIQUETA[cor];
+                const ativa = corEtiqueta === cor;
+                return (
+                  <button
+                    key={cor}
+                    type="button"
+                    role="radio"
+                    aria-checked={ativa}
+                    aria-label={tema.rotulo}
+                    title={tema.rotulo}
+                    onClick={() => escolherCorEtiqueta(cor)}
+                    className="h-6 w-6 rounded-full border-2 transition"
+                    style={{
+                      background: tema.titulo,
+                      borderColor: ativa ? 'var(--brand)' : 'rgba(0,0,0,0.15)',
+                      boxShadow: ativa ? '0 0 0 2px var(--surface-card), 0 0 0 4px var(--brand)' : undefined,
+                    }}
+                  />
+                );
+              })}
+              <span className="hidden text-[11px] font-semibold sm:inline" style={{ color: 'var(--ink-secondary)' }}>
+                {CORES_ETIQUETA[corEtiqueta].rotulo}
+              </span>
+            </div>
+          )}
           onClose={() => setPreviewEtiquetas(null)}
           onBaixar={() => void aoBaixarEtiquetas(previewEtiquetas.codigos)}
         />
@@ -1950,7 +2010,6 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in"
           role="dialog"
           aria-modal="true"
-          onPaste={handlePasteImagemSap}
         >
           <div
             className="w-full max-w-2xl max-h-[92vh] rounded-2xl border shadow-2xl flex flex-col overflow-hidden animate-scale-up"

@@ -5,6 +5,10 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  CORES_ETIQUETA,
+  ORDEM_CORES_ETIQUETA,
+  ehCorEtiqueta,
+  hexParaRgb01,
   ETIQUETA_ALTURA,
   ETIQUETA_LARGURA,
   ETIQUETAS_POR_FOLHA,
@@ -156,5 +160,24 @@ describe('QR impresso × leitor do formulário', () => {
     const lido = jsQR(rgba, lado, lado);
     expect(lido?.data).toBe('https://sisten.site/#/balcao?item=1437274');
     expect(codigoDoQr(lido!.data)).toBe('1437274');
+  });
+});
+
+describe('cores da etiqueta', () => {
+  it('oferece as seis cores pedidas, na ordem do seletor', () => {
+    expect(ORDEM_CORES_ETIQUETA.map(c => CORES_ETIQUETA[c].rotulo)).toEqual(['Cinza', 'Azul', 'Vermelho', 'Preto', 'Amarelo', 'Verde']);
+  });
+
+  it('amarelo usa texto preto (contraste); as demais, branco', () => {
+    expect(CORES_ETIQUETA.amarelo.texto).toBe('#000000');
+    for (const c of ORDEM_CORES_ETIQUETA.filter(c => c !== 'amarelo')) expect(CORES_ETIQUETA[c].texto).toBe('#ffffff');
+  });
+
+  it('converte hex para o rgb do PDF e valida a cor lembrada no aparelho', () => {
+    expect(hexParaRgb01('#ffffff')).toEqual([1, 1, 1]);
+    expect(hexParaRgb01('#000000')).toEqual([0, 0, 0]);
+    expect(ehCorEtiqueta('azul')).toBe(true);
+    expect(ehCorEtiqueta('roxo')).toBe(false);
+    expect(ehCorEtiqueta(null)).toBe(false);
   });
 });

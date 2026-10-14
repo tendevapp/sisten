@@ -8,7 +8,7 @@
  * realizar o download imediato com 1 clique.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { AlertTriangle, Download, ExternalLink, FileText, Loader2, X } from 'lucide-react';
 
 export interface PdfGerado {
@@ -23,9 +23,11 @@ export interface PdfPreviewModalProps {
   tituloPadrao?: string;
   /** Chamado ao clicar em "Baixar PDF" (ex.: registrar que o documento saiu). */
   onBaixar?: (pdf: PdfGerado) => void;
+  /** Controles extras no topo (ex.: opções que regeram o PDF trocando `gerar`). */
+  acoesExtras?: ReactNode;
 }
 
-export default function PdfPreviewModal({ gerar, onClose, tituloPadrao, onBaixar }: PdfPreviewModalProps) {
+export default function PdfPreviewModal({ gerar, onClose, tituloPadrao, onBaixar, acoesExtras }: PdfPreviewModalProps) {
   const [pdf, setPdf] = useState<(PdfGerado & { url: string }) | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [gerando, setGerando] = useState(true);
@@ -102,7 +104,8 @@ export default function PdfPreviewModal({ gerar, onClose, tituloPadrao, onBaixar
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {acoesExtras}
             {pdf && (
               <a
                 href={pdf.url}

@@ -4,19 +4,22 @@
  *
  * PDF das etiquetas de identificação de material (prateleira do almoxarifado),
  * no mesmo desenho da etiqueta de papel: título, descrição, localização e
- * código, aplicação e mínimo (em branco, preenchido à mão), foto e QR code.
- * Folha A4 com 10 etiquetas de 90 × 54 mm.
+ * código, aplicação e mínimo, foto e QR code. Folha A4 com 10 etiquetas de
+ * 90 × 54 mm, na cor escolhida na impressão (faixas de título e rótulo).
  *
  * O QR é desenhado em vetor (quadradinhos), não como imagem — sai nítido em
  * qualquer impressora e não depende de canvas.
  */
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from 'pdf-lib';
 import QRCode from 'qrcode';
 import { sanitizeText, toEmbeddablePng } from './core';
 import {
+  CORES_ETIQUETA,
   ETIQUETA_ALTURA,
   ETIQUETA_LARGURA,
+  hexParaRgb01,
+  type CorEtiqueta,
   posicaoDaEtiqueta,
   conteudoQrEtiqueta,
   type DadosEtiqueta,
@@ -24,8 +27,18 @@ import {
 
 const PRETO = rgb(0, 0, 0);
 const BRANCO = rgb(1, 1, 1);
-const CINZA_TITULO = rgb(0.27, 0.27, 0.27);
-const CINZA_ROTULO = rgb(0.4, 0.4, 0.4);
+const CINZA_AVISO = rgb(0.4, 0.4, 0.4);
+
+interface Tema {
+  titulo: RGB;
+  celula: RGB;
+  texto: RGB;
+}
+
+function temaDaCor(cor: CorEtiqueta): Tema {
+  const t = CORES_ETIQUETA[cor] ?? CORES_ETIQUETA.cinza;
+  return { titulo: rgb(...hexParaRgb01(t.titulo)), celula: rgb(...hexParaRgb01(t.celula)), texto: rgb(...hexParaRgb01(t.texto)) };
+}
 
 // Alturas das faixas, de cima para baixo (pt). O que sobra é foto + QR.
 const H_TITULO = 14;
@@ -120,13 +133,14 @@ async function carregarFoto(doc: PDFDocument, url: string, cache: Map<string, PD
   return imagem;
 }
 
-function desenharEtiqueta(page: PDFPage, fontes: Fontes, e: DadosEtiqueta, foto: PDFImage | null, x: number, y: number): void {
+function desenharEtiqueta(page: PDFPage, fontes: Fontes, tema: Tema, e: DadosEtiqueta, foto: PDFImage | null, x: number, y: number): void {
   const W = ETIQUETA_LARGURA;
+  const rotulo = { fundo: tema.celula, cor: tema.texto, negrito: true, tamanho: 6.5 };
   let topo = y + ETIQUETA_ALTURA;
 
   // Título
   topo -= H_TITULO;
-  celula(page, fontes, x, topo, W, H_TITULO, 'ETIQUETA DE IDENTIFICAÇÃO DE MATERIAL', { fundo: CINZA_TITULO, cor: BRANCO, negrito: true, tamanho: 8 });
+  celula(page, fontes, x, topo, W, H_TITULO, 'ETIQUETA DE IDENTIFICAÇÃO DE MATERIAL', { fundo: tema.titulo, cor: tema.texto, negrito: true, tamanho: 8 });
 
   // Descrição
   topo -= H_DESCRICAO;
@@ -135,28 +149,28 @@ function desenharEtiqueta(page: PDFPage, fontes: Fontes, e: DadosEtiqueta, foto:
   // Localização | Código item
   const wLoc = W * 0.4;
   topo -= H_ROTULO;
-  celula(page, fontes, x, topo, wLoc, H_ROTULO, 'LOCALIZAÇÃO', { fundo: CINZA_ROTULO, cor: BRANCO, negrito: true, tamanho: 6.5 });
-  celula(page, fontes, x + wLoc, topo, W - wLoc, H_ROTULO, 'CÓDIGO ITEM', { fundo: CINZA_ROTULO, cor: BRANCO, negrito: true, tamanho: 6.5 });
+  celula(page, fontes, x, topo, wLoc, H_ROTULO, 'LOCALIZAÇÃO', rotulo);
+  celula(page, fontes, x + wLoc, topo, W - wLoc, H_ROTULO, 'CÓDIGO ITEM', rotulo);
   topo -= H_VALOR;
   celula(page, fontes, x, topo, wLoc, H_VALOR, e.localizacao, { negrito: true, tamanho: 10 });
   celula(page, fontes, x + wLoc, topo, W - wLoc, H_VALOR, e.codigo_sap, { negrito: true, tamanho: 11 });
 
-  // Aplicação | valor | Mínimo | (em branco, à mão)
+  // Aplicação | valor | Mínimo | valor (vazio = à mão)
   topo -= H_APLICACAO;
   const wRotApl = W * 0.24;
   const wApl = W * 0.36;
   const wRotMin = W * 0.2;
-  celula(page, fontes, x, topo, wRotApl, H_APLICACAO, 'APLICAÇÃO', { fundo: CINZA_ROTULO, cor: BRANCO, negrito: true, tamanho: 6.5 });
+  celula(page, fontes, x, topo, wRotApl, H_APLICACAO, 'APLICAÇÃO', rotulo);
   celula(page, fontes, x + wRotApl, topo, wApl, H_APLICACAO, e.aplicacao.toUpperCase(), { negrito: true, tamanho: 8.5 });
-  celula(page, fontes, x + wRotApl + wApl, topo, wRotMin, H_APLICACAO, 'MÍNIMO', { fundo: CINZA_ROTULO, cor: BRANCO, negrito: true, tamanho: 6.5 });
+  celula(page, fontes, x + wRotApl + wApl, topo, wRotMin, H_APLICACAO, 'MÍNIMO', rotulo);
   const minimo = e.minimo === null ? '' : e.minimo.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
   celula(page, fontes, x + wRotApl + wApl + wRotMin, topo, W - wRotApl - wApl - wRotMin, H_APLICACAO, minimo, { negrito: true, tamanho: 9 });
 
   // Imagem | QR code
   const wMeio = W / 2;
   topo -= H_ROTULO;
-  celula(page, fontes, x, topo, wMeio, H_ROTULO, 'IMAGEM', { fundo: CINZA_ROTULO, cor: BRANCO, negrito: true, tamanho: 6.5 });
-  celula(page, fontes, x + wMeio, topo, wMeio, H_ROTULO, 'QR CODE', { fundo: CINZA_ROTULO, cor: BRANCO, negrito: true, tamanho: 6.5 });
+  celula(page, fontes, x, topo, wMeio, H_ROTULO, 'IMAGEM', rotulo);
+  celula(page, fontes, x + wMeio, topo, wMeio, H_ROTULO, 'QR CODE', rotulo);
 
   const hArea = topo - y;
   celula(page, fontes, x, y, wMeio, hArea, '', { tamanho: 8 });
@@ -175,7 +189,7 @@ function desenharEtiqueta(page: PDFPage, fontes: Fontes, e: DadosEtiqueta, foto:
       y: y + hArea / 2 - t / 2,
       size: t,
       font: fontes.normal,
-      color: CINZA_ROTULO,
+      color: CINZA_AVISO,
     });
   }
 
@@ -183,8 +197,9 @@ function desenharEtiqueta(page: PDFPage, fontes: Fontes, e: DadosEtiqueta, foto:
   desenharQr(page, conteudoQrEtiqueta(e.codigo_sap), x + wMeio + (wMeio - lado) / 2, y + (hArea - lado) / 2, lado);
 }
 
-/** Monta o PDF com uma etiqueta por item, na ordem recebida. */
-export async function gerarPdfEtiquetasMaterial(etiquetas: DadosEtiqueta[]): Promise<PDFDocument> {
+/** Monta o PDF com uma etiqueta por item, na ordem recebida, na cor escolhida. */
+export async function gerarPdfEtiquetasMaterial(etiquetas: DadosEtiqueta[], cor: CorEtiqueta = 'cinza'): Promise<PDFDocument> {
+  const tema = temaDaCor(cor);
   const doc = await PDFDocument.create();
   doc.setTitle('Etiquetas de identificação de material');
   const fontes: Fontes = {
@@ -199,7 +214,7 @@ export async function gerarPdfEtiquetasMaterial(etiquetas: DadosEtiqueta[]): Pro
     const pos = posicaoDaEtiqueta(i);
     while (paginas.length <= pos.pagina) paginas.push(doc.addPage([595.28, 841.89]));
     const foto = e.url_foto ? await carregarFoto(doc, e.url_foto, cacheFotos) : null;
-    desenharEtiqueta(paginas[pos.pagina], fontes, e, foto, pos.x, pos.y);
+    desenharEtiqueta(paginas[pos.pagina], fontes, tema, e, foto, pos.x, pos.y);
   }
   return doc;
 }

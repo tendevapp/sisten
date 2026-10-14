@@ -33,6 +33,14 @@ export default defineConfig(() => {
         injectRegister: 'auto',
         workbox: {
           cleanupOutdatedCaches: true,
+          // O plugin liga por padrão um fallback de navegação para o
+          // `index.html` precacheado. Aqui o HTML NÃO entra no precache (ver
+          // `globPatterns` e o NetworkFirst de navegação abaixo), então o
+          // `createHandlerBoundToURL('index.html')` gerado lança
+          // `non-precached-url` ao iniciar o service worker — e, como esse
+          // registro vem ANTES das rotas de runtime, as rotas de navegação e
+          // do Qualidade offline nem chegam a ser registradas.
+          navigateFallback: null,
           // Só o essencial do app shell — código, estilo, ícones vetoriais e
           // fontes. Fotos/logos em PNG (ex.: logo-ten.png, ~2 MB) ficam de
           // fora do precache: carregam sob demanda pelo cache HTTP normal do

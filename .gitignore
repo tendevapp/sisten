@@ -28,6 +28,7 @@ outputs/
 
 # Configuracoes locais de ferramentas
 .mcp.json
+.codex/
 
 # Dispositivo reservado Windows / artefato temporario
 nul

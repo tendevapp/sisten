@@ -154,6 +154,45 @@ export function dadosEtiquetaDoItem(item: ItemParaEtiqueta, localizacao: string)
   };
 }
 
+// ---------------------------------------------------------------------------
+// Cor da etiqueta — escolhida na impressão. Pinta a faixa do título e as
+// células de rótulo (LOCALIZAÇÃO, CÓDIGO ITEM, APLICAÇÃO...). Valores e QR
+// seguem em preto sobre branco.
+// ---------------------------------------------------------------------------
+
+export type CorEtiqueta = 'cinza' | 'azul' | 'vermelho' | 'preto' | 'amarelo' | 'verde';
+
+export interface TemaEtiqueta {
+  rotulo: string;
+  /** Faixa do título. */
+  titulo: string;
+  /** Células de rótulo. */
+  celula: string;
+  /** Texto sobre essas faixas (o amarelo pede preto). */
+  texto: string;
+}
+
+export const CORES_ETIQUETA: Record<CorEtiqueta, TemaEtiqueta> = {
+  cinza: { rotulo: 'Cinza', titulo: '#454545', celula: '#666666', texto: '#ffffff' },
+  azul: { rotulo: 'Azul', titulo: '#1e3a8a', celula: '#2563eb', texto: '#ffffff' },
+  vermelho: { rotulo: 'Vermelho', titulo: '#991b1b', celula: '#dc2626', texto: '#ffffff' },
+  preto: { rotulo: 'Preto', titulo: '#000000', celula: '#262626', texto: '#ffffff' },
+  amarelo: { rotulo: 'Amarelo', titulo: '#facc15', celula: '#fde047', texto: '#000000' },
+  verde: { rotulo: 'Verde', titulo: '#166534', celula: '#16a34a', texto: '#ffffff' },
+};
+
+export const ORDEM_CORES_ETIQUETA: CorEtiqueta[] = ['cinza', 'azul', 'vermelho', 'preto', 'amarelo', 'verde'];
+
+export function ehCorEtiqueta(valor: unknown): valor is CorEtiqueta {
+  return typeof valor === 'string' && valor in CORES_ETIQUETA;
+}
+
+/** '#rrggbb' → componentes 0..1 (para o rgb() do pdf-lib). */
+export function hexParaRgb01(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255) as [number, number, number];
+}
+
 /** Grade da folha A4 (pt): 2 colunas × 5 linhas de etiquetas de 90 × 54 mm. */
 export const MM = 72 / 25.4;
 export const ETIQUETA_LARGURA = 90 * MM;
