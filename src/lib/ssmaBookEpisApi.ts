@@ -146,8 +146,26 @@ export async function urlFotoBookEpi(path: string | null): Promise<string | null
   return data?.signedUrl || null;
 }
 
+/**
+ * Só as colunas que a tela edita. O formulário nasce do registro lido do banco,
+ * que traz também `chave_importacao` (coluna gerada: o banco recusa qualquer
+ * valor nela — "can only be updated to DEFAULT"), id, datas e autores.
+ */
+export function camposEditaveisBookEpi(item: Partial<SalvarBookEpi>): Partial<SalvarBookEpi> {
+  const editaveis = [
+    'categoria', 'grupo_epi', 'descricao_epi', 'indicacao', 'ca', 'validade',
+    'fabricante', 'tamanho', 'codigo_sap', 'descricao_sap', 'ativo',
+  ] as const;
+  const campos: Record<string, unknown> = {};
+  for (const chave of editaveis) {
+    if (item[chave] !== undefined) campos[chave] = item[chave];
+  }
+  return campos as Partial<SalvarBookEpi>;
+}
+
 export async function salvarBookEpi(item: SalvarBookEpi): Promise<SsmaBookEpi> {
-  const { foto, id, ...campos } = item;
+  const { foto, id } = item;
+  const campos = camposEditaveisBookEpi(item);
   const anterior = id
     ? await tabelaItens().select('imagem_path').eq('id', id).single()
     : { data: null, error: null };

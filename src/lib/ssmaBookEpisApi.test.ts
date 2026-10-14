@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agruparBookEpis, chaveVarianteBookEpi, converterEpiEmAnexo, mensagemErroBookEpis } from './ssmaBookEpisApi';
+import { agruparBookEpis, camposEditaveisBookEpi, chaveVarianteBookEpi, converterEpiEmAnexo, mensagemErroBookEpis } from './ssmaBookEpisApi';
 
 describe('chaveVarianteBookEpi', () => {
   it('usa código SAP e CA para não fundir tamanhos ou certificados diferentes', () => {
@@ -47,5 +47,22 @@ describe('mensagemErroBookEpis', () => {
   it('orienta a aplicar a estrutura quando a Data API responde 404 para o Book', () => {
     expect(mensagemErroBookEpis({ status: 404, message: 'Failed to load resource' }))
       .toContain('ainda não está disponível no banco');
+  });
+});
+
+describe('camposEditaveisBookEpi', () => {
+  it('não manda a coluna gerada nem id/autor/datas no update (o banco recusa chave_importacao)', () => {
+    const doBanco = {
+      id: 'x', categoria: 'Membros Superiores', grupo_epi: 'Luva', descricao_epi: 'Luva ultraflex', indicacao: null,
+      ca: '8084', validade: 'Válido - 12/04/2029', fabricante: 'DVS', tamanho: 'Nº 10', codigo_sap: '1355907',
+      descricao_sap: 'LUVA SEG NBR AZ/BR LS 10', ativo: true, chave_importacao: '1355907|8084',
+      imagem_path: 'epis/a.jpg', criado_por: 'IMPORTAÇÃO SISTEN', created_at: '2026-09-21', updated_at: '2026-09-21', foto: null,
+    };
+    const campos = camposEditaveisBookEpi(doBanco as never);
+    expect(Object.keys(campos).sort()).toEqual([
+      'ativo', 'ca', 'categoria', 'codigo_sap', 'descricao_epi', 'descricao_sap', 'fabricante', 'grupo_epi', 'indicacao', 'tamanho', 'validade',
+    ]);
+    expect(campos).not.toHaveProperty('chave_importacao');
+    expect(campos.indicacao).toBeNull();
   });
 });

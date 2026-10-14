@@ -4,6 +4,7 @@ import {
   Camera,
   ChevronLeft,
   ClipboardList,
+  Eye,
   FileSpreadsheet,
   History,
   ImageIcon,
@@ -16,6 +17,7 @@ import {
   Table2,
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
+import { useLightbox } from '../../components/ui/Lightbox';
 import { buscarMateriais, type MaterialResultado } from '../../lib/materiais';
 import { deduplicarVariantesBookEpis, parseBookEpisWorkbook, type FotoBookEpi } from '../../lib/bookEpisImportacao';
 import {
@@ -44,19 +46,102 @@ function fotoDoArquivo(arquivo: File): FotoBookEpi {
   return { blob: arquivo, mimeType: arquivo.type || 'image/jpeg', nome: arquivo.name };
 }
 
-function FotoEpi({ item }: { item: SsmaBookEpi }) {
+function useUrlFotoEpi(path: string | null | undefined): string | null {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let ativo = true;
-    urlFotoBookEpi(item.imagem_path)
+    setUrl(null);
+    urlFotoBookEpi(path ?? null)
       .then(resultado => { if (ativo) setUrl(resultado); })
       .catch(() => { if (ativo) setUrl(null); });
     return () => { ativo = false; };
-  }, [item.imagem_path]);
+  }, [path]);
 
+  return url;
+}
+
+function FotoEpi({ item }: { item: Pick<SsmaBookEpi, 'imagem_path' | 'descricao_epi'> }) {
+  const url = useUrlFotoEpi(item.imagem_path);
   return url ? <img src={url} alt={item.descricao_epi} className="h-full w-full object-contain" /> : (
     <ImageIcon className="h-7 w-7 text-slate-300 dark:text-slate-600" aria-label="EPI sem imagem" />
+  );
+}
+
+/** Prévia da foto escolhida no aparelho, antes de subir. */
+function PreviaFotoArquivo({ foto }: { foto: FotoBookEpi }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const objeto = URL.createObjectURL(foto.blob);
+    setUrl(objeto);
+    return () => URL.revokeObjectURL(objeto);
+  }, [foto.blob]);
+  return url ? <img src={url} alt={foto.nome} className="h-full w-full object-contain" /> : null;
+}
+
+function Info({ label, valor, mono, largo }: { label: string; valor: string | null | undefined; mono?: boolean; largo?: boolean }) {
+  return (
+    <div className={largo ? 'sm:col-span-2' : undefined}>
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
+      <dd className={`mt-0.5 break-words text-sm text-slate-800 dark:text-slate-100 ${mono ? 'font-mono font-bold text-emerald-700 dark:text-emerald-400' : 'font-semibold'}`}>{valor || '—'}</dd>
+    </div>
+  );
+}
+
+/** Detalhe só para leitura; "Editar" abre o formulário. */
+function DetalheEpi({ item, historico, onEditar, onFechar, onAmpliar }: {
+  item: SsmaBookEpi;
+  historico: SsmaBookEpiHistorico[];
+  onEditar: () => void;
+  onFechar: () => void;
+  onAmpliar: (url: string) => void;
+}) {
+  const url = useUrlFotoEpi(item.imagem_path);
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 p-4" onMouseDown={e => { if (e.target === e.currentTarget) onFechar(); }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="titulo-detalhe-epi" className="mx-auto my-4 max-w-3xl rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4 dark:border-slate-800">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">{item.categoria} · {item.grupo_epi}</p>
+            <h2 id="titulo-detalhe-epi" className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-50">{item.descricao_sap || item.descricao_epi}</h2>
+            <span className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${item.ativo ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'}`}>{item.ativo ? 'Ativo no Book e em Compras' : 'Inativo'}</span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button type="button" onClick={onEditar} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"><Pencil className="h-3.5 w-3.5" /> Editar</button>
+            <button type="button" onClick={onFechar} className="rounded-lg px-2 py-1 text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800">Fechar</button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-5 sm:grid-cols-[220px_minmax(0,1fr)]">
+          <button
+            type="button"
+            disabled={!url}
+            onClick={() => url && onAmpliar(url)}
+            title={url ? 'Ampliar foto' : undefined}
+            className="flex h-56 w-full items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 disabled:cursor-default dark:border-slate-700 dark:bg-slate-800"
+          >
+            {url ? <img src={url} alt={item.descricao_epi} className="h-full w-full object-contain" /> : (
+              <span className="flex flex-col items-center gap-1 text-xs text-slate-400"><ImageIcon className="h-8 w-8" /> Sem foto</span>
+            )}
+          </button>
+          <dl className="grid content-start gap-x-4 gap-y-3 sm:grid-cols-2">
+            <Info label="Código SAP" valor={item.codigo_sap} mono />
+            <Info label="CA" valor={item.ca} />
+            <Info label="Tamanho" valor={item.tamanho} />
+            <Info label="Validade" valor={item.validade} />
+            <Info label="Descrição do EPI" valor={item.descricao_epi} largo />
+            <Info label="Descrição SAP" valor={item.descricao_sap} largo />
+            <Info label="Fabricante" valor={item.fabricante} largo />
+            <Info label="Indicação" valor={item.indicacao} largo />
+          </dl>
+        </div>
+
+        <div className="mt-5 border-t pt-4 dark:border-slate-800">
+          <h3 className="flex items-center gap-2 text-sm font-bold"><History className="h-4 w-4" /> Histórico de alterações</h3>
+          <ul className="mt-2 space-y-1 text-xs text-slate-500">{historico.length ? historico.map(registro => <li key={registro.id}>{new Date(registro.alterado_em).toLocaleString('pt-BR')} · {registro.operacao.toLowerCase()} por {registro.alterado_por}</li>) : <li>Sem alterações registradas além da criação.</li>}</ul>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -80,6 +165,8 @@ export default function SsmaBookEpisView({ onBack }: Props) {
   const [mostrarInativos, setMostrarInativos] = useState(false);
   const [modoExibicao, setModoExibicao] = useState<'cards' | 'tabela'>('cards');
   const [editando, setEditando] = useState<SalvarBookEpi | null>(null);
+  const [visualizando, setVisualizando] = useState<SsmaBookEpi | null>(null);
+  const lightbox = useLightbox();
   const [historico, setHistorico] = useState<SsmaBookEpiHistorico[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [buscaSap, setBuscaSap] = useState<MaterialResultado[]>([]);
@@ -105,8 +192,25 @@ export default function SsmaBookEpisView({ onBack }: Props) {
   })), [itens, categoria, termo]);
   const variantesFiltradas = useMemo(() => grupos.flatMap(grupo => grupo.itens), [grupos]);
 
+  const carregarHistorico = async (id: string) => {
+    try {
+      setHistorico(await listarHistoricoBookEpi(id));
+    } catch (erro) {
+      setHistorico([]);
+      toast.error(mensagemErroBookEpis(erro));
+    }
+  };
+
+  /** Clique na variante: abre só para visualizar. */
+  const abrirDetalhe = (item: SsmaBookEpi) => {
+    setHistorico([]);
+    setVisualizando(item);
+    void carregarHistorico(item.id);
+  };
+
   const abrirEdicao = async (item?: SsmaBookEpi) => {
     setBuscaSap([]);
+    setVisualizando(null);
     if (!item) {
       setHistorico([]);
       setEditando({ ...VAZIO });
@@ -124,6 +228,25 @@ export default function SsmaBookEpisView({ onBack }: Props) {
   const atualizar = <K extends keyof SalvarBookEpi>(chave: K, valor: SalvarBookEpi[K]) => {
     setEditando(atual => atual ? { ...atual, [chave]: valor } : atual);
   };
+
+  // Ctrl+V com imagem na área de transferência vira a foto nova (print, foto copiada
+  // do site do fabricante). Colar texto num campo segue normal: só intercepta imagem.
+  const editandoAberto = editando !== null;
+  useEffect(() => {
+    if (!editandoAberto) return;
+    const aoColar = (e: ClipboardEvent) => {
+      const item = Array.from(e.clipboardData?.items ?? []).find(i => i.kind === 'file' && i.type.startsWith('image/'));
+      const arquivo = item?.getAsFile();
+      if (!arquivo) return;
+      e.preventDefault();
+      const extensao = (arquivo.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+      const nome = arquivo.name && arquivo.name !== 'image.png' ? arquivo.name : `epi-colado-${Date.now()}.${extensao}`;
+      atualizar('foto', { blob: arquivo, mimeType: arquivo.type || 'image/png', nome });
+      toast.success('Imagem colada. Ela entra como foto ao salvar.');
+    };
+    document.addEventListener('paste', aoColar);
+    return () => document.removeEventListener('paste', aoColar);
+  }, [editandoAberto]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pesquisarSap = async () => {
     if (!editando) return;
@@ -154,9 +277,11 @@ export default function SsmaBookEpisView({ onBack }: Props) {
     }
     setSalvando(true);
     try {
-      await salvarBookEpi(editando);
+      const salvo = await salvarBookEpi(editando);
       toast.success('EPI salvo. A alteração foi registrada no histórico.');
       setEditando(null);
+      // Volta para os detalhes já com a foto/dados novos.
+      abrirDetalhe(salvo);
       await carregar();
     } catch (erro) {
       toast.error(mensagemErroBookEpis(erro));
@@ -230,11 +355,22 @@ export default function SsmaBookEpisView({ onBack }: Props) {
       ) : modoExibicao === 'tabela' ? (
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800"><h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Variantes do Book</h2><p className="mt-0.5 text-xs text-slate-500">Cada linha corresponde a um tamanho, CA e código SAP individuais.</p></div>
-          <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400"><tr><th className="px-4 py-3 font-bold">EPI</th><th className="px-3 py-3 font-bold">Categoria / grupo</th><th className="px-3 py-3 font-bold">SAP</th><th className="px-3 py-3 font-bold">CA</th><th className="px-3 py-3 font-bold">Tamanho</th><th className="px-3 py-3 font-bold">Validade</th><th className="px-3 py-3 font-bold">Fabricante</th><th className="px-4 py-3 text-right font-bold">Situação</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-800">{variantesFiltradas.map(item => <tr key={item.id} role="button" tabIndex={0} onClick={() => abrirEdicao(item)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); abrirEdicao(item); } }} className="cursor-pointer align-middle transition-colors hover:bg-emerald-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500 dark:hover:bg-emerald-950/20"><td className="px-4 py-3"><div className="flex min-w-[210px] items-center gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-50 dark:bg-slate-800"><FotoEpi item={item} /></div><div className="min-w-0"><p className="max-w-[230px] truncate font-bold text-slate-900 dark:text-slate-100">{item.descricao_epi}</p><p className="mt-0.5 text-slate-500">Abrir detalhes para editar</p></div></div></td><td className="px-3 py-3"><p className="font-semibold text-slate-700 dark:text-slate-200">{item.grupo_epi}</p><p className="mt-0.5 text-slate-500">{item.categoria}</p></td><td className="px-3 py-3"><p className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{item.codigo_sap || '—'}</p><p className="mt-0.5 max-w-[220px] truncate text-slate-500">{item.descricao_sap || 'Sem descrição SAP'}</p></td><td className="px-3 py-3 font-semibold text-slate-700 dark:text-slate-200">{item.ca || '—'}</td><td className="px-3 py-3 text-slate-600 dark:text-slate-300">{item.tamanho || '—'}</td><td className="px-3 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">{item.validade || '—'}</td><td className="px-3 py-3 text-slate-600 dark:text-slate-300">{item.fabricante || '—'}</td><td className="px-4 py-3 text-right"><span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-bold ${item.ativo ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'}`}>{item.ativo ? 'Ativo' : 'Inativo'}</span></td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400"><tr><th className="px-4 py-3 font-bold">EPI</th><th className="px-3 py-3 font-bold">Categoria / grupo</th><th className="px-3 py-3 font-bold">SAP</th><th className="px-3 py-3 font-bold">CA</th><th className="px-3 py-3 font-bold">Tamanho</th><th className="px-3 py-3 font-bold">Validade</th><th className="px-3 py-3 font-bold">Fabricante</th><th className="px-4 py-3 text-right font-bold">Situação</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-800">{variantesFiltradas.map(item => <tr key={item.id} role="button" tabIndex={0} onClick={() => abrirDetalhe(item)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); abrirDetalhe(item); } }} className="cursor-pointer align-middle transition-colors hover:bg-emerald-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500 dark:hover:bg-emerald-950/20"><td className="px-4 py-3"><div className="flex min-w-[210px] items-center gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-50 dark:bg-slate-800"><FotoEpi item={item} /></div><div className="min-w-0"><p className="max-w-[230px] truncate font-bold text-slate-900 dark:text-slate-100">{item.descricao_epi}</p><p className="mt-0.5 text-slate-500">Abrir detalhes</p></div></div></td><td className="px-3 py-3"><p className="font-semibold text-slate-700 dark:text-slate-200">{item.grupo_epi}</p><p className="mt-0.5 text-slate-500">{item.categoria}</p></td><td className="px-3 py-3"><p className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{item.codigo_sap || '—'}</p><p className="mt-0.5 max-w-[220px] truncate text-slate-500">{item.descricao_sap || 'Sem descrição SAP'}</p></td><td className="px-3 py-3 font-semibold text-slate-700 dark:text-slate-200">{item.ca || '—'}</td><td className="px-3 py-3 text-slate-600 dark:text-slate-300">{item.tamanho || '—'}</td><td className="px-3 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">{item.validade || '—'}</td><td className="px-3 py-3 text-slate-600 dark:text-slate-300">{item.fabricante || '—'}</td><td className="px-4 py-3 text-right"><span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-bold ${item.ativo ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'}`}>{item.ativo ? 'Ativo' : 'Inativo'}</span></td></tr>)}</tbody></table></div>
         </section>
       ) : <div className="space-y-7">{grupos.map(grupo => <section key={`${grupo.categoria}-${grupo.grupoEpi}`} className="space-y-3"><div className="flex items-end justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">{grupo.categoria}</p><h2 className="text-base font-bold text-slate-900 dark:text-slate-100">{grupo.grupoEpi}</h2></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{grupo.itens.length} {grupo.itens.length === 1 ? 'variante' : 'variantes'}</span></div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{grupo.itens.map(item => <button key={item.id} type="button" onClick={() => abrirEdicao(item)} className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:bg-slate-900 dark:hover:border-emerald-700 ${item.ativo ? 'border-slate-200 dark:border-slate-800' : 'border-amber-300 opacity-75 dark:border-amber-700'}`}><div className="flex gap-3 p-4"><div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-50 dark:bg-slate-800"><FotoEpi item={item} /></div><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><p className="min-h-[2.5rem] break-words text-sm font-bold leading-snug text-slate-900 dark:text-slate-100">{item.descricao_sap || item.descricao_epi}</p><Pencil className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-emerald-600 dark:text-slate-600" /></div><dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs"><div><dt className="text-slate-400">Código SAP</dt><dd className="mt-0.5 font-mono font-bold text-emerald-700 dark:text-emerald-400">{item.codigo_sap || '—'}</dd></div><div><dt className="text-slate-400">CA</dt><dd className="mt-0.5 font-semibold text-slate-700 dark:text-slate-200">{item.ca || '—'}</dd></div><div><dt className="text-slate-400">Tamanho</dt><dd className="mt-0.5 truncate font-semibold text-slate-700 dark:text-slate-200">{item.tamanho || '—'}</dd></div><div><dt className="text-slate-400">Validade</dt><dd className="mt-0.5 truncate font-semibold text-slate-700 dark:text-slate-200">{item.validade || '—'}</dd></div></dl><p className="mt-3 text-xs font-bold text-emerald-700 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 dark:text-emerald-400">Ver detalhes e editar</p></div></div></button>)}</div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{grupo.itens.map(item => <button key={item.id} type="button" onClick={() => abrirDetalhe(item)} className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:bg-slate-900 dark:hover:border-emerald-700 ${item.ativo ? 'border-slate-200 dark:border-slate-800' : 'border-amber-300 opacity-75 dark:border-amber-700'}`}><div className="flex gap-3 p-4"><div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-50 dark:bg-slate-800"><FotoEpi item={item} /></div><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><p className="min-h-[2.5rem] break-words text-sm font-bold leading-snug text-slate-900 dark:text-slate-100">{item.descricao_sap || item.descricao_epi}</p><Eye className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-emerald-600 dark:text-slate-600" /></div><dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs"><div><dt className="text-slate-400">Código SAP</dt><dd className="mt-0.5 font-mono font-bold text-emerald-700 dark:text-emerald-400">{item.codigo_sap || '—'}</dd></div><div><dt className="text-slate-400">CA</dt><dd className="mt-0.5 font-semibold text-slate-700 dark:text-slate-200">{item.ca || '—'}</dd></div><div><dt className="text-slate-400">Tamanho</dt><dd className="mt-0.5 truncate font-semibold text-slate-700 dark:text-slate-200">{item.tamanho || '—'}</dd></div><div><dt className="text-slate-400">Validade</dt><dd className="mt-0.5 truncate font-semibold text-slate-700 dark:text-slate-200">{item.validade || '—'}</dd></div></dl><p className="mt-3 text-xs font-bold text-emerald-700 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 dark:text-emerald-400">Ver detalhes</p></div></div></button>)}</div>
       </section>)}</div>}
+
+      {visualizando && !editando && (
+        <DetalheEpi
+          item={visualizando}
+          historico={historico}
+          onEditar={() => void abrirEdicao(visualizando)}
+          onFechar={() => setVisualizando(null)}
+          onAmpliar={url => lightbox.abrir([{ url, legenda: visualizando.descricao_sap || visualizando.descricao_epi }])}
+        />
+      )}
+      {lightbox.elemento}
 
       {editando && <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 p-4"><div role="dialog" aria-modal="true" aria-labelledby="titulo-edicao-epi" className="mx-auto my-4 max-w-4xl rounded-2xl bg-white p-5 shadow-2xl dark:bg-slate-900"><div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4 dark:border-slate-800"><div><p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Detalhes da variante</p><h2 id="titulo-edicao-epi" className="mt-1 text-lg font-bold">{editando.id ? 'Editar variante de EPI' : 'Nova variante de EPI'}</h2><p className="mt-1 text-xs text-slate-500">O código SAP e o CA formam a identidade da variante. Alterações ficam auditáveis.</p></div><button type="button" onClick={() => setEditando(null)} className="rounded-lg px-2 py-1 text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800">Fechar</button></div>
         <div className="mt-5 grid gap-3 md:grid-cols-2"><Campo label="Categoria"><input value={editando.categoria} onChange={e => atualizar('categoria', e.target.value)} className="rounded-lg border p-2 dark:border-slate-700 dark:bg-slate-800" /></Campo><Campo label="Grupo (mesmo item)"><input value={editando.grupo_epi} onChange={e => atualizar('grupo_epi', e.target.value)} className="rounded-lg border p-2 dark:border-slate-700 dark:bg-slate-800" /></Campo><Campo label="Descrição do EPI"><input value={editando.descricao_epi} onChange={e => atualizar('descricao_epi', e.target.value)} className="rounded-lg border p-2 dark:border-slate-700 dark:bg-slate-800" /></Campo><Campo label="Tamanho"><input value={editando.tamanho || ''} onChange={e => atualizar('tamanho', e.target.value || null)} className="rounded-lg border p-2 dark:border-slate-700 dark:bg-slate-800" /></Campo><Campo label="CA"><input value={editando.ca} onChange={e => atualizar('ca', e.target.value)} className="rounded-lg border p-2 dark:border-slate-700 dark:bg-slate-800" /></Campo><Campo label="Validade"><input value={editando.validade || ''} onChange={e => atualizar('validade', e.target.value || null)} className="rounded-lg border p-2 dark:border-slate-700 dark:bg-slate-800" /></Campo><Campo label="Fabricante"><input value={editando.fabricante || ''} onChange={e => atualizar('fabricante', e.target.value || null)} className="rounded-lg border p-2 dark:border-slate-700 dark:bg-slate-800" /></Campo><Campo label="Indicação"><input value={editando.indicacao || ''} onChange={e => atualizar('indicacao', e.target.value || null)} className="rounded-lg border p-2 dark:border-slate-700 dark:bg-slate-800" /></Campo>
@@ -242,7 +378,16 @@ export default function SsmaBookEpisView({ onBack }: Props) {
           <Campo label="Código SAP"><input value={editando.codigo_sap || ''} readOnly className="rounded-lg border bg-slate-50 p-2 text-slate-600 dark:border-slate-700 dark:bg-slate-800" /></Campo><Campo label="Situação"><span className="flex items-center gap-2 rounded-lg border p-2 text-sm font-normal dark:border-slate-700"><input type="checkbox" checked={editando.ativo} onChange={e => atualizar('ativo', e.target.checked)} /> Ativo no Book e em Compras</span></Campo>
         </div>
         {buscaSap.length > 0 && <div className="mt-3 rounded-xl border border-emerald-100 p-2 dark:border-emerald-900">{buscaSap.map(resultado => <button key={resultado.materialCode} type="button" onClick={() => { atualizar('codigo_sap', resultado.materialCode); atualizar('descricao_sap', resultado.description); setBuscaSap([]); }} className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/40"><span className="text-xs font-semibold">{resultado.description}</span><span className="font-mono text-xs text-emerald-700">{resultado.materialCode}</span></button>)}</div>}
-        <div className="mt-4 flex flex-wrap items-center gap-2"><input ref={inputFoto} type="file" accept="image/*" className="hidden" onChange={e => { const arquivo = e.target.files?.[0]; e.target.value = ''; if (arquivo) atualizar('foto', fotoDoArquivo(arquivo)); }} /><button type="button" onClick={() => inputFoto.current?.click()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold"><Camera className="h-4 w-4" /> {editando.foto ? `Foto selecionada: ${editando.foto.nome}` : 'Trocar foto'}</button><button type="button" onClick={salvar} disabled={salvando} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60">{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Salvar com histórico</button></div>
+        <div className="mt-4 flex items-center gap-3">
+          <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
+            {editando.foto ? <PreviaFotoArquivo foto={editando.foto} /> : <FotoEpi item={{ imagem_path: itens.find(i => i.id === editando.id)?.imagem_path ?? null, descricao_epi: editando.descricao_epi }} />}
+          </div>
+          <p className="text-xs text-slate-500">
+            {editando.foto ? <>Nova foto: <strong className="text-slate-700 dark:text-slate-200">{editando.foto.nome}</strong> — entra ao salvar.</> : 'Foto atual da variante.'}
+            <span className="mt-1 block text-[11px] text-slate-400">Troque pelo botão abaixo ou cole uma imagem com <kbd className="rounded border border-slate-300 px-1 font-mono text-[10px] dark:border-slate-600">Ctrl</kbd>+<kbd className="rounded border border-slate-300 px-1 font-mono text-[10px] dark:border-slate-600">V</kbd>.</span>
+          </p>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2"><input ref={inputFoto} type="file" accept="image/*" className="hidden" onChange={e => { const arquivo = e.target.files?.[0]; e.target.value = ''; if (arquivo) atualizar('foto', fotoDoArquivo(arquivo)); }} /><button type="button" onClick={() => inputFoto.current?.click()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold"><Camera className="h-4 w-4" /> {editando.foto ? 'Escolher outra foto' : 'Trocar foto'}</button><button type="button" onClick={salvar} disabled={salvando} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60">{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Salvar com histórico</button></div>
         {editando.id && <div className="mt-5 border-t pt-4 dark:border-slate-800"><h3 className="flex items-center gap-2 text-sm font-bold"><History className="h-4 w-4" /> Histórico de alterações</h3><ul className="mt-2 space-y-1 text-xs text-slate-500">{historico.length ? historico.map(registro => <li key={registro.id}>{new Date(registro.alterado_em).toLocaleString('pt-BR')} · {registro.operacao.toLowerCase()} por {registro.alterado_por}</li>) : <li>Sem alterações registradas além da criação.</li>}</ul></div>}
       </div></div>}
     </div>
