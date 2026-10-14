@@ -16,6 +16,7 @@ import {
   haItemQrPendente,
   hashSemItem,
   itemDaRota,
+  numeroOuNull,
   posicaoDaEtiqueta,
 } from './etiquetaMaterial';
 
@@ -86,16 +87,27 @@ describe('dadosEtiquetaDoItem', () => {
         codigo_sap: '1437274',
         descricao: 'BITS JG 2PC ACLG FOSF MAKITA',
         url_foto: null,
-        item_catalogo: { etiqueta_descricao: 'BITS JG 2PC ACLG FOSF', etiqueta_aplicacao: 'PRODUÇÃO' },
+        item_catalogo: { etiqueta_descricao: 'BITS JG 2PC ACLG FOSF', etiqueta_aplicacao: 'PRODUÇÃO', estoque_minimo: '5' },
       },
       '104240309',
     );
-    expect(d).toMatchObject({ descricao: 'BITS JG 2PC ACLG FOSF', aplicacao: 'PRODUÇÃO', localizacao: '104240309' });
+    expect(d).toMatchObject({ descricao: 'BITS JG 2PC ACLG FOSF', aplicacao: 'PRODUÇÃO', localizacao: '104240309', minimo: 5 });
   });
 
   it('sem cadastro, sai a descrição do SAP e a aplicação em branco', () => {
     const d = dadosEtiquetaDoItem({ codigo_sap: '1418654', descricao: 'ADAPTADOR CT PEAD 3/4" AZ' }, '');
-    expect(d).toMatchObject({ descricao: 'ADAPTADOR CT PEAD 3/4" AZ', aplicacao: '', localizacao: '' });
+    expect(d).toMatchObject({ descricao: 'ADAPTADOR CT PEAD 3/4" AZ', aplicacao: '', localizacao: '', minimo: null });
+  });
+
+  it('estoque mínimo aceita vírgula e recusa vazio, negativo e texto', () => {
+    expect(numeroOuNull('2,5')).toBe(2.5);
+    expect(numeroOuNull(10)).toBe(10);
+    expect(numeroOuNull('0')).toBe(0);
+    expect(numeroOuNull('')).toBeNull();
+    expect(numeroOuNull('  ')).toBeNull();
+    expect(numeroOuNull('-3')).toBeNull();
+    expect(numeroOuNull('abc')).toBeNull();
+    expect(numeroOuNull(null)).toBeNull();
   });
 });
 

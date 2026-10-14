@@ -149,7 +149,8 @@ function desenharEtiqueta(page: PDFPage, fontes: Fontes, e: DadosEtiqueta, foto:
   celula(page, fontes, x, topo, wRotApl, H_APLICACAO, 'APLICAÇÃO', { fundo: CINZA_ROTULO, cor: BRANCO, negrito: true, tamanho: 6.5 });
   celula(page, fontes, x + wRotApl, topo, wApl, H_APLICACAO, e.aplicacao.toUpperCase(), { negrito: true, tamanho: 8.5 });
   celula(page, fontes, x + wRotApl + wApl, topo, wRotMin, H_APLICACAO, 'MÍNIMO', { fundo: CINZA_ROTULO, cor: BRANCO, negrito: true, tamanho: 6.5 });
-  celula(page, fontes, x + wRotApl + wApl + wRotMin, topo, W - wRotApl - wApl - wRotMin, H_APLICACAO, '', { tamanho: 8 });
+  const minimo = e.minimo === null ? '' : e.minimo.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+  celula(page, fontes, x + wRotApl + wApl + wRotMin, topo, W - wRotApl - wApl - wRotMin, H_APLICACAO, minimo, { negrito: true, tamanho: 9 });
 
   // Imagem | QR code
   const wMeio = W / 2;

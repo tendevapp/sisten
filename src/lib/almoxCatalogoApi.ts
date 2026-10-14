@@ -50,6 +50,8 @@ export interface CatalogoItem {
   etiqueta_descricao?: string | null;
   etiqueta_aplicacao?: string | null;
   etiqueta_impressa_em?: string | null;
+  /** Estoque mínimo digitado no cadastro (sai na etiqueta). */
+  estoque_minimo?: number | null;
   ativo: boolean;
   criado_por: string;
   criado_por_nome: string | null;
@@ -127,6 +129,8 @@ export interface SalvarItemCatalogoPayload {
   posicao_estoque?: string | null;
   etiqueta_descricao?: string | null;
   etiqueta_aplicacao?: string | null;
+  /** undefined mantém o gravado; null apaga. */
+  estoque_minimo?: number | null;
   fotoArquivo?: File | null;
   removerFoto?: boolean;
 }
@@ -1323,6 +1327,7 @@ function linhaDoPayload(
     posicao_estoque: texto('posicao_estoque'),
     etiqueta_descricao: texto('etiqueta_descricao'),
     etiqueta_aplicacao: texto('etiqueta_aplicacao'),
+    estoque_minimo: payload.estoque_minimo !== undefined ? payload.estoque_minimo : existente?.estoque_minimo ?? null,
     ativo: true,
     criado_por: existente?.criado_por || user.id,
     criado_por_nome: existente?.criado_por_nome || user.name,

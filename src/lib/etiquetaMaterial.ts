@@ -112,6 +112,8 @@ export interface DadosEtiqueta {
   descricao: string;
   localizacao: string;
   aplicacao: string;
+  /** Estoque mínimo do cadastro; null sai em branco na etiqueta (preenchido à mão). */
+  minimo: number | null;
   /** Caminho da foto no Storage (catálogo ou Book de EPIs), se houver. */
   url_foto: string | null;
 }
@@ -123,12 +125,22 @@ interface ItemParaEtiqueta {
   item_catalogo?: {
     etiqueta_descricao?: string | null;
     etiqueta_aplicacao?: string | null;
+    estoque_minimo?: number | string | null;
   } | null;
+}
+
+/** Número de um campo que pode vir como texto do formulário ("5", "2,5") ou do banco. */
+export function numeroOuNull(valor: number | string | null | undefined): number | null {
+  if (valor === null || valor === undefined) return null;
+  const texto = String(valor).trim().replace(',', '.');
+  if (!texto) return null;
+  const n = Number(texto);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 /**
  * O que vai impresso: o editado no cadastro vale mais; sem edição, o do SAP.
- * O mínimo não entra — a célula sai em branco para ser preenchida à mão.
+ * Sem estoque mínimo no cadastro, a célula sai em branco para preencher à mão.
  */
 export function dadosEtiquetaDoItem(item: ItemParaEtiqueta, localizacao: string): DadosEtiqueta {
   const cat = item.item_catalogo;
@@ -137,6 +149,7 @@ export function dadosEtiquetaDoItem(item: ItemParaEtiqueta, localizacao: string)
     descricao: (cat?.etiqueta_descricao || item.descricao || item.codigo_sap).trim(),
     localizacao: localizacao.trim(),
     aplicacao: (cat?.etiqueta_aplicacao ?? '').trim(),
+    minimo: numeroOuNull(cat?.estoque_minimo),
     url_foto: item.url_foto ?? null,
   };
 }

@@ -35,7 +35,7 @@ import {
   type MaterialCandidatoCatalogo,
   type DadosCatalogoCompleto,
 } from '../../lib/almoxCatalogoApi';
-import { dadosEtiquetaDoItem, type DadosEtiqueta } from '../../lib/etiquetaMaterial';
+import { dadosEtiquetaDoItem, numeroOuNull, type DadosEtiqueta } from '../../lib/etiquetaMaterial';
 import { gerarPdfEtiquetasMaterial } from '../../lib/pdfExport/exportEtiquetasMaterialPdf';
 import PdfPreviewModal, { type PdfGerado } from '../../components/ui/PdfPreviewModal';
 import CompletarEtiquetasModal, { type LinhaFaltante, type ValoresPreenchidos } from '../../components/almoxarifado/CompletarEtiquetasModal';
@@ -93,6 +93,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [posicaoFoto, setPosicaoFoto] = useState('');
   const [etiquetaDescricao, setEtiquetaDescricao] = useState('');
   const [etiquetaAplicacao, setEtiquetaAplicacao] = useState('');
+  const [estoqueMinimo, setEstoqueMinimo] = useState('');
   // Itens marcados para imprimir etiqueta (por código SAP)
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   // Pré-visualização do PDF (gerador estável para o modal não refazer o PDF a cada render)
@@ -373,6 +374,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setPosicaoFoto(item.item_catalogo?.posicao_estoque || '');
     setEtiquetaDescricao(item.item_catalogo?.etiqueta_descricao || '');
     setEtiquetaAplicacao(item.item_catalogo?.etiqueta_aplicacao || '');
+    const minimoGravado = item.item_catalogo?.estoque_minimo;
+    setEstoqueMinimo(minimoGravado === null || minimoGravado === undefined ? '' : String(minimoGravado).replace('.', ','));
   };
 
   const fecharModalFoto = () => {
@@ -386,6 +389,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setPosicaoFoto('');
     setEtiquetaDescricao('');
     setEtiquetaAplicacao('');
+    setEstoqueMinimo('');
   };
 
   // Selecionar foto do arquivo ou captura
@@ -422,7 +426,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     const cat = item.item_catalogo;
     return posicaoFoto.trim() !== (cat?.posicao_estoque || '').trim()
       || etiquetaDescricao.trim() !== (cat?.etiqueta_descricao || '').trim()
-      || etiquetaAplicacao.trim() !== (cat?.etiqueta_aplicacao || '').trim();
+      || etiquetaAplicacao.trim() !== (cat?.etiqueta_aplicacao || '').trim()
+      || numeroOuNull(estoqueMinimo) !== numeroOuNull(cat?.estoque_minimo);
   };
 
   /** Abre a pré-visualização; a data de impressão só é carimbada ao baixar. */
@@ -532,7 +537,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     const dados = dadosEtiquetaDoItem(
       {
         ...itemSelecionado,
-        item_catalogo: { etiqueta_descricao: etiquetaDescricao.trim(), etiqueta_aplicacao: etiquetaAplicacao.trim() },
+        item_catalogo: { etiqueta_descricao: etiquetaDescricao.trim(), etiqueta_aplicacao: etiquetaAplicacao.trim(), estoque_minimo: numeroOuNull(estoqueMinimo) },
       },
       posicaoDigitada || posicaoDoMaterial(itemSelecionado.codigo_sap, null, posicoesPorMaterial),
     );
@@ -583,6 +588,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         posicao_estoque: posicaoFoto,
         etiqueta_descricao: etiquetaDescricao,
         etiqueta_aplicacao: etiquetaAplicacao,
+        estoque_minimo: numeroOuNull(estoqueMinimo),
         fotoArquivo,
       }, user);
 
@@ -1415,6 +1421,14 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         </span>
                       </div>
                     )}
+                    {item.item_catalogo?.estoque_minimo !== null && item.item_catalogo?.estoque_minimo !== undefined && (
+                      <div className="flex items-center justify-between">
+                        <span style={{ color: 'var(--ink-muted)' }}>Estoque mínimo:</span>
+                        <span className="font-mono font-bold" style={{ color: 'var(--ink-secondary)' }}>
+                          {Number(item.item_catalogo.estoque_minimo).toLocaleString('pt-BR')} {item.umb}
+                        </span>
+                      </div>
+                    )}
                     {item.item_catalogo?.etiqueta_impressa_em && (
                       <div className="flex items-center justify-between">
                         <span style={{ color: 'var(--ink-muted)' }}>Etiqueta impressa:</span>
@@ -1742,8 +1756,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               </div>
 
               {/* Etiqueta de prateleira */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div className="sm:col-span-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="col-span-2">
                   <label className="text-xs font-bold block mb-1" style={{ color: 'var(--ink-primary)' }}>
                     Descrição na etiqueta
                   </label>
@@ -1769,8 +1783,22 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                     style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
                   />
                 </div>
-                <p className="sm:col-span-3 text-[10px]" style={{ color: 'var(--ink-muted)' }}>
-                  Descrição em branco usa a do SAP. O mínimo sai em branco na etiqueta, para preencher à mão.
+                <div>
+                  <label className="text-xs font-bold block mb-1" style={{ color: 'var(--ink-primary)' }}>
+                    Estoque mínimo
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={estoqueMinimo}
+                    onChange={(e) => setEstoqueMinimo(e.target.value.replace(/[^0-9.,]/g, ''))}
+                    placeholder={`Ex: 5 ${itemSelecionado.umb || ''}`.trim()}
+                    className="w-full p-2.5 text-xs rounded-lg border tabular-nums focus:outline-2 focus:outline-offset-1"
+                    style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+                  />
+                </div>
+                <p className="col-span-2 sm:col-span-4 text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+                  Descrição em branco usa a do SAP. Estoque mínimo em branco sai vazio na etiqueta, para preencher à mão.
                 </p>
               </div>
 

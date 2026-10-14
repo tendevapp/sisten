@@ -12,6 +12,7 @@ const etiqueta = (i: number): DadosEtiqueta => ({
   descricao: i === 0 ? 'BITS JG 2PC ACLG FOSF' : `ADAPTADOR CT PEAD 3/4" AZ — DESCRIÇÃO MUITO LONGA PARA CABER NA ETIQUETA ${i}`,
   localizacao: '104240309',
   aplicacao: i % 2 ? '' : 'PRODUÇÃO',
+  minimo: i === 0 ? 5 : i === 2 ? 2.5 : null,
   url_foto: null,
 });
 
