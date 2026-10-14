@@ -34,7 +34,7 @@
  */
 
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Boxes, Calendar, Check, ChevronDown, ChevronRight, Copy, ExternalLink, Layers, Mail, PackageCheck, Settings2, Truck, X } from 'lucide-react';
+import { AlertTriangle, Boxes, Calendar, Check, ChevronDown, ChevronRight, Copy, ExternalLink, Layers, Loader2, Mail, PackageCheck, Settings2, Truck, X } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { AlmoxarifadoChegada, BahiaSulEntrega, DiligenciamentoItem, EnrichedSAPRecord, PrazoTransporte, Profile, Transportadora } from '../../types';
 import { resumirBahiaSulPorPo } from '../../lib/bahiasul';
@@ -510,6 +510,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
         { id: user.id, nome: user.name },
       );
       await carregarDiligenciamento();
+      toast.success('Data de faturamento salva.');
     } catch (e) {
       console.error('Falha ao salvar faturamento:', e);
       toast.error('Não foi possível salvar a data de faturamento.');
@@ -524,7 +525,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
       );
       const refletiu = await propagarPrevisaoParaRastreio(item, undefined, data);
       await carregarDiligenciamento();
-      if (refletiu) toast.success('Previsão atualizada — já refletida no Rastreio Compras.');
+      toast.success(refletiu ? 'Previsão atualizada — já refletida no Rastreio Compras.' : 'Previsão salva.');
     } catch (e) {
       console.error('Falha ao salvar previsão manual:', e);
       toast.error('Não foi possível salvar a previsão.');
@@ -1056,14 +1057,11 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                                       <PrevisaoCelula item={item} vencido={vencido} onAbrirPrazos={() => setPrazosAberto(true)} onSalvar={salvarPrevisaoManual} />
                                     </Td>
                                     <Td>
-                                      <input
-                                        type="date"
-                                        aria-label={`Faturamento da transportadora — PO ${item.docCompra} item ${item.material}`}
-                                        defaultValue={item.faturamentoTransportadora || ''}
+                                      <CampoDataSalvar
+                                        rotulo={`Faturamento da transportadora — PO ${item.docCompra} item ${item.material}`}
+                                        valor={item.faturamentoTransportadora || ''}
                                         disabled={item.chegou}
-                                        onBlur={e => salvarFaturamento(item, e.target.value)}
-                                        className="w-full rounded border px-1.5 py-1 text-[11px]"
-                                        style={campo}
+                                        onSalvar={data => salvarFaturamento(item, data)}
                                       />
                                     </Td>
                                     <Td>
@@ -1201,14 +1199,11 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                             <PrevisaoCelula item={item} vencido={vencido} onAbrirPrazos={() => setPrazosAberto(true)} onSalvar={salvarPrevisaoManual} />
                           </Td>
                           <Td>
-                            <input
-                              type="date"
-                              aria-label={`Faturamento da transportadora — PO ${item.docCompra}`}
-                              defaultValue={item.faturamentoTransportadora || ''}
+                            <CampoDataSalvar
+                              rotulo={`Faturamento da transportadora — PO ${item.docCompra}`}
+                              valor={item.faturamentoTransportadora || ''}
                               disabled={item.chegou}
-                              onBlur={e => salvarFaturamento(item, e.target.value)}
-                              className="w-full rounded border px-1.5 py-1 text-[11px]"
-                              style={campo}
+                              onSalvar={data => salvarFaturamento(item, data)}
                             />
                           </Td>
                           <Td>
@@ -1686,16 +1681,92 @@ function PrevisaoCelula({
           <AlertTriangle className="h-3 w-3" /> Sem prazo p/ UF
         </button>
       )}
-      <input
-        type="date"
-        aria-label={`Previsão de chegada — PO ${item.docCompra}`}
-        defaultValue={item.previsaoEfetiva || ''}
+      <CampoDataSalvar
+        className="mt-1"
+        rotulo={`Previsão de chegada — PO ${item.docCompra}`}
+        valor={item.previsaoEfetiva || ''}
         disabled={item.chegou}
-        onBlur={e => onSalvar(item, e.target.value)}
-        className="mt-1 w-full rounded border px-1.5 py-1 text-[11px]"
-        style={{ ...campo, borderColor: item.previsaoManual ? 'var(--brand)' : campo.borderColor }}
+        destaque={Boolean(item.previsaoManual)}
+        onSalvar={data => onSalvar(item, data)}
       />
     </>
+  );
+}
+
+/**
+ * Data com botão de salvar: o ✓ aparece quando a data difere da gravada.
+ * Enter salva, Esc desfaz. Antes salvava no blur — quem trocava a data e
+ * clicava fora da linha (ou rolava a tabela) às vezes não via gravar.
+ */
+function CampoDataSalvar({
+  valor, rotulo, disabled, destaque, className, onSalvar,
+}: {
+  valor: string;
+  rotulo: string;
+  disabled?: boolean;
+  destaque?: boolean;
+  className?: string;
+  onSalvar: (data: string) => void | Promise<void>;
+}) {
+  const [data, setData] = useState(valor);
+  const [salvando, setSalvando] = useState(false);
+  // Gravou (ou recarregou a lista): o campo acompanha o valor novo.
+  useEffect(() => { setData(valor); }, [valor]);
+
+  const mudou = data !== valor;
+  const salvar = async () => {
+    if (!mudou || salvando) return;
+    setSalvando(true);
+    try {
+      await onSalvar(data);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <div className={`flex items-center gap-1 ${className ?? ''}`}>
+      <input
+        type="date"
+        aria-label={rotulo}
+        value={data}
+        disabled={disabled || salvando}
+        onChange={e => setData(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); void salvar(); }
+          if (e.key === 'Escape') { e.preventDefault(); setData(valor); }
+        }}
+        className="min-w-0 flex-1 rounded border px-1.5 py-1 text-[11px]"
+        style={{ ...campo, borderColor: mudou ? 'var(--status-warning)' : destaque ? 'var(--brand)' : campo.borderColor }}
+      />
+      {mudou && !disabled && (
+        <>
+          <button
+            type="button"
+            onClick={() => void salvar()}
+            disabled={salvando}
+            title="Salvar data"
+            aria-label={`Salvar — ${rotulo}`}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-white disabled:opacity-60"
+            style={{ background: 'var(--brand)' }}
+          >
+            {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          </button>
+          {!salvando && (
+            <button
+              type="button"
+              onClick={() => setData(valor)}
+              title="Desfazer"
+              aria-label={`Desfazer — ${rotulo}`}
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border"
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -1828,13 +1899,11 @@ function ItemCard({
         <div className="grid grid-cols-2 gap-2">
           <label className="flex flex-col gap-0.5">
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Fat. transportadora</span>
-            <input
-              type="date"
-              defaultValue={item.faturamentoTransportadora || ''}
+            <CampoDataSalvar
+              rotulo={`Faturamento da transportadora — PO ${item.docCompra}`}
+              valor={item.faturamentoTransportadora || ''}
               disabled={item.chegou}
-              onBlur={e => onSalvarFaturamento(item, e.target.value)}
-              className="w-full rounded border px-1.5 py-1 text-[11px]"
-              style={campo}
+              onSalvar={data => onSalvarFaturamento(item, data)}
             />
           </label>
           <label className="flex flex-col gap-0.5">
