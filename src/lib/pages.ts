@@ -111,6 +111,8 @@ export const PAGES: PageDef[] = [
   { id: 'almox_movimentacoes', group: 'ALMOXARIFADO', label: 'Movimentações', path: '/almoxarifado/movimentacoes', icon: ArrowLeftRight, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_consumo_semanal', group: 'ALMOXARIFADO', label: 'Consumo Semanal', path: '/almoxarifado/consumo-semanal', icon: CalendarDays, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_controle_estoque', group: 'ALMOXARIFADO', label: 'Controle de Estoque', path: '/almoxarifado/controle-estoque', icon: Scale, defaultRoles: ['admin'] },
+  // Novo módulo: nasce restrito (regra 4 do CLAUDE.md); o admin libera pela Gestão de Acessos.
+  { id: 'almox_inventario_analise', group: 'ALMOXARIFADO', label: 'Análise de Inventário', path: '/almoxarifado/inventario-analise', icon: BarChart3, defaultRoles: ['admin'] },
   { id: 'almox_dashboards', group: 'ALMOXARIFADO', label: 'Dashboards', path: '/almoxarifado/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   // Projetos entra com UMA linha no menu: o hub. As sub-rotas
   // (/almoxarifado/projetos/bom, /recebimento, /premontagem, /producao,

@@ -72,6 +72,7 @@ const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
 const RecebimentoAlmox = lazy(() => import('./views/almoxarifado/RecebimentoAlmox'));
 const RequisicaoBalcao = lazy(() => import('./views/almoxarifado/RequisicaoBalcao'));
 const InventarioCiclico = lazy(() => import('./views/almoxarifado/InventarioCiclico'));
+const InventarioAnalise = lazy(() => import('./views/almoxarifado/InventarioAnalise'));
 const CadastroItensAlmox = lazy(() => import('./views/almoxarifado/CadastroItensAlmox'));
 const SsmaFichaEpiView = lazy(() => import('./views/ssma/SsmaFichaEpiView'));
 const SsmaHub = lazy(() => import('./views/ssma/SsmaHub'));
@@ -1183,6 +1184,12 @@ export default function App() {
       case '/almoxarifado/movimentacoes/minimo':
         if (canAccessPage(user, 'almox_movimentacoes')) {
           return <Movimentacoes user={user} abaInicial="minimo" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/inventario-analise':
+        if (canAccessPage(user, 'almox_inventario_analise')) {
+          return <InventarioAnalise user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

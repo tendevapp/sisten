@@ -19,7 +19,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, Camera, Check, ClipboardList, CloudOff, Download, Eye, FileText,
+  AlertTriangle, ArrowLeft, BarChart3, Camera, Check, ClipboardList, CloudOff, Download, Eye, FileText,
   Image as ImageIcon, Loader2, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Trash2, Upload, X,
 } from 'lucide-react';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
@@ -44,6 +44,7 @@ import type { PdfGerado } from '../../lib/pdfExport/core';
 import { exportInventarioCiclicoPdf, gerarInventarioCiclicoPdf } from '../../lib/pdfExport/exportInventarioCiclicoPdf';
 import { hojeISO } from '../../lib/recebimentoAlmox';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { canAccessPage } from '../../lib/pages';
 import { ehRespostaOffline } from '../../lib/offline/configFormularios';
 import { argumentosNaFila, assinarFilaOffline } from '../../lib/offline/filaSupabase';
 import {
@@ -372,6 +373,11 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {canAccessPage(user, 'almox_inventario_analise') && (
+            <button onClick={() => onNavigate('/almoxarifado/inventario-analise')} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+              <BarChart3 className="h-3.5 w-3.5" /> Análise
+            </button>
+          )}
           <button onClick={() => void recarregar(true)} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
           </button>
