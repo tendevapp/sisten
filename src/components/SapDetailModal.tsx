@@ -12,7 +12,9 @@ import { sanitizeTechnicalText } from '../lib/materiais';
 import { desformatarObservacaoItemGenerico } from '../lib/solicitacoes';
 import type { VinculoSistenRm } from '../lib/centralComprasSisten';
 import { listarImagensCatalogoPorCodigoSap, obterUrlFotoCatalogo } from '../lib/almoxCatalogoApi';
+import { listarConferenciasDoItemPO, type ConferenciaRow } from '../lib/recebimentoAlmoxApi';
 import { useToast } from './ui/Toast';
+import PdfPreviewModal, { type PdfGerado } from './ui/PdfPreviewModal';
 
 interface SapDetailModalProps {
   record: EnrichedSAPRecord;
@@ -173,6 +175,32 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
     return () => { cancelado = true; };
   }, [record.material_code]);
 
+  // Relatório de recebimento do Almox (FRM.ALM-0001) — só para item com MIGO.
+  // Some quando o Almox não registrou conferência para este PO + material.
+  const [relatoriosRecebimento, setRelatoriosRecebimento] = useState<{ conferencia: ConferenciaRow; cargaCodigo: string | null }[]>([]);
+  const [carregandoRelatorios, setCarregandoRelatorios] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
+
+  useEffect(() => {
+    setRelatoriosRecebimento([]);
+    if (!record.data_migo || !record.documento_compra || !record.material_code) return;
+    let cancelado = false;
+    setCarregandoRelatorios(true);
+    listarConferenciasDoItemPO(record.documento_compra, record.material_code)
+      .then((r) => { if (!cancelado) setRelatoriosRecebimento(r); })
+      .catch((err) => console.warn('Erro ao buscar relatório de recebimento:', err))
+      .finally(() => { if (!cancelado) setCarregandoRelatorios(false); });
+    return () => { cancelado = true; };
+  }, [record.ri, record.data_migo, record.documento_compra, record.material_code]);
+
+  const abrirRelatorioRecebimento = (c: ConferenciaRow, cargaCodigo: string | null) => {
+    setPdfPreview({
+      // pdf-lib só carrega quando pedem.
+      gerar: async () => (await import('../lib/pdfExport/exportRecebimentoAlmoxPdf')).gerarConferenciaPdf(c, { cargaCodigo }),
+      titulo: c.codigo,
+    });
+  };
+
   /** Converte para PNG antes de escrever na área de transferência — o clipboard
    *  só aceita `image/png` de forma confiável e a foto vem comprimida em JPEG. */
   const converterParaPng = (blob: Blob): Promise<Blob> =>
@@ -229,19 +257,20 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
   // Configuração de acessibilidade para fechar com tecla ESC
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      // Com o PDF aberto por cima, o ESC é dele.
+      if (e.key === 'Escape' && !pdfPreview) {
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     // Impede o scroll do body quando o modal está aberto
     document.body.style.overflow = 'hidden';
-    
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = '';
     };
-  }, [onClose]);
+  }, [onClose, pdfPreview]);
 
   // Função para fechar clicando fora do modal
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -291,6 +320,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
       : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
+    <>
     <div
       onClick={handleOverlayClick}
       className="fixed inset-0 bg-slate-900/60 dark:bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in"
@@ -690,6 +720,47 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
             </div>
           )}
 
+          {/* Relatório de recebimento do Almox — item com MIGO e conferência
+              registrada no formulário de recebimento (FRM.ALM-0001). */}
+          {(carregandoRelatorios || relatoriosRecebimento.length > 0) && (
+            <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-450 dark:text-slate-500 flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5" />
+                Relatório de Recebimento (Almoxarifado)
+              </h4>
+              {carregandoRelatorios ? (
+                <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando relatório...
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {relatoriosRecebimento.map(({ conferencia: c, cargaCodigo }) => (
+                    <div
+                      key={c.id}
+                      className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/40 dark:bg-slate-900/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{c.codigo}</span>
+                        <span className="text-slate-500 dark:text-slate-400">
+                          {' · '}{c.data ? c.data.slice(0, 10).split('-').reverse().join('/') : '—'}
+                          {c.criado_por_nome ? ` · ${c.criado_por_nome}` : ''}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => abrirRelatorioRecebimento(c, cargaCodigo)}
+                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer active:scale-95 shrink-0"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        Ver PDF do recebimento
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Histórico de Fornecedores */}
           <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
             <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-455 dark:text-slate-500">
@@ -833,5 +904,13 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
         </div>
       </div>
     </div>
+    {pdfPreview && (
+      <PdfPreviewModal
+        gerar={pdfPreview.gerar}
+        tituloPadrao={pdfPreview.titulo}
+        onClose={() => setPdfPreview(null)}
+      />
+    )}
+    </>
   );
 }

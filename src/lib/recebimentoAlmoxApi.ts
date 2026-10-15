@@ -17,7 +17,7 @@
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 import { comprimirImagemUpload, type PreparedAttachment } from './imageCompression';
-import { apenasVigentes, marcarExcluido } from './softDelete';
+import { apenasVigentes, marcarExcluido, semExcluidos } from './softDelete';
 import { isProjetoItem } from './rastreio';
 import type { EnrichedSAPRecord } from '../types';
 import {
@@ -600,6 +600,52 @@ export async function editarConferencia(
   } as any);
   if (error) throw new Error(error.message);
   return data as { id: string; codigo: string; nc_codigo: string | null; tem_nc: boolean; alteracoes: number };
+}
+
+/**
+ * Relatórios de recebimento (conferências concluídas) que cobrem um item de PO.
+ * Usado pela Central de Compras: o item com MIGO abre o PDF do que o Almox
+ * conferiu. Casa pelo PO (cabeçalho `pedidos`/`nro_pedido`, com e sem zeros à
+ * esquerda) e pelo código do material em algum item da conferência — se o
+ * item da conferência tem PO próprio (multi-PO), ele também precisa bater.
+ * Mais recente primeiro.
+ */
+export async function listarConferenciasDoItemPO(
+  nroPedido: string,
+  materialCode: string,
+): Promise<{ conferencia: ConferenciaRow; cargaCodigo: string | null }[]> {
+  const po = semZeros(nroPedido);
+  const mat = semZeros(materialCode);
+  if (!po || !mat) return [];
+
+  const variantes = Array.from(new Set([nroPedido.trim(), po]));
+  const lista = variantes.join(',');
+  const { data, error } = await apenasVigentes(
+    db('alm_receb_conferencias').select('*, itens:alm_receb_conferencia_itens(*), nc:alm_receb_nc(*)'),
+  )
+    .or(`nro_pedido.in.(${lista}),pedidos.ov.{${lista}}`)
+    .order('data', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const conferencias = ((data ?? []) as ConferenciaRow[])
+    .filter((c) => c.status !== 'rascunho')
+    .map((c) => ({ ...c, itens: semExcluidos(c.itens as any), nc: semExcluidos(c.nc as any) }) as ConferenciaRow)
+    .filter((c) => c.itens.some((it) =>
+      semZeros(it.material_code) === mat && (!it.nro_pedido || semZeros(it.nro_pedido) === po),
+    ));
+
+  // O PDF da conferência mostra o código da ficha cega de origem.
+  const cargaIds = Array.from(new Set(conferencias.map((c) => c.carga_id).filter(Boolean))) as string[];
+  const codigos = new Map<string, string>();
+  if (cargaIds.length) {
+    const { data: cargas } = await db('alm_receb_cargas').select('id, codigo').in('id', cargaIds);
+    (cargas ?? []).forEach((c: { id: string; codigo: string }) => codigos.set(c.id, c.codigo));
+  }
+  return conferencias.map((conferencia) => ({
+    conferencia,
+    cargaCodigo: conferencia.carga_id ? codigos.get(conferencia.carga_id) ?? null : null,
+  }));
 }
 
 /** Log de alterações de um registro, mais recente primeiro. */
