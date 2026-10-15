@@ -318,6 +318,60 @@ export function montarDossie(
   return linhas;
 }
 
+/** Datas da linha que o filtro de período pode usar. */
+export type CampoDataDossie = 'dataRm' | 'dataPedido' | 'ultimaEntrega';
+
+export const ROTULO_CAMPO_DATA_DOSSIE: Record<CampoDataDossie, string> = {
+  dataRm: 'Data da RM',
+  dataPedido: 'Data do pedido',
+  ultimaEntrega: 'Última entrega',
+};
+
+/**
+ * Mantém só as linhas cuja data (do campo escolhido) cai em [de, ate], ambos
+ * AAAA-MM-DD e opcionais. Linha sem a data fica de fora quando há período.
+ *
+ * Tirar linhas bagunça o que o dossiê mostra só na primeira linha do material
+ * (cabeçalho, resumo de compra) e o "mesma RM" da linha de baixo. Por isso a
+ * primeira linha que sobrou de cada material vira a primeira, herdando o
+ * resumo do material — que continua sendo o total de compra do material
+ * inteiro, não só do recorte.
+ */
+export function filtrarDossiePorData(
+  linhas: LinhaDossie[],
+  campo: CampoDataDossie,
+  de: string,
+  ate: string,
+): LinhaDossie[] {
+  if (!de && !ate) return linhas;
+
+  const dia = (valor: string | null) => (valor ?? '').slice(0, 10);
+  const materialDe = (linha: LinhaDossie) => linha.chave.replace(/-\d+$/, '');
+  const resumoDoMaterial = new Map<string, ResumoCompraDossie | null>();
+  linhas.forEach(l => { if (l.primeiraDoMaterial) resumoDoMaterial.set(materialDe(l), l.resumo); });
+
+  const mantidas = linhas.filter(l => {
+    const valor = dia(l[campo]);
+    if (!valor) return false;
+    return (!de || valor >= de) && (!ate || valor <= ate);
+  });
+
+  const vistos = new Set<string>();
+  return mantidas.map((linha, i) => {
+    const material = materialDe(linha);
+    const primeira = !vistos.has(material);
+    vistos.add(material);
+    const anterior = i > 0 ? mantidas[i - 1] : null;
+    return {
+      ...linha,
+      primeiraDoMaterial: primeira,
+      resumo: primeira ? resumoDoMaterial.get(material) ?? null : null,
+      rmRepetida: !!anterior && linha.existeRm
+        && materialDe(anterior) === material && anterior.rm === linha.rm && anterior.itemRm === linha.itemRm,
+    };
+  });
+}
+
 const ROTULO_STATUS: Record<StatusControleEstoque, string> = {
   CRITICO: 'CRÍTICO',
   ALERTA: 'ALERTA',

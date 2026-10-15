@@ -1,10 +1,13 @@
 import React, { Fragment, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, CornerDownRight, Download, ShieldAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, CornerDownRight, Download, ShieldAlert, X } from 'lucide-react';
 import {
   ROTULO_ALERTA_ZERADO,
+  ROTULO_CAMPO_DATA_DOSSIE,
   ROTULO_SITUACAO_CHEGADA,
   exportarDossieExcel,
+  filtrarDossiePorData,
   type AlertaZerado,
+  type CampoDataDossie,
   type EntregaDossie,
   type LinhaDossie,
   type ResumoCompraDossie,
@@ -198,16 +201,25 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
   const [pagina, setPagina] = useState(0);
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
 
+  const [campoData, setCampoData] = useState<CampoDataDossie>('dataRm');
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
+  const periodoAtivo = !!de || !!ate;
+
+  // O período vem antes das visões: as contagens dos botões e a exportação
+  // refletem só o que está no período.
+  const linhasNoPeriodo = useMemo(() => filtrarDossiePorData(linhas, campoData, de, ate), [linhas, campoData, de, ate]);
+
   const materiaisPorVisao = useMemo(() => {
     const contagem = new Map<VisaoDossie, number>();
-    linhas.forEach(linha => {
+    linhasNoPeriodo.forEach(linha => {
       if (!linha.primeiraDoMaterial) return;
       VISOES.forEach(v => { if (naVisao(linha, v.id)) contagem.set(v.id, (contagem.get(v.id) ?? 0) + 1); });
     });
     return contagem;
-  }, [linhas]);
+  }, [linhasNoPeriodo]);
 
-  const visiveis = useMemo(() => linhas.filter(l => naVisao(l, visao)), [linhas, visao]);
+  const visiveis = useMemo(() => linhasNoPeriodo.filter(l => naVisao(l, visao)), [linhasNoPeriodo, visao]);
   const dicaVisao = VISOES.find(v => v.id === visao)?.dica;
   const materiais = useMemo(() => new Set(visiveis.map(l => l.material)).size, [visiveis]);
   useEffect(() => { setPagina(0); setAbertas(new Set()); }, [visiveis]);
@@ -281,6 +293,57 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
             <Download className="h-3.5 w-3.5" /> Exportar dossiê
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtro de período">
+        <select
+          value={campoData}
+          onChange={e => setCampoData(e.target.value as CampoDataDossie)}
+          aria-label="Data usada no filtro"
+          className="rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer"
+          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+        >
+          {(Object.keys(ROTULO_CAMPO_DATA_DOSSIE) as CampoDataDossie[]).map(campo => (
+            <option key={campo} value={campo}>{ROTULO_CAMPO_DATA_DOSSIE[campo]}</option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>
+          de
+          <input
+            type="date"
+            value={de}
+            max={ate || undefined}
+            onChange={e => setDe(e.target.value)}
+            className="rounded-lg border px-2 py-1 text-xs font-normal"
+            style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+          />
+        </label>
+        <label className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>
+          até
+          <input
+            type="date"
+            value={ate}
+            min={de || undefined}
+            onChange={e => setAte(e.target.value)}
+            className="rounded-lg border px-2 py-1 text-xs font-normal"
+            style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+          />
+        </label>
+        {periodoAtivo && (
+          <>
+            <button
+              type="button"
+              onClick={() => { setDe(''); setAte(''); }}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-bold cursor-pointer hover:bg-[var(--surface-sunken)]"
+              style={{ color: 'var(--brand)' }}
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" /> Limpar período
+            </button>
+            <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              Linhas sem {ROTULO_CAMPO_DATA_DOSSIE[campoData].toLowerCase()} ficam de fora.
+            </span>
+          </>
+        )}
       </div>
 
       <p className="text-[11px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>

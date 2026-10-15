@@ -6,6 +6,7 @@ import {
   calcularAlertaZerado,
   calcularSituacaoChegada,
   criarWorkbookDossie,
+  filtrarDossiePorData,
   montarDossie,
 } from './controleEstoqueDossie';
 
@@ -221,5 +222,44 @@ describe('controleEstoqueDossie', () => {
     expect(planilha.A2.t).toBe('s');
     expect(planilha[`${coluna('Chegou?')}2`].v).toBe('PARCIAL');
     expect(planilha[`${coluna('Última Entrega')}2`].v).toBe('2026-09-09');
+  });
+  describe('filtrarDossiePorData', () => {
+    // RM de julho atendida por dois pedidos (setembro e outubro) + uma RM de agosto sem pedido.
+    const linhas = () => montarDossie([analisar(criarItem({
+      rms: [rm('1200000001', '4100000001', { item_pedido: null }), rm('1200000002', null, { data: '2026-08-10' })],
+      pedidos: [
+        pedido('4100000001', { item: '10', data: '2026-09-05' }),
+        pedido('4100000001', { item: '20', data: '2026-10-05' }),
+      ],
+    }))], new Map());
+
+    it('sem período devolve as linhas como estão', () => {
+      const todas = linhas();
+      expect(filtrarDossiePorData(todas, 'dataRm', '', '')).toBe(todas);
+    });
+
+    it('filtra pela data escolhida, inclusive nas pontas, e descarta linha sem a data', () => {
+      const todas = linhas();
+      expect(filtrarDossiePorData(todas, 'dataRm', '2026-08-10', '2026-08-10').map(l => l.rm)).toEqual(['1200000002']);
+      expect(filtrarDossiePorData(todas, 'dataPedido', '2026-09-01', '2026-09-30').map(l => l.pedido)).toEqual(['4100000001']);
+      // a RM sem pedido não tem data de pedido: sai de qualquer período por pedido
+      expect(filtrarDossiePorData(todas, 'dataPedido', '2026-01-01', '').every(l => l.pedido !== null)).toBe(true);
+    });
+
+    it('a primeira linha que sobra vira a primeira do material, com o resumo dele', () => {
+      const todas = linhas();
+      const so = filtrarDossiePorData(todas, 'dataRm', '2026-08-01', '2026-08-31');
+      expect(so).toHaveLength(1);
+      expect(so[0].primeiraDoMaterial).toBe(true);
+      expect(so[0].resumo).toBe(todas[0].resumo);
+    });
+
+    it('não marca "mesma RM" quando a linha de cima saiu do período', () => {
+      const todas = linhas();
+      expect(todas[1].rmRepetida).toBe(true);
+      const so = filtrarDossiePorData(todas, 'dataPedido', '2026-10-01', '2026-10-31');
+      expect(so).toHaveLength(1);
+      expect(so[0].rmRepetida).toBe(false);
+    });
   });
 });
