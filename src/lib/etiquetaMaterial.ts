@@ -6,8 +6,8 @@
  *
  * O QR leva um link curto (`https://sisten.site/#/balcao?item=1437274`) que
  * serve aos dois jeitos de ler:
- * - câmera comum do celular: abre o SISTEN numa Requisição no Balcão nova com o
- *   item escolhido, faltando só a quantidade (se pedir login, o item espera);
+ * - câmera comum do celular: abre o SISTEN perguntando o que fazer com o item
+ *   (baixa no balcão ou inventário cíclico); se pedir login, o item espera;
  * - botão "Ler QR" do formulário já aberto: o leitor tira o código do link.
  * Descrição, depósito e saldo vêm do cadastro e da ZL0024 na hora da leitura —
  * a etiqueta não fica velha quando o texto muda; só o impresso pede reimpressão.
@@ -75,19 +75,19 @@ export function codigoDoQr(texto: string): string | null {
 export const CHAVE_ITEM_QR_PENDENTE = 'sisten_qr_item_pendente';
 const VALIDADE_PENDENTE_MS = 30 * 60 * 1000;
 
-export function guardarItemQrPendente(codigo: string, agora = Date.now()): void {
+function guardarPendente(chave: string, codigo: string, agora: number): void {
   try {
-    sessionStorage.setItem(CHAVE_ITEM_QR_PENDENTE, JSON.stringify({ codigo, em: agora }));
+    sessionStorage.setItem(chave, JSON.stringify({ codigo, em: agora }));
   } catch { /* sem storage: o link ainda funciona se já estiver logado */ }
 }
 
-function lerPendente(agora: number): string | null {
+function lerPendente(chave: string, agora: number): string | null {
   try {
-    const bruto = sessionStorage.getItem(CHAVE_ITEM_QR_PENDENTE);
+    const bruto = sessionStorage.getItem(chave);
     if (!bruto) return null;
     const { codigo, em } = JSON.parse(bruto) as { codigo?: string; em?: number };
     if (!codigo || typeof em !== 'number' || agora - em > VALIDADE_PENDENTE_MS) {
-      sessionStorage.removeItem(CHAVE_ITEM_QR_PENDENTE);
+      sessionStorage.removeItem(chave);
       return null;
     }
     return codigo;
@@ -96,15 +96,62 @@ function lerPendente(agora: number): string | null {
   }
 }
 
+function consumirPendente(chave: string, agora: number): string | null {
+  const codigo = lerPendente(chave, agora);
+  try { sessionStorage.removeItem(chave); } catch { /* ignora */ }
+  return codigo;
+}
+
+export function guardarItemQrPendente(codigo: string, agora = Date.now()): void {
+  guardarPendente(CHAVE_ITEM_QR_PENDENTE, codigo, agora);
+}
+
 export function haItemQrPendente(agora = Date.now()): boolean {
-  return lerPendente(agora) !== null;
+  return lerPendente(CHAVE_ITEM_QR_PENDENTE, agora) !== null;
 }
 
 /** Lê e apaga o pendente (cada leitura entra uma vez só). */
 export function consumirItemQrPendente(agora = Date.now()): string | null {
-  const codigo = lerPendente(agora);
-  try { sessionStorage.removeItem(CHAVE_ITEM_QR_PENDENTE); } catch { /* ignora */ }
-  return codigo;
+  return consumirPendente(CHAVE_ITEM_QR_PENDENTE, agora);
+}
+
+// ---------------------------------------------------------------------------
+// Botão "Ler QR" do cabeçalho
+//
+// O QR lido pelo SISTEN pergunta o que fazer com o item: baixa no balcão
+// (Requisição no Balcão com o item já escolhido) ou contagem do Inventário
+// Cíclico. A escolha viaja como item pendente + um evento: a tela de destino
+// consome o pendente ao abrir, e o evento acorda a que já estava aberta (trocar
+// de rota para a mesma rota não dispara `hashchange`).
+// ---------------------------------------------------------------------------
+
+export const ROTA_INVENTARIO_CICLICO = '/formularios/almoxarifado-inventario';
+
+/**
+ * Item que chegou pelo link do QR (câmera comum) e ainda espera a pessoa
+ * escolher o que fazer. Guardado assim que o link abre, para sobreviver ao
+ * login; consumido pelo diálogo de escolha, que roda por cima de qualquer tela.
+ */
+export const CHAVE_ITEM_QR_ESCOLHA = 'sisten_qr_item_escolha';
+
+export function guardarItemQrEscolha(codigo: string, agora = Date.now()): void {
+  guardarPendente(CHAVE_ITEM_QR_ESCOLHA, codigo, agora);
+}
+
+export function consumirItemQrEscolha(agora = Date.now()): string | null {
+  return consumirPendente(CHAVE_ITEM_QR_ESCOLHA, agora);
+}
+
+export const CHAVE_ITEM_INVENTARIO_PENDENTE = 'sisten_qr_item_inventario_pendente';
+export const EVENTO_ITEM_QR_BALCAO = 'sisten:item-qr-balcao';
+export const EVENTO_ITEM_QR_INVENTARIO = 'sisten:item-qr-inventario';
+
+export function guardarItemInventarioPendente(codigo: string, agora = Date.now()): void {
+  guardarPendente(CHAVE_ITEM_INVENTARIO_PENDENTE, codigo, agora);
+}
+
+export function consumirItemInventarioPendente(agora = Date.now()): string | null {
+  return consumirPendente(CHAVE_ITEM_INVENTARIO_PENDENTE, agora);
 }
 
 export interface DadosEtiqueta {

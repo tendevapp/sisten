@@ -1266,7 +1266,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               type="button"
               onClick={imprimirSelecionadas}
               disabled={selecionados.size === 0}
-              title="PDF A4 com 10 etiquetas por folha. O QR de cada uma é lido pelo botão Ler QR da Requisição no Balcão"
+              title="PDF A4 com 10 etiquetas por folha. O QR de cada uma é lido pelo botão de QR do cabeçalho (baixa ou inventário) e pelo Ler QR da Requisição no Balcão"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 shadow-xs transition cursor-pointer disabled:opacity-50"
             >
               <Printer className="h-3.5 w-3.5" />

@@ -12,6 +12,7 @@ import { localDb } from '../db/localDb';
 import { Profile, Notification, Role } from '../types';
 import { resolverRotaNotificacao } from '../lib/notificationRouting';
 import AlertaNotificacoes, { type ItemAviso } from './notifications/AlertaNotificacoes';
+import LeitorQrHeader from './LeitorQrHeader';
 import {
   atualizarTituloAba, avisarNoDesktop, filtrarNovas, gravarIdsAlertados, gravarPrefsAviso,
   lerIdsAlertados, lerPrefsAviso, pedirPermissaoDesktop, permissaoDesktop, tocarBipe,
@@ -327,6 +328,8 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
             </button>
           </>
         )}
+        {/* Leitor de QR da etiqueta de material: baixa de estoque ou inventário. */}
+        <LeitorQrHeader user={user} onNavigate={onNavigate} />
         {/* Atalho de Importação de Planilhas — só admin, é onde ele mais precisa chegar rápido. */}
         {user.roles.includes('admin') && (
           <button

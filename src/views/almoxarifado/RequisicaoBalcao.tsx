@@ -54,7 +54,7 @@ import { listarRhPessoas, listarRhTurnos } from '../../lib/rhApi';
 import { hojeISO } from '../../lib/recebimentoAlmox';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { CHAVE_ABRIR_REQUISICAO_BALCAO } from '../../lib/fichaEpiRequisicao';
-import { codigoDoQr, consumirItemQrPendente, hashSemItem, itemDaRota } from '../../lib/etiquetaMaterial';
+import { EVENTO_ITEM_QR_BALCAO, codigoDoQr, consumirItemQrPendente, hashSemItem, itemDaRota } from '../../lib/etiquetaMaterial';
 import LeitorQrModal from '../../components/ui/LeitorQrModal';
 import type { EstoqueItem, Profile, RhPessoa, RhTurno } from '../../types';
 
@@ -219,7 +219,12 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     };
     lerQr();
     window.addEventListener('hashchange', lerQr);
-    return () => window.removeEventListener('hashchange', lerQr);
+    // Botão "Ler QR" do cabeçalho (baixa de estoque) com esta tela já aberta.
+    window.addEventListener(EVENTO_ITEM_QR_BALCAO, lerQr);
+    return () => {
+      window.removeEventListener('hashchange', lerQr);
+      window.removeEventListener(EVENTO_ITEM_QR_BALCAO, lerQr);
+    };
   }, []);
 
   // Com a tela carregada, abre uma requisição nova (ou usa a aberta) para o item lido.

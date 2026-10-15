@@ -25,7 +25,7 @@ import {
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
 import { localDb } from '../../db/localDb';
-import { formatDeposito, ordenarDepositos } from '../../lib/almoxarifado';
+import { formatDeposito, normalizeCode, ordenarDepositos } from '../../lib/almoxarifado';
 import { formatDateBR, formatDateTimeBR, formatQtd } from '../../lib/format';
 import { extrairPalavrasChave, casarTokens } from '../../lib/buscaKeywords';
 import {
@@ -52,6 +52,7 @@ import {
   type CatalogoItem,
 } from '../../lib/almoxCatalogoApi';
 import { comprimirImagemUpload } from '../../lib/imageCompression';
+import { EVENTO_ITEM_QR_INVENTARIO, consumirItemInventarioPendente } from '../../lib/etiquetaMaterial';
 
 /** Itens com contagem guardada no aparelho (sem rede) — ainda sem resultado do servidor. */
 function useItensContadosNaFila(): Set<string> {
@@ -146,6 +147,13 @@ function gravarPreferencias(p: Preferencias): void {
 // Tela
 // ===========================================================================
 
+/**
+ * Critério gravado no inventário aberto pela leitura de QR (botão do cabeçalho).
+ * As leituras do dia da mesma pessoa vão para o mesmo inventário, em vez de
+ * abrir um por etiqueta lida.
+ */
+const CRITERIO_QR = 'Leitura de QR da etiqueta';
+
 export default function InventarioCiclico({ user, onNavigate }: Props) {
   const toast = useToast();
   const [inventarios, setInventarios] = useState<InventarioRow[]>([]);
@@ -155,6 +163,9 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
   const [abertoId, setAbertoId] = useState<string | null>(null);
   const [novo, setNovo] = useState<{ inventario?: InventarioRow } | null>(null);
   const [busca, setBusca] = useState('');
+  // Item lido no QR do cabeçalho e a contagem que a vista do inventário deve abrir.
+  const [itemQr, setItemQr] = useState<{ codigo: string; n: number } | null>(null);
+  const [abrirContagem, setAbrirContagem] = useState<{ itemId: string; n: number } | null>(null);
 
   const recarregarInventarios = useCallback(async () => {
     try {
@@ -180,6 +191,92 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
   }, [recarregarInventarios]);
 
   useEffect(() => { void recarregar(); }, [recarregar]);
+
+  // QR do cabeçalho: consome o item pendente ao abrir e acorda com a tela já aberta.
+  useEffect(() => {
+    const ler = () => {
+      const codigo = consumirItemInventarioPendente();
+      if (codigo) setItemQr((atual) => ({ codigo, n: (atual?.n ?? 0) + 1 }));
+    };
+    ler();
+    window.addEventListener(EVENTO_ITEM_QR_INVENTARIO, ler);
+    return () => window.removeEventListener(EVENTO_ITEM_QR_INVENTARIO, ler);
+  }, []);
+
+  const qrAplicado = useRef(0);
+  const abrirContagemDoQr = useCallback(async (codigo: string) => {
+    const alvo = normalizeCode(codigo);
+    const doMaterial = montarCandidatos(estoque, giro, lerPreferencias().criterio, [])
+      .filter((c) => normalizeCode(c.material) === alvo);
+    if (doMaterial.length === 0) {
+      toast.error(`Item ${codigo} não está na ZL0024 — não há saldo para inventariar.`);
+      return;
+    }
+    // Depósitos da última seleção do aparelho; se o item não está neles, todos em que ele tem saldo.
+    const preferidos = lerPreferencias().depositos.map((d) => d.trim().padStart(4, '0'));
+    const naPreferencia = doMaterial.filter((c) => preferidos.includes(c.deposito));
+    const candidatos = naPreferencia.length > 0 ? naPreferencia : doMaterial;
+    const chaves = new Set(candidatos.map((c) => c.chave));
+    const abertoDe = (inv: InventarioRow) => inv.status === 'aberto';
+    const emAberto = (inv: InventarioRow) => inv.itens.find((i) => chaves.has(chaveItem(i.material, i.deposito)) && !itemEncerrado(i));
+
+    try {
+      let lista = await listarInventarios();
+      setInventarios(lista);
+
+      // 1) Já existe contagem em aberto deste item (de qualquer inventário): vai direto a ela.
+      let destino: { inv: InventarioRow; item: ItemInventario } | null = null;
+      for (const inv of lista.filter(abertoDe)) {
+        const item = emAberto(inv);
+        if (item) { destino = { inv, item }; break; }
+      }
+
+      // 2) Senão, entra no inventário de QR do dia desta pessoa (ou abre um).
+      if (!destino) {
+        const hoje = hojeISO();
+        const meu = lista.find((i) => abertoDe(i) && i.criterio === CRITERIO_QR && i.data === hoje && podeEditarFormulario(user, i));
+        const itens = candidatos.map((c) => ({ material: c.material, deposito: c.deposito, classe: c.classe }));
+        let inventarioId: string;
+        if (meu) {
+          const faltam = itens.filter((i) => !meu.itens.some((x) => chaveItem(x.material, x.deposito) === chaveItem(i.material, i.deposito)));
+          if (faltam.length > 0) await adicionarItensInventario(meu.id, faltam);
+          inventarioId = meu.id;
+        } else {
+          const r = await criarInventario({
+            data: hoje,
+            criterio: CRITERIO_QR,
+            observacao: null,
+            conferente_nome: user.name,
+            criado_por_nome: user.name,
+          }, itens);
+          inventarioId = r.id;
+        }
+        lista = await listarInventarios();
+        setInventarios(lista);
+        const inv = lista.find((i) => i.id === inventarioId);
+        // Se já foi contado e encerrado hoje, abre o resultado dele.
+        const item = inv?.itens.find((i) => chaves.has(chaveItem(i.material, i.deposito)) && !itemEncerrado(i))
+          ?? inv?.itens.find((i) => chaves.has(chaveItem(i.material, i.deposito)));
+        if (!inv || !item) {
+          toast.info('Contagem guardada sem rede. Ela aparece aqui quando sincronizar.');
+          return;
+        }
+        destino = { inv, item };
+      }
+
+      setAbertoId(destino.inv.id);
+      setAbrirContagem((atual) => ({ itemId: destino!.item.id, n: (atual?.n ?? 0) + 1 }));
+    } catch (err: any) {
+      toast.error(err?.message || 'Não foi possível abrir a contagem do item lido.');
+    }
+  }, [estoque, giro, toast, user]);
+
+  // Com a tela carregada, abre a contagem do item lido (uma vez por leitura).
+  useEffect(() => {
+    if (!itemQr || itemQr.n <= qrAplicado.current || loading) return;
+    qrAplicado.current = itemQr.n;
+    void abrirContagemDoQr(itemQr.codigo);
+  }, [itemQr, loading, abrirContagemDoQr]);
 
   const aberto = inventarios.find((i) => i.id === abertoId) ?? null;
 
@@ -240,7 +337,8 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
         <VistaInventario
           user={user}
           inv={aberto}
-          onVoltar={() => setAbertoId(null)}
+          abrirContagem={abrirContagem}
+          onVoltar={() => { setAbertoId(null); setAbrirContagem(null); }}
           onRecarregar={recarregarInventarios}
           onAdicionar={() => setNovo({ inventario: aberto })}
           onExcluido={async () => { setAbertoId(null); await recarregarInventarios(); }}
@@ -759,10 +857,12 @@ const ROTULO_FILTRO: Record<FiltroItens, string> = {
 };
 
 function VistaInventario({
-  user, inv, onVoltar, onRecarregar, onAdicionar, onExcluido,
+  user, inv, abrirContagem, onVoltar, onRecarregar, onAdicionar, onExcluido,
 }: {
   user: Profile;
   inv: InventarioRow;
+  /** Item a contar assim que a vista abre (leitura de QR); `n` distingue leituras do mesmo item. */
+  abrirContagem?: { itemId: string; n: number } | null;
   onVoltar: () => void;
   onRecarregar: () => Promise<void>;
   onAdicionar: () => void;
@@ -771,7 +871,7 @@ function VistaInventario({
   const toast = useToast();
   const [filtro, setFiltro] = useState<FiltroItens>('abertos');
   const [busca, setBusca] = useState('');
-  const [contandoId, setContandoId] = useState<string | null>(null);
+  const [contandoId, setContandoId] = useState<string | null>(abrirContagem?.itemId ?? null);
   const [exportando, setExportando] = useState<'xlsx' | 'pdf' | null>(null);
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const r = resumirInventario(inv.itens);
@@ -822,6 +922,10 @@ function VistaInventario({
       return true;
     });
   }, [inv.itens, filtro, busca]);
+
+  useEffect(() => {
+    if (abrirContagem) setContandoId(abrirContagem.itemId);
+  }, [abrirContagem?.n]);
 
   const contando = inv.itens.find((i) => i.id === contandoId) ?? null;
   const naFila = useItensContadosNaFila();

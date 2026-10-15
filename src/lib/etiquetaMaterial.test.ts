@@ -13,9 +13,13 @@ import {
   ETIQUETA_LARGURA,
   ETIQUETAS_POR_FOLHA,
   codigoDoQr,
+  consumirItemInventarioPendente,
+  consumirItemQrEscolha,
+  guardarItemQrEscolha,
   consumirItemQrPendente,
   conteudoQrEtiqueta,
   dadosEtiquetaDoItem,
+  guardarItemInventarioPendente,
   guardarItemQrPendente,
   haItemQrPendente,
   hashSemItem,
@@ -81,6 +85,29 @@ describe('item do QR pendente (sobrevive ao login)', () => {
     guardarItemQrPendente('1437274', 0);
     expect(haItemQrPendente(31 * 60 * 1000)).toBe(false);
     expect(consumirItemQrPendente(31 * 60 * 1000)).toBeNull();
+  });
+
+  it('o pendente do inventário é separado do da baixa no balcão', () => {
+    guardarItemInventarioPendente('1437274', 1_000);
+    expect(haItemQrPendente(2_000)).toBe(false);
+    expect(consumirItemQrPendente(2_000)).toBeNull();
+    expect(consumirItemInventarioPendente(2_000)).toBe('1437274');
+    expect(consumirItemInventarioPendente(2_000)).toBeNull();
+  });
+
+  it('o item a escolher (link da câmera) é separado dos demais e entra uma vez só', () => {
+    guardarItemQrEscolha('1437274', 1_000);
+    expect(haItemQrPendente(2_000)).toBe(false);
+    expect(consumirItemInventarioPendente(2_000)).toBeNull();
+    expect(consumirItemQrEscolha(2_000)).toBe('1437274');
+    expect(consumirItemQrEscolha(2_000)).toBeNull();
+    guardarItemQrEscolha('1437274', 0);
+    expect(consumirItemQrEscolha(31 * 60 * 1000)).toBeNull();
+  });
+
+  it('o pendente do inventário também expira em 30 minutos', () => {
+    guardarItemInventarioPendente('1437274', 0);
+    expect(consumirItemInventarioPendente(31 * 60 * 1000)).toBeNull();
   });
 });
 
