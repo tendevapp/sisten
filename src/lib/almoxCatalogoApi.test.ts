@@ -11,6 +11,7 @@ import {
   pesquisarCatalogoSapOnline,
   PREFIXO_CAT_ITEM,
   extensaoDaImagem,
+  caminhoEhDoCatalogo,
   mapaPosicoesEstoque,
   posicaoDoMaterial,
   type CatalogoItem,
@@ -421,5 +422,24 @@ describe('posicaoDoMaterial', () => {
   it('devolve vazio quando não há nenhuma', () => {
     expect(posicaoDoMaterial('9999', null, posicoes)).toBe('');
     expect(posicaoDoMaterial('9999', undefined, undefined)).toBe('');
+  });
+});
+
+describe('caminhoEhDoCatalogo — o catálogo só apaga o que ele mesmo gravou', () => {
+  it('aceita arquivos da pasta almox-catalogo/ (foto principal e adicionais)', () => {
+    expect(caminhoEhDoCatalogo('almox-catalogo/material-1437274-1760000000000.jpg')).toBe(true);
+    expect(caminhoEhDoCatalogo('almox-catalogo/material-1437274-extra-1760000000000-0.jpg')).toBe(true);
+    expect(caminhoEhDoCatalogo('/almox-catalogo/material-1437274-1760000000000.jpg')).toBe(true);
+  });
+
+  it('recusa fotos do Recebimento, do Book de EPIs e qualquer caminho fora da pasta', () => {
+    expect(caminhoEhDoCatalogo('RCM-141026-01/a1b2c3d.jpg')).toBe(false);
+    expect(caminhoEhDoCatalogo('epis/ca-12345.jpg')).toBe(false);
+    expect(caminhoEhDoCatalogo('outra-pasta/foto.jpg')).toBe(false);
+    expect(caminhoEhDoCatalogo('')).toBe(false);
+  });
+
+  it('recusa tentativa de sair da pasta', () => {
+    expect(caminhoEhDoCatalogo('almox-catalogo/../RCM-141026-01/a1b2c3d.jpg')).toBe(false);
   });
 });

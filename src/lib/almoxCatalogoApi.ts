@@ -1530,11 +1530,191 @@ export async function migrarCatalogoLocalLegado(): Promise<number> {
   return migrados;
 }
 
+// ---------------------------------------------------------------------------
+// Fotos adicionais do item
+//
+// A foto principal (`imagem_path`) é a que o Recebimento também alimenta. As
+// adicionais moram em `alm_catalogo_item_fotos` e só entram e saem pelo
+// Cadastro de Itens — nada do Recebimento escreve ou lê esta tabela.
+// ---------------------------------------------------------------------------
+
+export const TABELA_FOTOS_ADICIONAIS = 'alm_catalogo_item_fotos';
+
+/** Limite por item — o suficiente para ângulos, embalagem e detalhe; evita o cadastro virar galeria. */
+export const MAX_FOTOS_ADICIONAIS = 8;
+
+export interface FotoAdicionalCatalogo {
+  id: string;
+  catalogo_item_id: string;
+  imagem_path: string;
+  imagem_nome: string | null;
+  imagem_mime: string | null;
+  imagem_tamanho: number | null;
+  ordem: number;
+  criado_por_nome: string | null;
+  created_at: string;
+  /** URL assinada, resolvida na leitura. */
+  url?: string | null;
+}
+
+const tabelaFotosAdicionais = () => (supabase.from as any)(TABELA_FOTOS_ADICIONAIS);
+
+/** Fotos adicionais do item, na ordem em que foram incluídas, já com URL assinada. */
+export async function listarFotosAdicionais(catalogoItemId: string): Promise<FotoAdicionalCatalogo[]> {
+  if (!catalogoItemId || !supabase) return [];
+  const { data, error } = await tabelaFotosAdicionais()
+    .select('*')
+    .eq('catalogo_item_id', catalogoItemId)
+    .order('ordem', { ascending: true })
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(`Falha ao carregar as fotos adicionais: ${error.message}`);
+
+  const fotos = (data ?? []) as FotoAdicionalCatalogo[];
+  const urls = await obterUrlsFotosCatalogoLote(fotos.map(f => ({ path: f.imagem_path, bucket: BUCKET_CATALOGO })));
+  return fotos.map(f => ({ ...f, url: urls.get(f.imagem_path) ?? null }));
+}
+
 /**
- * Remove uma foto do Supabase Storage.
+ * Inclui fotos adicionais no item (que já precisa ter registro no catálogo).
+ * Cada arquivo passa pela compressão única (regra 1 do CLAUDE.md) antes de
+ * subir; se a gravação da linha falhar, o arquivo recém-enviado é removido.
+ * Uma foto que falha não impede as demais — o retorno diz quais entraram e quais não.
+ */
+export async function adicionarFotosAdicionais(
+  catalogoItemId: string,
+  codigoSap: string,
+  arquivos: File[],
+  user: Profile,
+): Promise<{ salvas: FotoAdicionalCatalogo[]; falhas: { arquivo: File; motivo: string }[] }> {
+  if (!catalogoItemId) throw new Error('O item ainda não tem registro no catálogo.');
+  if (!supabase) throw new Error('Sem conexão com o banco de dados.');
+
+  const { count } = await tabelaFotosAdicionais()
+    .select('id', { count: 'exact', head: true })
+    .eq('catalogo_item_id', catalogoItemId);
+  const jaGravadas = count ?? 0;
+  if (jaGravadas + arquivos.length > MAX_FOTOS_ADICIONAIS) {
+    throw new Error(`Cada item aceita até ${MAX_FOTOS_ADICIONAIS} fotos adicionais (já tem ${jaGravadas}).`);
+  }
+
+  const salvas: FotoAdicionalCatalogo[] = [];
+  const falhas: { arquivo: File; motivo: string }[] = [];
+  for (let i = 0; i < arquivos.length; i++) {
+    const original = arquivos[i];
+    let pathEnviado: string | null = null;
+    try {
+      const comprimido = await comprimirImagemUpload(original);
+      const ext = extensaoDaImagem(comprimido, original);
+      const caminho = `${PASTA_CATALOGO}/material-${codigoSap}-extra-${Date.now()}-${i}.${ext}`;
+      const { error: erroUpload } = await supabase.storage
+        .from(BUCKET_CATALOGO)
+        .upload(caminho, comprimido, { contentType: comprimido.type || 'image/jpeg', upsert: false });
+      if (erroUpload) throw new Error(erroUpload.message);
+      pathEnviado = caminho;
+
+      const { data, error } = await tabelaFotosAdicionais()
+        .insert({
+          catalogo_item_id: catalogoItemId,
+          imagem_path: caminho,
+          imagem_nome: original.name || null,
+          imagem_mime: comprimido.type || 'image/jpeg',
+          imagem_tamanho: comprimido.size,
+          ordem: jaGravadas + i,
+          criado_por: user.id,
+          criado_por_nome: user.name,
+        })
+        .select('*')
+        .single();
+      if (error || !data) throw new Error(error?.message ?? 'resposta vazia');
+      salvas.push({ ...(data as FotoAdicionalCatalogo), url: await obterUrlFotoCatalogo(caminho) });
+    } catch (err: any) {
+      if (pathEnviado) await removerFotoDoStorage(pathEnviado);
+      falhas.push({ arquivo: original, motivo: err?.message ?? 'falha desconhecida' });
+    }
+  }
+  return { salvas, falhas };
+}
+
+/**
+ * Troca uma foto adicional por outra, mantendo a posição dela na lista.
+ * Sobe o arquivo novo, grava a linha nova (mesma `ordem`) e só então apaga a
+ * antiga — se qualquer passo falhar, o que já tinha continua como estava.
+ */
+export async function substituirFotoAdicional(
+  foto: FotoAdicionalCatalogo,
+  arquivo: File,
+  codigoSap: string,
+  user: Profile,
+): Promise<FotoAdicionalCatalogo> {
+  if (!supabase) throw new Error('Sem conexão com o banco de dados.');
+
+  const comprimido = await comprimirImagemUpload(arquivo);
+  const ext = extensaoDaImagem(comprimido, arquivo);
+  const caminho = `${PASTA_CATALOGO}/material-${codigoSap}-extra-${Date.now()}.${ext}`;
+  const { error: erroUpload } = await supabase.storage
+    .from(BUCKET_CATALOGO)
+    .upload(caminho, comprimido, { contentType: comprimido.type || 'image/jpeg', upsert: false });
+  if (erroUpload) throw new Error(`Falha no upload da foto: ${erroUpload.message}`);
+
+  const { data, error } = await tabelaFotosAdicionais()
+    .insert({
+      catalogo_item_id: foto.catalogo_item_id,
+      imagem_path: caminho,
+      imagem_nome: arquivo.name || null,
+      imagem_mime: comprimido.type || 'image/jpeg',
+      imagem_tamanho: comprimido.size,
+      ordem: foto.ordem,
+      criado_por: user.id,
+      criado_por_nome: user.name,
+    })
+    .select('*')
+    .single();
+  if (error || !data) {
+    await removerFotoDoStorage(caminho);
+    throw new Error(`Falha ao gravar a foto nova: ${error?.message ?? 'resposta vazia'}`);
+  }
+  const nova = data as FotoAdicionalCatalogo;
+
+  const { error: erroApagar } = await tabelaFotosAdicionais().delete().eq('id', foto.id);
+  if (erroApagar) {
+    // Não deu para tirar a antiga: desfaz a nova para não ficar foto duplicada.
+    await tabelaFotosAdicionais().delete().eq('id', nova.id);
+    await removerFotoDoStorage(caminho);
+    throw new Error(`Falha ao trocar a foto: ${erroApagar.message}`);
+  }
+  await removerFotoDoStorage(foto.imagem_path);
+
+  return { ...nova, url: await obterUrlFotoCatalogo(caminho) };
+}
+
+/** Apaga a linha e o arquivo de uma foto adicional. */
+export async function removerFotoAdicional(foto: Pick<FotoAdicionalCatalogo, 'id' | 'imagem_path'>): Promise<void> {
+  if (!foto.id || !supabase) return;
+  const { error } = await tabelaFotosAdicionais().delete().eq('id', foto.id);
+  if (error) throw new Error(`Falha ao remover a foto adicional: ${error.message}`);
+  await removerFotoDoStorage(foto.imagem_path);
+}
+
+/**
+ * O catálogo só pode apagar o que ele mesmo gravou: a pasta `almox-catalogo/`.
+ * Foto do Recebimento (bucket `alm-recebimento`) e do Book de EPIs são copiadas
+ * para cá antes de virar foto do catálogo, nunca referenciadas — trocar ou
+ * remover foto no cadastro jamais deve tocar nos arquivos delas.
+ */
+export function caminhoEhDoCatalogo(storagePath: string): boolean {
+  const limpo = storagePath.startsWith('/') ? storagePath.slice(1) : storagePath;
+  return limpo.startsWith(`${PASTA_CATALOGO}/`) && !limpo.includes('..');
+}
+
+/**
+ * Remove uma foto do Supabase Storage (só da pasta do catálogo).
  */
 async function removerFotoDoStorage(storagePath: string): Promise<void> {
   if (!storagePath || !supabase) return;
+  if (!caminhoEhDoCatalogo(storagePath)) {
+    console.warn('[almoxCatalogoApi] Arquivo fora da pasta do catálogo não será apagado:', storagePath);
+    return;
+  }
   try {
     const cleanPath = storagePath.startsWith('/') ? storagePath.slice(1) : storagePath;
     await supabase.storage.from(BUCKET_CATALOGO).remove([cleanPath]);
@@ -1567,4 +1747,15 @@ export async function excluirItemCatalogo(id: string, user: Profile): Promise<vo
   if (error) throw new Error(`Falha ao remover do catálogo: ${error.message}`);
 
   if (atual?.imagem_path) await removerFotoDoStorage(atual.imagem_path);
+
+  // As fotos adicionais saem junto: o item é só desativado, então a exclusão em
+  // cascata do banco não alcança as linhas nem os arquivos.
+  try {
+    const { data: extras } = await tabelaFotosAdicionais().select('id, imagem_path').eq('catalogo_item_id', id);
+    for (const foto of (extras ?? []) as Pick<FotoAdicionalCatalogo, 'id' | 'imagem_path'>[]) {
+      await removerFotoAdicional(foto);
+    }
+  } catch (err) {
+    console.warn('[almoxCatalogoApi] Falha ao remover fotos adicionais do item excluído:', err);
+  }
 }

@@ -30,6 +30,12 @@ import {
   mapaPosicoesEstoque,
   posicaoDoMaterial,
   marcarEtiquetasImpressas,
+  listarFotosAdicionais,
+  adicionarFotosAdicionais,
+  removerFotoAdicional,
+  substituirFotoAdicional,
+  MAX_FOTOS_ADICIONAIS,
+  type FotoAdicionalCatalogo,
   type ItemConsumivelZl0024,
   type CatalogoItem,
   type MaterialCandidatoCatalogo,
@@ -141,6 +147,16 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [fotoPreviewUrl, setFotoPreviewUrl] = useState<string | null>(null);
   const [observacao, setObservacao] = useState('');
   const [salvando, setSalvando] = useState(false);
+
+  // Fotos adicionais do item: as já gravadas e as escolhidas que sobem ao salvar.
+  // Só este cadastro as enxerga — a foto principal (e o Recebimento) não mudam.
+  const [fotosAdicionais, setFotosAdicionais] = useState<FotoAdicionalCatalogo[]>([]);
+  const [adicionaisNovas, setAdicionaisNovas] = useState<{ file: File; preview: string }[]>([]);
+  const adicionaisCameraRef = useRef<HTMLInputElement>(null);
+  const adicionaisGaleriaRef = useRef<HTMLInputElement>(null);
+  const substituirInputRef = useRef<HTMLInputElement>(null);
+  const substituirAlvoRef = useRef<FotoAdicionalCatalogo | null>(null);
+  const [substituindoId, setSubstituindoId] = useState<string | null>(null);
 
   // Modal de Visualização da Imagem em Alta Resolução
   const [imagemZoom, setImagemZoom] = useState<{ url: string; titulo: string; codigo: string } | null>(null);
@@ -398,12 +414,89 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setEtiquetaAplicacao(item.item_catalogo?.etiqueta_aplicacao || '');
     const minimoGravado = item.item_catalogo?.estoque_minimo;
     setEstoqueMinimo(minimoGravado === null || minimoGravado === undefined ? '' : String(minimoGravado).replace('.', ','));
+    limparAdicionaisNovas();
+    setFotosAdicionais([]);
+    const catalogoId = item.item_catalogo?.id;
+    if (catalogoId) {
+      listarFotosAdicionais(catalogoId)
+        .then(setFotosAdicionais)
+        .catch((err) => {
+          console.warn('[CadastroItensAlmox] Falha ao carregar fotos adicionais:', err);
+          toast.error('Não foi possível carregar as fotos adicionais deste item.');
+        });
+    }
+  };
+
+  const limparAdicionaisNovas = () => {
+    setAdicionaisNovas((atuais) => {
+      atuais.forEach((a) => URL.revokeObjectURL(a.preview));
+      return [];
+    });
+  };
+
+  /** Fotos escolhidas (câmera ou galeria): entram numa fila e sobem junto com o "Salvar". */
+  const handleEscolherAdicionais = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivos = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (arquivos.length === 0) return;
+    const vagas = MAX_FOTOS_ADICIONAIS - fotosAdicionais.length - adicionaisNovas.length;
+    if (vagas <= 0) {
+      toast.warning(`Cada item aceita até ${MAX_FOTOS_ADICIONAIS} fotos adicionais.`);
+      return;
+    }
+    if (arquivos.length > vagas) {
+      toast.warning(`Só cabem mais ${vagas} foto(s) adicional(is); as demais foram ignoradas.`);
+    }
+    setAdicionaisNovas((atuais) => [
+      ...atuais,
+      ...arquivos.slice(0, vagas).map((file) => ({ file, preview: URL.createObjectURL(file) })),
+    ]);
+  };
+
+  const removerAdicionalNova = (indice: number) => {
+    setAdicionaisNovas((atuais) => {
+      URL.revokeObjectURL(atuais[indice]?.preview);
+      return atuais.filter((_, i) => i !== indice);
+    });
+  };
+
+  /** Troca na hora uma foto adicional já gravada por outra, na mesma posição. */
+  const handleSubstituirAdicional = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = e.target.files?.[0];
+    e.target.value = '';
+    const alvo = substituirAlvoRef.current;
+    substituirAlvoRef.current = null;
+    if (!arquivo || !alvo || !itemSelecionado) return;
+    setSubstituindoId(alvo.id);
+    try {
+      const nova = await substituirFotoAdicional(alvo, arquivo, itemSelecionado.codigo_sap, user);
+      setFotosAdicionais((atuais) => atuais.map((f) => (f.id === alvo.id ? nova : f)));
+      toast.success('Foto adicional substituída.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao substituir a foto adicional.');
+    } finally {
+      setSubstituindoId(null);
+    }
+  };
+
+  /** Apaga na hora uma foto adicional já gravada (como o "Excluir foto atual"). */
+  const handleRemoverAdicionalSalva = async (foto: FotoAdicionalCatalogo) => {
+    if (!window.confirm('Remover esta foto adicional do item?')) return;
+    try {
+      await removerFotoAdicional(foto);
+      setFotosAdicionais((atuais) => atuais.filter((f) => f.id !== foto.id));
+      toast.success('Foto adicional removida.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao remover a foto adicional.');
+    }
   };
 
   const fecharModalFoto = () => {
     if (fotoPreviewUrl && fotoPreviewUrl.startsWith('blob:')) {
       URL.revokeObjectURL(fotoPreviewUrl);
     }
+    limparAdicionaisNovas();
+    setFotosAdicionais([]);
     setItemSelecionado(null);
     setFotoArquivo(null);
     setFotoPreviewUrl(null);
@@ -595,7 +688,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const handleSalvarFoto = async () => {
     if (!itemSelecionado) return;
     const cadastroMudou = cadastroDoItemMudou(itemSelecionado);
-    if (!fotoArquivo && !itemSelecionado.tem_foto && !cadastroMudou) {
+    if (!fotoArquivo && !itemSelecionado.tem_foto && !cadastroMudou && adicionaisNovas.length === 0) {
       toast.warning('Tire uma foto, selecione um arquivo de imagem ou preencha a posição ou a etiqueta.');
       return;
     }
@@ -657,9 +750,29 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         });
       }
 
+      // Fotos adicionais: sobem depois do cadastro, que cria o registro quando o item ainda não tem.
+      if (adicionaisNovas.length > 0) {
+        const { salvas, falhas } = await adicionarFotosAdicionais(
+          salvo.id, salvo.codigo_sap, adicionaisNovas.map((a) => a.file), user,
+        );
+        if (falhas.length > 0) {
+          // O cadastro já foi gravado; fica aberto só o que não subiu, para tentar de novo.
+          const falhou = new Set(falhas.map((f) => f.arquivo));
+          setAdicionaisNovas((atuais) => {
+            atuais.filter((a) => !falhou.has(a.file)).forEach((a) => URL.revokeObjectURL(a.preview));
+            return atuais.filter((a) => falhou.has(a.file));
+          });
+          setFotosAdicionais((atuais) => [...atuais, ...salvas]);
+          toast.error(`Cadastro salvo, mas ${falhas.length} foto(s) adicional(is) não subiram: ${falhas.map((f) => f.motivo).join('; ')}`);
+          return;
+        }
+      }
+
+      const nAdicionais = adicionaisNovas.length;
+      const sufixoAdicionais = nAdicionais > 0 ? ` (+${nAdicionais} foto${nAdicionais > 1 ? 's' : ''} adicional${nAdicionais > 1 ? 'is' : ''})` : '';
       toast.success(fotoArquivo || !cadastroMudou
-        ? `Foto do material ${salvo.codigo_sap} vinculada ao catálogo com sucesso!`
-        : `Cadastro do material ${salvo.codigo_sap} salvo no catálogo.`);
+        ? `Foto do material ${salvo.codigo_sap} vinculada ao catálogo com sucesso!${sufixoAdicionais}`
+        : `Cadastro do material ${salvo.codigo_sap} salvo no catálogo.${sufixoAdicionais}`);
       fecharModalFoto();
     } catch (err: any) {
       console.error('[CadastroItensAlmox] Erro ao salvar foto:', err);
@@ -1764,6 +1877,146 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                 </p>
               </div>
 
+              {/* Fotos adicionais — só neste cadastro */}
+              <div className="space-y-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <label className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
+                    Fotos adicionais <span className="font-normal" style={{ color: 'var(--ink-muted)' }}>(opcional)</span>
+                  </label>
+                  <span className="text-[10px] tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+                    {fotosAdicionais.length + adicionaisNovas.length}/{MAX_FOTOS_ADICIONAIS}
+                  </span>
+                </div>
+                <p className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+                  Outros ângulos, embalagem ou detalhes. Ficam só neste cadastro — não vêm do recebimento e não mudam a foto principal. Trocar ou remover aqui nunca altera as fotos do formulário de recebimento.
+                </p>
+
+                {(fotosAdicionais.length > 0 || adicionaisNovas.length > 0) && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {fotosAdicionais.map((foto) => (
+                      <div
+                        key={foto.id}
+                        className="relative aspect-square overflow-hidden rounded-lg border"
+                        style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
+                      >
+                        {foto.url ? (
+                          <button
+                            type="button"
+                            onClick={() => setImagemZoom({ url: foto.url!, titulo: itemSelecionado.descricao, codigo: itemSelecionado.codigo_sap })}
+                            className="h-full w-full cursor-zoom-in"
+                            title="Ampliar"
+                          >
+                            <img src={foto.url} alt="Foto adicional" className="h-full w-full object-cover" />
+                          </button>
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+                            Indisponível
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { substituirAlvoRef.current = foto; substituirInputRef.current?.click(); }}
+                          disabled={salvando || substituindoId !== null}
+                          className="absolute left-1 top-1 cursor-pointer rounded-md bg-slate-800/80 p-1 text-white hover:bg-slate-900 disabled:opacity-50"
+                          title="Substituir por outra foto"
+                          aria-label="Substituir foto adicional"
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoverAdicionalSalva(foto)}
+                          disabled={salvando || substituindoId !== null}
+                          className="absolute right-1 top-1 cursor-pointer rounded-md bg-rose-600 p-1 text-white shadow-md hover:bg-rose-700 disabled:opacity-50"
+                          title="Remover esta foto"
+                          aria-label="Remover foto adicional"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                        {substituindoId === foto.id && (
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
+                            <RefreshCw className="h-5 w-5 animate-spin" />
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {adicionaisNovas.map((nova, i) => (
+                      <div
+                        key={nova.preview}
+                        className="relative aspect-square overflow-hidden rounded-lg border-2 border-dashed"
+                        style={{ borderColor: 'var(--brand)', background: 'var(--surface-raised)' }}
+                      >
+                        <img src={nova.preview} alt="Nova foto adicional" className="h-full w-full object-cover" />
+                        <span className="absolute bottom-1 left-1 rounded bg-amber-600 px-1.5 py-0.5 text-[9px] font-black uppercase text-white">
+                          Nova
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removerAdicionalNova(i)}
+                          disabled={salvando}
+                          className="absolute right-1 top-1 cursor-pointer rounded-md bg-slate-800/80 p-1 text-white hover:bg-slate-900 disabled:opacity-50"
+                          title="Tirar da lista"
+                          aria-label="Tirar foto da lista"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <input
+                  ref={substituirInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic"
+                  className="hidden"
+                  onChange={handleSubstituirAdicional}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    ref={adicionaisCameraRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleEscolherAdicionais}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => adicionaisCameraRef.current?.click()}
+                    disabled={salvando || fotosAdicionais.length + adicionaisNovas.length >= MAX_FOTOS_ADICIONAIS}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold transition cursor-pointer hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800"
+                    style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
+                  >
+                    <Camera className="h-4 w-4 text-amber-600" />
+                    Adicionar (câmera)
+                  </button>
+                  <input
+                    ref={adicionaisGaleriaRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic"
+                    multiple
+                    className="hidden"
+                    onChange={handleEscolherAdicionais}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => adicionaisGaleriaRef.current?.click()}
+                    disabled={salvando || fotosAdicionais.length + adicionaisNovas.length >= MAX_FOTOS_ADICIONAIS}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold transition cursor-pointer hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800"
+                    style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
+                  >
+                    <Upload className="h-4 w-4 text-blue-600" />
+                    Adicionar (galeria)
+                  </button>
+                </div>
+                {adicionaisNovas.length > 0 && (
+                  <p className="text-[10px] font-semibold" style={{ color: 'var(--status-warning)' }}>
+                    {adicionaisNovas.length} foto(s) nova(s) sobem ao clicar em Salvar.
+                  </p>
+                )}
+              </div>
+
               {/* Posição no depósito */}
               <div>
                 <label className="text-xs font-bold block mb-1" style={{ color: 'var(--ink-primary)' }}>
@@ -1891,7 +2144,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                 <button
                   type="button"
                   onClick={handleSalvarFoto}
-                  disabled={salvando || (!fotoArquivo && !itemSelecionado.tem_foto && !cadastroDoItemMudou(itemSelecionado))}
+                  disabled={salvando || (!fotoArquivo && !itemSelecionado.tem_foto && !cadastroDoItemMudou(itemSelecionado) && adicionaisNovas.length === 0)}
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-xs transition cursor-pointer disabled:opacity-50"
                 >
                   {salvando ? (
