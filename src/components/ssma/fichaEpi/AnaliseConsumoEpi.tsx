@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, ResponsiveContainer, Text, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   AlertTriangle,
   BarChart3,
@@ -37,6 +37,7 @@ import SearchKeywordsChips from '../../ui/SearchKeywordsChips';
 import ConsumoColaboradorModal from './ConsumoColaboradorModal';
 import {
   AMOSTRAS_MINIMAS_DURACAO,
+  alternarNoConjunto,
   analisarConsumo,
   chaveGrupo,
   colaboradoresSemFicha,
@@ -84,6 +85,31 @@ function inicioDoPeriodo(periodo: string): string | null {
   return hojeISO(d);
 }
 
+/**
+ * Rótulo de eixo que filtra ao clicar. O gráfico trata o rótulo como parte da
+ * barra: clicar no nome do EPI ou do mês faz o mesmo que clicar na barra.
+ */
+function TickFiltro({ x, y, payload, rotulo, ativo, onClick, ...resto }: any) {
+  const horizontal = resto.orientation === 'bottom';
+  return (
+    <Text
+      x={x}
+      y={y}
+      width={horizontal ? undefined : resto.width}
+      textAnchor={horizontal ? 'middle' : 'end'}
+      verticalAnchor={horizontal ? 'start' : 'middle'}
+      dy={horizontal ? 8 : 0}
+      fontSize={11}
+      fontWeight={ativo ? 800 : 600}
+      fill={ativo ? resto.corAtiva : resto.cor}
+      style={{ cursor: 'pointer' }}
+      onClick={() => onClick(payload.value)}
+    >
+      {rotulo(payload.value)}
+    </Text>
+  );
+}
+
 const selectCls = 'rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900';
 const thCls = 'px-3 py-2.5 font-bold';
 
@@ -117,6 +143,10 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
   const alterar = (parcial: Partial<FiltrosConsumo>) => setFiltros(f => ({ ...f, ...parcial }));
   const trocarPeriodo = (valor: string) => { setPeriodo(valor); alterar({ inicio: inicioDoPeriodo(valor) }); };
   const limpar = () => { setPeriodo('365'); setFiltros(filtrosConsumoVazios(inicioDoPeriodo('365'))); };
+  // Clicar numa barra (ou no rótulo) liga o filtro; clicar de novo desliga.
+  const alternarEpi = (chave: string) => alterar({ epis: alternarNoConjunto(filtros.epis, chave) });
+  const alternarMes = (mes: string) => alterar({ meses: alternarNoConjunto(filtros.meses, mes) });
+  const alternarMotivo = (motivo: string) => alterar({ motivos: alternarNoConjunto(filtros.motivos, motivo) });
 
   useEffect(() => {
     Promise.all([listarConsumoEpi(), listarColaboradoresAtivos()])
@@ -162,6 +192,21 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
   const filtrosAtivos = filtrosConsumoAtivos(filtros, filtros.inicio) + (periodo !== '365' ? 1 : 0);
 
   const analise = useMemo(() => analisarConsumo(filtradas, todas), [filtradas, todas]);
+  // Os gráficos clicáveis mostram TODAS as barras do próprio eixo, com as escolhidas
+  // em destaque: senão, ao escolher um EPI, as outras barras sumiriam e não haveria
+  // como trocar a escolha ou somar outra.
+  const analiseEpis = useMemo(
+    () => (filtros.epis.size ? analisarConsumo(filtrarConsumo(todas, filtros, 'epis'), todas) : analise),
+    [todas, filtros, analise],
+  );
+  const analiseMeses = useMemo(
+    () => (filtros.meses.size ? analisarConsumo(filtrarConsumo(todas, filtros, 'meses'), todas) : analise),
+    [todas, filtros, analise],
+  );
+  const analiseMotivos = useMemo(
+    () => (filtros.motivos.size ? analisarConsumo(filtrarConsumo(todas, filtros, 'motivos'), todas) : analise),
+    [todas, filtros, analise],
+  );
   const semFicha = useMemo(() => colaboradoresSemFicha(pessoas, todas.map(l => l.pessoa_id)), [pessoas, todas]);
 
   if (carregando) return <div className="flex justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-emerald-600" /></div>;
@@ -180,8 +225,14 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
   }
 
   const { resumo } = analise;
-  const topEpis = analise.porEpi.slice(0, 12).map(e => ({ nome: e.grupoEpi, valor: e.unidades, perdas: e.perdas, colaboradores: e.colaboradores, duracao: e.duracaoMedianaDias, sap: e.materiaisSap.map(m => `${m.codigo}${m.descricao ? ` · ${m.descricao}` : ''}`) }));
-  const serieMensal = analise.porMes.map(m => ({ mes: rotuloMes(m.mes), reposicao: m.unidades - m.perdas, perdas: m.perdas }));
+  // Os 12 maiores; um EPI escolhido que ficou fora do top entra no fim, para continuar visível.
+  const episDoGrafico = [
+    ...analiseEpis.porEpi.slice(0, 12),
+    ...analiseEpis.porEpi.slice(12).filter(e => filtros.epis.has(e.chave)),
+  ];
+  const topEpis = episDoGrafico.map(e => ({ chave: e.chave, nome: e.grupoEpi, valor: e.unidades, perdas: e.perdas, colaboradores: e.colaboradores, duracao: e.duracaoMedianaDias, sap: e.materiaisSap.map(m => `${m.codigo}${m.descricao ? ` · ${m.descricao}` : ''}`) }));
+  const nomeDoEpi = new Map(topEpis.map(e => [e.chave, e.nome]));
+  const serieMensal = analiseMeses.porMes.map(m => ({ chave: m.mes, reposicao: m.unidades - m.perdas, perdas: m.perdas, total: m.unidades }));
   const colaboradores = verTodosColab ? analise.porColaborador : analise.porColaborador.slice(0, 15);
 
   return (
@@ -211,6 +262,16 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
             </button>
           )}
         </div>
+        {filtros.meses.size > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-bold text-slate-500">Mês:</span>
+            {[...filtros.meses].sort().map(m => (
+              <button key={m} type="button" onClick={() => alternarMes(m)} title="Tirar este mês do filtro" className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300">
+                {rotuloMes(m)}<X className="h-3 w-3" />
+              </button>
+            ))}
+          </div>
+        )}
         <p className="text-[11px] text-slate-500">
           Os filtros se combinam: cada lista mostra só o que existe com os outros já escolhidos. Fora do período, o histórico continua sendo usado para calcular as durações.
         </p>
@@ -234,12 +295,32 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <ChartCard title="EPIs mais consumidos" description="Unidades entregues no período, por EPI (tamanhos somados)." icon={Boxes} height={Math.max(220, topEpis.length * 30)} empty={!topEpis.length}>
+        <ChartCard title="EPIs mais consumidos" description="Unidades entregues no período, por EPI (tamanhos somados). Clique na barra ou no nome para filtrar; clique de novo para tirar." icon={Boxes} height={Math.max(220, topEpis.length * 30)} empty={!topEpis.length}>
           <ResponsiveContainer width="100%" height={Math.max(220, topEpis.length * 30)}>
             <BarChart data={topEpis} layout="vertical" margin={{ top: 4, right: 44, left: 0, bottom: 4 }}>
               <CartesianGrid {...c.grid} vertical horizontal={false} />
               <XAxis type="number" allowDecimals={false} {...c.yAxis} />
-              <YAxis type="category" dataKey="nome" {...c.xAxis} tick={{ fontSize: 11, fill: c.tokens.labelStrong, fontWeight: 600 }} width={170} interval={0} tickFormatter={(v: string) => (v.length > 26 ? `${v.slice(0, 25)}…` : v)} />
+              <YAxis
+                type="category"
+                dataKey="chave"
+                {...c.xAxis}
+                width={170}
+                interval={0}
+                tick={(p: any) => {
+                  const nome = nomeDoEpi.get(p.payload.value) ?? '';
+                  return (
+                    <TickFiltro
+                      {...p}
+                      width={170}
+                      cor={c.tokens.labelStrong}
+                      corAtiva={c.tokens.brand}
+                      ativo={filtros.epis.has(p.payload.value)}
+                      rotulo={() => (nome.length > 26 ? `${nome.slice(0, 25)}…` : nome)}
+                      onClick={alternarEpi}
+                    />
+                  );
+                }}
+              />
               <Tooltip
                 cursor={c.cursor}
                 content={({ active, payload }) => active && payload?.length ? (
@@ -252,29 +333,75 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
                       { label: 'Duração mediana', value: fmtDias(payload[0].payload.duracao) },
                       ...(payload[0].payload.sap as string[]).slice(0, 3).map((s, i) => ({ label: i === 0 ? 'SAP' : '', value: s })),
                     ]}
+                    footer={filtros.epis.has(payload[0].payload.chave) ? 'Clique para tirar do filtro' : 'Clique para filtrar por este EPI'}
                   />
                 ) : null}
               />
-              <Bar dataKey="valor" radius={c.radius.right} maxBarSize={22} {...c.animation}>
-                {topEpis.map((_, i) => <Cell key={i} fill={c.tokens.brand} fillOpacity={1 - i * 0.045} />)}
+              <Bar dataKey="valor" radius={c.radius.right} maxBarSize={22} cursor="pointer" onClick={(d: any) => d?.payload?.chave && alternarEpi(d.payload.chave)} {...c.animation}>
+                {topEpis.map((e, i) => (
+                  <Cell
+                    key={e.chave}
+                    fill={c.tokens.brand}
+                    fillOpacity={filtros.epis.size ? (filtros.epis.has(e.chave) ? 1 : 0.3) : 1 - i * 0.045}
+                  />
+                ))}
                 <LabelList dataKey="valor" position="right" formatter={(v: number) => formatarQuantidade(v)} style={c.labelOnSurface} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Consumo por mês" description="Unidades entregues; em destaque a parcela por perda ou dano injustificado." icon={CalendarRange} height={280} minPlotWidth={estimateCategoryChartWidth(serieMensal.length)} empty={!serieMensal.length}>
+        <ChartCard title="Consumo por mês" description="Unidades entregues; em destaque a parcela por perda ou dano injustificado. Clique no mês (barra ou nome) para filtrar; clique de novo para tirar." icon={CalendarRange} height={280} minPlotWidth={estimateCategoryChartWidth(serieMensal.length)} empty={!serieMensal.length}>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={serieMensal} margin={{ top: 16, right: 12, left: 0, bottom: 4 }}>
               <CartesianGrid {...c.grid} />
-              <XAxis dataKey="mes" {...c.xAxis} />
+              <XAxis
+                dataKey="chave"
+                {...c.xAxis}
+                interval={0}
+                tick={(p: any) => (
+                  <TickFiltro
+                    {...p}
+                    orientation="bottom"
+                    cor={c.tokens.labelStrong}
+                    corAtiva={c.tokens.brand}
+                    ativo={filtros.meses.has(p.payload.value)}
+                    rotulo={rotuloMes}
+                    onClick={alternarMes}
+                  />
+                )}
+              />
               <YAxis allowDecimals={false} {...c.yAxis} />
               <Tooltip cursor={c.cursor} content={({ active, payload, label }) => active && payload?.length ? (
-                <ChartTooltip title={label} rows={payload.map(p => ({ label: String(p.name), value: formatarQuantidade(Number(p.value)), color: String(p.color) }))} />
+                <ChartTooltip
+                  title={rotuloMes(String(label))}
+                  rows={payload.map(p => ({ label: String(p.name), value: formatarQuantidade(Number(p.value)), color: String(p.color) }))}
+                  footer={filtros.meses.has(String(label)) ? 'Clique para tirar do filtro' : 'Clique para filtrar por este mês'}
+                />
               ) : null} />
               <Legend {...c.legend} />
-              <Bar dataKey="reposicao" name="Entregas regulares" stackId="u" fill={c.tokens.brand} maxBarSize={32} {...c.animation} />
-              <Bar dataKey="perdas" name="Perda / dano injustificado" stackId="u" fill={c.tokens.status.serious} radius={c.radius.top} maxBarSize={32} {...c.animation} />
+              <Bar dataKey="reposicao" name="Entregas regulares" stackId="u" fill={c.tokens.brand} maxBarSize={32} cursor="pointer" onClick={(d: any) => d?.payload?.chave && alternarMes(d.payload.chave)} {...c.animation}>
+                {serieMensal.map(m => <Cell key={m.chave} fill={c.tokens.brand} fillOpacity={filtros.meses.size && !filtros.meses.has(m.chave) ? 0.3 : 1} />)}
+                {/* Mês sem perda: o segmento de perda tem altura zero e o gráfico não imprime rótulo
+                    de segmento vazio, então o total sai daqui, no topo da parte regular. */}
+                <LabelList
+                  dataKey="reposicao"
+                  content={(p: any) => {
+                    const mes = serieMensal[p.index];
+                    if (!mes || mes.perdas > 0) return null;
+                    return (
+                      <text x={Number(p.x) + Number(p.width) / 2} y={Number(p.y) - 6} textAnchor="middle" {...c.labelOnSurface}>
+                        {formatarQuantidade(mes.total)}
+                      </text>
+                    );
+                  }}
+                />
+              </Bar>
+              <Bar dataKey="perdas" name="Perda / dano injustificado" stackId="u" fill={c.tokens.status.serious} radius={c.radius.top} maxBarSize={32} cursor="pointer" onClick={(d: any) => d?.payload?.chave && alternarMes(d.payload.chave)} {...c.animation}>
+                {serieMensal.map(m => <Cell key={m.chave} fill={c.tokens.status.serious} fillOpacity={filtros.meses.size && !filtros.meses.has(m.chave) ? 0.3 : 1} />)}
+                {/* Segmento do topo da pilha: o rótulo é o total do mês (regulares + perda), impresso acima da barra. */}
+                <LabelList dataKey="total" position="top" formatter={(v: number) => formatarQuantidade(v)} style={c.labelOnSurface} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -401,19 +528,27 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
           </div>
         </Secao>
 
-        <Secao titulo="Motivos de entrega (M.E.D.)" descricao="Por que os EPIs saíram — alta participação do motivo 3 indica perda ou mau uso." icone={PackageX}>
+        <Secao titulo="Motivos de entrega (M.E.D.)" descricao="Por que os EPIs saíram — alta participação do motivo 3 indica perda ou mau uso. Clique num motivo para filtrar." icone={PackageX}>
           <ul className="space-y-3 p-4">
-            {analise.porMotivo.map(m => {
-              const share = resumo.unidades ? m.unidades / resumo.unidades : 0;
+            {analiseMotivos.porMotivo.map(m => {
+              const share = analiseMotivos.resumo.unidades ? m.unidades / analiseMotivos.resumo.unidades : 0;
               return (
                 <li key={m.motivo}>
-                  <div className="flex items-baseline justify-between gap-3 text-xs">
-                    <span className="text-slate-700 dark:text-slate-200"><span className="font-bold">{m.motivo}.</span> {m.rotulo}</span>
-                    <span className="shrink-0 tabular-nums text-slate-500">{formatarQuantidade(m.unidades)} un. · {fmtPct(share)}</span>
-                  </div>
-                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                    <div className="h-full rounded-full" style={{ width: `${share * 100}%`, background: m.motivo === 3 ? c.tokens.status.serious : c.tokens.brand }} />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => alternarMotivo(String(m.motivo))}
+                    aria-pressed={filtros.motivos.has(String(m.motivo))}
+                    title={filtros.motivos.has(String(m.motivo)) ? 'Clique para tirar do filtro' : 'Clique para filtrar por este motivo'}
+                    className={`-mx-2 block w-[calc(100%+1rem)] rounded-lg px-2 py-1 text-left transition-opacity hover:bg-slate-50 dark:hover:bg-slate-800/60 ${filtros.motivos.size && !filtros.motivos.has(String(m.motivo)) ? 'opacity-50' : ''}`}
+                  >
+                    <div className="flex items-baseline justify-between gap-3 text-xs">
+                      <span className="text-slate-700 dark:text-slate-200"><span className="font-bold">{m.motivo}.</span> {m.rotulo}</span>
+                      <span className="shrink-0 tabular-nums text-slate-500">{formatarQuantidade(m.unidades)} un. · {fmtPct(share)}</span>
+                    </div>
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                      <div className="h-full rounded-full" style={{ width: `${share * 100}%`, background: m.motivo === 3 ? c.tokens.status.serious : c.tokens.brand }} />
+                    </div>
+                  </button>
                 </li>
               );
             })}

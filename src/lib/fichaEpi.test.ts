@@ -8,6 +8,7 @@ import {
   filtrarConsumo,
   filtrosConsumoAtivos,
   filtrosConsumoVazios,
+  alternarNoConjunto,
   SEM_SETOR,
   intervalosDeReposicao,
   linhasParaPayload,
@@ -387,5 +388,24 @@ describe('EPI fora do Book (catálogo SAP)', () => {
     });
     expect(linhas[0].foraDoBook).toBe(true);
     expect(montarLinhasFicha({ requisitos: [requisito('r1', 'b40', 'BASICO_OBRIGATORIO')], book: BOOK, historico: [], motivo: 1 })[0].foraDoBook).toBe(false);
+  });
+  it('filtra por mês de entrega, deixa o mês de fora quando ignorado e conta no "Limpar"', () => {
+    const linhas = [
+      consumo('jan', 'LUVA', '2026-01-10', 1),
+      consumo('fev-a', 'LUVA', '2026-02-20', 1),
+      consumo('fev-b', 'LUVA', '2026-02-03', 1),
+    ];
+    const f = { ...filtrosConsumoVazios(), meses: new Set(['2026-02']) };
+    expect(filtrarConsumo(linhas, f).map(l => l.pessoa_id)).toEqual(['fev-a', 'fev-b']);
+    expect(filtrarConsumo(linhas, f, 'meses')).toHaveLength(3);
+    expect(filtrosConsumoAtivos(f, null)).toBe(1);
+  });
+
+  it('alterna um valor no conjunto sem alterar o original', () => {
+    const original = new Set(['a']);
+    const com = alternarNoConjunto(original, 'b');
+    expect([...com]).toEqual(['a', 'b']);
+    expect([...alternarNoConjunto(com, 'a')]).toEqual(['b']);
+    expect([...original]).toEqual(['a']);
   });
 });

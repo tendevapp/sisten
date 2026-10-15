@@ -900,14 +900,16 @@ export interface FiltrosConsumo {
   pessoas: Set<string>;
   /** Motivos M.E.D. como texto ('1'..'4'). */
   motivos: Set<string>;
+  /** Meses de entrega ('AAAA-MM'), escolhidos clicando no gráfico de consumo por mês. */
+  meses: Set<string>;
   /** Palavras-chave (chips, todas precisam bater): colaborador, registro, função, EPI, código ou descrição SAP. */
   palavras: string[];
 }
 
-export type DimensaoFiltroConsumo = 'funcoes' | 'setores' | 'epis' | 'pessoas' | 'motivos';
+export type DimensaoFiltroConsumo = 'funcoes' | 'setores' | 'epis' | 'pessoas' | 'motivos' | 'meses';
 
 export function filtrosConsumoVazios(inicio: string | null = null): FiltrosConsumo {
-  return { inicio, funcoes: new Set(), setores: new Set(), epis: new Set(), pessoas: new Set(), motivos: new Set(), palavras: [] };
+  return { inicio, funcoes: new Set(), setores: new Set(), epis: new Set(), pessoas: new Set(), motivos: new Set(), meses: new Set(), palavras: [] };
 }
 
 /**
@@ -924,14 +926,22 @@ export function filtrarConsumo(linhas: LinhaConsumo[], f: FiltrosConsumo, ignora
     if (ignorar !== 'epis' && f.epis.size && !f.epis.has(chaveGrupo(l.categoria, l.grupo_epi))) return false;
     if (ignorar !== 'pessoas' && f.pessoas.size && !f.pessoas.has(l.pessoa_id)) return false;
     if (ignorar !== 'motivos' && f.motivos.size && !f.motivos.has(String(l.motivo))) return false;
+    if (ignorar !== 'meses' && f.meses.size && !f.meses.has(l.data_entrega.slice(0, 7))) return false;
     if (f.palavras.length && !casarTokens([l.nome, l.registro, l.funcao_nome, l.grupo_epi, l.categoria, l.codigo_sap, l.descricao_sap], f.palavras)) return false;
     return true;
   });
 }
 
+/** Liga/desliga um valor num filtro de conjunto (clique no gráfico): novo Set, sem mexer no original. */
+export function alternarNoConjunto(conjunto: Set<string>, valor: string): Set<string> {
+  const proximo = new Set(conjunto);
+  if (proximo.has(valor)) proximo.delete(valor); else proximo.add(valor);
+  return proximo;
+}
+
 /** Quantos filtros estão fora do estado inicial (para o botão "Limpar"). */
 export function filtrosConsumoAtivos(f: FiltrosConsumo, inicioPadrao: string | null): number {
-  return f.funcoes.size + f.setores.size + f.epis.size + f.pessoas.size + f.motivos.size
+  return f.funcoes.size + f.setores.size + f.epis.size + f.pessoas.size + f.motivos.size + f.meses.size
     + f.palavras.length + (f.inicio !== inicioPadrao ? 1 : 0);
 }
 
