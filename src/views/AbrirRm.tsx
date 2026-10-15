@@ -39,7 +39,7 @@ import { localDb } from '../db/localDb';
 import type {
   AlmoxRmExportacao, AlmoxRmExportacaoSolicitacao, Profile, Request, RequestItem, Sector,
 } from '../types';
-import { formatDateBR, formatDateTimeBR, formatQtd } from '../lib/format';
+import { formatDateBR, formatDateTimeBR, formatQtd, toDate } from '../lib/format';
 import { rotuloCriticidade } from '../lib/solicitacoes';
 import { classificarMudanca, dividirMudancas, type TipoMudanca } from '../lib/solicitacoesDiff';
 import {
@@ -147,6 +147,13 @@ const ABRIR_RM_TOUR_STEPS: TourStep[] = [
 ];
 
 type FiltroExportacao = 'nao_exportadas' | 'exportadas' | 'todas';
+
+/** Dia (AAAA-MM-DD) no fuso local de um carimbo de data/hora — o dia que a pessoa viu, não o UTC. */
+function diaLocalISO(valor?: string | null): string {
+  const d = toDate(valor);
+  if (!d) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 /** Ícone e cor de cada categoria de mudança — a mesma frase de `descreverAlteracoesCompra`, olhada de outro jeito. */
 const ICONE_MUDANCA: Record<TipoMudanca, { Icon: LucideIcon; cor: string }> = {
@@ -416,6 +423,10 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   // voltar do SAP — por digitação avulsa ou pela planilha reimportada.
   const [aba, setAba] = useState<'para_abrir' | 'abertas'>('para_abrir');
   const [buscaAbertasChips, setBuscaAbertasChips] = useState<string[]>([]);
+  const [setorAbertas, setSetorAbertas] = useState('todos');
+  // Período de abertura da solicitação, em AAAA-MM-DD (valor do <input type="date">).
+  const [aberturaDeAbertas, setAberturaDeAbertas] = useState('');
+  const [aberturaAteAbertas, setAberturaAteAbertas] = useState('');
   const [itensExpandidosAbertas, setItensExpandidosAbertas] = useState<Set<string>>(new Set());
 
   const alternarItensAbertas = (id: string) => {
@@ -707,6 +718,16 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   /** Exportadas e vigentes — o que já saiu no SAP e ainda pode não ter RM de volta. */
   const abertas = useMemo(() => {
     let lista = requests.filter(r => exportacaoVigentePorRequest.has(r.id));
+    if (setorAbertas !== 'todos') {
+      lista = lista.filter(r => r.solicitante_sector_id === setorAbertas);
+    }
+    if (aberturaDeAbertas || aberturaAteAbertas) {
+      lista = lista.filter(r => {
+        const dia = diaLocalISO(r.created_at);
+        if (!dia) return false;
+        return (!aberturaDeAbertas || dia >= aberturaDeAbertas) && (!aberturaAteAbertas || dia <= aberturaAteAbertas);
+      });
+    }
     const tokens = buscaAbertasChips.map(normalizarParaBusca).filter(Boolean);
     if (tokens.length > 0) {
       lista = lista.filter(r => {
@@ -730,7 +751,9 @@ export default function AbrirRm({ user, onNavigate }: Props) {
       if (aSemRm !== bSemRm) return aSemRm - bSemRm;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [requests, exportacaoVigentePorRequest, buscaAbertasChips, itensPorRequest]);
+  }, [requests, exportacaoVigentePorRequest, buscaAbertasChips, itensPorRequest, setorAbertas, aberturaDeAbertas, aberturaAteAbertas]);
+
+  const filtroAbertasAtivo = setorAbertas !== 'todos' || !!aberturaDeAbertas || !!aberturaAteAbertas;
 
   const abertasComRm = useMemo(() => abertas.filter(r => r.linked_rm_number).length, [abertas]);
   const abertasSemRm = abertas.length - abertasComRm;
@@ -2106,14 +2129,63 @@ export default function AbrirRm({ user, onNavigate }: Props) {
         </div>
       )}
 
-      {/* Busca */}
-      <div className="w-full max-w-xl">
-        <SearchKeywordsChips
-          chips={buscaAbertasChips}
-          onChangeChips={setBuscaAbertasChips}
-          accent="brand"
-          placeholder="Buscar por palavras-chave (número, solicitante, RM, material ou código SAP)..."
-        />
+      {/* Busca e filtros */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="w-full max-w-xl">
+          <SearchKeywordsChips
+            chips={buscaAbertasChips}
+            onChangeChips={setBuscaAbertasChips}
+            accent="brand"
+            placeholder="Buscar por palavras-chave (número, solicitante, RM, material ou código SAP)..."
+          />
+        </div>
+
+        <select
+          value={setorAbertas}
+          onChange={e => setSetorAbertas(e.target.value)}
+          aria-label="Setor solicitante"
+          className="px-3 py-2 rounded-lg border text-sm cursor-pointer"
+          style={{ borderColor: 'var(--hairline)', background: 'var(--surface)', color: 'var(--ink-primary)' }}
+        >
+          <option value="todos">Todos os setores</option>
+          {sectors.map(s => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+
+        <label className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>
+          Abertura de
+          <input
+            type="date"
+            value={aberturaDeAbertas}
+            max={aberturaAteAbertas || undefined}
+            onChange={e => setAberturaDeAbertas(e.target.value)}
+            className="px-2 py-1.5 rounded-lg border text-sm font-normal"
+            style={{ borderColor: 'var(--hairline)', background: 'var(--surface)', color: 'var(--ink-primary)' }}
+          />
+        </label>
+        <label className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>
+          até
+          <input
+            type="date"
+            value={aberturaAteAbertas}
+            min={aberturaDeAbertas || undefined}
+            onChange={e => setAberturaAteAbertas(e.target.value)}
+            className="px-2 py-1.5 rounded-lg border text-sm font-normal"
+            style={{ borderColor: 'var(--hairline)', background: 'var(--surface)', color: 'var(--ink-primary)' }}
+          />
+        </label>
+
+        {filtroAbertasAtivo && (
+          <button
+            type="button"
+            onClick={() => { setSetorAbertas('todos'); setAberturaDeAbertas(''); setAberturaAteAbertas(''); }}
+            className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-bold cursor-pointer"
+            style={{ color: 'var(--brand)' }}
+          >
+            <X className="h-3.5 w-3.5" /> Limpar filtros
+          </button>
+        )}
       </div>
 
       {/* Lista de Abertas */}
@@ -2125,7 +2197,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
           <TableEmpty
             icon={FileSpreadsheet}
             title="Nada exportado ainda"
-            hint='Nenhuma solicitação exportada bate com a busca. Exporte pela aba "Para Abrir" ou troque o termo buscado.'
+            hint='Nenhuma solicitação exportada bate com a busca ou os filtros. Exporte pela aba "Para Abrir" ou troque os termos e filtros.'
           />
         ) : (
           <ul>
@@ -2178,6 +2250,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                         {requisitanteRm(r.solicitante_name)}
                       </span>
                       <span>{nomeSetor(r.solicitante_sector_id)}</span>
+                      <span title="Data de abertura da solicitação">Aberta em {formatDateBR(r.created_at)}</span>
                       <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
                         {itens.length} {itens.length === 1 ? 'item' : 'itens'}
                       </span>

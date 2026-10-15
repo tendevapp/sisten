@@ -120,6 +120,27 @@ interface Linha {
 
 type ModoVisao = 'lista' | 'quadro' | 'calendario';
 
+/** Rótulo da coluna Status da linha — mesma fonte do pill (`obterEstilosStatus`). */
+const rotuloStatusColuna = (r: Request): string =>
+  obterEstilosStatus(r.status, r.type, !!r.linked_rm_number, r.tipo_compra).rotulo;
+
+/** Opções do filtro de Status: os rótulos que a coluna pode mostrar, em ordem do fluxo. */
+const ROTULOS_STATUS_COLUNA: string[] = [
+  'Aberta',
+  'Em análise',
+  'Aguardando aprovação',
+  'Aprovada',
+  'Aguardando RM',
+  'RM Aberta',
+  'Em cotação',
+  'Pedido emitido',
+  'Entregue',
+  'Resolvida',
+  'Fechada',
+  'Cancelada',
+  'Rejeitada',
+];
+
 /**
  * Visão inicial: no celular a lista vira uma tabela larga que só rola de lado;
  * o Quadro mostra o mesmo conteúdo em colunas de cartões, que é o formato que
@@ -156,7 +177,8 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   const [criticidade, setCriticidade] = useState<string>(cache.criticidade);
   const [setor, setSetor] = useState<string>(cache.setor);
   const [statusFiltro, setStatusFiltro] = useState<string>(
-    cache.statusFiltro && cache.statusFiltro !== 'abertas' ? cache.statusFiltro : 'todas',
+    // Cache de versões antigas guardava chaves ('abertas', 'concluidas'...) — não valem mais.
+    ROTULOS_STATUS_COLUNA.includes(cache.statusFiltro) ? cache.statusFiltro : 'todas',
   );
   const [dataFiltro, setDataFiltro] = useState<string>(cache.dataFiltro || 'todas');
   const [visao, setVisao] = useState<ModoVisao>((cache.visao as ModoVisao) || visaoPadrao());
@@ -265,23 +287,10 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   const antesDoTipo = useMemo(() => {
     let lista = filtrarPorEscopo(universo, user, escopo, pendencias);
 
-    // Filtro por status
+    // Filtro por status: o valor é o próprio rótulo da coluna Status, então o
+    // que se escolhe aqui é exatamente o que aparece na linha.
     if (statusFiltro !== 'todas') {
-      if (statusFiltro === 'abertas') {
-        lista = lista.filter(r => estaEmAberto(r));
-      } else if (statusFiltro === 'em_analise') {
-        lista = lista.filter(r => ['em_atendimento', 'em_revisao', 'aguardando_solicitante'].includes(r.status));
-      } else if (statusFiltro === 'aguardando_aprovacao') {
-        lista = lista.filter(r => r.type === 'compra' && r.status === 'pendente');
-      } else if (statusFiltro === 'concluidas') {
-        // 'aprovada' e os estágios seguintes (em_cotacao/pedido_emitido/concluida —
-        // ver lib/statusAutomaticoCompra.ts) contam como "concluída" aqui porque,
-        // do ponto de vista de quem abriu a compra, não há mais nada a fazer
-        // depois da aprovação do gestor: o resto do andamento é acompanhado, não operado.
-        lista = lista.filter(r => ['resolvido', 'fechado', 'aprovada', 'em_cotacao', 'pedido_emitido', 'concluida'].includes(r.status));
-      } else if (statusFiltro === 'canceladas') {
-        lista = lista.filter(r => ['cancelada', 'rejeitada'].includes(r.status));
-      }
+      lista = lista.filter(r => rotuloStatusColuna(r) === statusFiltro);
     }
 
     // Filtro por criticidade
@@ -674,11 +683,9 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
               className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:border-emerald-600 focus:outline-none cursor-pointer"
             >
               <option value="todas">Todas</option>
-              <option value="abertas">Abertas</option>
-              <option value="em_analise">Em análise</option>
-              <option value="aguardando_aprovacao">Aguardando aprovação</option>
-              <option value="concluidas">Concluídas</option>
-              <option value="canceladas">Canceladas / Rejeitadas</option>
+              {ROTULOS_STATUS_COLUNA.map(rotulo => (
+                <option key={rotulo} value={rotulo}>{rotulo}</option>
+              ))}
             </select>
           </div>
 
