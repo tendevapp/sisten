@@ -9,6 +9,9 @@
  *
  * O QR é desenhado em vetor (quadradinhos), não como imagem — sai nítido em
  * qualquer impressora e não depende de canvas.
+ *
+ * As peças de desenho (célula, QR, foto) também servem à etiqueta da BOM
+ * (`exportEtiquetasBomPdf.ts`).
  */
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from 'pdf-lib';
@@ -29,13 +32,13 @@ const PRETO = rgb(0, 0, 0);
 const BRANCO = rgb(1, 1, 1);
 const CINZA_AVISO = rgb(0.4, 0.4, 0.4);
 
-interface Tema {
+export interface Tema {
   titulo: RGB;
   celula: RGB;
   texto: RGB;
 }
 
-function temaDaCor(cor: CorEtiqueta): Tema {
+export function temaDaCor(cor: CorEtiqueta): Tema {
   const t = CORES_ETIQUETA[cor] ?? CORES_ETIQUETA.cinza;
   return { titulo: rgb(...hexParaRgb01(t.titulo)), celula: rgb(...hexParaRgb01(t.celula)), texto: rgb(...hexParaRgb01(t.texto)) };
 }
@@ -47,13 +50,13 @@ const H_ROTULO = 11;
 const H_VALOR = 17;
 const H_APLICACAO = 15;
 
-interface Fontes {
+export interface Fontes {
   normal: PDFFont;
   negrito: PDFFont;
 }
 
 /** Texto que cabe na largura: diminui a fonte até o mínimo e, se ainda não couber, corta com reticências. */
-function ajustarTexto(texto: string, fonte: PDFFont, tamanhoMax: number, larguraMax: number, tamanhoMin = 5): { texto: string; tamanho: number } {
+export function ajustarTexto(texto: string, fonte: PDFFont, tamanhoMax: number, larguraMax: number, tamanhoMin = 5): { texto: string; tamanho: number } {
   const limpo = sanitizeText(texto);
   let tamanho = tamanhoMax;
   while (tamanho > tamanhoMin && fonte.widthOfTextAtSize(limpo, tamanho) > larguraMax) tamanho -= 0.5;
@@ -63,7 +66,7 @@ function ajustarTexto(texto: string, fonte: PDFFont, tamanhoMax: number, largura
   return { texto: `${corte}...`, tamanho };
 }
 
-function celula(
+export function celula(
   page: PDFPage,
   fontes: Fontes,
   x: number, y: number, w: number, h: number,
@@ -85,7 +88,7 @@ function celula(
 }
 
 /** QR em vetor: um retângulo por trecho contínuo de módulos pretos em cada linha. */
-function desenharQr(page: PDFPage, conteudo: string, x: number, y: number, lado: number): void {
+export function desenharQr(page: PDFPage, conteudo: string, x: number, y: number, lado: number): void {
   const qr = QRCode.create(conteudo, { errorCorrectionLevel: 'M' });
   const n = qr.modules.size;
   const margem = 2; // módulos de borda branca (zona de silêncio dentro da célula)
@@ -110,7 +113,7 @@ function desenharQr(page: PDFPage, conteudo: string, x: number, y: number, lado:
   }
 }
 
-async function carregarFoto(doc: PDFDocument, url: string, cache: Map<string, PDFImage | null>): Promise<PDFImage | null> {
+export async function carregarFoto(doc: PDFDocument, url: string, cache: Map<string, PDFImage | null>): Promise<PDFImage | null> {
   if (cache.has(url)) return cache.get(url)!;
   let imagem: PDFImage | null = null;
   try {

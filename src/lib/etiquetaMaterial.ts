@@ -154,6 +154,26 @@ export function consumirItemInventarioPendente(agora = Date.now()): string | nul
   return consumirPendente(CHAVE_ITEM_INVENTARIO_PENDENTE, agora);
 }
 
+/**
+ * Peça da BOM lida no QR da etiqueta BOM (`#/bom?peca=…`, ver `etiquetaBom.ts`).
+ * Guardada assim que o link abre, para sobreviver ao login; a aba Itens BOM do
+ * Cadastro de Itens consome e abre a peça.
+ */
+export const CHAVE_PECA_BOM_PENDENTE = 'sisten_qr_peca_bom_pendente';
+export const EVENTO_PECA_BOM = 'sisten:peca-bom';
+
+export function guardarPecaBomPendente(partNumber: string, agora = Date.now()): void {
+  guardarPendente(CHAVE_PECA_BOM_PENDENTE, partNumber, agora);
+}
+
+export function haPecaBomPendente(agora = Date.now()): boolean {
+  return lerPendente(CHAVE_PECA_BOM_PENDENTE, agora) !== null;
+}
+
+export function consumirPecaBomPendente(agora = Date.now()): string | null {
+  return consumirPendente(CHAVE_PECA_BOM_PENDENTE, agora);
+}
+
 export interface DadosEtiqueta {
   codigo_sap: string;
   descricao: string;

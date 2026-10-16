@@ -25,7 +25,8 @@ import EscolhaItemQrGate from './components/EscolhaItemQrGate';
 import Login from './views/Login';
 import Signup from './views/Signup';
 import ResetPassword from './views/ResetPassword';
-import { ROTA_CURTA_QR, ROTA_REQUISICAO_BALCAO, guardarItemQrEscolha, guardarItemQrPendente, haItemQrPendente, itemDaRota } from './lib/etiquetaMaterial';
+import { ROTA_CURTA_QR, ROTA_REQUISICAO_BALCAO, guardarItemQrEscolha, guardarItemQrPendente, guardarPecaBomPendente, haItemQrPendente, haPecaBomPendente, itemDaRota } from './lib/etiquetaMaterial';
+import { ROTA_CADASTRO_ITENS, ROTA_CURTA_QR_BOM, pecaDaRota } from './lib/etiquetaBom';
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const Materials = lazy(() => import('./views/Materials'));
 const NewRequest = lazy(() => import('./views/NewRequest'));
@@ -73,7 +74,7 @@ const RecebimentoAlmox = lazy(() => import('./views/almoxarifado/RecebimentoAlmo
 const RequisicaoBalcao = lazy(() => import('./views/almoxarifado/RequisicaoBalcao'));
 const InventarioCiclico = lazy(() => import('./views/almoxarifado/InventarioCiclico'));
 const InventarioAnalise = lazy(() => import('./views/almoxarifado/InventarioAnalise'));
-const CadastroItensAlmox = lazy(() => import('./views/almoxarifado/CadastroItensAlmox'));
+const CadastroItensPagina = lazy(() => import('./views/almoxarifado/CadastroItensPagina'));
 const SsmaFichaEpiView = lazy(() => import('./views/ssma/SsmaFichaEpiView'));
 const SsmaHub = lazy(() => import('./views/ssma/SsmaHub'));
 const SsmaRidView = lazy(() => import('./views/ssma/SsmaRidView'));
@@ -483,6 +484,15 @@ export default function App() {
       // Link longo da Requisição no Balcão com `?item=`: segue direto para ela.
       if (itemQr) guardarItemQrPendente(itemQr);
 
+      // QR da etiqueta BOM (`#/bom?peca=60.13.06262`): abre a peça na aba Itens BOM
+      // do Cadastro de Itens. A peça é guardada já, para sobreviver ao login.
+      const pecaQr = pathOnly === ROTA_CURTA_QR_BOM ? pecaDaRota(pathWithParams) : null;
+      if (pecaQr) {
+        guardarPecaBomPendente(pecaQr);
+        window.location.replace(`#${ROTA_CADASTRO_ITENS}?aba=bom&peca=${encodeURIComponent(pecaQr)}`);
+        return;
+      }
+
       const destinoLegado = LEGACY_PATH_REDIRECTS[pathOnly];
       if (destinoLegado) {
         // `replace` em vez de atribuir o hash: não deixa o endereço antigo no
@@ -639,6 +649,9 @@ export default function App() {
     } else if (haItemQrPendente()) {
       // Chegou pelo QR de uma etiqueta: volta para a requisição com o item.
       handleNavigate(ROTA_REQUISICAO_BALCAO);
+    } else if (haPecaBomPendente()) {
+      // Chegou pelo QR de uma etiqueta BOM: abre a peça no Cadastro de Itens.
+      handleNavigate(`${ROTA_CADASTRO_ITENS}?aba=bom`);
     } else {
       handleNavigate('/');
     }
@@ -844,7 +857,7 @@ export default function App() {
 
       case '/formularios/almoxarifado-cadastro-itens':
         if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_almoxarifado_cadastro_itens')) {
-          return <CadastroItensAlmox user={user} onNavigate={handleNavigate} />;
+          return <CadastroItensPagina user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

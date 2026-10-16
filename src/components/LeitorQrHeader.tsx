@@ -7,13 +7,15 @@
  * Lê o QR da etiqueta de prateleira (a mesma do cadastro de itens do Almox) e
  * entrega o item ao diálogo que pergunta o que fazer: baixa de estoque ou
  * inventário cíclico (`EscolhaAcaoItemQr`). Só aparece para quem acessa ao
- * menos um dos dois formulários.
+ * menos um dos dois formulários. A etiqueta BOM (peça do projeto) abre direto
+ * a peça no Cadastro de Itens.
  */
 
 import { useState } from 'react';
 import { QrCode } from 'lucide-react';
 import type { Profile } from '../types';
-import { codigoDoQr } from '../lib/etiquetaMaterial';
+import { EVENTO_PECA_BOM, codigoDoQr, guardarPecaBomPendente } from '../lib/etiquetaMaterial';
+import { ROTA_CADASTRO_ITENS, pecaDaRota } from '../lib/etiquetaBom';
 import EscolhaAcaoItemQr, { acoesDoItemQr } from './EscolhaAcaoItemQr';
 import LeitorQrModal from './ui/LeitorQrModal';
 import { useToast } from './ui/Toast';
@@ -34,6 +36,14 @@ export default function LeitorQrHeader({ user, onNavigate }: Props) {
     setLendo(false);
     const lido = codigoDoQr(texto);
     if (!lido) {
+      // Etiqueta BOM: abre a peça na aba Itens BOM do Cadastro de Itens.
+      const peca = pecaDaRota(texto);
+      if (peca) {
+        guardarPecaBomPendente(peca);
+        onNavigate(`${ROTA_CADASTRO_ITENS}?aba=bom`);
+        window.setTimeout(() => window.dispatchEvent(new Event(EVENTO_PECA_BOM)), 0);
+        return;
+      }
       toast.error('Este QR não é de etiqueta de material do SISTEN.');
       return;
     }
