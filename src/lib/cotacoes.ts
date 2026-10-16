@@ -174,13 +174,26 @@ export function parseValidade(bruto: string | null | undefined): { data: string 
   return data ? { data, texto: null } : { data: null, texto: String(bruto).trim() };
 }
 
+const INTEGER_PG_MAX = 2147483647;
+
+/**
+ * Devolve `n` só se couber numa coluna `integer` do Postgres (int4). A IA às
+ * vezes põe o número do pedido ou o código do material (ex.: 4100470851) onde
+ * o schema espera um índice pequeno, e o `::int` da RPC aborta o salvamento
+ * inteiro com "out of range for type integer". Fora da faixa, vira `null`.
+ */
+export function inteiroPgOuNull(n: number | null | undefined): number | null {
+  if (n == null || !Number.isInteger(n) || n < 0 || n > INTEGER_PG_MAX) return null;
+  return n;
+}
+
 /** Extrai um número de dias de um texto de prazo ("15 dias úteis" -> 15). `null` quando não há número reconhecível. */
 export function parsePrazoDias(bruto: string | null | undefined): number | null {
   if (!temValor(bruto)) return null;
   const m = String(bruto).match(/(\d+)/);
   if (!m) return null;
   const n = Number(m[1]);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) ? inteiroPgOuNull(n) : null;
 }
 
 /** `"São Paulo/SP"`, `"SAO PAULO - SP"` -> `{cidade, uf}`. Sem UF reconhecível, uf fica `null`. */
@@ -271,7 +284,7 @@ function itemParaDraft(item: ItemPropostaExtraido): CotacaoPropostaItemDraft {
     ri: null,
     material_code: null,
 
-    item_numero: item.Item_Numero != null ? Number(item.Item_Numero) || null : null,
+    item_numero: item.Item_Numero != null ? inteiroPgOuNull(Number(item.Item_Numero) || null) : null,
     codigo_produto: item.Codigo_Produto ?? null,
     descricao_produto: item.Descricao_Produto ?? '',
     marca_fabricante: item.Marca_Fabricante ?? null,

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   temValor, normalizarCnpj, formatarCnpj, parseMoeda, parseQuantidade, parsePercentual,
-  parseDataBR, parseValidade, parsePrazoDias, parseCidadeUF, parseFreteModalidade,
+  parseDataBR, parseValidade, parsePrazoDias, inteiroPgOuNull, parseCidadeUF, parseFreteModalidade,
   normalizarDescricao, normalizarProposta, validarProposta, conferirTotais,
   podeSalvar, deveAutoSelecionar, aplicarSugestoes, coberturaEscopo,
   repararJsonTruncado, gerarCodigoCotacao, proximoIndiceCotacao, nomeFornecedorCurto,
@@ -206,6 +206,27 @@ describe('parsePrazoDias', () => {
 
   it('sem número -> null', () => {
     expect(parsePrazoDias('imediato')).toBeNull();
+  });
+
+  it('número fora da faixa de integer -> null', () => {
+    expect(parsePrazoDias('4100470851')).toBeNull();
+  });
+});
+
+describe('inteiroPgOuNull', () => {
+  it('mantém inteiros que cabem em int4', () => {
+    expect(inteiroPgOuNull(10)).toBe(10);
+    expect(inteiroPgOuNull(2147483647)).toBe(2147483647);
+  });
+
+  it('descarta o que estoura int4 (ex.: nº de pedido no lugar do item)', () => {
+    expect(inteiroPgOuNull(4100470851)).toBeNull();
+  });
+
+  it('descarta null, negativo e fracionário', () => {
+    expect(inteiroPgOuNull(null)).toBeNull();
+    expect(inteiroPgOuNull(-1)).toBeNull();
+    expect(inteiroPgOuNull(1.5)).toBeNull();
   });
 });
 

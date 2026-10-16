@@ -17,6 +17,7 @@ import {
   normalizarDescricao,
   gerarCodigoCotacao,
   proximoIndiceCotacao,
+  inteiroPgOuNull,
 } from './cotacoes';
 import { comprimirImagemUpload } from './imageCompression';
 import type { UsoCodigoImposto } from './sugestaoCodigoImposto';
@@ -433,7 +434,7 @@ function propostaParaPayload(processoId: string, p: CotacaoPropostaDraft) {
     condicao_pagamento: p.condicao_pagamento,
     forma_pagamento: p.forma_pagamento,
     prazo_entrega_texto: p.prazo_entrega_texto,
-    prazo_entrega_dias: p.prazo_entrega_dias,
+    prazo_entrega_dias: inteiroPgOuNull(p.prazo_entrega_dias),
     frete_modalidade: p.frete_modalidade,
     transportadora_indicada: p.transportadora_indicada,
     faturamento_minimo: p.faturamento_minimo,
@@ -460,7 +461,7 @@ function propostaParaPayload(processoId: string, p: CotacaoPropostaDraft) {
       vinculo_score: item.vinculo_score,
       ri: item.ri,
       material_code: item.material_code,
-      item_numero: item.item_numero,
+      item_numero: inteiroPgOuNull(item.item_numero),
       codigo_produto: item.codigo_produto,
       descricao_produto: item.descricao_produto,
       // Alimenta cotacao_descricao_map só quando dá para casar: fornecedor
