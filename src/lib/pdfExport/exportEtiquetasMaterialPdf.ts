@@ -16,7 +16,8 @@
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from 'pdf-lib';
 import QRCode from 'qrcode';
-import { sanitizeText, toEmbeddablePng } from './core';
+import { sanitizeText } from './core';
+import { embutirFotoPdf, LADO_FOTO } from './fotosPdf';
 import {
   CORES_ETIQUETA,
   ETIQUETA_ALTURA,
@@ -113,27 +114,9 @@ export function desenharQr(page: PDFPage, conteudo: string, x: number, y: number
   }
 }
 
-export async function carregarFoto(doc: PDFDocument, url: string, cache: Map<string, PDFImage | null>): Promise<PDFImage | null> {
-  if (cache.has(url)) return cache.get(url)!;
-  let imagem: PDFImage | null = null;
-  try {
-    const resp = await fetch(url);
-    if (resp.ok) {
-      const bytes = await resp.arrayBuffer();
-      const mime = (resp.headers.get('content-type') || '').toLowerCase();
-      if (mime.includes('jpeg') || mime.includes('jpg')) {
-        try { imagem = await doc.embedJpg(bytes); } catch { imagem = await doc.embedPng(await toEmbeddablePng(bytes, mime)); }
-      } else if (mime.includes('png')) {
-        imagem = await doc.embedPng(bytes);
-      } else {
-        imagem = await doc.embedPng(await toEmbeddablePng(bytes, mime));
-      }
-    }
-  } catch (err) {
-    console.warn('[etiquetas] Foto não entrou na etiqueta:', err);
-  }
-  cache.set(url, imagem);
-  return imagem;
+/** Foto da etiqueta, reduzida ao tamanho de impressão. A mesma foto entra uma vez por documento. */
+export function carregarFoto(doc: PDFDocument, url: string): Promise<PDFImage | null> {
+  return embutirFotoPdf(doc, url, LADO_FOTO.ETIQUETA);
 }
 
 function desenharEtiqueta(page: PDFPage, fontes: Fontes, tema: Tema, e: DadosEtiqueta, foto: PDFImage | null, x: number, y: number): void {
@@ -209,14 +192,13 @@ export async function gerarPdfEtiquetasMaterial(etiquetas: DadosEtiqueta[], cor:
     normal: await doc.embedFont(StandardFonts.Helvetica),
     negrito: await doc.embedFont(StandardFonts.HelveticaBold),
   };
-  const cacheFotos = new Map<string, PDFImage | null>();
   const paginas: PDFPage[] = [];
 
   for (let i = 0; i < etiquetas.length; i += 1) {
     const e = etiquetas[i];
     const pos = posicaoDaEtiqueta(i);
     while (paginas.length <= pos.pagina) paginas.push(doc.addPage([595.28, 841.89]));
-    const foto = e.url_foto ? await carregarFoto(doc, e.url_foto, cacheFotos) : null;
+    const foto = e.url_foto ? await carregarFoto(doc, e.url_foto) : null;
     desenharEtiqueta(paginas[pos.pagina], fontes, tema, e, foto, pos.x, pos.y);
   }
   return doc;

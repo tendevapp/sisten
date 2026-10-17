@@ -6083,6 +6083,42 @@ export type Database = {
           },
         ]
       }
+      proj_bom_importacoes: {
+        Row: {
+          arquivo_nome: string
+          arquivo_sha256: string | null
+          ativa: boolean
+          id: string
+          importado_em: string
+          importado_por: string
+          projeto: string
+          resumo: Json
+          total_linhas: number
+        }
+        Insert: {
+          arquivo_nome: string
+          arquivo_sha256?: string | null
+          ativa?: boolean
+          id?: string
+          importado_em?: string
+          importado_por?: string
+          projeto: string
+          resumo?: Json
+          total_linhas: number
+        }
+        Update: {
+          arquivo_nome?: string
+          arquivo_sha256?: string | null
+          ativa?: boolean
+          id?: string
+          importado_em?: string
+          importado_por?: string
+          projeto?: string
+          resumo?: Json
+          total_linhas?: number
+        }
+        Relationships: []
+      }
       proj_bom_gwjaco: {
         Row: {
           cod_sap: string | null
@@ -6095,10 +6131,13 @@ export type Database = {
           find_number: string | null
           group: string | null
           id: number
+          importacao_id: string
           kit_atlanta: string | null
+          linha_origem: number
           level: number | null
           part_number: string | null
           projeto: string
+          ordem: number
           quantity: number | null
           revision: string | null
           section: string | null
@@ -6117,10 +6156,13 @@ export type Database = {
           find_number?: string | null
           group?: string | null
           id?: number
+          importacao_id: string
           kit_atlanta?: string | null
+          linha_origem: number
           level?: number | null
           part_number?: string | null
           projeto?: string
+          ordem: number
           quantity?: number | null
           revision?: string | null
           section?: string | null
@@ -6139,10 +6181,13 @@ export type Database = {
           find_number?: string | null
           group?: string | null
           id?: number
+          importacao_id?: string
           kit_atlanta?: string | null
+          linha_origem?: number
           level?: number | null
           part_number?: string | null
           projeto?: string
+          ordem?: number
           quantity?: number | null
           revision?: string | null
           section?: string | null
@@ -6150,7 +6195,15 @@ export type Database = {
           total_weight_kg?: number | null
           uom?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "proj_bom_gwjaco_importacao_fk"
+            columns: ["importacao_id"]
+            isOneToOne: false
+            referencedRelation: "proj_bom_importacoes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       proj_entregas_producao: {
         Row: {
@@ -17647,6 +17700,7 @@ export type Database = {
           grupo: string | null
           grupo_norm: string | null
           id: number | null
+          ordem: number | null
           level: number | null
           parent_id: number | null
           part_number: string | null
@@ -18573,6 +18627,15 @@ export type Database = {
         Returns: Json
       }
       proj_sincronizar_itens: { Args: { p_projeto?: string }; Returns: number }
+      proj_substituir_bom: {
+        Args: {
+          p_arquivo_nome: string
+          p_arquivo_sha256: string
+          p_linhas: Json
+          p_projeto: string
+        }
+        Returns: Json
+      }
       proj_validar_saldo: { Args: { p_itens: Json }; Returns: undefined }
       proximo_numero_solicitacao: {
         Args: { p_criticidade: number }

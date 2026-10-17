@@ -15,6 +15,7 @@ import {
   fmtData, fmtDataHora, imagem, medir, mosaico, retangulo, texto, textoMisto,
   type Bloco, type Fontes, type PdfGerado,
 } from './formularioPdf';
+import { embutirLogoPdf } from './fotosPdf';
 
 const M = 18;
 const W = PW - M * 2;
@@ -153,7 +154,7 @@ async function montarDocumento(checklist: QuaChecklistExpedicao): Promise<PDFDoc
   doc.setTitle(`Checklist de Expedição ${checklist.codigo_registro}`);
   const f = await carregarFontes(doc);
   const carregar = criarCarregadorImagens(doc);
-  const logo = await carregar('/logo-adm.png');
+  const logo = await embutirLogoPdf(doc);
   // N/A: a imagem "Not Available" ocupa o lugar da foto do item.
   const respostaDe = (chave: string) => checklist.respostas?.[chave] ?? checklist.observacoes?.[chave]?.resposta;
   const naoAplicaveis = new Set<string>([...CHECKLIST_ITENS, ...CHECKLIST_OBSERVACOES].map(item => item.chave).filter(chave => respostaDe(chave) === 'NA'));

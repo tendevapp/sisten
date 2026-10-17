@@ -112,7 +112,7 @@ export async function listarTramos(projeto = PROJETO_PADRAO): Promise<ProjTramoU
 /** A BOM com a hierarquia resolvida pelo banco. 1.257 linhas — cabe em memória. */
 export async function listarBom(projeto = PROJETO_PADRAO): Promise<ProjBomNo[]> {
   return buscarTudo<ProjBomNo>((de, ate) =>
-    db('vw_proj_bom_arvore').select('*').eq('projeto', projeto).order('id').range(de, ate),
+    db('vw_proj_bom_arvore').select('*').eq('projeto', projeto).order('ordem').range(de, ate),
   );
 }
 

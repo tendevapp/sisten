@@ -74,6 +74,7 @@ const RecebimentoAlmox = lazy(() => import('./views/almoxarifado/RecebimentoAlmo
 const RequisicaoBalcao = lazy(() => import('./views/almoxarifado/RequisicaoBalcao'));
 const InventarioCiclico = lazy(() => import('./views/almoxarifado/InventarioCiclico'));
 const InventarioAnalise = lazy(() => import('./views/almoxarifado/InventarioAnalise'));
+const Gemba = lazy(() => import('./views/almoxarifado/Gemba'));
 const CadastroItensPagina = lazy(() => import('./views/almoxarifado/CadastroItensPagina'));
 const SsmaFichaEpiView = lazy(() => import('./views/ssma/SsmaFichaEpiView'));
 const SsmaHub = lazy(() => import('./views/ssma/SsmaHub'));
@@ -196,6 +197,8 @@ const FULL_BLEED_PATHS = new Set<string>([
   '/producao/dashboards',
   // Acompanhamento Diário TV: a própria tela escala o painel para a área útil.
   '/planejamento/acompanhamento-diario-tv',
+  // Gemba: o mapa 3D ocupa toda a área útil.
+  '/almoxarifado/gemba',
 ]);
 
 function ViewLoadingFallback() {
@@ -1200,9 +1203,16 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/almoxarifado/inventario':
       case '/almoxarifado/inventario-analise':
         if (canAccessPage(user, 'almox_inventario_analise')) {
           return <InventarioAnalise user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/gemba':
+        if (canAccessPage(user, 'almox_gemba')) {
+          return <Gemba user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

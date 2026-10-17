@@ -11,6 +11,7 @@
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage, PDFImage, RGB } from 'pdf-lib';
 import { localDb } from '../../db/localDb';
 import { RequestAttachment } from '../../types';
+import { embutirFotoPdf, embutirLogoPdf, LADO_FOTO, type OpcoesFotoPdf } from './fotosPdf';
 
 export const PAGE_WIDTH = 595.28; // A4 portrait, pt
 export const PAGE_HEIGHT = 841.89;
@@ -44,22 +45,6 @@ export const PDF_COLORS = {
   badgePurpleText: rgb(0.38, 0.20, 0.65),
 };
 
-const logoCache = new Map<string, ArrayBuffer | null>();
-
-async function getLogoBytes(logoPath = '/logo-adm.png'): Promise<ArrayBuffer | null> {
-  if (logoCache.has(logoPath)) return logoCache.get(logoPath)!;
-  try {
-    const response = await fetch(logoPath);
-    if (!response.ok) throw new Error(`Falha ao buscar logo (${response.status})`);
-    const bytes = await response.arrayBuffer();
-    logoCache.set(logoPath, bytes);
-    return bytes;
-  } catch (e) {
-    console.error(`Falha ao carregar logo (${logoPath}) para o PDF:`, e);
-    logoCache.set(logoPath, null);
-    return null;
-  }
-}
 
 export function sanitizeText(text: string): string {
   if (!text) return '';
@@ -837,7 +822,7 @@ export class PdfTextWriter {
 
       if (p.assinatura_digital) {
         try {
-          const sigImg = await this.embedPhoto(p.assinatura_digital);
+          const sigImg = await this.embedPhoto(p.assinatura_digital, LADO_FOTO.ASSINATURA, { persistir: false });
           if (sigImg) {
             const maxSigW = 95;
             const maxSigH = 24;
@@ -1008,53 +993,17 @@ export class PdfTextWriter {
     }
   }
 
-  /** Converte fonte de imagem (base64 ou url) em PDFImage */
-  async embedPhoto(source: string): Promise<PDFImage | null> {
+  /**
+   * Converte fonte de imagem (data:, URL ou caminho no bucket de anexos) em
+   * PDFImage, reduzida a `ladoMax` px (ver `fotosPdf.ts`). Só caminho de bucket
+   * é assinado; URL e data: vão direto.
+   */
+  async embedPhoto(source: string, ladoMax: number = LADO_FOTO.PAGINA, opcoes?: OpcoesFotoPdf): Promise<PDFImage | null> {
     if (!source) return null;
-
-    try {
-      let bytes: ArrayBuffer;
-      let mimeType = 'image/jpeg';
-
-      if (source.startsWith('data:')) {
-        const parts = source.split(',');
-        const header = parts[0];
-        const base64 = parts[1];
-        const match = header.match(/:(.*?);/);
-        if (match) mimeType = match[1];
-
-        const binary = atob(base64);
-        const len = binary.length;
-        const u8 = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          u8[i] = binary.charCodeAt(i);
-        }
-        bytes = u8.buffer;
-      } else {
-        const signedUrl = await localDb.getAttachmentUrl(source).catch(() => source);
-        const res = await fetch(signedUrl || source);
-        if (!res.ok) return null;
-        bytes = await res.arrayBuffer();
-        mimeType = res.headers.get('content-type') || 'image/jpeg';
-      }
-
-      if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
-        try {
-          return await this.doc.embedJpg(bytes);
-        } catch {
-          const pngBytes = await toEmbeddablePng(bytes, mimeType);
-          return await this.doc.embedPng(pngBytes);
-        }
-      } else if (mimeType === 'image/png') {
-        return await this.doc.embedPng(bytes);
-      } else {
-        const pngBytes = await toEmbeddablePng(bytes, mimeType);
-        return await this.doc.embedPng(pngBytes);
-      }
-    } catch (err) {
-      console.error('Erro ao embutir imagem no PDF:', err);
-      return null;
-    }
+    const url = /^(data:|https?:|blob:)/i.test(source)
+      ? source
+      : await localDb.getAttachmentUrl(source).catch(() => null);
+    return embutirFotoPdf(this.doc, url, ladoMax, opcoes);
   }
 
   /** Desenha Bloco com Linhas de Assinatura */
@@ -1209,34 +1158,16 @@ export async function createDoc(
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  const logoBytes = await getLogoBytes(logoPath);
-  const logo = logoBytes ? await doc.embedPng(logoBytes) : null;
+  // O PNG original tem 1920 px para um logo de 44 pt: reduzido, cada PDF fica ~200 KB mais leve.
+  const logo = await embutirLogoPdf(doc, logoPath);
 
   return { doc, font, fontBold, logo };
 }
 
-export async function toEmbeddablePng(bytes: ArrayBuffer, mimeType: string | undefined): Promise<ArrayBuffer> {
-  const bitmap = await createImageBitmap(new Blob([bytes], { type: mimeType || 'image/jpeg' }));
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas 2D indisponível para converter imagem.');
-    ctx.drawImage(bitmap, 0, 0);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-    if (!blob) throw new Error('Falha ao reexportar imagem como PNG.');
-    return await blob.arrayBuffer();
-  } finally {
-    bitmap.close();
-  }
-}
-
-async function embedImageAttachment(doc: PDFDocument, bytes: ArrayBuffer, mimeType: string | undefined): Promise<void> {
-  const image =
-    mimeType === 'image/jpeg' || mimeType === 'image/jpg'
-      ? await doc.embedJpg(bytes)
-      : await doc.embedPng(await toEmbeddablePng(bytes, mimeType));
+/** Anexo de imagem numa página inteira, reduzido à resolução da página. */
+async function embedImageAttachment(doc: PDFDocument, url: string): Promise<void> {
+  const image = await embutirFotoPdf(doc, url, LADO_FOTO.PAGINA);
+  if (!image) throw new Error('Imagem do anexo não pôde ser lida');
 
   const scale = Math.min(1, (PAGE_WIDTH - MARGIN * 2) / image.width, (PAGE_HEIGHT - MARGIN * 2) / image.height);
   const w = image.width * scale;
@@ -1265,14 +1196,12 @@ export async function embedAttachments(doc: PDFDocument, attachments: RequestAtt
       const signedUrl = await localDb.getAttachmentUrl(path);
       if (!signedUrl) throw new Error('URL do anexo indisponível');
 
-      const response = await fetch(signedUrl);
-      if (!response.ok) throw new Error(`Falha ao baixar anexo (${response.status})`);
-      const bytes = await response.arrayBuffer();
-
       if (attachment.mime_type === 'application/pdf') {
-        await mergePdfAttachment(doc, bytes);
+        const response = await fetch(signedUrl);
+        if (!response.ok) throw new Error(`Falha ao baixar anexo (${response.status})`);
+        await mergePdfAttachment(doc, await response.arrayBuffer());
       } else {
-        await embedImageAttachment(doc, bytes, attachment.mime_type);
+        await embedImageAttachment(doc, signedUrl);
       }
     } catch (e) {
       console.error(`Falha ao incluir anexo "${attachment.name}" no PDF:`, e);

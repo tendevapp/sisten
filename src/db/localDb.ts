@@ -42,6 +42,7 @@ import { emailDominioPermitido, MSG_DOMINIO_NAO_PERMITIDO } from '../lib/authDom
 import { descreverAlteracoesCompra, resumoAlteracoes } from '../lib/solicitacoesDiff';
 import { reabrirSolicitacaoPorRequestId } from '../lib/almoxarifadoRmApi';
 import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
+import { limparCacheFotosPdf } from '../lib/pdfExport/fotosPdf';
 
 /** Bucket privado dos anexos de solicitação. Leitura só por URL assinada. */
 const ATTACHMENTS_BUCKET = 'request-attachments';
@@ -1308,6 +1309,8 @@ class LocalDatabase {
     await idbDel(this.currentUserKey).catch(err => {
       console.warn('Não foi possível remover o usuário atual do IndexedDB.', err);
     });
+    // Fotos guardadas para os PDFs não ficam para o próximo usuário do aparelho.
+    await limparCacheFotosPdf();
     if (supabase) {
       await supabase.auth.signOut().catch(err => {
         console.error('Erro no signOut do Supabase:', err);

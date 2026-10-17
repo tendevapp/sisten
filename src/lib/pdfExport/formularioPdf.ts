@@ -6,6 +6,7 @@
 
 import { PDFDocument, PDFFont, PDFImage, PDFPage, StandardFonts, degrees, rgb, type RGB } from 'pdf-lib';
 import { sanitizeText } from './core';
+import { embutirFotoPdf, LADO_FOTO } from './fotosPdf';
 
 export const PW = 595.28;
 export const PH = 841.89;
@@ -159,30 +160,14 @@ export function textoVertical(page: PDFPage, f: Fontes, pt: string, en: string, 
   }
 }
 
-export function criarCarregadorImagens(doc: PDFDocument) {
-  const cache = new Map<string, Promise<PDFImage | null>>();
-  return (url?: string | null): Promise<PDFImage | null> => {
-    if (!url) return Promise.resolve(null);
-    if (!cache.has(url)) {
-      cache.set(url, (async () => {
-        try {
-          const resposta = await fetch(url);
-          if (!resposta.ok) return null;
-          const bytes = new Uint8Array(await resposta.arrayBuffer());
-          const png = bytes[0] === 0x89 && bytes[1] === 0x50;
-          return png ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-        } catch {
-          return null;
-        }
-      })());
-    }
-    return cache.get(url)!;
-  };
+/** Fotos dos checklists, reduzidas à grade (ver `fotosPdf.ts`); a mesma URL entra uma vez por documento. */
+export function criarCarregadorImagens(doc: PDFDocument, ladoMax: number = LADO_FOTO.GRADE) {
+  return (url?: string | null): Promise<PDFImage | null> => embutirFotoPdf(doc, url, ladoMax);
 }
 
 export async function embedAssinatura(doc: PDFDocument, url?: string, tipo?: 'DESENHO' | 'SELFIE'): Promise<PDFImage | null> {
   if (!url) return null;
-  if (tipo !== 'DESENHO') return criarCarregadorImagens(doc)(url);
+  if (tipo !== 'DESENHO') return embutirFotoPdf(doc, url, LADO_FOTO.ASSINATURA, { persistir: false });
   try {
     const resposta = await fetch(url);
     if (!resposta.ok) return null;

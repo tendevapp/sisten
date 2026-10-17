@@ -375,7 +375,7 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
         <div className="flex items-center gap-2">
           {canAccessPage(user, 'almox_inventario_analise') && (
             <button onClick={() => onNavigate('/almoxarifado/inventario-analise')} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
-              <BarChart3 className="h-3.5 w-3.5" /> Análise
+              <BarChart3 className="h-3.5 w-3.5" /> Inventário
             </button>
           )}
           <button onClick={() => void recarregar(true)} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>

@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX, ShieldAlert,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX, ShieldAlert, Warehouse,
 } from 'lucide-react';
 import { Profile, Role, Sector } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
@@ -112,7 +112,9 @@ export const PAGES: PageDef[] = [
   { id: 'almox_consumo_semanal', group: 'ALMOXARIFADO', label: 'Consumo Semanal', path: '/almoxarifado/consumo-semanal', icon: CalendarDays, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_controle_estoque', group: 'ALMOXARIFADO', label: 'Controle de Estoque', path: '/almoxarifado/controle-estoque', icon: Scale, defaultRoles: ['admin'] },
   // Novo módulo: nasce restrito (regra 4 do CLAUDE.md); o admin libera pela Gestão de Acessos.
-  { id: 'almox_inventario_analise', group: 'ALMOXARIFADO', label: 'Análise de Inventário', path: '/almoxarifado/inventario-analise', icon: BarChart3, defaultRoles: ['admin'] },
+  { id: 'almox_inventario_analise', group: 'ALMOXARIFADO', label: 'Inventário', path: '/almoxarifado/inventario-analise', icon: BarChart3, defaultRoles: ['admin'] },
+  // Gemba: galpão em 3D com o lugar de cada item. Nasce restrito (regra 4).
+  { id: 'almox_gemba', group: 'ALMOXARIFADO', label: 'Gemba', path: '/almoxarifado/gemba', icon: Warehouse, defaultRoles: ['admin'] },
   { id: 'almox_dashboards', group: 'ALMOXARIFADO', label: 'Dashboards', path: '/almoxarifado/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   // Projetos entra com UMA linha no menu: o hub. As sub-rotas
   // (/almoxarifado/projetos/bom, /recebimento, /premontagem, /producao,

@@ -139,6 +139,14 @@ describe('histórico e cobertura', () => {
     expect(h.has('1425762|0001')).toBe(false);
   });
 
+  it('não conta duas linhas históricas do mesmo item no mesmo dia como ciclos distintos', () => {
+    const h = historicoPorItem([{ data: '2026-09-20', itens: [
+      item({ material: '1371231', deposito: '0001', status: 'conferido', contagens: [contagem(1, 10, false)] }),
+      item({ material: '1371231', deposito: '0001', status: 'divergente', contagens: [contagem(1, 9, true)] }),
+    ] }]);
+    expect(h.get('1371231|0001')).toEqual({ ultimaData: '2026-09-20', vezes: 1, jaDivergiu: true });
+  });
+
   it('conta dias sem passar por fuso', () => {
     expect(diasEntre('2026-08-31', '2026-09-24')).toBe(24);
     expect(rotuloDias(0)).toBe('hoje');

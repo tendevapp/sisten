@@ -35,6 +35,15 @@ describe('extrairFotosDosItens', () => {
     expect(r.map((f) => f.path)).toEqual(['ok']);
   });
 
+  it('ignora a foto de item avariado', () => {
+    const r = extrairFotosDosItens([
+      { material_code: '1', tipo_divergencia: 'avaria', evidencias: [foto('dano')], conferencia: { codigo: 'A', data: '2026-09-30' } },
+      { material_code: '1', tipo_divergencia: 'falta', evidencias: [foto('falta')], conferencia: { codigo: 'B', data: '2026-09-29' } },
+      { material_code: '1', tipo_divergencia: null, evidencias: [foto('ok')], conferencia: { codigo: 'C', data: '2026-09-28' } },
+    ]);
+    expect(r.map((f) => f.path)).toEqual(['falta', 'ok']);
+  });
+
   it('respeita o limite', () => {
     const evs = Array.from({ length: 5 }, (_, i) => foto(`f${i}`));
     expect(extrairFotosDosItens([{ material_code: '1', evidencias: evs, conferencia: { codigo: 'A', data: '2026-09-30' } }], 3)).toHaveLength(3);
@@ -67,6 +76,17 @@ describe('cadastrarItensComFotoNoCatalogo', () => {
     vi.mocked(buscarItemAtivoCatalogo).mockResolvedValue({ imagem_path: 'almox-catalogo/a.jpg' } as any);
     const r = await cadastrarItensComFotoNoCatalogo([{ materialCode: '1420740', descricao: 'LANTERNA', fotosNovas: [nova] }], user);
     expect(r.jaTinham).toEqual(['1420740']);
+    expect(salvarItemCatalogo).not.toHaveBeenCalled();
+  });
+
+  it('item avariado não leva a foto do dano para o catálogo', async () => {
+    const r = await cadastrarItensComFotoNoCatalogo([
+      { materialCode: '1144700', descricao: 'DISCO CORTE', fotosNovas: [nova], avaria: true },
+      { materialCode: '1144701', descricao: 'OUTRO', fotosGravadas: [foto('p')], avaria: true },
+    ], user);
+    expect(r.avariados).toEqual(['1144700', '1144701']);
+    expect(r.cadastrados).toEqual([]);
+    expect(buscarItemAtivoCatalogo).not.toHaveBeenCalled();
     expect(salvarItemCatalogo).not.toHaveBeenCalled();
   });
 

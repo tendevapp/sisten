@@ -22,7 +22,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, FileDown, HardHat, Loader2,
+  AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, FileDown, FileSpreadsheet, HardHat, Loader2,
   ClipboardList, MessageSquareReply, PackageCheck, PackageMinus, Plus, RefreshCw, Search, ShieldAlert, ShoppingCart, Truck, X,
 } from 'lucide-react';
 import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
@@ -63,6 +63,7 @@ import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
 import DevolutivasSuprimentos from '../../components/almoxarifado/DevolutivasSuprimentos';
 import { listarDevolutivasAlmox } from '../../lib/pendenciasRecebimentoApi';
 import { parametrosDaRota, type PendenciaRecebimento } from '../../lib/pendenciasRecebimento';
+import { exportarRelatorioRecebimentoExcel } from '../../lib/recebimentoAlmoxPlanilha';
 import type { PdfGerado } from '../../lib/pdfExport/core';
 
 interface Props {
@@ -649,7 +650,7 @@ function agruparPorSemanaEData<T>(itens: T[], getISO: (t: T) => string): GrupoSe
 
 /** Barra de filtro das listas gerais: texto + intervalo de datas. */
 function FiltroLista({
-  busca, onBusca, de, onDe, ate, onAte, placeholder, total, mostrados, extra,
+  busca, onBusca, de, onDe, ate, onAte, placeholder, total, mostrados, extra, extraAcao,
 }: {
   busca: string; onBusca: (v: string) => void;
   de: string; onDe: (v: string) => void;
@@ -658,6 +659,7 @@ function FiltroLista({
   total: number;
   mostrados: number;
   extra?: React.ReactNode;
+  extraAcao?: React.ReactNode;
 }) {
   const ativo = !!(busca || de || ate);
   return (
@@ -694,11 +696,14 @@ function FiltroLista({
         <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           {ativo ? `${mostrados} de ${total}` : `${total} no total`}
         </span>
-        {ativo && (
-          <button type="button" onClick={() => { onBusca(''); onDe(''); onAte(''); }} className="text-[11px] font-bold cursor-pointer hover:underline" style={{ color: 'var(--brand)' }}>
-            Limpar filtros
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {extraAcao}
+          {ativo && (
+            <button type="button" onClick={() => { onBusca(''); onDe(''); onAte(''); }} className="text-[11px] font-bold cursor-pointer hover:underline" style={{ color: 'var(--brand)' }}>
+              Limpar filtros
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -873,9 +878,19 @@ function VistaContagem({
   onEncaminhar: (c: ConferenciaRow) => void;
   onExcluir: (id: string, codigo: string) => void;
 }) {
+  const toast = useToast();
   const [busca, setBusca] = useState('');
   const [de, setDe] = useState('');
   const [ate, setAte] = useState('');
+
+  const handleExportarExcel = () => {
+    try {
+      exportarRelatorioRecebimentoExcel(filtradas, { de, ate });
+      toast.success(`Planilha com ${filtradas.length} conferência(s) exportada com sucesso!`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao exportar planilha Excel.');
+    }
+  };
 
   const filtradas = useMemo(
     () => conferencias.filter((c) => {
@@ -943,7 +958,22 @@ function VistaContagem({
       subtitulo="Vários POs cabem numa conferência, e dá pra deixar rascunhos abertos e finalizar depois. Divergência abre uma NCR."
       onVoltar={onVoltar}
       onRecarregar={onRecarregar}
-      acao={<BotaoNovo onClick={onNova}>Nova conferência</BotaoNovo>}
+      acao={(
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExportarExcel}
+            disabled={filtradas.length === 0}
+            title={`Exportar planilha Excel (.xlsx) com ${filtradas.length} conferência(s) e itens`}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold cursor-pointer transition-colors hover:bg-[var(--surface-raised)] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Exportar Excel</span>
+          </button>
+          <BotaoNovo onClick={onNova}>Nova conferência</BotaoNovo>
+        </div>
+      )}
     >
       {loading && <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
       {!loading && !conferencias.length && !rascunhos.length && (
@@ -995,6 +1025,19 @@ function VistaContagem({
             de={de} onDe={setDe} ate={ate} onAte={setAte}
             placeholder="Buscar por RCM, fornecedor, item, PO…"
             total={conferencias.length} mostrados={filtradas.length}
+            extraAcao={(
+              <button
+                type="button"
+                onClick={handleExportarExcel}
+                disabled={filtradas.length === 0}
+                title="Exportar relatório em Excel (.xlsx) dos registros exibidos"
+                className="inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer transition-colors hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ color: 'var(--brand)' }}
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Exportar relatório ({filtradas.length})</span>
+              </button>
+            )}
           />
           <ListaAgrupada
             grupos={grupos}
@@ -1399,11 +1442,12 @@ function ModalDetalhe({
           descricao: it.descricao ?? '',
           unidade: it.unidade,
           fotosGravadas: it.evidencias,
+          avaria: it.tipo_divergencia === 'avaria',
         })),
         user,
       );
       if (r.cadastrados.length) toast.success(`${r.cadastrados.length} item(ns) cadastrado(s) no Catálogo de Itens com a foto.`);
-      else if (!r.falhas.length) toast.info('Nada a cadastrar: os itens já têm foto no catálogo (ou são de projeto).');
+      else if (!r.falhas.length) toast.info('Nada a cadastrar: os itens já têm foto no catálogo, são de projeto ou estão avariados.');
       if (r.jaTinham.length && r.cadastrados.length) toast.info(`${r.jaTinham.length} item(ns) já tinham foto no catálogo e foram mantidos.`);
       if (r.falhas.length) toast.warning(`Falhou: ${r.falhas.map((f) => `${f.material} (${f.motivo})`).join('; ')}`);
     } finally {
@@ -1656,6 +1700,25 @@ function ModalDetalhe({
           >
             {catalogando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
             {catalogando ? 'Cadastrando…' : 'Levar fotos ao catálogo'}
+          </button>
+        )}
+        {tipo === 'conferencia' && (
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                exportarRelatorioRecebimentoExcel([row as ConferenciaRow]);
+                toast.success(`Planilha da conferência ${(row as ConferenciaRow).codigo} exportada!`);
+              } catch (err: any) {
+                toast.error(err?.message || 'Falha ao exportar Excel.');
+              }
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border transition-colors hover:bg-[var(--surface-raised)]"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+            title="Exportar dados desta conferência para planilha Excel (.xlsx)"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+            Exportar Excel
           </button>
         )}
         <button
@@ -2471,9 +2534,13 @@ function ModalConferencia({
       }
 
       // Item que ganhou foto agora vira item do catálogo (com a imagem), mesmo sem saldo na ZL0024.
+      // Avaria fica de fora: a foto mostra o dano, não o material.
       const paraCatalogo: ItemParaCatalogar[] = linhas
         .filter((l) => l.fotos.length > 0)
-        .map((l) => ({ materialCode: l.materialCode, descricao: l.descricao, unidade: l.unidade, fotosNovas: l.fotos }));
+        .map((l) => ({
+          materialCode: l.materialCode, descricao: l.descricao, unidade: l.unidade, fotosNovas: l.fotos,
+          avaria: classificarDivergencia(l, retornoRemessa) === 'avaria',
+        }));
 
       if (ed) {
         const { alteracoes, tem_nc, nc_codigo } = await editarConferencia(

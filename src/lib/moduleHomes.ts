@@ -111,6 +111,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       almox_consumo_semanal: 'Consumo de cada material ao longo das semanas.',
       almox_controle_estoque: 'Faixa mínima e máxima da planilha, compras em aberto e mínimo recomendado por material.',
       almox_inventario_analise: 'Acuracidade, valor das divergências, itens que reincidem e cobertura dos inventários cíclicos.',
+      almox_gemba: 'Galpão em 3D: busque o item e veja a rua, o bloco, o andar e o apartamento onde ele está.',
       almox_dashboards: 'Painéis consolidados de estoque e movimentação.',
       almox_projetos: 'Fabricação de torres: BOM, kits por tramo, autonomia e progresso das 69 torres.',
     },

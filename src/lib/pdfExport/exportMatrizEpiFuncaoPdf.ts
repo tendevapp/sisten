@@ -9,6 +9,7 @@
 
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
 import { downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+import { embutirLogoPdf } from './fotosPdf';
 export type { PdfGerado };
 import {
   listarFuncoesEpi,
@@ -114,16 +115,8 @@ export async function gerarMatrizEpiFuncaoPdf(options: ExportMatrizEpiFuncaoOpti
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
 
   // Carrega Logo oficial TEN se disponível no ambiente
-  let logoImg = null;
-  try {
-    const response = await fetch('/logo-ten.png');
-    if (response.ok) {
-      const logoBytes = await response.arrayBuffer();
-      logoImg = await doc.embedPng(logoBytes);
-    }
-  } catch {
-    // Ambiente sem servidor HTTP (ex: testes locais isolados) segue normalmente
-  }
+  // Sem servidor HTTP (testes locais isolados) vem null e o cabeçalho segue sem logo.
+  const logoImg = await embutirLogoPdf(doc, '/logo-ten.png');
 
   // Formato: A4 Paisagem (841.89 x 595.28 pt)
   const PAGE_WIDTH = 841.89;

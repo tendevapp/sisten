@@ -14,6 +14,9 @@
  *
  * Só entra foto escolhida por gente: a foto da conferência é da carga e pode
  * mostrar pallet, canhoto ou outro item ao fundo — por isso não é automática.
+ *
+ * Foto de item avariado nunca vai para o catálogo (nem automática, nem sugerida):
+ * mostra o dano, não o material como ele deve ser reconhecido.
  */
 
 import { supabase } from '../db/supabaseClient';
@@ -36,14 +39,15 @@ export interface FotoRecebimentoMaterial {
 
 interface LinhaItemComFoto {
   material_code: string | null;
+  tipo_divergencia?: string | null;
   evidencias: AnexoRecebimento[] | null;
   conferencia: { codigo: string; data: string; excluido_em?: string | null } | null;
 }
 
 /**
  * Achata as linhas (item de conferência × fotos) em fotos, da conferência mais
- * recente para a mais antiga. Ignora conferência excluída e anexo que não é
- * imagem (PDF).
+ * recente para a mais antiga. Ignora conferência excluída, item avariado e anexo
+ * que não é imagem (PDF).
  */
 export function extrairFotosDosItens(
   linhas: LinhaItemComFoto[],
@@ -52,7 +56,7 @@ export function extrairFotosDosItens(
   const fotos: Omit<FotoRecebimentoMaterial, 'url'>[] = [];
   const ordenadas = [...linhas].sort((a, b) => (b.conferencia?.data ?? '').localeCompare(a.conferencia?.data ?? ''));
   for (const linha of ordenadas) {
-    if (!linha.conferencia || linha.conferencia.excluido_em) continue;
+    if (!linha.conferencia || linha.conferencia.excluido_em || linha.tipo_divergencia === 'avaria') continue;
     for (const ev of linha.evidencias ?? []) {
       if (ev.tipo && !ev.tipo.startsWith('image/')) continue;
       fotos.push({ path: ev.path, nome: ev.nome, conferencia: linha.conferencia.codigo, data: linha.conferencia.data });
@@ -70,7 +74,7 @@ export async function listarFotosRecebimentoDoMaterial(codigoSap: string, limite
 
   const variantes = [...new Set([codigo, semZeros(codigo)])].filter(Boolean);
   const { data, error } = await (supabase.from as any)('alm_receb_conferencia_itens')
-    .select('material_code, evidencias, conferencia:alm_receb_conferencias!inner(codigo, data, excluido_em)')
+    .select('material_code, tipo_divergencia, evidencias, conferencia:alm_receb_conferencias!inner(codigo, data, excluido_em)')
     .in('material_code', variantes)
     .is('conferencia.excluido_em', null)
     .limit(60);
@@ -100,6 +104,8 @@ export interface ItemParaCatalogar {
   fotosNovas?: PreparedAttachment[];
   /** Fotos já gravadas no recebimento (bucket `alm-recebimento`); baixa a primeira. */
   fotosGravadas?: AnexoRecebimento[];
+  /** Item marcado como avaria: a foto mostra o dano e não vai para o catálogo. */
+  avaria?: boolean;
 }
 
 export interface ResultadoCatalogar {
@@ -107,6 +113,8 @@ export interface ResultadoCatalogar {
   cadastrados: string[];
   /** Itens que já tinham foto no catálogo — nada foi trocado. */
   jaTinham: string[];
+  /** Itens avariados: a foto do dano não entra no catálogo. */
+  avariados: string[];
   /** Projeto (100000…) não entra no catálogo de consumíveis; sem código não há o que cadastrar. */
   ignorados: string[];
   falhas: { material: string; motivo: string }[];
@@ -122,11 +130,12 @@ export async function cadastrarItensComFotoNoCatalogo(
   itens: ItemParaCatalogar[],
   user: Profile,
 ): Promise<ResultadoCatalogar> {
-  const r: ResultadoCatalogar = { cadastrados: [], jaTinham: [], ignorados: [], falhas: [] };
+  const r: ResultadoCatalogar = { cadastrados: [], jaTinham: [], avariados: [], ignorados: [], falhas: [] };
   const vistos = new Set<string>();
 
   for (const item of itens) {
     const codigo = item.materialCode.trim();
+    if (item.avaria) { if (codigo) r.avariados.push(codigo); continue; }
     const temFoto = (item.fotosNovas?.length ?? 0) > 0 || (item.fotosGravadas ?? []).some((f) => !f.tipo || f.tipo.startsWith('image/'));
     if (!codigo || isProjetoItem(codigo) || !temFoto) { if (codigo && temFoto) r.ignorados.push(codigo); continue; }
     if (vistos.has(codigo)) continue;

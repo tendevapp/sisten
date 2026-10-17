@@ -322,10 +322,22 @@ describe('folhasDoTramoFiltradas + comAncestrais — a árvore do relatório de 
     expect(comPais.filter((n) => n.partNumber === 'PAI-SUP')).toHaveLength(1);
   });
 
-  it('mantém a ordem do id (a ordem de indentação da BOM)', () => {
+  it('usa o id como ordem para BOM legada sem campo ordem', () => {
     const folhas = folhasDoTramoFiltradas(arvore, 'T1', {});
     const comPais = comAncestrais(arvore, folhas);
     const ids = comPais.map((n) => n.id);
     expect(ids).toEqual([...ids].sort((a, b) => a - b));
+  });
+
+  it('separa a ordem da revisão dos ids históricos', () => {
+    const revisada: BomLinha[] = [
+      { id: 1300, ordem: 2, level: 2, section: 'S1', group: 'ESCADA', part_number: 'FILHO', quantity: 2 },
+      { id: 2200, ordem: 1, level: 1, section: 'S1', group: 'ESCADA', part_number: 'PAI', quantity: 1 },
+      { id: 1258, ordem: 3, level: 1, section: 'S2', group: 'ESCADA', part_number: 'OUTRA-RAIZ', quantity: 1 },
+    ];
+
+    const arvoreRevisada = montarArvore(revisada);
+    expect(arvoreRevisada.nos.map((no) => no.partNumber)).toEqual(['PAI', 'FILHO', 'OUTRA-RAIZ']);
+    expect(arvoreRevisada.porId.get(1300)?.parentId).toBe(2200);
   });
 });

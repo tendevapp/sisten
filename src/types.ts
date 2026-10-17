@@ -2985,6 +2985,9 @@ export interface DemTarefaAtividade {
 
 export interface ProjBomGwjaco {
   id?: number;
+  importacao_id: string;
+  ordem: number;
+  linha_origem: number;
   projeto: string;
   level: number | null;
   section: string | null;
@@ -3068,6 +3071,7 @@ export interface ProjItem {
 /** Linha da `vw_proj_bom_arvore` — a BOM com a hierarquia já resolvida. */
 export interface ProjBomNo {
   id: number;
+  ordem: number;
   projeto: string;
   level: number | null;
   parent_id: number | null;

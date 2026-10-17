@@ -5,7 +5,7 @@
  * Almoxarifado > Projetos — leitura da BOM indentada.
  *
  * `proj_bom_gwjaco` não tem `parent_id`: o pai de uma linha é a linha anterior
- * mais próxima com `level - 1`, na ordem do `id`. O banco já resolve isso em
+ * mais próxima com `level - 1`, na `ordem` da revisão. O banco já resolve isso em
  * `vw_proj_bom_arvore`; este arquivo é o espelho no cliente, para a tela montar
  * a árvore, o romaneio e a auditoria sem uma ida ao servidor por nó.
  *
@@ -20,6 +20,8 @@ import { normalizarGrupo, normalizarPartNumber, Tramo, tramoDaSecao } from './pr
 
 export interface BomLinha {
   id: number;
+  /** Ordem da linha dentro da revisão ativa; BOMs legadas usam o id. */
+  ordem?: number | null;
   level: number | null;
   secao?: string | null;
   section?: string | null;
@@ -44,6 +46,7 @@ export interface BomLinha {
 
 export interface NoBom {
   id: number;
+  ordem: number;
   level: number;
   parentId: number | null;
   filhos: number[];
@@ -82,15 +85,15 @@ const num = (v: unknown): number | null => {
 const texto = (v: unknown): string => String(v ?? '').trim();
 
 /**
- * Resolve a hierarquia percorrendo as linhas na ordem do `id` e mantendo o
+ * Resolve a hierarquia percorrendo as linhas na `ordem` da revisão e mantendo o
  * último id visto em cada nível. É o mesmo algoritmo da view; a alternativa
  * (procurar o pai de trás para frente a cada linha) seria O(n²) e é
  * exatamente o "PROCV por deslocamento de linha" que quebrou a planilha.
  *
- * As linhas precisam vir ordenadas por `id` — a ordem É a indentação.
+ * A `ordem` é a indentação. BOMs antigas sem esse campo usam o `id` como fallback.
  */
 export function montarArvore(linhas: BomLinha[]): ArvoreBom {
-  const ordenadas = [...linhas].sort((a, b) => a.id - b.id);
+  const ordenadas = [...linhas].sort((a, b) => (a.ordem ?? a.id) - (b.ordem ?? b.id));
   const ultimoPorNivel = new Map<number, number>();
   const nos: NoBom[] = [];
   const porId = new Map<number, NoBom>();
@@ -106,6 +109,7 @@ export function montarArvore(linhas: BomLinha[]): ArvoreBom {
 
     const no: NoBom = {
       id: linha.id,
+      ordem: linha.ordem ?? linha.id,
       level,
       parentId,
       filhos: [],
@@ -166,7 +170,7 @@ export function folhasDe(arvore: ArvoreBom, id: number): NoBom[] {
     if (no.folha) saida.push(no);
     else no.filhos.forEach((f) => { const n = arvore.porId.get(f); if (n) pilha.push(n); });
   }
-  return saida.sort((a, b) => a.id - b.id);
+  return saida.sort((a, b) => a.ordem - b.ordem);
 }
 
 export interface ConsumoItem {
@@ -495,7 +499,7 @@ export function folhasDoTramoFiltradas(
 /**
  * As folhas dadas, mais todo ancestral delas (pai, avô...) — para desenhar a
  * árvore pai/filho do romaneio sem perder o cabeçalho de conjunto. Devolve
- * na ordem do `id`, que É a ordem de indentação da BOM.
+ * na ordem explícita de indentação da BOM.
  */
 export function comAncestrais(arvore: ArvoreBom, folhas: NoBom[]): NoBom[] {
   const vistos = new Set<number>();
@@ -513,5 +517,5 @@ export function comAncestrais(arvore: ArvoreBom, folhas: NoBom[]): NoBom[] {
     saida.push(...cadeia);
   }
 
-  return saida.sort((a, b) => a.id - b.id);
+  return saida.sort((a, b) => a.ordem - b.ordem);
 }

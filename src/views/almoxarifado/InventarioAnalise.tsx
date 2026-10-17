@@ -21,14 +21,21 @@ import { formatDateBR, formatInt } from '../../lib/format';
 import { hojeISO } from '../../lib/recebimentoAlmox';
 import { listarInventarios, type InventarioRow } from '../../lib/inventarioCiclicoApi';
 import {
-  FILTRO_VAZIO, ROTULO_ORIGEM, SEM_CLASSE, aplicarFiltro, coberturaAnalise, conferidosComDiferenca, linhasAnalise, maioresDivergencias,
-  porClasse, porDeposito, porDia, precosPorMaterial, reincidentes, resumirAnalise,
-  type FiltroAnalise, type LinhaAnalise, type OrigemInventario,
+  ROTULO_STATUS_ITEM, chaveItem, diasEntre, historicoPorItem,
+} from '../../lib/inventarioCiclico';
+import {
+  FILTRO_VAZIO, ROTULO_FAIXA_IDADE, ROTULO_ORIGEM, SEM_CLASSE, aplicarFiltro, coberturaAnalise, conferidosComDiferenca,
+  faixaDeIdade, linhasAnalise, maioresDivergencias, porClasse, porDeposito, porDia, precosPorMaterial, reincidentes,
+  resumirAnalise,
+  type FaixaIdade, type FiltroAnalise, type LinhaAnalise, type OrigemInventario,
 } from '../../lib/inventarioAnalise';
 import { exportarPlanilhaAnalise } from '../../lib/inventarioAnalisePlanilha';
 import { useToast } from '../../components/ui/Toast';
 import KpiCard from '../../components/charts/KpiCard';
 import ChartCard from '../../components/charts/ChartCard';
+import ComposicaoModal, {
+  type ComposicaoColuna, type ComposicaoFiltro, type ComposicaoModalConfig,
+} from '../../components/charts/ComposicaoModal';
 import {
   AcuraciaPorGrupoChart, EvolucaoDiariaChart, IdadeContagemChart,
 } from '../../components/almoxarifado/inventarioAnalise/InventarioAnaliseGraficos';
@@ -39,6 +46,22 @@ import {
 interface Props {
   user: Profile;
   onNavigate: (path: string) => void;
+}
+
+interface ItemIdadeEstoque {
+  chave: string;
+  material: string;
+  descricao: string;
+  deposito: string;
+  saldo: number;
+  unidade: string;
+  valorEstoque: number;
+  faixa: FaixaIdade;
+  faixaRotulo: string;
+  ultimaData: string | null;
+  diasSemContagem: number | null;
+  vezesContado: number;
+  jaDivergiu: boolean;
 }
 
 const pct = (v: number | null | undefined) => (v == null ? '—' : `${v.toFixed(1).replace('.', ',')}%`);
@@ -77,6 +100,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<FiltroAnalise>(FILTRO_VAZIO);
+  const [modalComposicao, setModalComposicao] = useState<ComposicaoModalConfig<any> | null>(null);
 
   const carregar = useCallback(async (forcar = false) => {
     setLoading(true);
@@ -120,6 +144,417 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
     [estoque, inventarios, filtro.depositos],
   );
 
+  const itensComIdade = useMemo<ItemIdadeEstoque[]>(() => {
+    const historico = historicoPorItem(inventarios);
+    const result: ItemIdadeEstoque[] = [];
+    const hoje = hojeISO();
+    for (const e of estoque) {
+      if (!e.material || !e.deposito) continue;
+      const dep = String(e.deposito).trim().padStart(4, '0');
+      if (filtro.depositos.length > 0 && !filtro.depositos.includes(dep)) continue;
+      const mat = String(e.material).trim();
+      const chave = chaveItem(mat, dep);
+      const h = historico.get(chave);
+      const diasSemContagem = h ? diasEntre(h.ultimaData, hoje) : null;
+      const f = faixaDeIdade(diasSemContagem);
+      result.push({
+        chave,
+        material: mat,
+        descricao: e.texto_breve_material || e.descricao || '',
+        deposito: dep,
+        saldo: Number(e.quantidade) || 0,
+        unidade: e.unidade_medida_basica || 'UN',
+        valorEstoque: Number(e.valor_total) || 0,
+        faixa: f,
+        faixaRotulo: ROTULO_FAIXA_IDADE[f],
+        ultimaData: h?.ultimaData ?? null,
+        diasSemContagem,
+        vezesContado: h?.vezes ?? 0,
+        jaDivergiu: h?.jaDivergiu ?? false,
+      });
+    }
+    return result;
+  }, [estoque, inventarios, filtro.depositos]);
+
+  const colunasLinhaAnalise: ComposicaoColuna<LinhaAnalise>[] = useMemo(() => [
+    {
+      header: 'Data',
+      render: (l) => formatDateBR(l.data),
+      width: 'w-24',
+    },
+    {
+      header: 'Inventário',
+      render: (l) => <span className="font-mono text-xs">{l.inventario}</span>,
+      width: 'w-28',
+    },
+    {
+      header: 'Material / Descrição',
+      render: (l) => (
+        <div>
+          <span className="font-mono font-bold block" style={{ color: 'var(--ink-primary)' }}>{l.material}</span>
+          <span className="text-[11px] block truncate max-w-[280px]" title={l.descricao}>{l.descricao || '—'}</span>
+        </div>
+      ),
+    },
+    {
+      header: 'Depósito',
+      render: (l) => formatDeposito(l.deposito),
+      width: 'w-24',
+    },
+    {
+      header: 'Classe',
+      render: (l) => rotuloClasse(l.classe),
+      width: 'w-20',
+    },
+    {
+      header: 'Situação',
+      render: (l) => {
+        const isOk = l.status === 'conferido';
+        const isDiv = l.status === 'divergente';
+        return (
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
+            style={{
+              background: isOk
+                ? 'color-mix(in srgb, var(--status-good) 16%, transparent)'
+                : isDiv
+                ? 'color-mix(in srgb, var(--status-critical) 16%, transparent)'
+                : 'var(--surface-sunken)',
+              color: isOk ? 'var(--status-good)' : isDiv ? 'var(--status-critical)' : 'var(--ink-secondary)',
+            }}
+          >
+            {ROTULO_STATUS_ITEM[l.status] || l.status}
+          </span>
+        );
+      },
+      width: 'w-24',
+    },
+    {
+      header: 'Saldo ZL0024',
+      align: 'right',
+      render: (l) => (l.saldo !== null ? formatQtd(l.saldo) : '—'),
+      width: 'w-24',
+    },
+    {
+      header: 'Contado',
+      align: 'right',
+      render: (l) => (l.contado !== null ? formatQtd(l.contado) : '—'),
+      width: 'w-24',
+    },
+    {
+      header: 'Diferença',
+      align: 'right',
+      render: (l) => <Diferenca valor={l.diferenca} />,
+      width: 'w-24',
+    },
+    {
+      header: 'Valor do Erro',
+      align: 'right',
+      render: (l) => <Valor linha={l} />,
+      width: 'w-28',
+    },
+    {
+      header: 'Contagens',
+      align: 'right',
+      render: (l) => l.contagens,
+      width: 'w-20',
+    },
+  ], []);
+
+  const filtrosLinhaAnalise: ComposicaoFiltro<LinhaAnalise>[] = useMemo(() => [
+    {
+      key: 'status',
+      label: 'Situação',
+      valueOf: (l) => ROTULO_STATUS_ITEM[l.status] || l.status,
+    },
+    {
+      key: 'deposito',
+      label: 'Depósito',
+      valueOf: (l) => formatDeposito(l.deposito),
+    },
+    {
+      key: 'classe',
+      label: 'Classe',
+      valueOf: (l) => rotuloClasse(l.classe),
+    },
+  ], []);
+
+  const colunasIdadeEstoque: ComposicaoColuna<ItemIdadeEstoque>[] = useMemo(() => [
+    {
+      header: 'Material / Descrição',
+      render: (i) => (
+        <div>
+          <span className="font-mono font-bold block" style={{ color: 'var(--ink-primary)' }}>{i.material}</span>
+          <span className="text-[11px] block truncate max-w-[320px]" title={i.descricao}>{i.descricao || '—'}</span>
+        </div>
+      ),
+    },
+    {
+      header: 'Depósito',
+      render: (i) => formatDeposito(i.deposito),
+      width: 'w-24',
+    },
+    {
+      header: 'Saldo em Estoque',
+      align: 'right',
+      render: (i) => `${formatQtd(i.saldo)} ${i.unidade}`,
+      width: 'w-28',
+    },
+    {
+      header: 'Valor em Estoque',
+      align: 'right',
+      render: (i) => (
+        <span className="font-bold tabular" style={{ color: 'var(--ink-primary)' }}>
+          {formatBRL(i.valorEstoque)}
+        </span>
+      ),
+      width: 'w-28',
+    },
+    {
+      header: 'Última Contagem',
+      render: (i) => (
+        <span style={{ color: i.ultimaData ? 'var(--ink-primary)' : 'var(--ink-muted)' }}>
+          {i.ultimaData ? formatDateBR(i.ultimaData) : 'Nunca contado'}
+        </span>
+      ),
+      width: 'w-28',
+    },
+    {
+      header: 'Tempo sem Contar',
+      align: 'right',
+      render: (i) => (
+        <span className="tabular font-medium" style={{ color: i.diasSemContagem !== null ? 'var(--ink-secondary)' : 'var(--ink-muted)' }}>
+          {i.diasSemContagem !== null ? (i.diasSemContagem === 0 ? 'Hoje' : `${i.diasSemContagem} dia(s)`) : '—'}
+        </span>
+      ),
+      width: 'w-28',
+    },
+    {
+      header: 'Vezes Contado',
+      align: 'right',
+      render: (i) => (
+        <span className="font-bold tabular" style={{ color: i.vezesContado > 0 ? 'var(--status-good)' : 'var(--ink-muted)' }}>
+          {i.vezesContado > 0 ? `${i.vezesContado}×` : '0×'}
+        </span>
+      ),
+      width: 'w-24',
+    },
+    {
+      header: 'Histórico',
+      render: (i) => {
+        if (i.vezesContado === 0) {
+          return (
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold"
+              style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}
+            >
+              Sem contagem
+            </span>
+          );
+        }
+        return i.jaDivergiu ? (
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold"
+            style={{ background: 'color-mix(in srgb, var(--status-warning) 16%, transparent)', color: 'var(--status-warning)' }}
+          >
+            Já divergiu
+          </span>
+        ) : (
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold"
+            style={{ background: 'color-mix(in srgb, var(--status-good) 16%, transparent)', color: 'var(--status-good)' }}
+          >
+            Sempre OK
+          </span>
+        );
+      },
+      width: 'w-28',
+    },
+  ], []);
+
+  const filtrosIdadeEstoque: ComposicaoFiltro<ItemIdadeEstoque>[] = useMemo(() => [
+    {
+      key: 'deposito',
+      label: 'Depósito',
+      valueOf: (i) => formatDeposito(i.deposito),
+    },
+    {
+      key: 'faixa',
+      label: 'Faixa de Tempo',
+      valueOf: (i) => i.faixaRotulo,
+    },
+  ], []);
+
+  const handleSelecionarDia = useCallback((dia: string) => {
+    const items = linhas.filter((l) => l.data === dia);
+    const conferidos = items.filter((l) => l.status === 'conferido').length;
+    const divergentes = items.filter((l) => l.status === 'divergente').length;
+
+    setModalComposicao({
+      title: `Inventário — ${formatDateBR(dia)}`,
+      badge: 'Evolução por Dia',
+      subtitle: `${items.length} item(ns) inventariado(s) em ${formatDateBR(dia)}: ${formatInt(conferidos)} conferido(s) e ${formatInt(divergentes)} divergente(s).`,
+      items,
+      groupBy: (l) => formatDeposito(l.deposito),
+      groupLabelHeader: 'Depósito',
+      valueOf: (l) => l.valor ?? 0,
+      formatValue: formatBRL,
+      valueHeader: 'Valor do Erro',
+      unidadeItem: 'item(ns)',
+      detailColumns: colunasLinhaAnalise,
+      filters: filtrosLinhaAnalise,
+      searchPredicate: (l, q) =>
+        l.material.toLowerCase().includes(q) ||
+        l.descricao.toLowerCase().includes(q) ||
+        l.inventario.toLowerCase().includes(q) ||
+        formatDeposito(l.deposito).toLowerCase().includes(q),
+      searchPlaceholder: 'Buscar por material, descrição, inventário...',
+      itemKey: (l, idx) => `${l.inventarioId}-${l.chave}-${idx}`,
+    });
+  }, [linhas, colunasLinhaAnalise, filtrosLinhaAnalise]);
+
+  const handleSelecionarDeposito = useCallback((deposito: string) => {
+    const items = linhas.filter((l) => l.deposito === deposito);
+    setModalComposicao({
+      title: `Inventário — ${formatDeposito(deposito)}`,
+      badge: 'Acuracidade por Depósito',
+      subtitle: `${items.length} item(ns) inventariado(s) no depósito ${formatDeposito(deposito)}.`,
+      items,
+      groupBy: (l) => (l.status === 'conferido' ? 'Conferidos (Bateram)' : l.status === 'divergente' ? 'Divergentes' : 'Outros'),
+      groupLabelHeader: 'Resultado',
+      valueOf: (l) => l.valor ?? 0,
+      formatValue: formatBRL,
+      valueHeader: 'Valor do Erro',
+      unidadeItem: 'item(ns)',
+      detailColumns: colunasLinhaAnalise,
+      filters: filtrosLinhaAnalise,
+      searchPredicate: (l, q) =>
+        l.material.toLowerCase().includes(q) ||
+        l.descricao.toLowerCase().includes(q) ||
+        l.inventario.toLowerCase().includes(q),
+      searchPlaceholder: 'Buscar por material, descrição, inventário...',
+      itemKey: (l, idx) => `${l.inventarioId}-${l.chave}-${idx}`,
+    });
+  }, [linhas, colunasLinhaAnalise, filtrosLinhaAnalise]);
+
+  const handleSelecionarClasse = useCallback((classe: string) => {
+    const items = linhas.filter((l) => l.classe === classe);
+    setModalComposicao({
+      title: `Inventário — ${rotuloClasse(classe)}`,
+      badge: 'Acuracidade por Classe',
+      subtitle: `${items.length} item(ns) inventariado(s) na ${rotuloClasse(classe)}.`,
+      items,
+      groupBy: (l) => formatDeposito(l.deposito),
+      groupLabelHeader: 'Depósito',
+      valueOf: (l) => l.valor ?? 0,
+      formatValue: formatBRL,
+      valueHeader: 'Valor do Erro',
+      unidadeItem: 'item(ns)',
+      detailColumns: colunasLinhaAnalise,
+      filters: filtrosLinhaAnalise,
+      searchPredicate: (l, q) =>
+        l.material.toLowerCase().includes(q) ||
+        l.descricao.toLowerCase().includes(q) ||
+        l.inventario.toLowerCase().includes(q) ||
+        formatDeposito(l.deposito).toLowerCase().includes(q),
+      searchPlaceholder: 'Buscar por material, descrição, inventário...',
+      itemKey: (l, idx) => `${l.inventarioId}-${l.chave}-${idx}`,
+    });
+  }, [linhas, colunasLinhaAnalise, filtrosLinhaAnalise]);
+
+  const handleSelecionarFaixaIdade = useCallback((faixa: FaixaIdade) => {
+    const items = itensComIdade.filter((i) => i.faixa === faixa);
+    setModalComposicao({
+      title: `Posição ZL0024 — ${ROTULO_FAIXA_IDADE[faixa]}`,
+      badge: 'Tempo sem Contagem',
+      subtitle: `${items.length} item(ns) em estoque com última contagem na faixa: ${ROTULO_FAIXA_IDADE[faixa].toLowerCase()}.`,
+      items,
+      groupBy: (i) => formatDeposito(i.deposito),
+      groupLabelHeader: 'Depósito',
+      valueOf: (i) => i.valorEstoque,
+      formatValue: formatBRL,
+      valueHeader: 'Valor em Estoque',
+      unidadeItem: 'item(ns)',
+      detailColumns: colunasIdadeEstoque,
+      filters: filtrosIdadeEstoque,
+      searchPredicate: (i, q) =>
+        i.material.toLowerCase().includes(q) ||
+        i.descricao.toLowerCase().includes(q) ||
+        formatDeposito(i.deposito).toLowerCase().includes(q),
+      searchPlaceholder: 'Buscar por material, descrição ou depósito...',
+      itemKey: (i, idx) => `${i.chave}-${idx}`,
+    });
+  }, [itensComIdade, colunasIdadeEstoque, filtrosIdadeEstoque]);
+
+  const handleSelecionarCoberturaDeposito = useCallback((deposito: string) => {
+    const items = itensComIdade.filter((i) => i.deposito === deposito);
+    setModalComposicao({
+      title: `Cobertura ZL0024 — ${formatDeposito(deposito)}`,
+      badge: 'Cobertura por Depósito',
+      subtitle: `${items.length} item(ns) em estoque no ${formatDeposito(deposito)} e seu histórico de contagem.`,
+      groupBy: (i) => (i.vezesContado > 0 ? 'Já Contados' : 'Nunca Contados'),
+      groupLabelHeader: 'Situação',
+      valueOf: (i) => i.valorEstoque,
+      formatValue: formatBRL,
+      valueHeader: 'Valor em Estoque',
+      unidadeItem: 'item(ns)',
+      detailColumns: colunasIdadeEstoque,
+      filters: filtrosIdadeEstoque,
+      searchPredicate: (i, q) =>
+        i.material.toLowerCase().includes(q) ||
+        i.descricao.toLowerCase().includes(q),
+      searchPlaceholder: 'Buscar por material ou descrição...',
+      itemKey: (i, idx) => `${i.chave}-${idx}`,
+    });
+  }, [itensComIdade, colunasIdadeEstoque, filtrosIdadeEstoque]);
+
+  const handleAbrirModalKpi = useCallback((rotulo: string, items: LinhaAnalise[]) => {
+    setModalComposicao({
+      title: `Inventário — ${rotulo}`,
+      badge: 'Indicador Geral',
+      subtitle: `${items.length} item(ns) correspondentes ao indicador.`,
+      items,
+      groupBy: (l) => formatDeposito(l.deposito),
+      groupLabelHeader: 'Depósito',
+      valueOf: (l) => l.valor ?? 0,
+      formatValue: formatBRL,
+      valueHeader: 'Valor do Erro',
+      unidadeItem: 'item(ns)',
+      detailColumns: colunasLinhaAnalise,
+      filters: filtrosLinhaAnalise,
+      searchPredicate: (l, q) =>
+        l.material.toLowerCase().includes(q) ||
+        l.descricao.toLowerCase().includes(q) ||
+        l.inventario.toLowerCase().includes(q) ||
+        formatDeposito(l.deposito).toLowerCase().includes(q),
+      searchPlaceholder: 'Buscar por material, descrição, inventário...',
+      itemKey: (l, idx) => `${l.inventarioId}-${l.chave}-${idx}`,
+    });
+  }, [colunasLinhaAnalise, filtrosLinhaAnalise]);
+
+  const handleAbrirModalKpiEstoque = useCallback((rotulo: string, items: ItemIdadeEstoque[]) => {
+    setModalComposicao({
+      title: `Posição ZL0024 — ${rotulo}`,
+      badge: 'Cobertura de Estoque',
+      subtitle: `${items.length} item(ns) na posição de estoque atual.`,
+      items,
+      groupBy: (i) => formatDeposito(i.deposito),
+      groupLabelHeader: 'Depósito',
+      valueOf: (i) => i.valorEstoque,
+      formatValue: formatBRL,
+      valueHeader: 'Valor em Estoque',
+      unidadeItem: 'item(ns)',
+      detailColumns: colunasIdadeEstoque,
+      filters: filtrosIdadeEstoque,
+      searchPredicate: (i, q) =>
+        i.material.toLowerCase().includes(q) ||
+        i.descricao.toLowerCase().includes(q) ||
+        formatDeposito(i.deposito).toLowerCase().includes(q),
+      searchPlaceholder: 'Buscar por material, descrição ou depósito...',
+      itemKey: (i, idx) => `${i.chave}-${idx}`,
+    });
+  }, [colunasIdadeEstoque, filtrosIdadeEstoque]);
+
   const filtroAtivo = !!(filtro.de || filtro.ate || filtro.depositos.length || filtro.classe || filtro.origem);
   const periodo = filtro.de || filtro.ate
     ? `${filtro.de ? formatDateBR(filtro.de) : 'início'} a ${filtro.ate ? formatDateBR(filtro.ate) : 'hoje'}`
@@ -155,7 +590,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
           </button>
           <h1 className="flex items-center gap-2.5 text-2xl font-extrabold" style={{ color: 'var(--ink-primary)' }}>
             <ClipboardCheck className="h-7 w-7" style={{ color: 'var(--brand)' }} />
-            Análise de Inventário Cíclico
+            Inventário
           </h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
             O estoque físico bate com o sistema? Onde erra mais, quanto vale o erro e o que ainda não foi contado.
@@ -297,6 +732,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
               detail={`${formatInt(resumo.conferidos)} de ${formatInt(resumo.encerrados)} itens bateram`}
               accent="var(--status-good)"
               emphasize
+              onClick={() => handleAbrirModalKpi('Todos os itens avaliados', linhas.filter((l) => l.encerrado))}
             />
             <KpiCard
               label="Acerto na 1ª contagem"
@@ -305,6 +741,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
               share={resumo.acertoPrimeira == null ? undefined : resumo.acertoPrimeira / 100}
               detail={`${formatInt(resumo.recontados)} itens precisaram recontar`}
               accent="var(--series-2)"
+              onClick={() => handleAbrirModalKpi('Acerto na 1ª contagem', linhas.filter((l) => l.acertouNaPrimeira))}
             />
             <KpiCard
               label="Itens divergentes"
@@ -314,6 +751,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
               share={resumo.encerrados > 0 ? resumo.divergentes / resumo.encerrados : 0}
               detail={`${formatInt(resumo.faltas)} faltas · ${formatInt(resumo.sobras)} sobras`}
               accent="var(--status-critical)"
+              onClick={() => handleAbrirModalKpi('Itens divergentes', linhas.filter((l) => l.status === 'divergente'))}
             />
             <KpiCard
               label="Valor do erro"
@@ -324,6 +762,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
                 + (resumo.valorEstimado > 0 ? ' · inclui estimativa' : '')
               }
               accent="var(--status-serious)"
+              onClick={() => handleAbrirModalKpi('Valor do erro (divergentes)', linhas.filter((l) => l.status === 'divergente'))}
             />
             <KpiCard
               label="Itens contados"
@@ -332,6 +771,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
               format={(v) => formatInt(Math.round(v))}
               detail={`${formatInt(resumo.inventarios)} inventários${resumo.emAberto > 0 ? ` · ${formatInt(resumo.emAberto)} em aberto` : ''}`}
               accent="var(--series-1)"
+              onClick={() => handleAbrirModalKpi('Itens contados no período', linhas)}
             />
             <KpiCard
               label="Cobertura da ZL0024"
@@ -340,35 +780,42 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
               share={cobertura.pct / 100}
               detail={`${formatInt(cobertura.contados)} de ${formatInt(cobertura.total)} itens já contados`}
               accent="var(--series-3)"
+              onClick={() => handleAbrirModalKpiEstoque('Posição atual da ZL0024', itensComIdade)}
             />
           </div>
 
-          <EvolucaoDiariaChart dados={dias} loading={loading} />
+          <EvolucaoDiariaChart dados={dias} loading={loading} onSelecionarDia={handleSelecionarDia} />
 
           <div className="grid gap-4 lg:grid-cols-2">
             <AcuraciaPorGrupoChart
               titulo="Acuracidade por depósito"
-              descricao="Percentual de itens que bateram com a ZL0024, por depósito."
+              descricao="Percentual de itens que bateram com a ZL0024, por depósito. Clique em um depósito para ver seus itens."
               dados={depositos}
               rotulo={(c) => formatDeposito(c)}
               depositos
               loading={loading}
+              onSelecionar={handleSelecionarDeposito}
             />
             <AcuraciaPorGrupoChart
               titulo="Acuracidade por classe"
-              descricao="Classe da curva 80/20 em que o item foi selecionado. Histórico importado e itens avulsos não têm classe."
+              descricao="Classe da curva 80/20 em que o item foi selecionado. Clique em uma classe para ver seus itens."
               dados={classes}
               rotulo={rotuloClasse}
               loading={loading}
+              onSelecionar={handleSelecionarClasse}
             />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <IdadeContagemChart cobertura={cobertura} loading={loading} />
+            <IdadeContagemChart
+              cobertura={cobertura}
+              loading={loading}
+              onSelecionarFaixa={handleSelecionarFaixaIdade}
+            />
             <ChartCard
               title="Cobertura por depósito"
               icon={Package}
-              description="Quanto da posição atual da ZL0024 já passou por contagem (conta todos os inventários, não só o período)."
+              description="Quanto da posição atual da ZL0024 já passou por contagem. Clique em um depósito para ver seus itens."
               height={260}
               loading={loading}
               empty={cobertura.porDeposito.length === 0}
@@ -376,15 +823,22 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
             >
               <ul className="space-y-3">
                 {cobertura.porDeposito.map((d) => (
-                  <li key={d.deposito}>
+                  <li
+                    key={d.deposito}
+                    onClick={() => handleSelecionarCoberturaDeposito(d.deposito)}
+                    className="group -mx-2 -my-1 cursor-pointer rounded-xl p-2 transition-all hover:bg-[var(--surface-raised)] active:scale-[0.99]"
+                    title="Clique para ver os itens deste depósito"
+                  >
                     <div className="flex items-baseline justify-between gap-2 text-xs">
-                      <span className="font-bold" style={{ color: 'var(--ink-primary)' }}>{formatDeposito(d.deposito)}</span>
-                      <span className="tabular" style={{ color: 'var(--ink-secondary)' }}>
+                      <span className="font-bold group-hover:text-[var(--brand)] transition-colors" style={{ color: 'var(--ink-primary)' }}>
+                        {formatDeposito(d.deposito)}
+                      </span>
+                      <span className="tabular text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
                         {formatInt(d.contados)} de {formatInt(d.itens)} itens · {pct(d.pct)}
                       </span>
                     </div>
                     <div className="mt-1 h-2 overflow-hidden rounded-full" style={{ background: 'var(--surface-sunken)' }} aria-hidden="true">
-                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, d.pct)}%`, background: 'var(--series-3)' }} />
+                      <div className="h-full rounded-full transition-all duration-300" style={{ width: `${Math.min(100, d.pct)}%`, background: 'var(--series-3)' }} />
                     </div>
                     <p className="mt-0.5 text-[10px]" style={{ color: 'var(--ink-muted)' }}>
                       {pct(d.pctValor)} do valor em estoque ({formatBRLCompacto(d.valorContado)} de {formatBRLCompacto(d.valorEstoque)})
@@ -599,6 +1053,8 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
           </p>
         </>
       )}
+
+      <ComposicaoModal config={modalComposicao} onClose={() => setModalComposicao(null)} />
     </div>
   );
 }

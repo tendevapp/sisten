@@ -168,14 +168,13 @@ export async function gerarPdfEtiquetasBom(etiquetas: DadosEtiquetaBom[], cor: C
     normal: await doc.embedFont(StandardFonts.Helvetica),
     negrito: await doc.embedFont(StandardFonts.HelveticaBold),
   };
-  const cacheFotos = new Map<string, PDFImage | null>();
   const paginas: PDFPage[] = [];
 
   for (let i = 0; i < etiquetas.length; i += 1) {
     const e = etiquetas[i];
     const pos = posicaoDaEtiqueta(i);
     while (paginas.length <= pos.pagina) paginas.push(doc.addPage([595.28, 841.89]));
-    const foto = e.url_foto ? await carregarFoto(doc, e.url_foto, cacheFotos) : null;
+    const foto = e.url_foto ? await carregarFoto(doc, e.url_foto) : null;
     desenharEtiquetaBom(paginas[pos.pagina], fontes, tema, e, foto, pos.x, pos.y);
   }
   return doc;

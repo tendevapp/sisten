@@ -8,10 +8,10 @@
  * bucket `alm-recebimento`) em grade de 2 colunas.
  */
 
-import { PDFDocument, type PDFImage } from 'pdf-lib';
 import {
   createDoc, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado, MARGIN, PDF_COLORS, PdfTextWriter, sanitizeText, type GridField,
 } from './core';
+import { embutirFotoPdf, LADO_FOTO } from './fotosPdf';
 export type { PdfGerado };
 import { formatDateTimeBR, formatQtd } from '../format';
 import {
@@ -45,21 +45,6 @@ interface FotoPdf { path: string; legenda: string }
 const fotosDe = (anexos: AnexoRecebimento[] | null | undefined, legenda: string): FotoPdf[] =>
   (anexos ?? []).filter((a) => !a.tipo || a.tipo.startsWith('image/')).map((a) => ({ path: a.path, legenda }));
 
-async function embutirImagem(doc: PDFDocument, url: string): Promise<PDFImage | null> {
-  try {
-    const resposta = await fetch(url);
-    if (!resposta.ok) return null;
-    const bytes = new Uint8Array(await resposta.arrayBuffer());
-    try {
-      return await doc.embedJpg(bytes);
-    } catch {
-      return await doc.embedPng(bytes);
-    }
-  } catch {
-    return null;
-  }
-}
-
 const FOTO_ALTURA = 150;
 const FOTO_GAP = 10;
 const LEGENDA_ALTURA = 11;
@@ -91,7 +76,7 @@ async function desenharFotos(w: PdfTextWriter, titulo: string, fotos: FotoPdf[])
       });
 
       const url = urls[foto.path];
-      const img = url ? await embutirImagem(doc, url) : null;
+      const img = await embutirFotoPdf(doc, url, LADO_FOTO.GRADE);
       if (img) {
         const escala = Math.min((largura - 6) / img.width, (FOTO_ALTURA - 6) / img.height);
         const iw = img.width * escala;

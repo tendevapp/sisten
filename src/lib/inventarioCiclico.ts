@@ -153,6 +153,9 @@ export interface ItemInventario {
   diferenca: number | null;
   alerta: string | null;
   encerrado_em: string | null;
+  /** Linha e campos originais, presentes apenas no histórico importado. */
+  origem_linha?: number | null;
+  dados_origem?: Record<string, unknown> | null;
   contagens: ContagemInventario[];
 }
 
@@ -289,6 +292,7 @@ export function historicoPorItem(
   inventarios: { data: string; itens: Pick<ItemInventario, 'material' | 'deposito' | 'status' | 'contagens'>[] }[],
 ): Map<string, HistoricoItem> {
   const mapa = new Map<string, HistoricoItem>();
+  const datasPorItem = new Map<string, Set<string>>();
   inventarios.forEach((inv) => {
     inv.itens.forEach((i) => {
       if (i.contagens.length === 0) return;
@@ -297,8 +301,13 @@ export function historicoPorItem(
       const divergiu = i.status === 'divergente';
       if (!atual) {
         mapa.set(chave, { ultimaData: inv.data, vezes: 1, jaDivergiu: divergiu });
+        datasPorItem.set(chave, new Set([inv.data]));
       } else {
-        atual.vezes += 1;
+        const datas = datasPorItem.get(chave)!;
+        if (!datas.has(inv.data)) {
+          datas.add(inv.data);
+          atual.vezes += 1;
+        }
         atual.jaDivergiu ||= divergiu;
         if (inv.data > atual.ultimaData) atual.ultimaData = inv.data;
       }
@@ -355,4 +364,3 @@ export function podeExcluirInventario(
   const algumContado = inv.itens?.some((i) => (i.contagens?.length ?? 0) > 0) ?? false;
   return !algumContado;
 }
-

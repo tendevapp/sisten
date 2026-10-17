@@ -15,6 +15,7 @@ import {
   fmtData, fmtDataHora, imagem, linha, medir, mosaico, quebrar, retangulo, texto, textoMisto, textoVertical,
   type Bloco, type Fontes, type PdfGerado,
 } from './formularioPdf';
+import { embutirLogoPdf } from './fotosPdf';
 
 const M = 18;
 const W = PW - M * 2;
@@ -306,7 +307,7 @@ async function montarDocumento(checklist: InternosChecklist, modelo: InternosMod
   doc.setTitle(`Checklist Internos Mecânicos ${checklist.codigo_registro}`);
   const f = await carregarFontes(doc);
   const carregar = criarCarregadorImagens(doc);
-  const logo = await carregar('/logo-adm.png');
+  const logo = await embutirLogoPdf(doc);
   const observacoes = observacoesCompletas(checklist, modelo);
 
   const novaPagina = async (comColunas: boolean) => {

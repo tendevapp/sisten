@@ -13,7 +13,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft, Camera, CheckCircle2, ClipboardPaste, ImageIcon, Loader2, MapPin, Printer, RefreshCw, Square, CheckSquare, Trash2, Upload, X,
+  ArrowLeft, Camera, CheckCircle2, ClipboardPaste, FileText, ImageIcon, Loader2, MapPin, Printer, RefreshCw, Square, CheckSquare, Trash2, Upload, X,
 } from 'lucide-react';
 import type { Profile, ProjBomNo } from '../../types';
 import { useToast } from '../../components/ui/Toast';
@@ -26,6 +26,7 @@ import { casarTokens, normalizarParaBusca } from '../../lib/buscaKeywords';
 import {
   agruparItensBom, dadosEtiquetaBom, type DadosEtiquetaBom, type ItemBom,
 } from '../../lib/etiquetaBom';
+import { montarCatalogoBom } from '../../lib/catalogoBom';
 import {
   CORES_ETIQUETA, ORDEM_CORES_ETIQUETA, ehCorEtiqueta, type CorEtiqueta,
 } from '../../lib/etiquetaMaterial';
@@ -33,6 +34,7 @@ import {
   listarCadastrosBom, marcarEtiquetasBomImpressas, salvarCadastroBom, type CadastroBom,
 } from '../../lib/almoxBomCadastroApi';
 import { gerarPdfEtiquetasBom } from '../../lib/pdfExport/exportEtiquetasBomPdf';
+import { gerarPdfCatalogoBom } from '../../lib/pdfExport/exportCatalogoBomPdf';
 
 interface Props {
   user: Profile;
@@ -60,6 +62,8 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
   const lightbox = useLightbox();
 
   const [itens, setItens] = useState<ItemBom[]>([]);
+  /** Linhas da BOM como vieram do banco (uma por uso da peça): o catálogo segue a árvore. */
+  const [bomBruta, setBomBruta] = useState<ProjBomNo[]>([]);
   const [cadastros, setCadastros] = useState<Map<string, CadastroBom>>(new Map());
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -74,6 +78,7 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
 
   const [aberto, setAberto] = useState<ItemBom | null>(null);
   const [preview, setPreview] = useState<{ dados: DadosEtiquetaBom[]; chaves: string[] } | null>(null);
+  const [catalogoAberto, setCatalogoAberto] = useState(false);
   const [cor, setCor] = useState<CorEtiqueta>(() => {
     try {
       const salva = localStorage.getItem(CHAVE_COR);
@@ -92,6 +97,7 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
     setErro(null);
     try {
       const [bom, cad] = await Promise.all([listarBom(PROJETO_PADRAO), listarCadastrosBom(PROJETO_PADRAO)]);
+      setBomBruta(bom as ProjBomNo[]);
       setItens(agruparItensBom(bom as ProjBomNo[]));
       setCadastros(cad);
     } catch (err: any) {
@@ -193,6 +199,12 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
     };
   }, [preview, cor]);
 
+  /** Catálogo completo da BOM (não respeita os filtros: a árvore precisa das linhas todas). */
+  const gerarCatalogo = useCallback(async (): Promise<PdfGerado> => {
+    const catalogo = montarCatalogoBom(bomBruta, cadastros);
+    return gerarPdfCatalogoBom(catalogo, { projeto: PROJETO_PADRAO.replace('_', ' '), emitidoPor: user.name });
+  }, [bomBruta, cadastros, user.name]);
+
   const aoBaixar = async (chaves: string[]) => {
     const em = await marcarEtiquetasBomImpressas(chaves);
     if (!em) return;
@@ -231,7 +243,7 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
             (código do item, código equivalente e quantidade por seção). Descrição e quantidades vêm da BOM.
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => void carregar()}
@@ -240,6 +252,16 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
           >
             <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'animate-spin' : ''}`} /> Recarregar
+          </button>
+          <button
+            type="button"
+            onClick={() => setCatalogoAberto(true)}
+            disabled={carregando || bomBruta.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold cursor-pointer disabled:opacity-50"
+            style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
+            title="PDF com toda a BOM, por seção e por nível, com foto, localização e quantidade por torre"
+          >
+            <FileText className="h-3.5 w-3.5" /> Exportar catálogo
           </button>
           <button
             type="button"
@@ -416,6 +438,14 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
           onSalvo={aoSalvar}
           onEtiqueta={(dados) => { setPreview({ dados: [dados], chaves: [aberto.chave] }); setAberto(null); }}
           onAmpliar={(url) => lightbox.abrir([{ url, legenda: `${aberto.partNumber} — ${aberto.descricao}` }])}
+        />
+      )}
+
+      {catalogoAberto && (
+        <PdfPreviewModal
+          gerar={gerarCatalogo}
+          tituloPadrao="Catálogo de itens da BOM"
+          onClose={() => setCatalogoAberto(false)}
         />
       )}
 
