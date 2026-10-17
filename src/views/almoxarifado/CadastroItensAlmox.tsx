@@ -139,6 +139,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [filtroFoto, setFiltroFoto] = useState<FiltroFoto>('todos');
   const [filtroNivel2, setFiltroNivel2] = useState<string>('todos');
   const [filtroGrupo, setFiltroGrupo] = useState<string>('todos');
+  const [filtroLocalizacao, setFiltroLocalizacao] = useState<string>('todas');
   const [modoVis, setModoVis] = useState<ModoVisualizacao>('cards');
 
   // Modal de Cadastro de Foto
@@ -213,6 +214,19 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     [posicoesPorMaterial],
   );
 
+  // Um material pode ocupar mais de uma posição. O mesmo recorte serve para a
+  // lista de opções e para o filtro, sem perder materiais multi-localizados.
+  const localizacoesDoItem = useCallback(
+    (item: ItemConsumivelZl0024) => posicaoDoItem(item).split(',').map(posicao => posicao.trim()).filter(Boolean),
+    [posicaoDoItem],
+  );
+
+  const opcoesLocalizacoes = useMemo(() => {
+    const localizacoes = new Set<string>();
+    itens.forEach(item => localizacoesDoItem(item).forEach(posicao => localizacoes.add(posicao)));
+    return Array.from(localizacoes).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  }, [itens, localizacoesDoItem]);
+
   // Itens filtrados
   const itensFiltrados = useMemo(() => {
     const tokens = buscaChips.map(normalizarParaBusca).filter(Boolean);
@@ -242,9 +256,15 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       // Filtro de Grupo de Mercadorias
       if (filtroGrupo !== 'todos' && it.grupo_mercadorias !== filtroGrupo) return false;
 
+      // Filtro de localização: inclui o material quando uma de suas posições
+      // coincide com a escolhida; "sem localização" destaca o cadastro pendente.
+      const localizacoes = localizacoesDoItem(it);
+      if (filtroLocalizacao === 'sem_localizacao' && localizacoes.length > 0) return false;
+      if (filtroLocalizacao !== 'todas' && filtroLocalizacao !== 'sem_localizacao' && !localizacoes.includes(filtroLocalizacao)) return false;
+
       return true;
     });
-  }, [itens, buscaChips, filtroFoto, filtroNivel2, filtroGrupo, posicaoDoItem]);
+  }, [itens, buscaChips, filtroFoto, filtroNivel2, filtroGrupo, filtroLocalizacao, posicaoDoItem, localizacoesDoItem]);
 
   // Estatísticas e KPIs
   const kpis = useMemo(() => {
@@ -1308,8 +1328,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           </div>
         </div>
 
-        {/* Linha secundária de filtros: Subcategoria Nível 2 e Grupo */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t" style={{ borderColor: 'var(--hairline)' }}>
+        {/* Linha secundária de filtros: Subcategoria, Grupo e Localização */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t" style={{ borderColor: 'var(--hairline)' }}>
           <div>
             <label className="text-[10px] font-bold block mb-1 uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
               Subcategoria (Nível 2)
@@ -1340,6 +1360,24 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               <option value="todos">Todos os grupos ({opcoesGrupos.length})</option>
               {opcoesGrupos.map(g => (
                 <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold block mb-1 uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+              Localização no estoque
+            </label>
+            <select
+              value={filtroLocalizacao}
+              onChange={(e) => setFiltroLocalizacao(e.target.value)}
+              className="w-full py-1.5 px-2.5 text-xs rounded-lg border"
+              style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+            >
+              <option value="todas">Todas as localizações ({opcoesLocalizacoes.length})</option>
+              <option value="sem_localizacao">Sem localização</option>
+              {opcoesLocalizacoes.map(posicao => (
+                <option key={posicao} value={posicao}>{posicao}</option>
               ))}
             </select>
           </div>

@@ -150,6 +150,9 @@ const TABELAS: Record<string, ConfigTabela> = {
   ssma_rid_desvios: { rotulo: 'RID — identificação de desvio', resumo: campos('numero_registro', 'area_desvio', 'nome_informante') },
   ssma_rid_atualizacoes: { rotulo: 'RID — atualização' },
 
+  // Planejamento — o código KZN sai do trigger no banco, no envio.
+  plan_kaizen: { rotulo: 'Aqui TEN Melhoria! (Kaizen)', resumo: campos('codigo', 'nome_profissional', 'setor') },
+
   // Qualidade
   qua_rnc: {
     rotulo: 'RNC — não conformidade',
@@ -252,6 +255,8 @@ const RPCS: Record<string, ConfigRpc> = {
     respostaProvisoria: () => ({ id: null, codigo: null, [MARCA_OFFLINE]: true }),
   },
 
+  plan_kaizen_validar: { rotulo: 'Aqui TEN Melhoria! — validação do responsável', respostaProvisoria: () => null },
+
   ssma_ficha_epi_registrar_devolucao: { rotulo: 'Ficha de EPI — devolução', respostaProvisoria: () => null },
   ssma_ficha_epi_assinar: { rotulo: 'Ficha de EPI — assinatura', respostaProvisoria: () => null },
 };
@@ -263,6 +268,7 @@ const RPCS: Record<string, ConfigRpc> = {
 const BUCKETS: Record<string, ConfigBucket> = {
   'expedicao-fotos': { rotulo: 'Registro de expedição — foto' },
   'ssma-desvios': { rotulo: 'RID — foto' },
+  'plan-kaizen': { rotulo: 'Aqui TEN Melhoria! — foto' },
   'qua-rnc-evidencias': { rotulo: 'RNC — anexo' },
   'alm-recebimento': { rotulo: 'Recebimento — foto' },
 };

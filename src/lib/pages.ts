@@ -273,6 +273,20 @@ export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
     },
   },
 
+  // PLANEJAMENTO
+  // Aqui TEN Melhoria! é para toda a fábrica, como o RID: o padrão aqui fica
+  // só admin (regra 4) e a liberação vem de page_access, gravada para todos os
+  // perfis na migration 20261017120000_create_plan_kaizen.sql.
+  {
+    id: 'form_planejamento_kaizen',
+    grupoId: 'planejamento',
+    label: 'Aqui TEN Melhoria! (Kaizen)',
+    codigo: 'FRM.ENG-0017',
+    descricao: 'Desperdício ou problema, causa, melhoria implantada e resultado obtido, com fotos',
+    path: '/formularios/planejamento-kaizen',
+    defaultRoles: ['admin'],
+  },
+
   // ALMOXARIFADO
   {
     id: 'form_almoxarifado_recebimento',
@@ -680,6 +694,20 @@ export const FEATURE_FLAGS: PageDef[] = [
     label: 'Grupo: SSMA (Saúde, Segurança e Meio Ambiente)',
     defaultRoles: ['admin'],
   },
+  {
+    id: 'form_planejamento',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'Grupo: Planejamento',
+    defaultRoles: ['admin'],
+  },
+  // Validação do Kaizen pelo Responsável pelo Setor — checada também no banco
+  // (public.plan_kaizen_validar).
+  {
+    id: 'plan_kaizen_validar',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'Aqui TEN Melhoria!: validar como Responsável pelo Setor (Kaizen implantado)',
+    defaultRoles: [],
+  },
   // Formulários individuais (selecionáveis e auditáveis pelo admin)
   ...FORMULARIOS_DETALHADOS.map(f => ({
     id: f.id,
@@ -745,7 +773,20 @@ export const FORMULARIO_SUBPERMISSOES: FormularioSubpermissaoDef[] = [
     descricao: 'Registro de Identificação de Desvio (RID) e relatórios preventivos',
     defaultRoles: ['admin'],
   },
+  {
+    id: 'form_planejamento',
+    grupoId: 'planejamento',
+    label: 'Planejamento',
+    descricao: 'Aqui TEN Melhoria! (Kaizen)',
+    defaultRoles: ['admin'],
+  },
 ];
+
+/** Admin ou quem recebeu a flag: valida o Kaizen como Responsável pelo Setor. */
+export function canValidarKaizen(user: Profile): boolean {
+  if (user.roles.includes('admin')) return true;
+  return user.page_access?.['plan_kaizen_validar'] === true;
+}
 
 const ALL_ENTRIES: PageDef[] = [...PAGES, ...FEATURE_FLAGS];
 const BY_ID: Record<string, PageDef> = Object.fromEntries(ALL_ENTRIES.map(p => [p.id, p]));

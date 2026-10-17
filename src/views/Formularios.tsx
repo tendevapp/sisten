@@ -20,7 +20,7 @@ import {
   DoorOpen, Boxes, PackageCheck, Truck, Clock, ArrowRight,
   Users2, Timer, Wrench, Bus, ClipboardList, ShieldCheck,
   Building2, Sparkles, ChevronRight, FileText, ShieldAlert,
-  HelpCircle, Bug, Lightbulb, Search,
+  HelpCircle, Bug, Lightbulb, Search, CalendarRange,
 } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
 import { canAccessPage, canAccessFormGroup } from '../lib/pages';
@@ -183,6 +183,23 @@ const MODULOS: ModuloFormulario[] = [
       'Inventário Cíclico (FRM.ALM-0015)',
       'Ficha de EPI (FRM.SEG-0008)',
       'Cadastro de Itens — Catálogo (FRM.ALM-0016)',
+    ],
+  },
+  {
+    id: 'planejamento',
+    label: 'Planejamento',
+    codigo: 'MÓDULO DE PLANEJAMENTO',
+    icon: CalendarRange,
+    desc: 'Aqui TEN Melhoria! — registre desperdícios e problemas, a causa, a melhoria implantada e o resultado, com fotos (Kaizen).',
+    path: '/formularios/planejamento',
+    badge: '1 Formulário Ativo',
+    badgeCor: 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300',
+    corIcone: 'bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-blue-500/20 shadow-lg',
+    corBordaHover: 'hover:border-blue-500/50 hover:shadow-blue-500/10',
+    itensResumo: [
+      'Aqui TEN Melhoria! — Kaizen (FRM.ENG-0017)',
+      'Fotos do problema, da melhoria e do resultado',
+      'Validação do Responsável pelo Setor',
     ],
   },
 ];

@@ -1,0 +1,817 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2450" height="7000" viewBox="0 0 2450 7000">
+  <style>
+    .bg { fill: #f8fafc; } .title { font: 700 42px Arial, sans-serif; fill: #0f172a; } .subtitle { font: 400 18px Arial, sans-serif; fill: #475569; }
+    .summary { font: 600 15px Arial, sans-serif; fill: #0f766e; } .legend { font: 400 13px Arial, sans-serif; fill: #64748b; }
+    .line { fill: none; stroke-width: 1.5; stroke-linecap: round; } .line-module { stroke: #0f766e; } .line-page { stroke: #94a3b8; } .line-form-group { stroke: #d97706; } .line-form { stroke: #f59e0b; } .line-internal, .line-system { stroke: #cbd5e1; stroke-dasharray: 3 3; }
+    .root rect { fill: #0f766e; } .root text { font: 700 19px Arial, sans-serif; fill: white; } .node text { font: 500 14px Arial, sans-serif; fill: #1e293b; dominant-baseline: middle; } .node .route { font: 400 12px 'Courier New', monospace; fill: #64748b; }
+    .module rect { fill: #ccfbf1; stroke: #0f766e; stroke-width: 1.2; } .module text { font-weight: 700; fill: #115e59; } .page rect { fill: #ffffff; stroke: #cbd5e1; } .form-group rect { fill: #ffedd5; stroke: #d97706; } .form-group text { font-weight: 700; fill: #9a3412; } .form rect { fill: #fffbeb; stroke: #fcd34d; } .internal rect, .system rect { fill: #f1f5f9; stroke: #cbd5e1; stroke-dasharray: 4 3; } .internal text, .system text { fill: #475569; }
+  </style>
+  <rect class="bg" width="100%" height="100%"/>
+  <text x="72" y="56" class="title">SISTEN — mapa de módulos e páginas</text>
+  <text x="72" y="86" class="subtitle">Árvore de navegação do código • gerado em 17/10/2026 • fonte: src/lib/pages.ts + src/App.tsx</text>
+  <text x="72" y="113" class="summary">99 páginas registradas • 19 formulários • 18 rotas internas • 139 destinos mapeados</text>
+  <g class="root" transform="translate(72,116)"><rect width="124" height="31" rx="7"/><text x="62" y="20" text-anchor="middle">SISTEN</text></g>
+  <text x="72" y="175" class="legend">■ módulo/área  |  □ página de navegação  |  ▧ grupo de formulários  |  ▤ formulário  |  ┄ subrota/tela de sistema</text>
+  <path d="M 196 131 H 236 V 251 H 255" class="line line-module"/>
+  <path d="M 602 251 H 624 V 290 H 643" class="line line-system"/>
+  <path d="M 602 251 H 624 V 329 H 643" class="line line-system"/>
+  <path d="M 602 251 H 624 V 368 H 643" class="line line-system"/>
+  <path d="M 196 131 H 236 V 437 H 255" class="line line-module"/>
+  <path d="M 602 437 H 624 V 476 H 643" class="line line-page"/>
+  <path d="M 1210 476 H 1244 V 515 H 1263" class="line line-internal"/>
+  <path d="M 602 437 H 624 V 554 H 643" class="line line-page"/>
+  <path d="M 1210 554 H 1244 V 593 H 1263" class="line line-internal"/>
+  <path d="M 1210 554 H 1244 V 632 H 1263" class="line line-internal"/>
+  <path d="M 1210 554 H 1244 V 671 H 1263" class="line line-form-group"/>
+  <path d="M 1570 671 H 1564 V 710 H 1583" class="line line-form"/>
+  <path d="M 1570 671 H 1564 V 749 H 1583" class="line line-form"/>
+  <path d="M 1570 671 H 1564 V 788 H 1583" class="line line-form"/>
+  <path d="M 1210 554 H 1244 V 827 H 1263" class="line line-form-group"/>
+  <path d="M 1570 827 H 1564 V 866 H 1583" class="line line-form"/>
+  <path d="M 1210 554 H 1244 V 905 H 1263" class="line line-form-group"/>
+  <path d="M 1570 905 H 1564 V 944 H 1583" class="line line-form"/>
+  <path d="M 1570 905 H 1564 V 983 H 1583" class="line line-form"/>
+  <path d="M 1570 905 H 1564 V 1022 H 1583" class="line line-form"/>
+  <path d="M 1570 905 H 1564 V 1061 H 1583" class="line line-form"/>
+  <path d="M 1570 905 H 1564 V 1100 H 1583" class="line line-form"/>
+  <path d="M 1210 554 H 1244 V 1139 H 1263" class="line line-form-group"/>
+  <path d="M 1570 1139 H 1564 V 1178 H 1583" class="line line-form"/>
+  <path d="M 1570 1139 H 1564 V 1217 H 1583" class="line line-form"/>
+  <path d="M 1570 1139 H 1564 V 1256 H 1583" class="line line-form"/>
+  <path d="M 1570 1139 H 1564 V 1295 H 1583" class="line line-form"/>
+  <path d="M 1570 1139 H 1564 V 1334 H 1583" class="line line-form"/>
+  <path d="M 1570 1139 H 1564 V 1373 H 1583" class="line line-form"/>
+  <path d="M 1570 1139 H 1564 V 1412 H 1583" class="line line-form"/>
+  <path d="M 1210 554 H 1244 V 1451 H 1263" class="line line-form-group"/>
+  <path d="M 1570 1451 H 1564 V 1490 H 1583" class="line line-form"/>
+  <path d="M 1570 1451 H 1564 V 1529 H 1583" class="line line-form"/>
+  <path d="M 1210 554 H 1244 V 1568 H 1263" class="line line-form-group"/>
+  <path d="M 1570 1568 H 1564 V 1607 H 1583" class="line line-form"/>
+  <path d="M 602 437 H 624 V 1646 H 643" class="line line-page"/>
+  <path d="M 602 437 H 624 V 1685 H 643" class="line line-page"/>
+  <path d="M 602 437 H 624 V 1724 H 643" class="line line-page"/>
+  <path d="M 602 437 H 624 V 1763 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 1832 H 255" class="line line-module"/>
+  <path d="M 602 1832 H 624 V 1871 H 643" class="line line-page"/>
+  <path d="M 602 1832 H 624 V 1910 H 643" class="line line-page"/>
+  <path d="M 602 1832 H 624 V 1949 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 2018 H 255" class="line line-module"/>
+  <path d="M 602 2018 H 624 V 2057 H 643" class="line line-page"/>
+  <path d="M 602 2018 H 624 V 2096 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 2165 H 255" class="line line-module"/>
+  <path d="M 602 2165 H 624 V 2204 H 643" class="line line-page"/>
+  <path d="M 602 2165 H 624 V 2243 H 643" class="line line-page"/>
+  <path d="M 602 2165 H 624 V 2282 H 643" class="line line-page"/>
+  <path d="M 1210 2282 H 1244 V 2321 H 1263" class="line line-internal"/>
+  <path d="M 602 2165 H 624 V 2360 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 2429 H 255" class="line line-module"/>
+  <path d="M 602 2429 H 624 V 2468 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2507 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2546 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2585 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2624 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2663 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2702 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2741 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2780 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2819 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2858 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2897 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2936 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 2975 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 3014 H 643" class="line line-page"/>
+  <path d="M 602 2429 H 624 V 3053 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 3122 H 255" class="line line-module"/>
+  <path d="M 602 3122 H 624 V 3161 H 643" class="line line-page"/>
+  <path d="M 602 3122 H 624 V 3200 H 643" class="line line-page"/>
+  <path d="M 602 3122 H 624 V 3239 H 643" class="line line-page"/>
+  <path d="M 602 3122 H 624 V 3278 H 643" class="line line-page"/>
+  <path d="M 1210 3278 H 1244 V 3317 H 1263" class="line line-internal"/>
+  <path d="M 1210 3278 H 1244 V 3356 H 1263" class="line line-internal"/>
+  <path d="M 1210 3278 H 1244 V 3395 H 1263" class="line line-internal"/>
+  <path d="M 1210 3278 H 1244 V 3434 H 1263" class="line line-internal"/>
+  <path d="M 602 3122 H 624 V 3473 H 643" class="line line-page"/>
+  <path d="M 602 3122 H 624 V 3512 H 643" class="line line-page"/>
+  <path d="M 1210 3512 H 1244 V 3551 H 1263" class="line line-internal"/>
+  <path d="M 602 3122 H 624 V 3590 H 643" class="line line-page"/>
+  <path d="M 602 3122 H 624 V 3629 H 643" class="line line-page"/>
+  <path d="M 602 3122 H 624 V 3668 H 643" class="line line-page"/>
+  <path d="M 602 3122 H 624 V 3707 H 643" class="line line-page"/>
+  <path d="M 1210 3707 H 1244 V 3746 H 1263" class="line line-internal"/>
+  <path d="M 1210 3707 H 1244 V 3785 H 1263" class="line line-internal"/>
+  <path d="M 1210 3707 H 1244 V 3824 H 1263" class="line line-internal"/>
+  <path d="M 1210 3707 H 1244 V 3863 H 1263" class="line line-internal"/>
+  <path d="M 1210 3707 H 1244 V 3902 H 1263" class="line line-internal"/>
+  <path d="M 1210 3707 H 1244 V 3941 H 1263" class="line line-internal"/>
+  <path d="M 1210 3707 H 1244 V 3980 H 1263" class="line line-internal"/>
+  <path d="M 196 131 H 236 V 4049 H 255" class="line line-module"/>
+  <path d="M 602 4049 H 624 V 4088 H 643" class="line line-page"/>
+  <path d="M 602 4049 H 624 V 4127 H 643" class="line line-page"/>
+  <path d="M 602 4049 H 624 V 4166 H 643" class="line line-page"/>
+  <path d="M 602 4049 H 624 V 4205 H 643" class="line line-page"/>
+  <path d="M 602 4049 H 624 V 4244 H 643" class="line line-page"/>
+  <path d="M 602 4049 H 624 V 4283 H 643" class="line line-page"/>
+  <path d="M 1210 4283 H 1244 V 4322 H 1263" class="line line-internal"/>
+  <path d="M 602 4049 H 624 V 4361 H 643" class="line line-page"/>
+  <path d="M 602 4049 H 624 V 4400 H 643" class="line line-page"/>
+  <path d="M 602 4049 H 624 V 4439 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 4508 H 255" class="line line-module"/>
+  <path d="M 602 4508 H 624 V 4547 H 643" class="line line-page"/>
+  <path d="M 602 4508 H 624 V 4586 H 643" class="line line-page"/>
+  <path d="M 602 4508 H 624 V 4625 H 643" class="line line-page"/>
+  <path d="M 602 4508 H 624 V 4664 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 4733 H 255" class="line line-module"/>
+  <path d="M 602 4733 H 624 V 4772 H 643" class="line line-page"/>
+  <path d="M 602 4733 H 624 V 4811 H 643" class="line line-page"/>
+  <path d="M 602 4733 H 624 V 4850 H 643" class="line line-page"/>
+  <path d="M 602 4733 H 624 V 4889 H 643" class="line line-page"/>
+  <path d="M 602 4733 H 624 V 4928 H 643" class="line line-page"/>
+  <path d="M 602 4733 H 624 V 4967 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 5036 H 255" class="line line-module"/>
+  <path d="M 602 5036 H 624 V 5075 H 643" class="line line-page"/>
+  <path d="M 1210 5075 H 1244 V 5114 H 1263" class="line line-internal"/>
+  <path d="M 602 5036 H 624 V 5153 H 643" class="line line-page"/>
+  <path d="M 602 5036 H 624 V 5192 H 643" class="line line-page"/>
+  <path d="M 602 5036 H 624 V 5231 H 643" class="line line-page"/>
+  <path d="M 602 5036 H 624 V 5270 H 643" class="line line-page"/>
+  <path d="M 602 5036 H 624 V 5309 H 643" class="line line-page"/>
+  <path d="M 602 5036 H 624 V 5348 H 643" class="line line-page"/>
+  <path d="M 602 5036 H 624 V 5387 H 643" class="line line-page"/>
+  <path d="M 602 5036 H 624 V 5426 H 643" class="line line-page"/>
+  <path d="M 602 5036 H 624 V 5465 H 643" class="line line-page"/>
+  <path d="M 602 5036 H 624 V 5504 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 5573 H 255" class="line line-module"/>
+  <path d="M 602 5573 H 624 V 5612 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 5681 H 255" class="line line-module"/>
+  <path d="M 602 5681 H 624 V 5720 H 643" class="line line-page"/>
+  <path d="M 602 5681 H 624 V 5759 H 643" class="line line-page"/>
+  <path d="M 602 5681 H 624 V 5798 H 643" class="line line-page"/>
+  <path d="M 602 5681 H 624 V 5837 H 643" class="line line-page"/>
+  <path d="M 602 5681 H 624 V 5876 H 643" class="line line-page"/>
+  <path d="M 602 5681 H 624 V 5915 H 643" class="line line-page"/>
+  <path d="M 602 5681 H 624 V 5954 H 643" class="line line-page"/>
+  <path d="M 602 5681 H 624 V 5993 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 6062 H 255" class="line line-module"/>
+  <path d="M 602 6062 H 624 V 6101 H 643" class="line line-page"/>
+  <path d="M 602 6062 H 624 V 6140 H 643" class="line line-page"/>
+  <path d="M 602 6062 H 624 V 6179 H 643" class="line line-page"/>
+  <path d="M 196 131 H 236 V 6248 H 255" class="line line-module"/>
+  <path d="M 602 6248 H 624 V 6287 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6326 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6365 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6404 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6443 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6482 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6521 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6560 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6599 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6638 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6677 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6716 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6755 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6794 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6833 H 643" class="line line-page"/>
+  <path d="M 602 6248 H 624 V 6872 H 643" class="line line-page"/>
+  <g transform="translate(272,236)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Acesso</text>
+  </g>
+  <g transform="translate(660,275)" class="node system">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Login  <tspan class="route">/login</tspan></text>
+  </g>
+  <g transform="translate(660,314)" class="node system">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Cadastro  <tspan class="route">/signup</tspan></text>
+  </g>
+  <g transform="translate(660,353)" class="node system">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Recuperar senha  <tspan class="route">/reset-password</tspan></text>
+  </g>
+  <g transform="translate(272,422)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Geral</text>
+  </g>
+  <g transform="translate(660,461)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Início  <tspan class="route">/</tspan></text>
+  </g>
+  <g transform="translate(1280,500)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Perfil  <tspan class="route">/perfil</tspan></text>
+  </g>
+  <g transform="translate(660,539)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Formulários  <tspan class="route">/formularios</tspan></text>
+  </g>
+  <g transform="translate(1280,578)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Portaria — hub  <tspan class="route">/formularios/portaria</tspan></text>
+  </g>
+  <g transform="translate(1280,617)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">SSMA — hub alternativo  <tspan class="route">/formularios/ssma</tspan></text>
+  </g>
+  <g transform="translate(1280,656)" class="node form-group">
+    <rect width="290" height="29" rx="6"/>
+    <text x="12" y="19">SSMA</text>
+  </g>
+  <g transform="translate(1600,695)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">RID - Identificação de Desvio  <tspan class="route">/formularios/ssma-rid</tspan></text>
+  </g>
+  <g transform="translate(1600,734)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Alcoolemia &amp; Termo Psicoativo  <tspan class="route">/formularios/ssma-alcoolemia</tspan></text>
+  </g>
+  <g transform="translate(1600,773)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Ficha de EPI  <tspan class="route">/formularios/ssma-ficha-epi</tspan></text>
+  </g>
+  <g transform="translate(1280,812)" class="node form-group">
+    <rect width="290" height="29" rx="6"/>
+    <text x="12" y="19">Planejamento</text>
+  </g>
+  <g transform="translate(1600,851)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Aqui TEN Melhoria! (Kaizen)  <tspan class="route">/formularios/planejamento-kaizen</tspan></text>
+  </g>
+  <g transform="translate(1280,890)" class="node form-group">
+    <rect width="290" height="29" rx="6"/>
+    <text x="12" y="19">Almoxarifado</text>
+  </g>
+  <g transform="translate(1600,929)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Recebimento Físico, Ficha Cega e NCR  <tspan class="route">/formularios/almoxarifado</tspan></text>
+  </g>
+  <g transform="translate(1600,968)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Requisição no Balcão  <tspan class="route">/formularios/almoxarifado-requisicao-balcao</tspan></text>
+  </g>
+  <g transform="translate(1600,1007)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Inventário Cíclico  <tspan class="route">/formularios/almoxarifado-inventario</tspan></text>
+  </g>
+  <g transform="translate(1600,1046)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Ficha de EPI  <tspan class="route">/formularios/almoxarifado-ficha-epi</tspan></text>
+  </g>
+  <g transform="translate(1600,1085)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Cadastro de Itens (Catálogo)  <tspan class="route">/formularios/almoxarifado-cadastro-itens</tspan></text>
+  </g>
+  <g transform="translate(1280,1124)" class="node form-group">
+    <rect width="290" height="29" rx="6"/>
+    <text x="12" y="19">Portaria &amp; Segurança</text>
+  </g>
+  <g transform="translate(1600,1163)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Passagem de Plantão &amp; Custódia  <tspan class="route">/formularios/portaria-passagem-plantao</tspan></text>
+  </g>
+  <g transform="translate(1600,1202)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Relatório de Ocorrências  <tspan class="route">/formularios/portaria-relatorio</tspan></text>
+  </g>
+  <g transform="translate(1600,1241)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Chegada de Transportes  <tspan class="route">/formularios/portaria-transportes</tspan></text>
+  </g>
+  <g transform="translate(1600,1280)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Equipamentos de Terceiros  <tspan class="route">/formularios/portaria-equipamentos</tspan></text>
+  </g>
+  <g transform="translate(1600,1319)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Carretas de Chapas  <tspan class="route">/formularios/portaria-carretas</tspan></text>
+  </g>
+  <g transform="translate(1600,1358)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Briefing de Segurança  <tspan class="route">/formularios/portaria-briefing</tspan></text>
+  </g>
+  <g transform="translate(1600,1397)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Teste de Alcoolemia (Portaria)  <tspan class="route">/formularios/portaria-alcoolemia</tspan></text>
+  </g>
+  <g transform="translate(1280,1436)" class="node form-group">
+    <rect width="290" height="29" rx="6"/>
+    <text x="12" y="19">Logística &amp; Expedição</text>
+  </g>
+  <g transform="translate(1600,1475)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Registro de Expedição de Tramos  <tspan class="route">/formularios/logistica-expedicao</tspan></text>
+  </g>
+  <g transform="translate(1600,1514)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">Relatório Lead Time de Expedição  <tspan class="route">/formularios/logistica-expedicao/relatorio</tspan></text>
+  </g>
+  <g transform="translate(1280,1553)" class="node form-group">
+    <rect width="290" height="29" rx="6"/>
+    <text x="12" y="19">RH &amp; Departamento Pessoal</text>
+  </g>
+  <g transform="translate(1600,1592)" class="node form">
+    <rect width="760" height="29" rx="6"/>
+    <text x="12" y="19">ASE - Horas Extras  <tspan class="route">/formularios/rh-ase-hora-extra</tspan></text>
+  </g>
+  <g transform="translate(660,1631)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Catálogo SAP  <tspan class="route">/materiais/busca</tspan></text>
+  </g>
+  <g transform="translate(660,1670)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Rastreio Compras  <tspan class="route">/rastreio</tspan></text>
+  </g>
+  <g transform="translate(660,1709)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Relatórios  <tspan class="route">/relatorios</tspan></text>
+  </g>
+  <g transform="translate(660,1748)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Sobre o SISTEN  <tspan class="route">/sobre</tspan></text>
+  </g>
+  <g transform="translate(272,1817)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Solicitações</text>
+  </g>
+  <g transform="translate(660,1856)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Solicitações  <tspan class="route">/solicitacoes</tspan></text>
+  </g>
+  <g transform="translate(660,1895)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Nova Solicitação  <tspan class="route">/solicitacoes/nova</tspan></text>
+  </g>
+  <g transform="translate(660,1934)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Aprovações  <tspan class="route">/solicitacoes/aprovacoes</tspan></text>
+  </g>
+  <g transform="translate(272,2003)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Demandas</text>
+  </g>
+  <g transform="translate(660,2042)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Demandas  <tspan class="route">/demandas</tspan></text>
+  </g>
+  <g transform="translate(660,2081)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Minhas tarefas  <tspan class="route">/demandas/minhas</tspan></text>
+  </g>
+  <g transform="translate(272,2150)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Planejamento</text>
+  </g>
+  <g transform="translate(660,2189)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Planejamento  <tspan class="route">/planejamento</tspan></text>
+  </g>
+  <g transform="translate(660,2228)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Acompanhamento Geral  <tspan class="route">/planejamento/acompanhamento-geral</tspan></text>
+  </g>
+  <g transform="translate(660,2267)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Acomp Diário  <tspan class="route">/planejamento/acompanhamento-diario-tv</tspan></text>
+  </g>
+  <g transform="translate(1280,2306)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Dados  <tspan class="route">/planejamento/acompanhamento-diario-dados</tspan></text>
+  </g>
+  <g transform="translate(660,2345)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Controle de Entrega  <tspan class="route">/planejamento/controle-entrega</tspan></text>
+  </g>
+  <g transform="translate(272,2414)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Suprimentos</text>
+  </g>
+  <g transform="translate(660,2453)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Suprimentos  <tspan class="route">/suprimentos</tspan></text>
+  </g>
+  <g transform="translate(660,2492)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Cadastros SAP  <tspan class="route">/suprimentos/cadastros-sap</tspan></text>
+  </g>
+  <g transform="translate(660,2531)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Catálogos  <tspan class="route">/suprimentos/catalogos</tspan></text>
+  </g>
+  <g transform="translate(660,2570)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Central Compras  <tspan class="route">/suprimentos/compras</tspan></text>
+  </g>
+  <g transform="translate(660,2609)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Análise de Cotações  <tspan class="route">/suprimentos/cotacoes</tspan></text>
+  </g>
+  <g transform="translate(660,2648)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Pendências de Processamento  <tspan class="route">/suprimentos/pendencias-processamento</tspan></text>
+  </g>
+  <g transform="translate(660,2687)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Pendências de Recebimento  <tspan class="route">/suprimentos/pendencias-recebimento</tspan></text>
+  </g>
+  <g transform="translate(660,2726)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Pendências de Recebimento — RNC  <tspan class="route">/suprimentos/pendencias-recebimento-rnc</tspan></text>
+  </g>
+  <g transform="translate(660,2765)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Fornecedores  <tspan class="route">/suprimentos/fornecedores</tspan></text>
+  </g>
+  <g transform="translate(660,2804)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Fretes  <tspan class="route">/suprimentos/frete</tspan></text>
+  </g>
+  <g transform="translate(660,2843)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Dashboards  <tspan class="route">/suprimentos/dashboards</tspan></text>
+  </g>
+  <g transform="translate(660,2882)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Histórico de Cotações  <tspan class="route">/suprimentos/cotacoes/historico</tspan></text>
+  </g>
+  <g transform="translate(660,2921)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Vínculos &amp; Auditoria de Cotações  <tspan class="route">/suprimentos/cotacoes/vinculos</tspan></text>
+  </g>
+  <g transform="translate(660,2960)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Histórico  <tspan class="route">/suprimentos/historico</tspan></text>
+  </g>
+  <g transform="translate(660,2999)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Contratos  <tspan class="route">/suprimentos/contratos</tspan></text>
+  </g>
+  <g transform="translate(660,3038)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Calc Impostos  <tspan class="route">/suprimentos/calc-impostos</tspan></text>
+  </g>
+  <g transform="translate(272,3107)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Almoxarifado</text>
+  </g>
+  <g transform="translate(660,3146)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Almoxarifado  <tspan class="route">/almoxarifado</tspan></text>
+  </g>
+  <g transform="translate(660,3185)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Abrir RM  <tspan class="route">/almoxarifado/abrir-rm</tspan></text>
+  </g>
+  <g transform="translate(660,3224)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Estoque  <tspan class="route">/almoxarifado/estoque</tspan></text>
+  </g>
+  <g transform="translate(660,3263)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Movimentações  <tspan class="route">/almoxarifado/movimentacoes</tspan></text>
+  </g>
+  <g transform="translate(1280,3302)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Giro de estoque  <tspan class="route">/almoxarifado/movimentacoes/giro</tspan></text>
+  </g>
+  <g transform="translate(1280,3341)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Idade do estoque  <tspan class="route">/almoxarifado/movimentacoes/idade</tspan></text>
+  </g>
+  <g transform="translate(1280,3380)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Urgência  <tspan class="route">/almoxarifado/movimentacoes/urgencia</tspan></text>
+  </g>
+  <g transform="translate(1280,3419)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Mínimo  <tspan class="route">/almoxarifado/movimentacoes/minimo</tspan></text>
+  </g>
+  <g transform="translate(660,3458)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Consumo Semanal  <tspan class="route">/almoxarifado/consumo-semanal</tspan></text>
+  </g>
+  <g transform="translate(660,3497)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Controle de Estoque  <tspan class="route">/almoxarifado/controle-estoque</tspan></text>
+  </g>
+  <g transform="translate(1280,3536)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Dossiê  <tspan class="route">/almoxarifado/controle-estoque/dossie</tspan></text>
+  </g>
+  <g transform="translate(660,3575)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Inventário  <tspan class="route">/almoxarifado/inventario-analise</tspan></text>
+  </g>
+  <g transform="translate(660,3614)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Gemba  <tspan class="route">/almoxarifado/gemba</tspan></text>
+  </g>
+  <g transform="translate(660,3653)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Dashboards  <tspan class="route">/almoxarifado/dashboards</tspan></text>
+  </g>
+  <g transform="translate(660,3692)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Projetos  <tspan class="route">/almoxarifado/projetos</tspan></text>
+  </g>
+  <g transform="translate(1280,3731)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">BOM  <tspan class="route">/almoxarifado/projetos/bom</tspan></text>
+  </g>
+  <g transform="translate(1280,3770)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Posição  <tspan class="route">/almoxarifado/projetos/posicao</tspan></text>
+  </g>
+  <g transform="translate(1280,3809)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Recebimento  <tspan class="route">/almoxarifado/projetos/recebimento</tspan></text>
+  </g>
+  <g transform="translate(1280,3848)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Pré-montagem  <tspan class="route">/almoxarifado/projetos/premontagem</tspan></text>
+  </g>
+  <g transform="translate(1280,3887)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Produção  <tspan class="route">/almoxarifado/projetos/producao</tspan></text>
+  </g>
+  <g transform="translate(1280,3926)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Sobressalentes  <tspan class="route">/almoxarifado/projetos/sobressalentes</tspan></text>
+  </g>
+  <g transform="translate(1280,3965)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Painéis  <tspan class="route">/almoxarifado/projetos/paineis</tspan></text>
+  </g>
+  <g transform="translate(272,4034)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Produção</text>
+  </g>
+  <g transform="translate(660,4073)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Produção  <tspan class="route">/producao</tspan></text>
+  </g>
+  <g transform="translate(660,4112)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Lançamentos  <tspan class="route">/producao/lancamentos</tspan></text>
+  </g>
+  <g transform="translate(660,4151)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Apontamentos  <tspan class="route">/producao/apontamentos</tspan></text>
+  </g>
+  <g transform="translate(660,4190)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Controle de Liberações  <tspan class="route">/producao/pendencias</tspan></text>
+  </g>
+  <g transform="translate(660,4229)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Consulta  <tspan class="route">/producao/consulta</tspan></text>
+  </g>
+  <g transform="translate(660,4268)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Plano de Expedição  <tspan class="route">/producao/expedicao</tspan></text>
+  </g>
+  <g transform="translate(1280,4307)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Dados  <tspan class="route">/producao/expedicao/dados</tspan></text>
+  </g>
+  <g transform="translate(660,4346)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Painel de Qualidade  <tspan class="route">/producao/painel</tspan></text>
+  </g>
+  <g transform="translate(660,4385)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Dashboards  <tspan class="route">/producao/dashboards</tspan></text>
+  </g>
+  <g transform="translate(660,4424)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Cadastros de Qualidade  <tspan class="route">/producao/cadastros</tspan></text>
+  </g>
+  <g transform="translate(272,4493)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Qualidade</text>
+  </g>
+  <g transform="translate(660,4532)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Qualidade  <tspan class="route">/qualidade</tspan></text>
+  </g>
+  <g transform="translate(660,4571)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Gestão de RNC  <tspan class="route">/qualidade/rnc</tspan></text>
+  </g>
+  <g transform="translate(660,4610)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Checklist de Expedição  <tspan class="route">/qualidade/expedicao</tspan></text>
+  </g>
+  <g transform="translate(660,4649)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Checklist Internos Mecânicos  <tspan class="route">/qualidade/internos-mecanicos</tspan></text>
+  </g>
+  <g transform="translate(272,4718)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Facilities</text>
+  </g>
+  <g transform="translate(660,4757)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Facilities  <tspan class="route">/facilities</tspan></text>
+  </g>
+  <g transform="translate(660,4796)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Cadastro de Rotas  <tspan class="route">/facilities/rotas</tspan></text>
+  </g>
+  <g transform="translate(660,4835)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Materiais da Vigilância  <tspan class="route">/facilities/materiais</tspan></text>
+  </g>
+  <g transform="translate(660,4874)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Vigilantes da Portaria  <tspan class="route">/facilities/vigilantes</tspan></text>
+  </g>
+  <g transform="translate(660,4913)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Lista de Serviços  <tspan class="route">/facilities/servicos</tspan></text>
+  </g>
+  <g transform="translate(660,4952)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Veículos Leves  <tspan class="route">/facilities/veiculos-leves</tspan></text>
+  </g>
+  <g transform="translate(272,5021)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Recursos Humanos</text>
+  </g>
+  <g transform="translate(660,5060)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">RH  <tspan class="route">/rh</tspan></text>
+  </g>
+  <g transform="translate(1280,5099)" class="node internal">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Relatório ASE  <tspan class="route">/rh/relatorio-ase</tspan></text>
+  </g>
+  <g transform="translate(660,5138)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Colaboradores  <tspan class="route">/rh/colaboradores</tspan></text>
+  </g>
+  <g transform="translate(660,5177)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Setores do RH  <tspan class="route">/rh/setores</tspan></text>
+  </g>
+  <g transform="translate(660,5216)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Turnos  <tspan class="route">/rh/turnos</tspan></text>
+  </g>
+  <g transform="translate(660,5255)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Treinamentos  <tspan class="route">/rh/treinamentos</tspan></text>
+  </g>
+  <g transform="translate(660,5294)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Matriz de Treinamentos  <tspan class="route">/rh/matriz-treinamentos</tspan></text>
+  </g>
+  <g transform="translate(660,5333)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Plano de Treinamentos  <tspan class="route">/rh/plano-treinamentos</tspan></text>
+  </g>
+  <g transform="translate(660,5372)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Cronograma de Treinamentos  <tspan class="route">/rh/cronograma-treinamentos</tspan></text>
+  </g>
+  <g transform="translate(660,5411)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Indicadores de Treinamentos  <tspan class="route">/rh/relatorio-treinamentos</tspan></text>
+  </g>
+  <g transform="translate(660,5450)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Rotas de Transporte  <tspan class="route">/rh/rotas</tspan></text>
+  </g>
+  <g transform="translate(660,5489)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Percentual de Hora Extra  <tspan class="route">/rh/percentual-he</tspan></text>
+  </g>
+  <g transform="translate(272,5558)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">SSMA</text>
+  </g>
+  <g transform="translate(660,5597)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">SSMA  <tspan class="route">/ssma</tspan></text>
+  </g>
+  <g transform="translate(272,5666)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Financeiro</text>
+  </g>
+  <g transform="translate(660,5705)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Financeiro  <tspan class="route">/financeiro</tspan></text>
+  </g>
+  <g transform="translate(660,5744)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Contas a Pagar  <tspan class="route">/financeiro/contas-pagar</tspan></text>
+  </g>
+  <g transform="translate(660,5783)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Análise  <tspan class="route">/financeiro/contas-pagar/analise</tspan></text>
+  </g>
+  <g transform="translate(660,5822)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Fornecedor × Item  <tspan class="route">/financeiro/contas-pagar/analise/fornecedores-itens</tspan></text>
+  </g>
+  <g transform="translate(660,5861)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Reconciliação PO x Pgto  <tspan class="route">/financeiro/reconciliacao-pedidos</tspan></text>
+  </g>
+  <g transform="translate(660,5900)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Realizado por Rubrica  <tspan class="route">/financeiro/realizado-rubricas</tspan></text>
+  </g>
+  <g transform="translate(660,5939)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Faturamento GW Jacobina  <tspan class="route">/financeiro/faturamento-gwjaco</tspan></text>
+  </g>
+  <g transform="translate(660,5978)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Estrutura PEP  <tspan class="route">/financeiro/pep</tspan></text>
+  </g>
+  <g transform="translate(272,6047)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Helpdesk</text>
+  </g>
+  <g transform="translate(660,6086)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Helpdesk  <tspan class="route">/helpdesk/inicio</tspan></text>
+  </g>
+  <g transform="translate(660,6125)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Atendimento  <tspan class="route">/helpdesk</tspan></text>
+  </g>
+  <g transform="translate(660,6164)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Relatórios Helpdesk  <tspan class="route">/helpdesk/relatorios</tspan></text>
+  </g>
+  <g transform="translate(272,6233)" class="node module">
+    <rect width="330" height="29" rx="6"/>
+    <text x="12" y="19">Administração</text>
+  </g>
+  <g transform="translate(660,6272)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Administração  <tspan class="route">/admin</tspan></text>
+  </g>
+  <g transform="translate(660,6311)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Uso do App  <tspan class="route">/admin/uso</tspan></text>
+  </g>
+  <g transform="translate(660,6350)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Central de Sincronização  <tspan class="route">/admin/sincronizacao</tspan></text>
+  </g>
+  <g transform="translate(660,6389)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Usuários  <tspan class="route">/admin/usuarios</tspan></text>
+  </g>
+  <g transform="translate(660,6428)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Cadastros Gerais  <tspan class="route">/admin/cadastros</tspan></text>
+  </g>
+  <g transform="translate(660,6467)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Setores  <tspan class="route">/admin/setores</tspan></text>
+  </g>
+  <g transform="translate(660,6506)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Permissões  <tspan class="route">/admin/permissoes</tspan></text>
+  </g>
+  <g transform="translate(660,6545)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Importação de Planilhas  <tspan class="route">/admin/importacao-materiais</tspan></text>
+  </g>
+  <g transform="translate(660,6584)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Log Importação SAP  <tspan class="route">/suprimentos/importar/log</tspan></text>
+  </g>
+  <g transform="translate(660,6623)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Grupos Comprador  <tspan class="route">/suprimentos/grupos-comprador</tspan></text>
+  </g>
+  <g transform="translate(660,6662)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Rubricas Financeiro  <tspan class="route">/financeiro/rubricas</tspan></text>
+  </g>
+  <g transform="translate(660,6701)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Exportar  <tspan class="route">/admin/exportar</tspan></text>
+  </g>
+  <g transform="translate(660,6740)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Config. Helpdesk  <tspan class="route">/admin/helpdesk</tspan></text>
+  </g>
+  <g transform="translate(660,6779)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Reportes  <tspan class="route">/admin/feedback</tspan></text>
+  </g>
+  <g transform="translate(660,6818)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Gestão de APIs &amp; IA  <tspan class="route">/admin/apis</tspan></text>
+  </g>
+  <g transform="translate(660,6857)" class="node page">
+    <rect width="550" height="29" rx="6"/>
+    <text x="12" y="19">Diretrizes  <tspan class="route">/admin/diretrizes</tspan></text>
+  </g>
+  <text x="72" y="6965" class="legend">Critério: páginas do catálogo PAGES, formulários detalhados e subrotas próprias. Aliases/redirecionamentos e abas internas não são duplicados. Rotas de case não representadas por esse critério: 1.</text>
+</svg>

@@ -38,6 +38,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-10-17',
+    resumo: 'Planejamento > Formulário Aqui TEN Melhoria! (Kaizen) e Almoxarifado > Localização no Estoque (`plan_kaizen`, `AquiTenMelhoriaView.tsx`, `KaizenForm.tsx`, `KaizenDetalheModal.tsx`, `exportKaizenPdf.ts`, `planKaizenApi.ts`, `CadastroItensAlmox.tsx`, `pages.ts`, `App.tsx`, `diretrizes.ts`): 1. Implementado o formulário Aqui TEN Melhoria! (Kaizen — FRM.ENG-0017) no módulo Planejamento, com fluxo de registro de desperdícios/problemas, causa raiz, melhorias implantadas, resultados, fotos de campo comprimidas e validação de implantação pelo Responsável pelo Setor; 2. Exportação de dossiê Kaizen em PDF com fotos e dados de auditoria; 3. Suporte offline com fila e sincronização automática; 4. Almoxarifado: adicionado filtro por localização física no estoque no Catálogo de Itens ZL0024; 5. Mapa de módulos e páginas atualizado.',
+  },
+  {
     data: '2026-10-08',
     resumo: 'Almoxarifado > Importação ZL0024 — Inclusão da Coluna Posição de Estoque / Pos.dpst. (`sap_zl0024_stk`, `localDb.ts`, `types.ts`, `database.types.ts`, `Estoque.tsx`, `importZL0024.test.ts`, `20261008133000_add_posicao_estoque_to_sap_zl0024_stk.sql`, `diretrizes.ts`): 1. Adicionada coluna `posicao_estoque` na tabela `sap_zl0024_stk` e na view `estoque` no Supabase (`supabase-sisten`), representando a localização física do item nas prateleiras; 2. Lógica de importação (`importZL0024Raw` e `ESTOQUE_COLUMNS`) atualizada para ler a nova coluna SAP "Pos.dpst." com suporte a fallbacks tolerantes ("posição_estoque", etc.); 3. Visualização de Estoque (`Estoque.tsx`) atualizada para exibir a coluna "Pos. Depósito", indexar no filtro de busca por termos e incluir na exportação XLSX; 4. Migration e testes unitários criados e validados.',
   },

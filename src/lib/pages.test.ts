@@ -8,6 +8,7 @@ import {
   canViewAllAse,
   canEditDesvioRid,
   canDeleteDesvioRid,
+  canValidarKaizen,
   FORMULARIO_SUBPERMISSOES,
   FORMULARIOS_DETALHADOS,
   getPageGroups,
@@ -528,6 +529,24 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(canAccessFormGroup(admin, 'rh')).toBe(true);
       expect(canAccessFormGroup(admin, 'almoxarifado')).toBe(true);
       expect(canAccessFormGroup(admin, 'ssma')).toBe(true);
+    });
+  });
+
+  describe('Planejamento — Aqui TEN Melhoria! (Kaizen)', () => {
+    it('nasce fechado no código e abre pelo page_access, como o RID', () => {
+      const semLiberacao = mockUser({ roles: ['requisitante'] });
+      expect(canAccessForm(semLiberacao, 'form_planejamento_kaizen')).toBe(false);
+      expect(canAccessFormGroup(semLiberacao, 'planejamento')).toBe(false);
+
+      const liberado = mockUser({ roles: ['visualizador'], page_access: { form_planejamento_kaizen: true } });
+      expect(canAccessForm(liberado, 'form_planejamento_kaizen')).toBe(true);
+      expect(canAccessFormGroup(liberado, 'planejamento')).toBe(true);
+    });
+
+    it('validar a implantação é do admin ou de quem recebeu a flag', () => {
+      expect(canValidarKaizen(mockUser({ roles: ['admin'] }))).toBe(true);
+      expect(canValidarKaizen(mockUser({ roles: ['gestor'] }))).toBe(false);
+      expect(canValidarKaizen(mockUser({ roles: ['gestor'], page_access: { plan_kaizen_validar: true } }))).toBe(true);
     });
   });
 });
