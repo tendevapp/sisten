@@ -16,7 +16,7 @@ import {
   ArrowLeft, RefreshCw, Search, Camera, ImageIcon, CheckCircle2,
   AlertCircle, X, Download, Filter, Eye, Trash2, Layers,
   Boxes, Sparkles, Tag, ShieldCheck, FileText, Check,
-  ChevronRight, ClipboardPaste, Upload, Plus, Pencil, Printer
+  ChevronRight, ClipboardPaste, Upload, Plus, Pencil, Printer, MapPin
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import {
@@ -58,7 +58,7 @@ interface CadastroItensAlmoxProps {
   onNavigate: (path: string) => void;
 }
 
-type FiltroFoto = 'todos' | 'com_foto' | 'sem_foto';
+type FiltroRapido = 'todos' | 'com_foto' | 'sem_foto' | 'com_localizacao';
 type ModoVisualizacao = 'cards' | 'tabela';
 
 export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAlmoxProps) {
@@ -136,7 +136,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
   // Filtros
   const [buscaChips, setBuscaChips] = useState<string[]>([]);
-  const [filtroFoto, setFiltroFoto] = useState<FiltroFoto>('todos');
+  const [filtroRapido, setFiltroRapido] = useState<FiltroRapido>('todos');
   const [filtroNivel2, setFiltroNivel2] = useState<string>('todos');
   const [filtroGrupo, setFiltroGrupo] = useState<string>('todos');
   const [filtroLocalizacao, setFiltroLocalizacao] = useState<string>('todas');
@@ -232,6 +232,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     const tokens = buscaChips.map(normalizarParaBusca).filter(Boolean);
 
     return itens.filter(it => {
+      const localizacoes = localizacoesDoItem(it);
+
       // Filtro de texto por palavras-chave
       if (tokens.length > 0) {
         const hit = casarTokens([
@@ -247,8 +249,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       }
 
       // Filtro de status da foto
-      if (filtroFoto === 'com_foto' && !it.tem_foto) return false;
-      if (filtroFoto === 'sem_foto' && it.tem_foto) return false;
+      if (filtroRapido === 'com_foto' && !it.tem_foto) return false;
+      if (filtroRapido === 'sem_foto' && it.tem_foto) return false;
+      if (filtroRapido === 'com_localizacao' && localizacoes.length === 0) return false;
 
       // Filtro de Nível 2
       if (filtroNivel2 !== 'todos' && it.classificacao_nivel2 !== filtroNivel2) return false;
@@ -258,24 +261,24 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
       // Filtro de localização: inclui o material quando uma de suas posições
       // coincide com a escolhida; "sem localização" destaca o cadastro pendente.
-      const localizacoes = localizacoesDoItem(it);
       if (filtroLocalizacao === 'sem_localizacao' && localizacoes.length > 0) return false;
       if (filtroLocalizacao !== 'todas' && filtroLocalizacao !== 'sem_localizacao' && !localizacoes.includes(filtroLocalizacao)) return false;
 
       return true;
     });
-  }, [itens, buscaChips, filtroFoto, filtroNivel2, filtroGrupo, filtroLocalizacao, posicaoDoItem, localizacoesDoItem]);
+  }, [itens, buscaChips, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, posicaoDoItem, localizacoesDoItem]);
 
   // Estatísticas e KPIs
   const kpis = useMemo(() => {
     const total = itens.length;
     const comFoto = itens.filter(i => i.tem_foto).length;
     const semFoto = total - comFoto;
+    const comLocalizacao = itens.filter(item => localizacoesDoItem(item).length > 0).length;
     const pctCobertura = total > 0 ? (comFoto / total) * 100 : 0;
     const saldoTotal = itens.reduce((acc, i) => acc + i.saldo_total, 0);
 
-    return { total, comFoto, semFoto, pctCobertura, saldoTotal };
-  }, [itens]);
+    return { total, comFoto, semFoto, comLocalizacao, pctCobertura, saldoTotal };
+  }, [itens, localizacoesDoItem]);
 
   // Sugestões para o campo Adicionar Item
   const sugestoesAdicionar = useMemo(() => {
@@ -1272,22 +1275,22 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
             />
           </div>
 
-          {/* Seletor de Foto (Todos, Com Foto, Sem Foto) */}
+          {/* Filtros rápidos do catálogo */}
           <div className="flex items-center gap-1 rounded-lg border p-1" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
             <button
               type="button"
-              onClick={() => setFiltroFoto('todos')}
+              onClick={() => setFiltroRapido('todos')}
               className={`px-2.5 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
-                filtroFoto === 'todos' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
+                filtroRapido === 'todos' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
               }`}
             >
               Todos ({itens.length})
             </button>
             <button
               type="button"
-              onClick={() => setFiltroFoto('com_foto')}
+              onClick={() => setFiltroRapido('com_foto')}
               className={`px-2.5 py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1 ${
-                filtroFoto === 'com_foto' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
+                filtroRapido === 'com_foto' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
               }`}
             >
               <Check className="h-3 w-3" />
@@ -1295,9 +1298,19 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
             </button>
             <button
               type="button"
-              onClick={() => setFiltroFoto('sem_foto')}
+              onClick={() => setFiltroRapido('com_localizacao')}
               className={`px-2.5 py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1 ${
-                filtroFoto === 'sem_foto' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
+                filtroRapido === 'com_localizacao' ? 'bg-sky-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              <MapPin className="h-3 w-3" />
+              Com localização ({kpis.comLocalizacao})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroRapido('sem_foto')}
+              className={`px-2.5 py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1 ${
+                filtroRapido === 'sem_foto' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
               }`}
             >
               <Camera className="h-3 w-3" />

@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX, ShieldAlert, Warehouse,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX, ShieldAlert, Warehouse, GraduationCap,
 } from 'lucide-react';
 import { Profile, Role, Sector } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
@@ -48,6 +48,10 @@ export interface PageDef {
 export const PAGES: PageDef[] = [
   { id: 'inicio', group: 'GERAL', label: 'Início', path: '/', icon: Home, defaultRoles: '*' },
   { id: 'formularios', group: 'GERAL', label: 'Formulários', path: '/formularios', icon: ClipboardPlus, defaultRoles: '*' },
+  // Trilhas de treinamento por setor (hub igual ao de Formulários). Nasce
+  // restrito (regra 4); o admin libera pela Gestão de Acessos. As sub-rotas
+  // /treinamentos/setor e /treinamentos/trilha usam este mesmo `id` como gate.
+  { id: 'treinamentos', group: 'GERAL', label: 'Treinamentos', path: '/treinamentos', icon: GraduationCap, defaultRoles: ['admin'] },
   { id: 'materiais_busca', group: 'GERAL', label: 'Catálogo SAP', path: '/materiais/busca', icon: Search, defaultRoles: '*' },
   { id: 'rastreio', group: 'GERAL', label: 'Rastreio Compras', path: '/rastreio', icon: Route, defaultRoles: '*' },
   { id: 'relatorios', group: 'GERAL', label: 'Relatórios', path: '/relatorios', icon: BarChart3, defaultRoles: '*' },
@@ -496,6 +500,14 @@ export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
 // Feature flags: sub-permissões que não são páginas próprias (sem path/icon),
 // controladas pelo mesmo mecanismo de override em profiles.page_access.
 export const FEATURE_FLAGS: PageDef[] = [
+  // Cadastrar/editar trilhas e ver o progresso de todos os colaboradores —
+  // checada também no banco (RLS de trein_trilhas e RPC trein_participantes).
+  {
+    id: 'trein_gerenciar',
+    group: 'GERAL',
+    label: 'Treinamentos: cadastrar trilhas e acompanhar o progresso de todos',
+    defaultRoles: [],
+  },
   {
     id: 'planejamento_acompanhamento_diario_editar',
     group: 'PLANEJAMENTO',
@@ -781,6 +793,12 @@ export const FORMULARIO_SUBPERMISSOES: FormularioSubpermissaoDef[] = [
     defaultRoles: ['admin'],
   },
 ];
+
+/** Admin ou quem recebeu a flag: cadastra trilhas e vê o progresso de todos. */
+export function canGerenciarTreinamentos(user: Profile): boolean {
+  if (user.roles.includes('admin')) return true;
+  return user.page_access?.['trein_gerenciar'] === true;
+}
 
 /** Admin ou quem recebeu a flag: valida o Kaizen como Responsável pelo Setor. */
 export function canValidarKaizen(user: Profile): boolean {

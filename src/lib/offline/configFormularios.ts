@@ -177,6 +177,13 @@ const TABELAS: Record<string, ConfigTabela> = {
 // ---------------------------------------------------------------------
 
 const RPCS: Record<string, ConfigRpc> = {
+  // Treinamentos: missão concluída na trilha. Idempotente (guarda o melhor
+  // resultado), então o reenvio da fila não duplica.
+  trein_registrar_missao: {
+    rotulo: 'Treinamentos — missão concluída',
+    resumo: args => (args?.p_titulo_missao ? `Missão ${args.p_missao} · ${args.p_titulo_missao}` : `Missão ${args?.p_missao ?? ''}`),
+    respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }),
+  },
   alm_receb_registrar_carga: {
     rotulo: 'Recebimento — ficha cega',
     resumo: args => campos('transportadora', 'nota_fiscal', 'veiculo_placa')(args?.p_carga || {}),

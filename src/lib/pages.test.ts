@@ -9,6 +9,7 @@ import {
   canEditDesvioRid,
   canDeleteDesvioRid,
   canValidarKaizen,
+  canGerenciarTreinamentos,
   FORMULARIO_SUBPERMISSOES,
   FORMULARIOS_DETALHADOS,
   getPageGroups,
@@ -548,5 +549,20 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(canValidarKaizen(mockUser({ roles: ['gestor'] }))).toBe(false);
       expect(canValidarKaizen(mockUser({ roles: ['gestor'], page_access: { plan_kaizen_validar: true } }))).toBe(true);
     });
+  });
+});
+
+describe('Treinamentos', () => {
+  it('nasce restrito ao admin e é liberado por page_access (regra 4)', () => {
+    expect(canAccessPage(mockUser({ roles: ['admin'] }), 'treinamentos')).toBe(true);
+    expect(canAccessPage(mockUser({ roles: ['requisitante'] }), 'treinamentos')).toBe(false);
+    expect(canAccessPage(mockUser({ roles: ['requisitante'], page_access: { treinamentos: true } }), 'treinamentos')).toBe(true);
+    expect(PAGES.find(p => p.id === 'treinamentos')?.group).toBe('GERAL');
+  });
+
+  it('gerenciar trilhas: admin ou flag trein_gerenciar', () => {
+    expect(canGerenciarTreinamentos(mockUser({ roles: ['admin'] }))).toBe(true);
+    expect(canGerenciarTreinamentos(mockUser({ roles: ['gestor'] }))).toBe(false);
+    expect(canGerenciarTreinamentos(mockUser({ roles: ['gestor'], page_access: { trein_gerenciar: true } }))).toBe(true);
   });
 });

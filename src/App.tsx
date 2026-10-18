@@ -67,6 +67,9 @@ const Sobre = lazy(() => import('./views/Sobre'));
 const BuscaGlobal = lazy(() => import('./components/BuscaGlobal'));
 const CentralSincronizacao = lazy(() => import('./views/admin/CentralSincronizacao'));
 const Formularios = lazy(() => import('./views/Formularios'));
+const TreinamentosHub = lazy(() => import('./views/treinamentos/TreinamentosHub'));
+const TreinamentosSetor = lazy(() => import('./views/treinamentos/TreinamentosSetor'));
+const TreinamentoTrilha = lazy(() => import('./views/treinamentos/TreinamentoTrilha'));
 const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
 const ExpedicaoRelatorioLeadTime = lazy(() => import('./views/expedicao/ExpedicaoRelatorioLeadTime'));
 const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
@@ -191,6 +194,8 @@ const LEGACY_PATH_REDIRECTS: Record<string, string> = {
 // a própria tela ocupa 100% da altura computada pelo flexbox — sem números
 // mágicos, então sempre bate com o espaço realmente disponível.
 const FULL_BLEED_PATHS = new Set<string>([
+  // Trilha de treinamento: o iframe ocupa a área útil inteira (a trilha rola por dentro).
+  '/treinamentos/trilha',
   '/helpdesk',
   '/helpdesk/relatorios',
   // Relatório Diário de Produção: painel de TV que se escala para caber na
@@ -748,6 +753,24 @@ export default function App() {
       case '/formularios':
         if (canAccessPage(user, 'formularios')) {
           return <Formularios user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Treinamentos: hub por setor, trilhas do setor e a trilha em si — as três
+      // rotas usam a mesma permissão (`treinamentos`).
+      case '/treinamentos':
+        if (canAccessPage(user, 'treinamentos')) {
+          return <TreinamentosHub user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+      case '/treinamentos/setor':
+        if (canAccessPage(user, 'treinamentos')) {
+          return <TreinamentosSetor user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+      case '/treinamentos/trilha':
+        if (canAccessPage(user, 'treinamentos')) {
+          return <TreinamentoTrilha user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
