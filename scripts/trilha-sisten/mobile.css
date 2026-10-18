@@ -1,0 +1,63 @@
+/* Celular: sem escala — a página rola, mas compacta para o polegar.
+   HUD numa linha, mapa em lista, placar numa linha, botões largos. */
+@media (max-width:560px){
+  body{font-size:15px}
+  .hud-in{gap:10px;padding-block:8px;flex-wrap:nowrap}
+  .mission{flex:1 1 auto}
+  .code{display:none}
+  .mission b{font-size:17px}
+  .player{flex:0 0 auto;gap:8px}
+  .pl-txt{display:none}
+  .lvl,.lvl svg{width:36px;height:36px}
+  .lvl span{font-size:16px}
+  .xpnum{font-size:16px}
+  .wrap{padding-top:12px;gap:12px}
+  .stage{border-radius:16px;padding:16px;min-height:0}
+  .scr{gap:16px}
+  .maphero h1,.brief h1{font-size:38px}
+  .maphero .row .btn{flex:1 1 auto;padding:12px 14px}
+  .tiles{grid-template-columns:1fr;gap:8px}
+  .tile{grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto auto;gap:0 12px;align-items:center;padding:10px 12px;border-radius:14px}
+  .tile .tic{grid-column:1;grid-row:1/span 2;width:40px;height:40px}
+  .tile .tn{grid-column:2;grid-row:1}
+  .tile b{grid-column:2;grid-row:2;font-size:18px}
+  .tile .tf{grid-column:3;grid-row:1/span 2;margin:0;flex-direction:column;align-items:flex-end;gap:4px}
+  .tile:hover:not([disabled]){transform:none}
+  .mapfoot{flex-direction:column;align-items:stretch}
+  .brief{gap:18px}
+  .brief>.donut,.brief>.medal{display:none}
+  .intro{font-size:16px}
+  .rw{padding:8px 12px}
+  .rw b{font-size:18px}
+  .brief .row .btn{width:100%}
+  .daybox b{font-size:40px}
+  .stx{padding:18px}
+  .stx-h .n{font-size:36px}
+  .stx p{font-size:16px}
+  .vig{min-height:220px;padding:16px 12px}
+  .ctl .btn{flex:1}
+  .bhead h2{font-size:28px}
+  .ginst{font-size:15px}
+  .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%;gap:6px}
+  .stat{min-width:0;padding:5px 8px}
+  .stat small{font-size:10px;letter-spacing:.04em}
+  .stat b{font-size:20px}
+  .card{font-size:17px;padding:12px}
+  .dcard{min-height:120px;padding:16px}
+  .banner .row .btn{flex:1 1 auto}
+  .qtxt{font-size:26px}
+  .opt{min-height:60px;padding:12px 14px;font-size:16px}
+  .expl p{font-size:16px}
+  .expl .btn{width:100%}
+  .res{gap:18px}
+  .res .medal{width:170px}
+  .res h2{font-size:36px}
+  .rstats .stat b{font-size:24px}
+  .res .row .btn{flex:1 1 auto}
+  .guide{gap:10px}
+  .gcard{padding:14px}
+  .lvup{padding:10px 16px;white-space:normal;width:calc(100vw - 32px)}
+  .lvup b{font-size:20px}
+  .chkl .okb{top:-20px;right:6px}
+  .chkl{margin-top:8px}
+}

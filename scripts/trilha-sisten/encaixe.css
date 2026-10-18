@@ -1,0 +1,15 @@
+/* Encaixe (dentro do SISTEN, telas ≥ 760px): a página é montada numa largura
+   de projeto e escalada para ocupar a janela inteira, sem rolagem — reduz numa
+   janela pequena e amplia na tela cheia. O quadro central cresce até o fim. */
+html.fit,html.fit body{height:100%;overflow:hidden}
+html.fit.fit-rola,html.fit.fit-rola body{overflow-y:auto}
+html.fit body{padding:0}
+html.fit #fitbox{position:relative;overflow:hidden}
+html.fit #fit{position:absolute;left:0;top:0;transform-origin:0 0;display:flex;flex-direction:column;padding:0 20px 10px}
+html.fit .hud-in,html.fit .wrap{max-width:none}
+html.fit .wrap{flex:1;display:flex;flex-direction:column;padding-top:14px;gap:12px;margin:0;width:100%}
+html.fit .hud-in{margin:0}
+html.fit .stage{flex:1;min-height:0;display:flex;flex-direction:column}
+html.fit .stage>.scr{flex:1;align-content:center}
+html.fit #s-watch{grid-template-rows:auto 1fr auto auto auto}
+html.fit .vig{min-height:260px}

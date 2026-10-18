@@ -4,7 +4,7 @@ Mantém só Comparar NF, Comparar cotação e Fontes (sem menu lateral), troca a
 paleta pela do SISTEN com tema escuro derivado, põe os mapas de cotação lado a
 lado e liga o progresso ao protocolo de trilhas do SISTEN.
 """
-import base64, colorsys, re, sys
+import base64, colorsys, os, re, sys
 
 # Uso (na raiz do repo): python scripts/gerar-trilha-reforma-tributaria.py
 # Regerar sempre que docs/TEN-Jornada-Tributaria.html for atualizado.
@@ -71,6 +71,11 @@ cotacao = sub1(cotacao, '<span class="badge">3 propostas fictícias</span>',
 cotacao = sub1(cotacao, 'Opção IBS/CBS do Simples para 2027 ↗</a></p></details>`}',
                'Opção IBS/CBS do Simples para 2027 ↗</a></p></details><div class="compare-next">${markButton(1)}</div>`}')
 
+# Memória de cálculo visível (scripts/reforma-tributaria/memoria.js e .css): painel sob os dois mapas
+cotacao = sub1(cotacao, '</p>${qWalkthrough()}${qEditors()}', '</p>${qMemoria()}${qWalkthrough()}${qEditors()}')
+cotacao = sub1(cotacao, "bindQuoteLessons();\n on('#qExplainChange'",
+               "bindQuoteLessons();\n document.querySelectorAll('[data-q-mem]').forEach(b=>b.onclick=()=>{quoteState.focus=b.dataset.qMem;qRedraw()});\n on('#qExplainChange'")
+
 licoes = sub1(licoes, '<a class="btn outline" href="#fornecedor">Orientar o fornecedor em caso de divergência</a>', '')
 
 c = chunks(casca)
@@ -118,7 +123,83 @@ render();
 notify('pronta');
 """
 
-js = '\n'.join([js_dados, compara, cotacao, licoes, js_casca, js_novo])
+AQUI = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reforma-tributaria')
+js_icms = open(os.path.join(AQUI, 'icms.js'), encoding='utf-8').read()
+js_simples = open(os.path.join(AQUI, 'simples.js'), encoding='utf-8').read()
+js_memoria = open(os.path.join(AQUI, 'memoria.js'), encoding='utf-8').read()
+css_memoria = open(os.path.join(AQUI, 'memoria.css'), encoding='utf-8').read()
+
+# Fontes novas na aba "Fontes e apostila": as tabelas dos anexos usadas no cálculo do DAS
+js_dados = sub1(js_dados, " rfb:{title:'Receita Federal — entenda a transição'",
+  " sn1:{title:'LC 123/2006 — Anexo I (comércio), com a partilha de CBS e IBS',url:'https://legis.senado.leg.br/norma/40180341/publicacao/40181079',note:'Alíquotas, deduções e partilha por faixa, de 2027 a 2033. Texto compilado do Senado; não substitui o DOU.'},\n"
+  " sn3:{title:'LC 123/2006 — Anexo III (serviços), com a partilha de CBS e IBS',url:'https://legis.senado.leg.br/norma/40180341/publicacao/40181117',note:'Alíquotas, deduções e partilha por faixa, de 2027 a 2033. Texto compilado do Senado; não substitui o DOU.'},\n"
+  " rfb:{title:'Receita Federal — entenda a transição'")
+
+js = '\n'.join([js_dados, compara, cotacao, licoes, js_casca, js_icms, js_simples, js_memoria, js_novo])
+
+# ---- Crédito de CBS/IBS do fornecedor do Simples: calculado (simples.js), não digitado.
+# Receita bruta de 12 meses e anexo de cada fornecedor do Simples nos exemplos (hipóteses, editáveis).
+DAS_EXEMPLOS = [
+ ("cbsDas:1200,ibsDas:39.9",                                          "anexo:'I',rbt12:1500000"),
+ ("cbsDas:110,ibsDas:8",                                              "anexo:'III',rbt12:240000"),
+ ("'Oficina Preventiva Beta','das',29000,{cbsDas:600,ibsDas:20}",     "'Oficina Preventiva Beta','das',29000,{anexo:'III',rbt12:1000000}"),
+ ("'Projetar Beta','das',9200,{cbsDas:190,ibsDas:10,delivery:25}",    "'Projetar Beta','das',9200,{anexo:'III',rbt12:900000,delivery:25}"),
+ ("'Calibração Beta','das',18000,{cbsDas:450,ibsDas:50,delivery:15}", "'Calibração Beta','das',18000,{anexo:'III',rbt12:360000,delivery:15}"),
+ ("'Fixadores Beta','das',46,{cbsDas:480,ibsDas:20}",                 "'Fixadores Beta','das',46,{anexo:'I',rbt12:500000}"),
+ ("'Tintas Beta','das',50,{cbsDas:480,ibsDas:20}",                    "'Tintas Beta','das',50,{anexo:'I',rbt12:450000}"),
+]
+for velho, novo in DAS_EXEMPLOS:
+    js = sub1(js, velho, novo)
+n_zero = js.count('cbsDas:0,ibsDas:0,')
+assert n_zero >= 1, n_zero
+js = js.replace('cbsDas:0,ibsDas:0,', '')   # campos antigos dos fornecedores regulares
+
+js = sub1(js, 'creditCbs=v.cbsDas;creditIbs=v.ibsDas;', '{const d=qDasCredito(v,c,y,raw);creditCbs=d.cbs;creditIbs=d.ibs}')
+# Crédito de ICMS na compra de optante do Simples (LC 123, art. 23): a parte de ICMS do DAS do fornecedor, em vez de zero.
+js = sub1(js, "if(v.regime!=='regular')creditIcms=0;",
+          "if(v.regime==='das')creditIcms=qDasIcms(v,c,y,raw);else if(v.regime!=='regular')creditIcms=0;")
+js = sub1(js, "// ICMS de Simples não foi informado neste exercício: zero não é regra universal.",
+          "// ICMS do fornecedor do Simples (bens): parte de ICMS do DAS dele (qDasIcms); o ISS do prestador do Simples não gera crédito.")
+js = sub1(js, "Não foi informado crédito ICMS de Simples neste exemplo.",
+          "O crédito de ICMS do fornecedor do Simples (bens) é a parte de ICMS do DAS dele, pela partilha do anexo e da faixa (LC 123, art. 23), e vai caindo na transição enquanto o IBS ocupa o lugar; o ISS pago no DAS não gera crédito.")
+js = sub1(js, "ICMS/DAS atual é zero no exemplo por ausência de informação específica, não regra universal.",
+          "O ICMS do fornecedor regular é calculado pelas UFs de origem e destino, e o crédito do fornecedor do Simples, pela partilha do DAS; o ISS segue como hipótese municipal (2% a 5%).")
+js = sub1(js, "ICMS destacado de ${money(m.creditIcms)} aproveitado no regime não cumulativo",
+          "${v.regime==='das'?qDasMemo(v,c,y,'icms'):`ICMS destacado de ${money(m.creditIcms)} aproveitado no regime não cumulativo`}")
+js = sub1(js, 'v.cbsDas+v.ibsDas>total', 'qDasTotal(v,c,y,raw)>total')
+js = sub1(js, "issues.push('Crédito DAS incompatível com o total');",
+          "issues.push('Crédito DAS incompatível com o total');if(y>2026&&v.regime==='das'&&qDasCredito(v,c,y,raw).fora)issues.push('Receita do fornecedor acima do limite do Simples');")
+js = sub1(js, "${qField('cbsDas','Crédito CBS do DAS informado para o lote futuro',v.cbsDas)}${qField('ibsDas','Crédito IBS do DAS informado para o lote futuro',v.ibsDas)}",
+          "${v.regime==='das'?qEditorDas(v):''}")
+js = sub1(js, "else if(key==='regime')next[key]=input.value;", "else if(key==='regime'||key==='anexo')next[key]=input.value;")
+js = sub1(js, r"Crédito admitido pelo Simples informado na proposta: ${money(m.creditCbs)}", r"${qDasMemo(v,c,y,'cbs')}")
+js = sub1(js, r"Crédito admitido pelo Simples informado na proposta: ${money(m.creditIbs)}", r"${qDasMemo(v,c,y,'ibs')}")
+js = sub1(js, "Os valores CBS/IBS informados no editor são hipóteses para o lote no ano futuro selecionado e precisam ser atualizados a cada ano com a evidência fiscal; não são alíquotas oficiais.",
+          "O crédito de CBS e IBS é <b>calculado</b>, não digitado: receita bruta dos últimos 12 meses do fornecedor → faixa do anexo → alíquota efetiva → parte de CBS e de IBS na partilha do ano (LC 123, anexos da reforma; limite do crédito na LC 214/2025, art. 47, § 9º, II). Anexo e receita de cada fornecedor são hipóteses dos exemplos, editáveis no editor das propostas; a Resolução CGSN 190/2026, que detalha o procedimento, não foi lida. Fator R, sublimites e a fórmula especial do ISS acima de 14,92537% na faixa 5 do Anexo III não são tratados.")
+js = sub1(js, "enquanto o DAS tem somente os valores informados", "enquanto o DAS tem somente o crédito devido no regime, calculado pela partilha do anexo")
+js = sub1(js, "offer:'Proposta fictícia: lote por R$ 79.800,00, fornecedor mantém IBS/CBS no DAS e promete crédito de R$ 21.147,00 (26,5%). O exercício informa CBS devida de R$ 1.200,00 e IBS de R$ 39,90 no regime.'",
+          "get offer(){return qErroDasOferta()}")
+js = sub1(js, "explain:'O comprador regular não recebe crédito integral automaticamente pelo seu próprio regime. Neste exercício, o limite informado é R$ 1.239,90; R$ 21.147,00 superestima o crédito em R$ 19.907,10. Os valores do DAS são hipóteses para o lote, não alíquotas legais.'",
+          "get explain(){return qErroDasExplica()}")
+assert 'cbsDas' not in js.replace(js_memoria, '') and 'ibsDas' not in js.replace(js_memoria, ''), 'sobrou cbsDas/ibsDas'
+
+# ---- ICMS do fornecedor regular: calculado pelas UFs de origem e destino (icms.js), não digitado.
+js = sub1(js, "const icms2026=c.kind==='service'||c.benefit||v.regime!=='regular'?0:v.icms;",
+              "const icms2026=c.kind==='service'||c.benefit||v.regime!=='regular'?0:qIcmsV(v,c);")
+js = sub1(js, "rateI=v.regime==='regular'&&c.kind==='goods'?v.icms*YEARS[y].legacy/100:0;",
+              "rateI=v.regime==='regular'&&c.kind==='goods'?qIcmsV(v,c)*YEARS[y].legacy/100:0;")
+js = sub1(js, "× alíquota ${v.icms}% = ${money(m.icms)}", "× alíquota ${qIcmsV(v,c)}% (${qIcmsUF(v,c).texto}) = ${money(m.icms)}")
+js = sub1(js, "da original de ${v.icms}%)", "da original de ${qIcmsV(v,c)}%; ${qIcmsUF(v,c).texto})")
+js = sub1(js, "${qField('icms','ICMS original hipotético (%)',v.icms)}", "${qEditorImposto(v)}")
+js = sub1(js, "(key==='icms'&&n>=100)", "(key==='iss'&&(n<2||n>5))")
+js = sub1(js, "Revise os valores: positivos, alíquota menor que 100% e dias inteiros até 365.", "Revise os valores: positivos, ISS entre 2% e 5% e dias inteiros até 365.")
+js = sub1(js, "as alíquotas de ICMS são premissas, não enquadramento confirmado da TEN.",
+              "as alíquotas de ICMS são calculadas pelas UFs de origem e destino (7% interestadual do Sul/Sudeste para o Nordeste; 20,5% interna da Bahia) e não confirmam enquadramento, benefício nem crédito da TEN.")
+js = re.sub(r'(?<=[,{])icms:[\d.]+,', '', js)        # ... discount:0,icms:7,iss:0 ...
+js = re.sub(r',icms:[\d.]+(?=\})', '', js)           # {uf:'SP',icms:7}
+js = re.sub(r'\{icms:[\d.]+\}', '{}', js)            # {icms:20.5}
+assert not re.search(r'[,{]icms:[\d.]+', js), re.findall(r'.{30}[,{]icms:[\d.]+.{10}', js)[:3]
+assert 'v.icms' not in js.replace(js_memoria, ''), 'sobrou v.icms'
 assert 'href="#' not in js.replace('href="#"', ''), re.findall(r'href="#\w+"', js)
 
 # ---------------------------------------------------------------- CSS
@@ -311,6 +392,6 @@ corpo = """</head>
 <div id="toast" role="status"></div>
 """
 
-out = head + '<style>\n' + tokens + css + casca_css + '\n</style>\n' + corpo + '<script>\n' + js + '\n</script>\n</body>\n</html>\n'
+out = head + '<style>\n' + tokens + css + casca_css + css_memoria + '\n</style>\n' + corpo + '<script>\n' + js + '\n</script>\n</body>\n</html>\n'
 open(OUT_HTML, 'w', encoding='utf-8', newline='\n').write(out)
 print('html', len(out), 'pdf', len(pdf), 'cores', len(cores))

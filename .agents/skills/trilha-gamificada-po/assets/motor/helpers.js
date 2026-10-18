@@ -119,3 +119,195 @@ W.aval5=function(el){
     const e=el.querySelector('#a5V');e.className='verdict '+V[0];e.textContent=V[1];el.querySelector('#a5C').textContent=V[2]};
   C.forEach((_,i)=>{const b=el.querySelector('#av5'+i);b.onclick=()=>{st[i]=st[i]?0:1;b.setAttribute('aria-pressed',!!st[i]);up()}});up();
 };
+W.ressup=function(el){
+  el.innerHTML=`<div class="wg">
+    <div class="wg-top"><label for="rsEst">Estoque Físico Atual</label><b id="rsEstO">120 un</b></div>
+    <input type="range" id="rsEst" min="0" max="600" step="10" value="120" aria-label="Estoque Atual">
+    <div class="wg-top"><label for="rsPto">Ponto de Ressuprimento (Gatilho)</label><b id="rsPtoO">200 un</b></div>
+    <input type="range" id="rsPto" min="50" max="400" step="10" value="200" aria-label="Ponto de Ressuprimento">
+    <div class="wg-top"><label for="rsMin">Estoque Mínimo (Segurança)</label><b id="rsMinO">80 un</b></div>
+    <input type="range" id="rsMin" min="20" max="150" step="10" value="80" aria-label="Estoque Mínimo">
+    <div class="ctres" id="rsRes" style="margin-top:12px"></div>
+  </div>`;
+  const e=el.querySelector('#rsEst'),p=el.querySelector('#rsPto'),m=el.querySelector('#rsMin');
+  const up=()=>{
+    const est=+e.value,pto=+p.value,min=+m.value;
+    el.querySelector('#rsEstO').textContent=est+' un';
+    el.querySelector('#rsPtoO').textContent=pto+' un';
+    el.querySelector('#rsMinO').textContent=min+' un';
+    let status='',tag='';
+    if(est<=min){
+      status='<span class="verdict n">Ruptura Iminente!</span>';
+      tag='<span class="chip o">Abaixo do Mínimo · Disparar RM Urgente no SAP!</span>';
+    }else if(est<=pto){
+      status='<span class="verdict r">Ponto de Ressuprimento</span>';
+      tag='<span class="chip t">Gerar Solicitação de Compra (SAP)</span>';
+    }else{
+      status='<span class="verdict p">Estoque Seguro</span>';
+      tag='<span class="chip">Acima do gatilho · Monitorar consumo diário</span>';
+    }
+    el.querySelector('#rsRes').innerHTML=status+tag;
+  };
+  e.oninput=up;p.oninput=up;m.oninput=up;up();
+};
+W.ender=function(el){
+  el.innerHTML=`<div class="wg">
+    <div class="wg-top"><label for="edDep">Depósito X(XX)</label><b id="edDepO">DEP01</b></div>
+    <input type="range" id="edDep" min="1" max="4" step="1" value="1" aria-label="Depósito">
+    <div class="wg-top"><label for="edBlk">Bloco (Coluna XX)</label><b id="edBlkO">B04</b></div>
+    <input type="range" id="edBlk" min="1" max="12" step="1" value="4" aria-label="Bloco">
+    <div class="wg-top"><label for="edAnd">Andar (Prateleira XX)</label><b id="edAndO">A02</b></div>
+    <input type="range" id="edAnd" min="1" max="5" step="1" value="2" aria-label="Andar">
+    <div class="wg-top"><label for="edApt">Apartamento (Vão XX)</label><b id="edAptO">AP03</b></div>
+    <input type="range" id="edApt" min="1" max="8" step="1" value="3" aria-label="Apartamento">
+    <div class="ctres" id="edRes" style="margin-top:12px"></div>
+  </div>`;
+  const d=el.querySelector('#edDep'),b=el.querySelector('#edBlk'),a=el.querySelector('#edAnd'),ap=el.querySelector('#edApt');
+  const pad2=n=>String(n).padStart(2,'0');
+  const up=()=>{
+    const dep=+d.value,blk=+b.value,and=+a.value,apt=+ap.value;
+    const depN=['DEP01 · Central','DEP02 · Pátio Externo','DEP03 · Químicos/Tintas','DEP04 · Peças'][dep-1];
+    el.querySelector('#edDepO').textContent=depN;
+    el.querySelector('#edBlkO').textContent='Coluna '+pad2(blk);
+    el.querySelector('#edAndO').textContent='Andar '+pad2(and);
+    el.querySelector('#edAptO').textContent='Apto '+pad2(apt);
+    const cod=`DEP${pad2(dep)}.${pad2(blk)}.${pad2(and)}.${pad2(apt)}`;
+    let tag='';
+    if(dep===3)tag='<span class="chip o">Item Químico · Validade FRM.ALM-0023</span>';
+    else if(and===1)tag='<span class="chip t">Piso · Itens pesados ou alto giro</span>';
+    else tag='<span class="chip">Prateleira · Respeitar limite de carga</span>';
+    el.querySelector('#edRes').innerHTML=`<span class="verdict p" style="font-family:var(--f-mono);font-size:16px">${cod}</span>${tag}`;
+  };
+  d.oninput=up;b.oninput=up;a.oninput=up;ap.oninput=up;up();
+};
+
+W.fefo=function(el){
+  el.innerHTML=`<div class="wg">
+    <div class="wg-top"><label for="ffDias">Simulação de Consumo</label><b id="ffDiasO">30 dias</b></div>
+    <input type="range" id="ffDias" min="5" max="90" step="5" value="30" aria-label="Dias">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:12px">
+      <div class="paper" style="padding:8px;text-align:left;font-size:12px;border:1px solid var(--paper-line)">
+        <b>Lote A · Primer</b><br><small>Entrada: há 40d</small><br><span class="chip" style="font-size:11px">Vence em: 80d</span>
+      </div>
+      <div class="paper" style="padding:8px;text-align:left;font-size:12px;border:2px solid var(--s-orange)">
+        <b>Lote B · Primer</b><br><small>Entrada: há 15d</small><br><span class="chip o" style="font-size:11px">Vence em: 25d</span>
+      </div>
+      <div class="paper" style="padding:8px;text-align:left;font-size:12px;border:1px solid var(--paper-line)">
+        <b>Lote C · Primer</b><br><small>Entrada: há 5d</small><br><span class="chip" style="font-size:11px">Vence em: 120d</span>
+      </div>
+    </div>
+    <div class="ctres" id="ffRes" style="margin-top:12px"></div>
+  </div>`;
+  const d=el.querySelector('#ffDias');
+  const up=()=>{
+    const dias=+d.value;
+    el.querySelector('#ffDiasO').textContent=dias+' dias';
+    el.querySelector('#ffRes').innerHTML=`<span class="verdict o">Aplicação FEFO</span><span class="chip o">Dispensar Lote B Primeiro!</span><br><small style="color:var(--stage-mut);margin-top:4px;display:block">No FEFO (First Expired, First Out), o Lote B sai primeiro porque vence antes, evitando perda de material químico (FRM.ALM-0023).</small>`;
+  };
+  d.oninput=up;up();
+};
+
+W.segreg=function(el){
+  el.innerHTML=`<div class="wg">
+    <div class="wg-top"><label for="sgTipo">Tipo de Incidente</label><b id="sgTipoO">Dano Interno de Manuseio</b></div>
+    <input type="range" id="sgTipo" min="1" max="3" step="1" value="1" aria-label="Tipo">
+    <div class="ctres" id="sgRes" style="margin-top:12px"></div>
+  </div>`;
+  const t=el.querySelector('#sgTipo');
+  const up=()=>{
+    const tipo=+t.value;
+    const tipos=['1. Dano Interno (Manuseio)','2. Vencimento / Contaminação','3. Propriedade de Cliente / Externo'];
+    el.querySelector('#sgTipoO').textContent=tipos[tipo-1];
+    if(tipo===1){
+      el.querySelector('#sgRes').innerHTML=`<span class="verdict n">Item 6.3 · Dano Interno</span><span class="chip o">1. Identificar NC</span><span class="chip t">2. Documentar</span><span class="chip bad">3. Segregar no Almox</span><span class="chip">4. Devolver ou Descartar</span><span class="chip o">5. Repor Quantidade</span>`;
+    }else if(tipo===2){
+      el.querySelector('#sgRes').innerHTML=`<span class="verdict r">Item 6.2 · Controle de Validade</span><span class="chip o">FRM.ALM-0023</span><span class="chip bad">Segregar imediatamente</span><span class="chip t">PO.ENG-0001 Consumíveis</span>`;
+    }else{
+      el.querySelector('#sgRes').innerHTML=`<span class="verdict p">Item 6.4 · Propriedade de Terceiro</span><span class="chip o">FRM.SUP-0001</span><span class="chip bad">Segregar em área específica</span><span class="chip t">Remeter ao cliente externo</span><span class="chip">Reter documentação</span>`;
+    }
+  };
+  t.oninput=up;up();
+};
+
+W.terceiros=function(el){
+  el.innerHTML=`<div class="wg">
+    <div class="wg-top"><label for="tcFase">Fase do Ciclo de Terceiros</label><b id="tcFaseO">1. Mobilização (Entrada)</b></div>
+    <input type="range" id="tcFase" min="1" max="3" step="1" value="1" aria-label="Fase">
+    <div class="ctres" id="tcRes" style="margin-top:12px"></div>
+  </div>`;
+  const s=el.querySelector('#tcFase');
+  const up=()=>{
+    const f=+s.value;
+    const fases=['1. Mobilização (Entrada)','2. Operação & Manutenções','3. Desmobilização (Saída)'];
+    el.querySelector('#tcFaseO').textContent=fases[f-1];
+    if(f===1){
+      el.querySelector('#tcRes').innerHTML=`<span class="verdict p">Entrada & Registro</span><span class="chip o">NF de Remessa</span><span class="chip t">Check List FRM</span><span class="chip">Etiqueta Rastreabilidade</span><span class="chip o">SAP MIGO · Depósito 0070</span>`;
+    }else if(f===2){
+      el.querySelector('#tcRes').innerHTML=`<span class="verdict o">Uso na Fábrica</span><span class="chip t">Setor Solicitante Opera</span><span class="chip o">Suprimentos: Manutenções</span><span class="chip bad">Se houver dano: Fotos + FRM.SUP-0001</span>`;
+    }else{
+      el.querySelector('#tcRes').innerHTML=`<span class="verdict n">Fim de Contrato</span><span class="chip o">SEMINFE Almox</span><span class="chip t">NF Remessa Retorno (Contab.)</span><span class="chip">Frete Reverso (Suprimentos)</span><span class="chip o">Arquivar Dossiê</span>`;
+    }
+  };
+  s.oninput=up;up();
+};
+
+W.chapas=function(el){
+  el.innerHTML=`<div class="wg">
+    <div class="wg-top"><label for="cpCenario">Cenário de Recebimento de Chapas</label><b id="cpCenarioO">1. Projeto em Linha (Assuruá/Seridó)</b></div>
+    <input type="range" id="cpCenario" min="1" max="3" step="1" value="1" aria-label="Cenário">
+    <div class="ctres" id="cpRes" style="margin-top:12px"></div>
+  </div>`;
+  const c=el.querySelector('#cpCenario');
+  const up=()=>{
+    const v=+c.value;
+    const cenarios=[
+      '1. Projeto em Linha de Fabricação',
+      '2. Projeto Fora de Linha (Futuro)',
+      '3. Chapa com Divergência / Sem Certificado'
+    ];
+    el.querySelector('#cpCenarioO').textContent=cenarios[v-1];
+    if(v===1){
+      el.querySelector('#cpRes').innerHTML=`<span class="verdict ok">Destino: Pátio A (Galpão Principal)</span><span class="chip o">Ponte Rolante (20t/30t)</span><span class="chip t">Operador Pontoneiro</span><span class="chip">Alimenta Linha de Corte</span><br><small style="color:var(--stage-mut);margin-top:4px;display:block">Chapas de projetos já em produção vão diretamente para o Pátio A, permitindo a alimentação contínua das linhas de corte e calandragem.</small>`;
+    }else if(v===2){
+      el.querySelector('#cpRes').innerHTML=`<span class="verdict o">Destino: Pátio B (Área Externa)</span><span class="chip o">Pórtico Mag 75 Ton</span><span class="chip t">Operador de Pórtico</span><span class="chip">Estoque Temporário</span><br><small style="color:var(--stage-mut);margin-top:4px;display:block">Pátio secundário criado para suprir o espaço fabril. Armazena projetos que ainda não entraram em linha até o momento do corte.</small>`;
+    }else{
+      el.querySelector('#cpRes').innerHTML=`<span class="verdict bad">Reprovação pela Qualidade</span><span class="chip bad">Abertura de RNC</span><span class="chip o">Segregação Imediata</span><span class="chip t">Notificação Fornecedor</span><br><small style="color:var(--stage-mut);margin-top:4px;display:block">Sem certificado da usina ou com defeito dimensional/físico, a chapa não é liberada. Fica segregada aguardando regularização ou devolução.</small>`;
+    }
+  };
+  c.oninput=up;up();
+};
+
+W.provedores=function(el){
+  el.innerHTML=`<div class="wg">
+    <div class="wg-top"><label for="pvTipo">Tipo de Aquisição (Item 6.6)</label><b id="pvTipoO">1. Compra de Materiais</b></div>
+    <input type="range" id="pvTipo" min="1" max="2" step="1" value="1" aria-label="Tipo de Compra">
+    <div class="wg-top" style="margin-top:10px"><label for="pvValor">Faixa de Valor (R$)</label><b id="pvValorO">R$ 250.000</b></div>
+    <input type="range" id="pvValor" min="5" max="1000" step="5" value="250" aria-label="Valor em Milhares">
+    <div class="ctres" id="pvRes" style="margin-top:12px"></div>
+  </div>`;
+  const t=el.querySelector('#pvTipo'), v=el.querySelector('#pvValor');
+  const up=()=>{
+    const tipo=+t.value, val=(+v.value)*1000;
+    el.querySelector('#pvTipoO').textContent=tipo===1?'1. Compra de Materiais':'2. Compra de Serviços';
+    el.querySelector('#pvValorO').textContent=val.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
+    let aprov='', nivel='', cor='o';
+    if(tipo===1){
+      if(val<=10000){ nivel='Nível 01'; aprov='Gerente Administrativo/Financeiro ou Planejamento/Custos'; cor='t'; }
+      else if(val<=300000){ nivel='Nível 02'; aprov='Diretor da Obra'; cor='o'; }
+      else if(val<=600000){ nivel='Nível 03'; aprov='Superintendente Comercial Área de Energia'; cor='o'; }
+      else{ nivel='Nível 04'; aprov='Presidente'; cor='bad'; }
+    }else{
+      if(val<=10000){ nivel='Nível 01'; aprov='Gerente Administrativo e Financeiro'; cor='t'; }
+      else if(val<=1000000){ nivel='Nível 02'; aprov='Gerente da Unidade'; cor='o'; }
+      else if(val<=3000000){ nivel='Nível 03'; aprov='Superintendente da Unidade'; cor='o'; }
+      else if(val<=6000000){ nivel='Nível 04'; aprov='Diretores da Unidade'; cor='bad'; }
+      else{ nivel='Nível 05'; aprov='Presidente da Unidade'; cor='bad'; }
+    }
+    el.querySelector('#pvRes').innerHTML=`<span class="verdict ${cor==='bad'?'r':cor==='o'?'p':'ok'}">${nivel} · ${aprov}</span><span class="chip o">Pré-requisito: Fornecedor Qualificado</span><span class="chip t">MPP Aprovado Eng/Qualidade</span><br><small style="color:var(--stage-mut);margin-top:4px;display:block">Antes da emissão do Pedido de Compras, a aprovação formal deve obedecer à alçada e à análise crítica de risco (Item 6.6).</small>`;
+  };
+  t.oninput=up;v.oninput=up;up();
+};
+
+
+
+

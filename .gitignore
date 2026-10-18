@@ -33,3 +33,6 @@ outputs/
 # Dispositivo reservado Windows / artefato temporario
 nul
 
+# Screenshots temporarios de QA do motor de trilhas
+.agents/skills/trilha-gamificada-po/assets/motor/prints*/
+

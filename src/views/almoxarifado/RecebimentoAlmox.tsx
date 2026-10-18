@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, FileDown, FileSpreadsheet, HardHat, Loader2,
-  ClipboardList, MessageSquareReply, PackageCheck, PackageMinus, Plus, RefreshCw, Search, ShieldAlert, ShoppingCart, Truck, X,
+  ClipboardList, GraduationCap, MessageSquareReply, PackageCheck, PackageMinus, Plus, RefreshCw, Search, ShieldAlert, ShoppingCart, Truck, X,
 } from 'lucide-react';
 import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -54,7 +54,7 @@ import {
 } from '../../lib/recebimentoAlmoxApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { criarResolvedorCompraDireta, type TagCompraDireta } from '../../lib/estoqueOrigemCompraDireta';
-import { canAccessForm } from '../../lib/pages';
+import { canAccessForm, canAccessPage } from '../../lib/pages';
 import type { Profile } from '../../types';
 import { extrairPalavrasChave, casarTokens } from '../../lib/buscaKeywords';
 import SearchKeywordsChips from '../../components/ui/SearchKeywordsChips';
@@ -266,6 +266,16 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       icon: Camera,
       cor: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400',
       badge: 'FRM.ALM-0016',
+    }] : []),
+    ...(canAccessPage(user, 'treinamentos') ? [{
+      id: 'hub' as Vista,
+      rota: '/treinamentos/setor?setor=2',
+      codigo: 'TRN',
+      titulo: 'Treinamentos do Almoxarifado',
+      desc: 'Trilhas gamificadas: Rotinas (0001), Preservação (0003), Terceiros (0004), Chapas (0006) e Provedores (0007).',
+      icon: GraduationCap,
+      cor: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400',
+      badge: '5 Trilhas · PO.ALM',
     }] : []),
   ];
 

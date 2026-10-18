@@ -12,7 +12,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, ClipboardCheck, DollarSign, Download, Filter, Package, Percent, RefreshCw, Repeat, Target, X,
+  AlertTriangle, ArrowLeft, ClipboardCheck, DollarSign, Download, Filter, GraduationCap, Package, Percent, RefreshCw, Repeat, Target, X,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import type { EstoqueItem, Profile } from '../../types';
@@ -42,6 +42,7 @@ import {
 import {
   TableBody, TableCardRow, TableCards, TableDesktop, TableEmpty, TableHeadRow, TableShell, Td, Th, Tr,
 } from '../../components/ui/DataTable';
+import { canAccessPage } from '../../lib/pages';
 
 interface Props {
   user: Profile;
@@ -597,6 +598,18 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canAccessPage(user, 'treinamentos') && (
+            <button
+              type="button"
+              onClick={() => onNavigate('/treinamentos/setor?setor=2')}
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold cursor-pointer transition-all hover:opacity-90 active:scale-95"
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+              title="Trilha de Treinamento: Rotinas do Almoxarifado (PO.ALM-0001)"
+            >
+              <GraduationCap className="h-3.5 w-3.5 text-amber-600" />
+              Treinamento PO.ALM-0001
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void carregar(true)}
