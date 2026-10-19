@@ -45,6 +45,10 @@ interface Props {
 
 type FiltroFoto = 'todos' | 'com_foto' | 'sem_foto';
 type FiltroLocal = 'todos' | 'com_local' | 'sem_local';
+type Ordem = 'padrao' | 'local_asc' | 'local_desc' | 'pn_asc' | 'pn_desc';
+
+/** Depósito = prefixo da localização, antes do primeiro ponto (ex: 101.A10 -> 101). */
+const depositoDe = (local?: string | null) => (local ? local.trim().split('.')[0].toUpperCase() : '');
 
 const LOTE = 60;
 const CHAVE_COR = 'sisten_etiqueta_cor';
@@ -73,6 +77,8 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
   const [filtroSecao, setFiltroSecao] = useState('');
   const [filtroFoto, setFiltroFoto] = useState<FiltroFoto>('todos');
   const [filtroLocal, setFiltroLocal] = useState<FiltroLocal>('todos');
+  const [filtroDeposito, setFiltroDeposito] = useState('');
+  const [ordem, setOrdem] = useState<Ordem>('padrao');
   const [visiveisQtd, setVisiveisQtd] = useState(LOTE);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
 
@@ -130,10 +136,17 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
     [itens],
   );
 
+  const depositos = useMemo(() => {
+    const s = new Set<string>();
+    cadastros.forEach((c) => { const d = depositoDe(c.posicao_estoque); if (d) s.add(d); });
+    return [...s].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  }, [cadastros]);
+
   const filtrados = useMemo(() => {
     const tokens = buscaChips.map(normalizarParaBusca).filter(Boolean);
-    return itens.filter((i) => {
+    const lista = itens.filter((i) => {
       const cad = cadastros.get(i.chave);
+      if (filtroDeposito && depositoDe(cad?.posicao_estoque) !== filtroDeposito) return false;
       if (filtroGrupo && !i.grupos.includes(filtroGrupo)) return false;
       if (filtroSecao && !i.secoes.some((s) => s.secao === filtroSecao)) return false;
       if (filtroFoto === 'com_foto' && !cad?.imagem_path) return false;
@@ -146,9 +159,23 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
       )) return false;
       return true;
     });
-  }, [itens, cadastros, buscaChips, filtroGrupo, filtroSecao, filtroFoto, filtroLocal]);
+    if (ordem === 'padrao') return lista;
+    const cmp = (a: string, b: string) => a.localeCompare(b, 'pt-BR', { numeric: true });
+    const local = (i: ItemBom) => cadastros.get(i.chave)?.posicao_estoque?.trim() ?? '';
+    return [...lista].sort((a, b) => {
+      if (ordem === 'pn_asc') return cmp(a.partNumber, b.partNumber);
+      if (ordem === 'pn_desc') return cmp(b.partNumber, a.partNumber);
+      const la = local(a);
+      const lb = local(b);
+      if (!la && !lb) return cmp(a.partNumber, b.partNumber);
+      if (!la) return 1; // sem localizacao sempre no fim
+      if (!lb) return -1;
+      const r = ordem === 'local_asc' ? cmp(la, lb) : cmp(lb, la);
+      return r || cmp(a.partNumber, b.partNumber);
+    });
+  }, [itens, cadastros, buscaChips, filtroGrupo, filtroSecao, filtroFoto, filtroLocal, filtroDeposito, ordem]);
 
-  useEffect(() => { setVisiveisQtd(LOTE); }, [buscaChips, filtroGrupo, filtroSecao, filtroFoto, filtroLocal]);
+  useEffect(() => { setVisiveisQtd(LOTE); }, [buscaChips, filtroGrupo, filtroSecao, filtroFoto, filtroLocal, filtroDeposito, ordem]);
 
   const kpis = useMemo(() => {
     let comFoto = 0;
@@ -314,6 +341,17 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
             <option value="todos">Com e sem localização</option>
             <option value="com_local">Com localização</option>
             <option value="sem_local">Sem localização</option>
+          </select>
+          <select value={filtroDeposito} onChange={(e) => setFiltroDeposito(e.target.value)} className={selectCls} aria-label="Depósito">
+            <option value="">Todos os depósitos</option>
+            {depositos.map((d) => <option key={d} value={d}>Depósito {d}</option>)}
+          </select>
+          <select value={ordem} onChange={(e) => setOrdem(e.target.value as Ordem)} className={selectCls} aria-label="Ordenar">
+            <option value="padrao">Ordem da BOM</option>
+            <option value="local_asc">Localização A→Z</option>
+            <option value="local_desc">Localização Z→A</option>
+            <option value="pn_asc">Part number A→Z</option>
+            <option value="pn_desc">Part number Z→A</option>
           </select>
           <button
             type="button"
