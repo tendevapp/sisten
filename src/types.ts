@@ -1431,6 +1431,8 @@ export interface CotacaoProcesso {
   titulo: string | null;
   status: CotacaoProcessoStatus;
   observacoes: string | null;
+  /** Tem item comprado pelo Mercado Livre — tag ML na Central de Compras. */
+  mercado_livre?: boolean;
   criado_por: string | null;
   criado_por_nome: string;
   created_at: string;
@@ -1463,6 +1465,14 @@ export interface CotacaoProcessoItemDraft {
   unidade_medida: string | null;
   centro: string | null;
   deposito: string | null;
+}
+
+/** Um arquivo original de proposta no bucket `cotacoes-arquivos`. */
+export interface ArquivoOriginalCotacao {
+  nome: string;
+  path: string;
+  mime_type: string | null;
+  tamanho_bytes: number | null;
 }
 
 export interface CotacaoProposta {
@@ -1512,6 +1522,8 @@ export interface CotacaoProposta {
   arquivo_storage_path: string | null;
   arquivo_mime_type: string | null;
   arquivo_tamanho_bytes: number | null;
+  /** Todos os arquivos originais (proposta de vários arquivos); o primeiro é o de `arquivo_storage_path`. */
+  arquivos_originais?: ArquivoOriginalCotacao[];
   /** Markdown extraído do documento — cópia editável; ver `arquivo_markdown_editado_em`. */
   arquivo_markdown: string | null;
   /** `null` enquanto for a extração original, sem correção manual. */
@@ -1663,6 +1675,7 @@ export interface CotacaoPropostaDraft {
   arquivo_storage_path: string | null;
   arquivo_mime_type: string | null;
   arquivo_tamanho_bytes: number | null;
+  arquivos_originais?: ArquivoOriginalCotacao[];
   arquivo_markdown: string | null;
   arquivo_markdown_editado_em: string | null;
   arquivo_markdown_editado_por: string | null;

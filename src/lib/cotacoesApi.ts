@@ -155,6 +155,8 @@ export async function obterProximoNumeroCotacao(dataISO?: string | null): Promis
 export async function criarProcessoCotacao(params: {
   titulo: string | null;
   observacoes: string | null;
+  /** "Tem item do Mercado Livre?" marcado na criação. */
+  mercadoLivre?: boolean;
   itens: CotacaoProcessoItemDraft[];
   usuarioId: string;
   usuarioNome: string;
@@ -170,9 +172,10 @@ export async function criarProcessoCotacao(params: {
         numero,
         titulo: params.titulo,
         observacoes: params.observacoes,
+        mercado_livre: !!params.mercadoLivre,
         criado_por: params.usuarioId,
         criado_por_nome: params.usuarioNome,
-      })
+      } as any)
       .select('*')
       .single();
 
@@ -249,6 +252,14 @@ export async function buscarProcessoCotacao(processoId: string): Promise<{
 export async function atualizarStatusProcesso(processoId: string, status: CotacaoProcessoStatus): Promise<void> {
   const { error } = await supabase.from('sup_cotacao_processos').update({ status, updated_at: new Date().toISOString() }).eq('id', processoId);
   if (error) throw new Error(`Falha ao atualizar status do processo: ${error.message}`);
+}
+
+/** Marca o processo como compra pelo Mercado Livre (proposta por print do ML adicionada depois da criação). */
+export async function marcarProcessoMercadoLivre(processoId: string): Promise<void> {
+  const { error } = await (supabase.from('sup_cotacao_processos') as any)
+    .update({ mercado_livre: true, updated_at: new Date().toISOString() })
+    .eq('id', processoId);
+  if (error) throw new Error(`Falha ao marcar o processo como Mercado Livre: ${error.message}`);
 }
 
 export interface PropostaJaExtraida {
@@ -453,6 +464,7 @@ function propostaParaPayload(processoId: string, p: CotacaoPropostaDraft) {
     arquivo_storage_path: p.arquivo_storage_path,
     arquivo_mime_type: p.arquivo_mime_type,
     arquivo_tamanho_bytes: p.arquivo_tamanho_bytes,
+    arquivos_originais: p.arquivos_originais ?? [],
     arquivo_markdown: p.arquivo_markdown,
     itens: p.itens.map(item => ({
       processo_item_id: item.processo_item_id,
@@ -607,6 +619,21 @@ export async function atualizarItensCotacao(patches: PatchItemCotacao[]): Promis
 
 const BUCKET_COTACOES_ARQUIVOS = 'cotacoes-arquivos';
 
+/** Tipo pelo nome quando o navegador não informa (acontece com planilha e CSV). */
+const MIME_POR_EXTENSAO: Record<string, string> = {
+  pdf: 'application/pdf',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12',
+  xls: 'application/vnd.ms-excel',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  csv: 'text/csv',
+};
+
+export function mimeDaExtensao(nome: string): string {
+  return MIME_POR_EXTENSAO[nome.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/pdf';
+}
+
 /**
  * Sobe o PDF/imagem original de uma proposta para o Storage.
  * Comprime imagens antes do upload seguindo a regra global do SISTEN.
@@ -620,7 +647,7 @@ export async function uploadArquivoCotacao(
   const path = `${processoId}/${Date.now()}-${nomeLimpo}`;
 
   let corpoUpload: Blob = file;
-  let mimeType = file.type || 'application/pdf';
+  let mimeType = file.type || mimeDaExtensao(file.name);
 
   if (file.type.startsWith('image/')) {
     try {
@@ -695,6 +722,7 @@ export async function vincularArquivoOriginalProposta(
   storagePath: string,
   mimeType = 'application/pdf',
   tamanhoBytes: number | null = null,
+  nome?: string | null,
 ): Promise<void> {
   if (!UUID_REGEX_ITEM.test(propostaId)) return;
   try {
@@ -704,8 +732,10 @@ export async function vincularArquivoOriginalProposta(
         arquivo_storage_path: storagePath,
         arquivo_mime_type: mimeType,
         arquivo_tamanho_bytes: tamanhoBytes,
+        // A lista de originais passa a ter o arquivo anexado (`arquivos_originais` ainda fora de database.types.ts).
+        arquivos_originais: [{ nome: nome || storagePath.split('/').pop() || storagePath, path: storagePath, mime_type: mimeType, tamanho_bytes: tamanhoBytes }],
         updated_at: new Date().toISOString(),
-      })
+      } as any)
       .eq('id', propostaId);
 
     if (error) {
@@ -911,6 +941,8 @@ export interface CotacaoItemVinculo {
   titulo: string | null;
   status: string;
   createdAt: string;
+  /** Processo marcado como compra pelo Mercado Livre. */
+  mercadoLivre: boolean;
 }
 
 /**
@@ -921,7 +953,8 @@ export interface CotacaoItemVinculo {
 export async function buscarCotacoesItensMap(): Promise<Map<string, CotacaoItemVinculo[]>> {
   try {
     const [{ data: processos, error: e1 }, { data: itens, error: e2 }] = await Promise.all([
-      supabase.from('sup_cotacao_processos').select('id, numero, status, titulo, created_at'),
+      // `mercado_livre` ainda não está em database.types.ts.
+      (supabase.from('sup_cotacao_processos') as any).select('id, numero, status, titulo, created_at, mercado_livre'),
       supabase.from('sup_cotacao_processo_itens').select('ri, rm, item_reqc, processo_id'),
     ]);
 
@@ -930,7 +963,7 @@ export async function buscarCotacoesItensMap(): Promise<Map<string, CotacaoItemV
       return new Map();
     }
 
-    const procMap = new Map<string, { id: string; numero: string; status: string; titulo: string | null; created_at: string }>();
+    const procMap = new Map<string, { id: string; numero: string; status: string; titulo: string | null; created_at: string; mercado_livre?: boolean | null }>();
     for (const p of processos) {
       if (p.id) procMap.set(p.id, p);
     }
@@ -945,6 +978,7 @@ export async function buscarCotacoesItensMap(): Promise<Map<string, CotacaoItemV
         titulo: p.titulo,
         status: p.status,
         createdAt: p.created_at,
+        mercadoLivre: !!p.mercado_livre,
       };
 
       if (it.ri) {

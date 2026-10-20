@@ -17,6 +17,7 @@ import { useToast } from '../components/ui/Toast';
 import ProcessosList from '../components/cotacoes/ProcessosList';
 import NovoProcessoPanel from '../components/cotacoes/NovoProcessoPanel';
 import ImportarPropostasPanel from '../components/cotacoes/ImportarPropostasPanel';
+import MercadoLivrePropostaModal from '../components/cotacoes/MercadoLivrePropostaModal';
 import PropostaCard from '../components/cotacoes/PropostaCard';
 import MapaComparativo from '../components/cotacoes/MapaComparativo';
 import RevisaoPedidoCompra from '../components/cotacoes/RevisaoPedidoCompra';
@@ -31,10 +32,10 @@ import {
   criarProcessoCotacao, listarProcessosCotacao, buscarProcessoCotacao,
   extrairCotacao, sugerirVinculos, salvarProcessoCotacao, excluirPropostaCotacao,
   excluirProcessoCotacao, atualizarItensCotacao, uploadArquivoCotacao, atualizarMarkdownProposta,
-  buscarArquivoOriginalPorNome,
+  buscarArquivoOriginalPorNome, marcarProcessoMercadoLivre,
 } from '../lib/cotacoesApi';
 import type {
-  Profile, CotacaoProcesso, CotacaoProcessoItem, CotacaoProcessoItemDraft,
+  Profile, CotacaoProcesso, CotacaoProcessoItem, CotacaoProcessoItemDraft, ArquivoOriginalCotacao,
   CotacaoProposta, CotacaoPropostaDraft, ExtracaoUso, TabelaFrete,
 } from '../types';
 
@@ -79,7 +80,16 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
   // Arquivos originais (PDF/imagem) por nome, só para "ver arquivo original" no
   // card — dura só a sessão do navegador, o File não sobrevive a um F5.
   const [arquivosOriginais, setArquivosOriginais] = useState<Map<string, File>>(new Map());
+  // Espelho síncrono do mapa acima + o lote da última extração. Os handlers de
+  // extração rodam no mesmo tick em que os arquivos chegam — antes do estado
+  // re-renderizar —, e lendo só o state o upload antecipado nunca achava o
+  // arquivo (origem das propostas salvas sem "Ver original").
+  const arquivosRef = useRef<Map<string, File>>(new Map());
+  const ultimoLoteRef = useRef<string[]>([]);
+  /** Originais já no Storage nesta sessão, por processo + nome — não sobe duas vezes. */
+  const enviadosRef = useRef<Map<string, ArquivoOriginalCotacao>>(new Map());
 
+  const [mercadoLivreAberto, setMercadoLivreAberto] = useState(false);
   const [extraindo, setExtraindo] = useState(false);
   const [erroExtracao, setErroExtracao] = useState<string | null>(null);
   const [extracaoSemItens, setExtracaoSemItens] = useState(false);
@@ -276,11 +286,11 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     }
   };
 
-  const handleCriarProcesso = async (titulo: string | null, observacoes: string | null) => {
+  const handleCriarProcesso = async (titulo: string | null, observacoes: string | null, mercadoLivre = false) => {
     setCriandoProcesso(true);
     try {
       const novo = await criarProcessoCotacao({
-        titulo, observacoes, itens: escopoRascunho, usuarioId: user.id, usuarioNome: user.name,
+        titulo, observacoes, mercadoLivre, itens: escopoRascunho, usuarioId: user.id, usuarioNome: user.name,
       });
       limparComprasMemoryCache();
       toast.success(`Processo ${novo.numero} criado.`);
@@ -348,6 +358,51 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     return { ...draft, itens };
   };
 
+  /**
+   * Sobe ao Storage os arquivos originais pelo nome (uma vez por processo na
+   * sessão). Sobe já na extração, não só ao salvar: com F5 entre extrair e
+   * salvar o arquivo sumia da memória e a proposta ficava sem original. O que
+   * não subir vira aviso — dá para anexar depois pelo "Ver original".
+   */
+  const subirOriginais = async (nomes: string[]): Promise<ArquivoOriginalCotacao[]> => {
+    if (!processo || nomes.length === 0) return [];
+    const enviados: ArquivoOriginalCotacao[] = [];
+    const falhas: string[] = [];
+    for (const nome of nomes) {
+      const chave = `${processo.id}|${nome}`;
+      const ja = enviadosRef.current.get(chave);
+      if (ja) { enviados.push(ja); continue; }
+      const file = arquivosRef.current.get(nome);
+      if (!file) { falhas.push(nome); continue; }
+      try {
+        const r = await uploadArquivoCotacao(processo.id, file);
+        const arquivo: ArquivoOriginalCotacao = { nome, path: r.path, mime_type: r.mimeType, tamanho_bytes: r.tamanhoBytes };
+        enviadosRef.current.set(chave, arquivo);
+        enviados.push(arquivo);
+      } catch (err) {
+        console.error(`Falha ao guardar o original ${nome}:`, err);
+        falhas.push(nome);
+      }
+    }
+    if (falhas.length) {
+      toast.warning(`Arquivo original não guardado: ${falhas.join(', ')} — anexe pelo "Ver original" da proposta.`);
+    }
+    return enviados;
+  };
+
+  /** Grava os originais no rascunho; o primeiro também nos campos de arquivo único (compatibilidade). */
+  const comOriginais = (draft: CotacaoPropostaDraft, arquivos: ArquivoOriginalCotacao[]): CotacaoPropostaDraft => {
+    if (arquivos.length === 0) return draft;
+    const [primeiro] = arquivos;
+    return {
+      ...draft,
+      arquivos_originais: arquivos,
+      arquivo_storage_path: primeiro.path,
+      arquivo_mime_type: primeiro.mime_type,
+      arquivo_tamanho_bytes: primeiro.tamanho_bytes,
+    };
+  };
+
   /** Retorna se a extração deu certo — quem chama (upload ou colagem manual) só deve descartar o markdown de origem em caso de sucesso, senão o usuário perde um arquivo já convertido (às vezes com custo de IA) por uma falha na etapa seguinte. */
   const handleProcessarMarkdown = async (markdown: string, arquivoOrigem: string | null): Promise<boolean> => {
     if (!processo) return false;
@@ -389,22 +444,17 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
 
       // Sugestão de vínculo por proposta — cada fornecedor pode ter um match
       // diferente na memória (cotacao_descricao_map é por CNPJ).
+      // Os originais desta extração: o arquivo do rótulo, ou o lote inteiro
+      // ("4 arquivos") — consumido aqui para um Markdown colado depois não
+      // herdar os arquivos de outra proposta.
+      const lote = arquivoOrigem && arquivosRef.current.has(arquivoOrigem) ? [arquivoOrigem] : ultimoLoteRef.current;
+      ultimoLoteRef.current = [];
       const processadas: CotacaoPropostaDraft[] = [];
       for (const draft of novasDrafts) {
-        if (draft.arquivo_origem && !draft.arquivo_storage_path) {
-          const file = arquivosOriginais.get(draft.arquivo_origem);
-          if (file) {
-            try {
-              const enviado = await uploadArquivoCotacao(processo.id, file);
-              draft.arquivo_storage_path = enviado.path;
-              draft.arquivo_mime_type = enviado.mimeType;
-              draft.arquivo_tamanho_bytes = enviado.tamanhoBytes;
-            } catch (err) {
-              console.warn('Falha no upload antecipado do arquivo da proposta:', err);
-            }
-          }
-        }
-        processadas.push(comFreteTeorico(alinharPeso(await resolverVinculos(draft))));
+        // A IA às vezes diz de qual arquivo do lote veio a proposta.
+        const nomes = draft.arquivo_origem && arquivosRef.current.has(draft.arquivo_origem) ? [draft.arquivo_origem] : lote;
+        const comArquivos = comOriginais(draft, await subirOriginais(nomes));
+        processadas.push(comFreteTeorico(alinharPeso(await resolverVinculos(comArquivos))));
       }
 
       setPropostas(prev => [...prev, ...processadas]);
@@ -560,31 +610,17 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       // mesmo jeito — o comprador não pode perder uma extração já pronta por
       // causa da cópia de arquivo, que dá para tentar de novo depois.
       if (!payload.arquivo_storage_path && payload.arquivo_origem) {
-        const arquivo = arquivosOriginais.get(payload.arquivo_origem);
-        if (arquivo) {
-          try {
-            const enviado = await uploadArquivoCotacao(processo.id, arquivo);
-            payload = {
-              ...payload,
-              arquivo_storage_path: enviado.path,
-              arquivo_mime_type: enviado.mimeType,
-              arquivo_tamanho_bytes: enviado.tamanhoBytes,
-            };
-          } catch (err) {
-            console.error('Falha ao enviar o arquivo original da proposta para o Storage:', err);
-          }
+        if (arquivosRef.current.has(payload.arquivo_origem)) {
+          payload = comOriginais(payload, await subirOriginais([payload.arquivo_origem]));
         } else {
           // Fallback: se o arquivo nao esta mais na memoria (ex: F5 ou sessao compartilhada),
           // tenta localizar pelo nome se ja tiver sido enviado ao Storage
           try {
             const achado = await buscarArquivoOriginalPorNome(payload.arquivo_origem);
             if (achado) {
-              payload = {
-                ...payload,
-                arquivo_storage_path: achado.storagePath,
-                arquivo_mime_type: achado.mimeType,
-                arquivo_tamanho_bytes: achado.tamanhoBytes,
-              };
+              payload = comOriginais(payload, [{
+                nome: payload.arquivo_origem, path: achado.storagePath, mime_type: achado.mimeType, tamanho_bytes: achado.tamanhoBytes,
+              }]);
             }
           } catch (err) {
             console.error('Falha ao buscar arquivo original existente por nome:', err);
@@ -617,7 +653,11 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
         console.error('Falha ao atualizar rascunho local de propostas:', err);
       }
 
-      toast.success('Proposta salva.');
+      if (!payload.arquivo_storage_path && payload.arquivo_origem) {
+        toast.warning('Proposta salva SEM o arquivo original (não estava mais na memória do navegador) — anexe pelo "Ver original".');
+      } else {
+        toast.success('Proposta salva.');
+      }
       avancarStatusCobertos(draft).catch(() => { /* melhor esforço, não bloqueia o salvamento */ });
     } catch (err) {
       const msg = (err as Error).message;
@@ -716,9 +756,13 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       proposta.arquivo_origem = arquivoOrigem;
       proposta.arquivo_markdown = [atual.arquivo_markdown, `# Print: ${arquivoOrigem}\n\n${markdown}`].filter(Boolean).join('\n\n---\n\n');
       proposta.extracao_id = resposta.extracao_id ?? atual.extracao_id;
-      // O print passa a ser o arquivo original desta proposta (sobe ao salvar).
+      // O print passa a ser o arquivo original desta proposta — sobe já, junto
+      // dos originais que ela tinha (o PDF que só era imagem continua guardado).
       setArquivosOriginais(prev => new Map(prev).set(arquivoOrigem, preparados[0]));
-      const complementada = comFreteTeorico(alinharPeso(await resolverVinculos(proposta)));
+      preparados.forEach(f => arquivosRef.current.set(f.name, f));
+      const prints = await subirOriginais(preparados.map(f => f.name));
+      const anteriores = (atual.arquivos_originais ?? []).filter(a => !prints.some(p => p.path === a.path));
+      const complementada = comFreteTeorico(alinharPeso(await resolverVinculos(comOriginais(proposta, [...prints, ...anteriores]))));
       setPropostas(prev => prev.map(p => (p._key === key && !p._salvo ? complementada : p)));
       const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
       toast.success(`Print lido: ${plural(itensPreenchidos, 'item completado', 'itens completados')}, ${plural(itensNovos, 'item novo', 'itens novos')}, ${plural(camposCabecalho, 'campo', 'campos')} do cabeçalho.`);
@@ -727,7 +771,30 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     }
   };
 
+  /**
+   * Proposta do Mercado Livre lançada à mão a partir do print (sem IA). O
+   * print vira o arquivo original e sobe ao salvar, como os demais. O
+   * processo passa a ser "Mercado Livre" — é o que acende a tag ML na
+   * Central de Compras.
+   */
+  const handleAdicionarPropostaMl = async (draft: CotacaoPropostaDraft, print: File) => {
+    setArquivosOriginais(prev => new Map(prev).set(print.name, print));
+    arquivosRef.current.set(print.name, print);
+    const comPrint = comOriginais(draft, await subirOriginais([print.name]));
+    setPropostas(prev => [...prev, comFreteTeorico(comPrint)]);
+    setMercadoLivreAberto(false);
+    toast.success(`Proposta de ${draft.fornecedor_razao_social} adicionada — revise e clique em Salvar proposta.`);
+    if (processo && !processo.mercado_livre) {
+      const id = processo.id;
+      marcarProcessoMercadoLivre(id)
+        .then(() => { limparComprasMemoryCache(); setProcesso(p => (p && p.id === id ? { ...p, mercado_livre: true } : p)); })
+        .catch(err => console.error(err));
+    }
+  };
+
   const handleArquivosEnviados = (arquivos: { nome: string; file: File | null }[]) => {
+    for (const { nome, file } of arquivos) if (file) arquivosRef.current.set(nome, file);
+    ultimoLoteRef.current = arquivos.filter(a => a.file).map(a => a.nome);
     setArquivosOriginais(prev => {
       const next = new Map(prev);
       let mudou = false;
@@ -879,7 +946,16 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
               <PackageSearch className="h-3.5 w-3.5" />
               {escopo.length} {escopo.length === 1 ? 'item' : 'itens'} no escopo · {propostas.length} {propostas.length === 1 ? 'proposta' : 'propostas'}
-              <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMercadoLivreAberto(true)}
+                  title="Proposta do Mercado Livre a partir do print do anúncio — sem leitura por IA, os dados são digitados"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-xs font-semibold text-yellow-900 transition-colors hover:bg-yellow-100 dark:border-yellow-700/60 dark:bg-yellow-950/30 dark:text-yellow-200"
+                >
+                  <span className="rounded bg-yellow-300 px-1 text-[9px] font-black text-slate-900">ML</span>
+                  Adicionar print Mercado Livre
+                </button>
                 <button
                   type="button"
                   onClick={() => setFase('pedidos')}
@@ -916,6 +992,14 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
               onArquivosEnviados={handleArquivosEnviados}
               onCarregarPropostas={handleCarregarPropostas}
             />
+
+            {mercadoLivreAberto && (
+              <MercadoLivrePropostaModal
+                escopo={escopo}
+                onClose={() => setMercadoLivreAberto(false)}
+                onAdicionar={handleAdicionarPropostaMl}
+              />
+            )}
 
             {propostasOrdenadas.map(p => (
               <PropostaCard

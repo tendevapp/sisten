@@ -6,13 +6,14 @@
  * (PDF / Imagem) antes da conversao e comparacao lado a lado (Split Screen) apos conversao.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Copy, Download, ExternalLink, Columns2, FileText, Code2, Upload,
   Image as ImageIcon, CheckCircle2, Sparkles, Play, Clock,
 } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { ACCEPT_CONVERSOR, type FormatoArquivo } from '../../lib/markdownConvert';
+import { useObjectUrl } from '../../lib/useObjectUrl';
 
 type ModoVisualizacao = 'dividido' | 'documento' | 'markdown';
 
@@ -51,18 +52,8 @@ export default function PreviewMarkdownModal({
     return temMidiaVisual ? 'dividido' : 'markdown';
   });
 
-  // Cria Blob URL para exibição do PDF ou Imagem
-  const fileUrl = useMemo(() => {
-    if (!file) return null;
-    return URL.createObjectURL(file);
-  }, [file]);
-
-  // Limpa Blob URL ao desmontar
-  useEffect(() => {
-    return () => {
-      if (fileUrl) URL.revokeObjectURL(fileUrl);
-    };
-  }, [fileUrl]);
+  // Blob URL para exibir o PDF ou a imagem (criado e revogado no mesmo efeito).
+  const fileUrl = useObjectUrl(file);
 
   const handleAbrirNovaGuia = () => {
     if (fileUrl) {

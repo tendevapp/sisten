@@ -21,7 +21,7 @@
  * pelo chamador.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ExternalLink, FileText, FileWarning, Columns2, Code2, Loader2,
   Image as ImageIcon, Pencil, Save, X as XIcon, CheckCircle2, UploadCloud,
@@ -36,8 +36,9 @@ import {
   vincularArquivoOriginalProposta,
 } from '../../lib/cotacoesApi';
 import { formatDateTimeBR } from '../../lib/format';
+import { useObjectUrl } from '../../lib/useObjectUrl';
 import { useToast } from '../ui/Toast';
-import type { ConversaoMarkdownLog } from '../../types';
+import type { ArquivoOriginalCotacao, ConversaoMarkdownLog } from '../../types';
 
 type Modo = 'dividido' | 'documento' | 'markdown';
 
@@ -48,6 +49,8 @@ interface VerCotacaoOriginalModalProps {
   file?: File | null;
   /** Caminho no bucket `cotacoes-arquivos`, para propostas já salvas. */
   storagePath?: string | null;
+  /** Todos os originais da proposta — com mais de um, o modal deixa alternar entre eles. */
+  arquivos?: ArquivoOriginalCotacao[] | null;
   /** Markdown já gravado na proposta (cópia editável). */
   markdown?: string | null;
   markdownEditadoEm?: string | null;
@@ -79,9 +82,18 @@ function BotaoModo({ ativo, onClick, icone: Icone, children }: { ativo: boolean;
 }
 
 export default function VerCotacaoOriginalModal({
-  nome, file, storagePath, markdown, markdownEditadoEm, markdownEditadoPor, propostaId, onClose, onEditarMarkdown, onArquivoVinculado,
+  nome: nomeProposta, file: fileProposta, storagePath: storagePathProposta, arquivos, markdown, markdownEditadoEm, markdownEditadoPor, propostaId, onClose, onEditarMarkdown, onArquivoVinculado,
 }: VerCotacaoOriginalModalProps) {
   const toast = useToast();
+
+  // Proposta de vários arquivos: escolhe qual mostrar. O arquivo em memória
+  // (`file`) é o do rótulo da proposta — com vários, vale o Storage de cada um.
+  const lista = arquivos ?? [];
+  const [indiceArquivo, setIndiceArquivo] = useState(0);
+  const selecionado = lista.length > 1 ? lista[Math.min(indiceArquivo, lista.length - 1)] : null;
+  const nome = selecionado?.nome ?? nomeProposta;
+  const file = selecionado ? null : fileProposta;
+  const storagePath = selecionado?.path ?? storagePathProposta;
 
   // Documento: file em memória > caminho salvo > busca automatica no Storage por nome
   const [caminhoStorage, setCaminhoStorage] = useState<string | null>(storagePath ?? null);
@@ -96,6 +108,7 @@ export default function VerCotacaoOriginalModal({
       setCaminhoStorage(storagePath);
     }
   }, [storagePath]);
+  const ehPlanilha = /\.(xlsx|xlsm|xls|ods|csv)$/i.test(nome);
 
   // Se nao temos file em memoria nem storagePath gravado, tenta auto-recuperar no Storage pelo nome
   useEffect(() => {
@@ -107,7 +120,7 @@ export default function VerCotacaoOriginalModal({
         if (cancelado || !achado) return;
         setCaminhoStorage(achado.storagePath);
         if (propostaId) {
-          void vincularArquivoOriginalProposta(propostaId, achado.storagePath, achado.mimeType, achado.tamanhoBytes);
+          void vincularArquivoOriginalProposta(propostaId, achado.storagePath, achado.mimeType, achado.tamanhoBytes, nome);
         }
         onArquivoVinculado?.(achado.storagePath, achado.mimeType, achado.tamanhoBytes);
       })
@@ -135,8 +148,7 @@ export default function VerCotacaoOriginalModal({
     return () => { cancelado = true; };
   }, [file, caminhoStorage]);
 
-  const fileUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
-  useEffect(() => () => { if (fileUrl) URL.revokeObjectURL(fileUrl); }, [fileUrl]);
+  const fileUrl = useObjectUrl(file);
   const docUrl = fileUrl ?? urlAssinada;
 
   // Markdown: cópia gravada na proposta > histórico de conversão (legado).
@@ -191,7 +203,7 @@ export default function VerCotacaoOriginalModal({
       setCaminhoStorage(enviado.path);
 
       if (propostaId) {
-        await vincularArquivoOriginalProposta(propostaId, enviado.path, enviado.mimeType, enviado.tamanhoBytes);
+        await vincularArquivoOriginalProposta(propostaId, enviado.path, enviado.mimeType, enviado.tamanhoBytes, novoFile.name);
       }
       onArquivoVinculado?.(enviado.path, enviado.mimeType, enviado.tamanhoBytes);
 
@@ -271,6 +283,26 @@ export default function VerCotacaoOriginalModal({
       </ModalHeader>
 
       <ModalBody className="p-3 sm:p-4">
+        {lista.length > 1 && (
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-slate-500">{lista.length} arquivos:</span>
+            {lista.map((a, i) => (
+              <button
+                key={a.path}
+                type="button"
+                onClick={() => setIndiceArquivo(i)}
+                title={a.nome}
+                className={`max-w-[14rem] truncate rounded-lg border px-2 py-1 text-[11px] font-semibold transition-colors ${
+                  i === indiceArquivo
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300'
+                    : 'border-slate-200 text-slate-600 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-300'
+                }`}
+              >
+                {a.nome}
+              </button>
+            ))}
+          </div>
+        )}
         <div className={`grid gap-3 ${modo === 'dividido' ? 'h-[70vh] grid-cols-1 lg:grid-cols-2' : 'h-[70vh] grid-cols-1'}`}>
           {mostraDocumento && (
             <div className="min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
@@ -295,7 +327,11 @@ export default function VerCotacaoOriginalModal({
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-slate-500">
                     <FileText className="h-8 w-8 text-slate-400" />
-                    <p className="text-xs font-medium">Não é possível pré-visualizar este tipo de arquivo aqui.</p>
+                    <p className="text-xs font-medium">
+                      {ehPlanilha
+                        ? 'Planilha não tem pré-visualização aqui — use "Abrir em nova guia" para baixar. O conteúdo lido está no Markdown.'
+                        : 'Não é possível pré-visualizar este tipo de arquivo aqui.'}
+                    </p>
                   </div>
                 )
               ) : (
@@ -304,12 +340,12 @@ export default function VerCotacaoOriginalModal({
                   <p className="max-w-xs text-xs font-medium text-slate-500 dark:text-slate-400">
                     {caminhoStorage
                       ? 'Não foi possível carregar o arquivo original do Storage.'
-                      : 'Arquivo original (PDF/imagem) não localizado automaticamente para esta proposta.'}
+                      : 'O arquivo original desta proposta não foi guardado quando ela foi salva. Anexe o arquivo para deixá-lo disponível a todos.'}
                   </p>
                   <input
                     ref={inputAnexoRef}
                     type="file"
-                    accept="application/pdf,image/*"
+                    accept="application/pdf,image/*,.xlsx,.xlsm,.xls,.ods,.csv"
                     className="hidden"
                     onChange={handleAnexarArquivo}
                   />
@@ -320,7 +356,7 @@ export default function VerCotacaoOriginalModal({
                     className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
                   >
                     <UploadCloud className="h-3.5 w-3.5" />
-                    Anexar PDF / Imagem
+                    Anexar arquivo original
                   </button>
                   {temMarkdown && (
                     <p className="text-[11px] text-slate-400">

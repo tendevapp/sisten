@@ -6,22 +6,34 @@
  * sessionStorage) antes de criar o processo de cotação. O título já vem com
  * o número da(s) RM(s) e aceita um texto complementar — o número do
  * processo é gerado automaticamente.
+ *
+ * O complemento já nasce com a primeira palavra da descrição de cada item
+ * ("Sinaleiro", cortado com "..." se ficar longo). "Tem item do Mercado
+ * Livre?" acrescenta "Mercado Livre" ao título e marca o processo — é o que
+ * acende a tag ML na Central de Compras.
  */
 
 import React, { useState } from 'react';
 import { PackageSearch, Loader2, ArrowRight } from 'lucide-react';
 import { montarTituloProcesso, prefixoTituloRm } from '../../lib/cotacoes';
+import { complementoComMercadoLivre, complementoPelasDescricoes } from '../../lib/cotacaoMercadoLivre';
 import type { CotacaoProcessoItemDraft } from '../../types';
 
 interface NovoProcessoPanelProps {
   itens: CotacaoProcessoItemDraft[];
   criando: boolean;
-  onCriar: (titulo: string | null, observacoes: string | null) => void;
+  onCriar: (titulo: string | null, observacoes: string | null, mercadoLivre: boolean) => void;
   onCancelar: () => void;
 }
 
 export default function NovoProcessoPanel({ itens, criando, onCriar, onCancelar }: NovoProcessoPanelProps) {
-  const [complemento, setComplemento] = useState('');
+  const [complemento, setComplemento] = useState(() => complementoPelasDescricoes(itens.map(i => i.texto_breve)));
+  const [mercadoLivre, setMercadoLivre] = useState(false);
+
+  const alternarMercadoLivre = (valor: boolean) => {
+    setMercadoLivre(valor);
+    setComplemento(atual => complementoComMercadoLivre(atual, valor));
+  };
   const [observacoes, setObservacoes] = useState('');
 
   const rms = Array.from(new Set(itens.map(i => i.rm).filter(Boolean)));
@@ -68,6 +80,26 @@ export default function NovoProcessoPanel({ itens, criando, onCriar, onCancelar 
                 placeholder={prefixoRm ? 'Texto complementar (opcional)' : 'Ex.: Parafusos e porcas — obra X'}
                 className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none dark:text-slate-100"
               />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Tem item do Mercado Livre?</span>
+              {[true, false].map(v => (
+                <button
+                  key={String(v)}
+                  type="button"
+                  aria-pressed={mercadoLivre === v}
+                  onClick={() => alternarMercadoLivre(v)}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                    mercadoLivre === v
+                      ? v
+                        ? 'border-yellow-400 bg-yellow-300 text-slate-900'
+                        : 'border-slate-400 bg-slate-200 text-slate-800 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
+                  }`}
+                >
+                  {v ? 'Sim' : 'Não'}
+                </button>
+              ))}
             </div>
             {prefixoRm && complemento.trim() && (
               <p className="mt-1 truncate text-[11px] text-slate-400" title={montarTituloProcesso(prefixoRm, complemento) ?? undefined}>
@@ -121,7 +153,7 @@ export default function NovoProcessoPanel({ itens, criando, onCriar, onCancelar 
           </button>
           <button
             type="button"
-            onClick={() => onCriar(montarTituloProcesso(prefixoRm, complemento), observacoes.trim() || null)}
+            onClick={() => onCriar(montarTituloProcesso(prefixoRm, complemento), observacoes.trim() || null, mercadoLivre)}
             disabled={criando}
             className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:pointer-events-none disabled:opacity-40"
           >

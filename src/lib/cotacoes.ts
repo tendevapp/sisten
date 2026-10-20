@@ -727,6 +727,7 @@ export function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft
     campos_faltantes: p.campos_faltantes, revisado: p.revisado, extracao_id: p.extracao_id,
     extraido_raw: p.extraido_raw as any,
     arquivo_storage_path: p.arquivo_storage_path, arquivo_mime_type: p.arquivo_mime_type,
+    arquivos_originais: p.arquivos_originais ?? [],
     arquivo_tamanho_bytes: p.arquivo_tamanho_bytes, arquivo_markdown: p.arquivo_markdown,
     arquivo_markdown_editado_em: p.arquivo_markdown_editado_em, arquivo_markdown_editado_por: p.arquivo_markdown_editado_por,
     observacoes: p.observacoes, dados_bancarios: p.dados_bancarios,
@@ -763,7 +764,7 @@ export function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft
 
 const CAMPOS_INTERNOS_PROPOSTA = new Set<string>([
   '_key', '_salvo', '_extraido_em', 'itens', 'extraido_raw', 'extracao_id', 'campos_faltantes', 'revisado',
-  'arquivo_origem', 'arquivo_storage_path', 'arquivo_mime_type', 'arquivo_tamanho_bytes',
+  'arquivo_origem', 'arquivo_storage_path', 'arquivo_mime_type', 'arquivo_tamanho_bytes', 'arquivos_originais',
   'arquivo_markdown', 'arquivo_markdown_editado_em', 'arquivo_markdown_editado_por',
   'cod_vendor', 'contato_id', 'fornecedor_match',
 ]);

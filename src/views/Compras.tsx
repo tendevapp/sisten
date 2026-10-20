@@ -347,6 +347,20 @@ const EstoqueTagBadge = ({ situacao }: { situacao: SituacaoEstoqueMaterial | nul
 
 const SEM_TAG_ESTOQUE = 'SEM';
 
+/** Item em processo de cotação marcado como compra pelo Mercado Livre. */
+const MercadoLivreTag = ({ cotacoes }: { cotacoes: CotacaoItemVinculo[] }) => {
+  const ml = cotacoes.filter(c => c.mercadoLivre);
+  if (ml.length === 0) return null;
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[9px] font-black tracking-wide uppercase whitespace-nowrap"
+      title={`Item com compra pelo Mercado Livre — ${ml.map(c => c.numero).join(', ')}`}
+    >
+      Mercado Livre
+    </span>
+  );
+};
+
 const MigoBadge = ({ dataMigo }: { dataMigo?: string }) => (
   <span className={`flex items-center gap-0.5 ${dataMigo ? 'text-emerald-600 dark:text-emerald-450' : 'text-amber-600 dark:text-amber-450'}`}>
     {dataMigo ? `MIGO: ${formatDateBR(dataMigo)}` : 'Sem MIGO'}
@@ -2944,6 +2958,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             <>
                               <span className="text-[10px] text-slate-350">•</span>
                               <div className="inline-flex items-center gap-1 flex-wrap">
+                                <MercadoLivreTag cotacoes={cotacoesVinculadas} />
                                 {cotacoesVinculadas.map(c => (
                                   <a
                                     key={c.processoId}
@@ -3339,6 +3354,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         <td className="py-3 px-3 w-[130px] whitespace-nowrap">
                           {cotacoesVinculadas.length > 0 ? (
                             <div className="flex flex-col gap-1 items-start">
+                              <MercadoLivreTag cotacoes={cotacoesVinculadas} />
                               {cotacoesVinculadas.map(c => (
                                 <a
                                   key={c.processoId}

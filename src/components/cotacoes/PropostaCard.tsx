@@ -485,6 +485,7 @@ export default function PropostaCard({
           nome={proposta.arquivo_origem}
           file={arquivoOriginal}
           storagePath={proposta.arquivo_storage_path}
+          arquivos={proposta.arquivos_originais}
           markdown={proposta.arquivo_markdown}
           markdownEditadoEm={proposta.arquivo_markdown_editado_em}
           markdownEditadoPor={proposta.arquivo_markdown_editado_por}
@@ -495,6 +496,7 @@ export default function PropostaCard({
               arquivo_storage_path: path,
               arquivo_mime_type: mimeType,
               arquivo_tamanho_bytes: tamanhoBytes,
+              arquivos_originais: [{ nome: proposta.arquivo_origem ?? path.split('/').pop() ?? path, path, mime_type: mimeType, tamanho_bytes: tamanhoBytes }],
             });
           }}
           onClose={() => setPreviewArquivoAberto(false)}

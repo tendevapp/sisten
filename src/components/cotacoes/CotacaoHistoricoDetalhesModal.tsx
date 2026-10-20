@@ -18,6 +18,7 @@ import {
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { supabase } from '../../db/supabaseClient';
 import { formatBRL, formatDateTimeBR } from '../../lib/format';
+import { useObjectUrl } from '../../lib/useObjectUrl';
 import type { ItemHistoricoCotacao, PropostaHistoricaResumo } from '../../lib/cotacoesHistoricoApi';
 
 interface CotacaoHistoricoDetalhesModalProps {
@@ -67,16 +68,7 @@ export default function CotacaoHistoricoDetalhesModal({
   const [arquivoPdf, setArquivoPdf] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fileUrl = useMemo(() => {
-    if (!arquivoPdf) return null;
-    return URL.createObjectURL(arquivoPdf);
-  }, [arquivoPdf]);
-
-  useEffect(() => {
-    return () => {
-      if (fileUrl) URL.revokeObjectURL(fileUrl);
-    };
-  }, [fileUrl]);
+  const fileUrl = useObjectUrl(arquivoPdf);
 
   // Carrega todos os itens da cotação no Supabase
   useEffect(() => {
