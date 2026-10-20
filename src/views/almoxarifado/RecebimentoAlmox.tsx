@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, FileDown, FileSpreadsheet, HardHat, Loader2,
-  ClipboardList, GraduationCap, MessageSquareReply, PackageCheck, PackageMinus, Plus, RefreshCw, Search, ShieldAlert, ShoppingCart, Truck, X,
+  ClipboardList, ClipboardPlus, GraduationCap, MessageSquareReply, PackageCheck, PackageMinus, Plus, RefreshCw, Search, ShieldAlert, ShoppingCart, Truck, X,
 } from 'lucide-react';
 import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -180,6 +180,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
 
   const podeRecebimento = canAccessForm(user, 'form_almoxarifado_recebimento');
   const podeBalcao = canAccessForm(user, 'form_almoxarifado_requisicao_balcao');
+  const podeSolicitacaoExtra = canAccessForm(user, 'form_almoxarifado_solicitacao_extra');
   const podeInventario = canAccessForm(user, 'form_almoxarifado_inventario');
   const podeCatalogo = canAccessForm(user, 'form_almoxarifado_cadastro_itens');
   const podeFichaEpi = canAccessForm(user, 'form_almoxarifado_ficha_epi');
@@ -216,7 +217,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
     },
   ];
 
-  // A requisição no balcão (FRM.ALM-0014), o inventário cíclico (FRM.ALM-0015)
+  // A requisição no balcão (FRM.ALM-0014), a solicitação extraordinária
+  // (FRM.ALM-0013), o inventário cíclico (FRM.ALM-0015)
   // e o cadastro de itens (FRM.ALM-0016) são outros formulários, com rota e
   // permissão próprias; o card só leva até eles.
   type CardHub = {
@@ -236,6 +238,16 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       icon: PackageMinus,
       cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400',
       badge: 'FRM.ALM-0014',
+    }] : []),
+    ...(podeSolicitacaoExtra ? [{
+      id: 'hub' as Vista,
+      rota: '/formularios/almoxarifado-solicitacao-extra',
+      codigo: 'SEM',
+      titulo: 'Solicitação extraordinária',
+      desc: 'Saída de material estrutural ainda sem saldo (NF não lançada), com o motivo — a baixa fica pendente até a regularização no SAP.',
+      icon: ClipboardPlus,
+      cor: 'bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-400',
+      badge: 'FRM.ALM-0013',
     }] : []),
     ...(podeInventario ? [{
       id: 'hub' as Vista,

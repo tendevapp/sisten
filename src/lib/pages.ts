@@ -319,6 +319,21 @@ export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
     },
   },
   {
+    // Nasce só admin + setor Almoxarifado (regra 4): quem mais precisar o
+    // admin libera na Gestão de Acessos.
+    id: 'form_almoxarifado_solicitacao_extra',
+    grupoId: 'almoxarifado',
+    label: 'Solicitação Extraordinária de Materiais Estruturais',
+    codigo: 'FRM.ALM-0013',
+    descricao: 'Saída de material ainda sem saldo na ZL0024 (NF não lançada), com motivo — a baixa é regularizada no SAP depois',
+    path: '/formularios/almoxarifado-solicitacao-extra',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['2'],
+      keywords: ['almoxarifado', 'almox'],
+    },
+  },
+  {
     id: 'form_almoxarifado_inventario',
     grupoId: 'almoxarifado',
     label: 'Inventário Cíclico',

@@ -170,6 +170,8 @@ const TABELAS: Record<string, ConfigTabela> = {
   alm_receb_cargas: { rotulo: 'Recebimento — ficha cega', resumo: campos('codigo', 'transportadora', 'nota_fiscal') },
   alm_receb_conferencias: { rotulo: 'Recebimento — conferência', resumo: campos('codigo') },
   alm_receb_nc: { rotulo: 'Recebimento — não conformidade', resumo: campos('codigo') },
+  // O código SEM sai do trigger no banco, no envio. A regularização (doc SAP) não entra: é de escritório.
+  alm_solicitacao_extra: { rotulo: 'Solicitação extraordinária de materiais', resumo: campos('codigo', 'tramo', 'projeto') },
 };
 
 // ---------------------------------------------------------------------

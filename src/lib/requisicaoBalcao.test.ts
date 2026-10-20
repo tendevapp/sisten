@@ -4,7 +4,7 @@ import {
   alertaDaLinha, atualizarQtdItemDoGrupo, buscarMateriais, buscarMateriaisEmDepositos, criarGrupoPep,
   definirDepositoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
   removerItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao, type LinhaBalcao, localizarMaterialParaSaida,
-  DEPOSITO_PADRAO_BALCAO, DEPOSITO_EPI, semDepositosSemSaida, PEP_EPI_DEMAIS_SETORES, PEP_EPI_PRODUCAO, itensRequisicaoDaFicha, sugerirPepEpi,
+  DEPOSITO_PADRAO_BALCAO, DEPOSITO_EPI, semDepositosSemSaida, somenteComSaldo, PEP_EPI_DEMAIS_SETORES, PEP_EPI_PRODUCAO, itensRequisicaoDaFicha, sugerirPepEpi,
 } from './requisicaoBalcao';
 import type { EstoqueItem } from '../types';
 
@@ -51,6 +51,12 @@ describe('buscarMateriais', () => {
 
 describe('buscarMateriaisEmDepositos', () => {
   const idx = indexarEstoquePorDeposito(estoque);
+
+  it('a lista de escolha (somenteComSaldo) não mostra material com saldo 0', () => {
+    expect(buscarMateriaisEmDepositos(idx, '9999999').map((m) => m.material)).toEqual(['9999999']);
+    expect(buscarMateriaisEmDepositos(somenteComSaldo(idx), '9999999')).toEqual([]);
+    expect(buscarMateriaisEmDepositos(somenteComSaldo(idx), '1291134')).toHaveLength(2);
+  });
 
   it('sem depósito fixo, traz o material em cada depósito onde tem saldo', () => {
     const r = buscarMateriaisEmDepositos(idx, '1291134');

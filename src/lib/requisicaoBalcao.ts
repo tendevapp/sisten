@@ -148,6 +148,14 @@ export function semDepositosSemSaida(
   return new Map([...estoquePorDeposito].filter(([dep]) => !DEPOSITOS_SEM_SAIDA.has(chaveDeposito(dep))));
 }
 
+/** Índice de estoque só com os materiais de saldo positivo — o que a lista de escolha mostra. */
+export function somenteComSaldo(
+  estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
+): Map<string, Map<string, MaterialDisponivel>> {
+  return new Map([...estoquePorDeposito].map(([dep, mapa]) =>
+    [dep, new Map([...mapa].filter(([, item]) => item.saldo > 0))]));
+}
+
 /**
  * Busca de material em todos os depósitos — escolher o item define o depósito
  * de saída, sem o almoxarife precisar saber onde ele está. Com

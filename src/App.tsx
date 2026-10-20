@@ -75,6 +75,7 @@ const ExpedicaoRelatorioLeadTime = lazy(() => import('./views/expedicao/Expedica
 const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
 const RecebimentoAlmox = lazy(() => import('./views/almoxarifado/RecebimentoAlmox'));
 const RequisicaoBalcao = lazy(() => import('./views/almoxarifado/RequisicaoBalcao'));
+const SolicitacaoExtraordinaria = lazy(() => import('./views/almoxarifado/SolicitacaoExtraordinaria'));
 const InventarioCiclico = lazy(() => import('./views/almoxarifado/InventarioCiclico'));
 const InventarioAnalise = lazy(() => import('./views/almoxarifado/InventarioAnalise'));
 const Gemba = lazy(() => import('./views/almoxarifado/Gemba'));
@@ -846,7 +847,7 @@ export default function App() {
         if (
           canAccessPage(user, 'formularios') &&
           (canAccessForm(user, 'form_almoxarifado_recebimento') || canAccessForm(user, 'form_almoxarifado_requisicao_balcao') ||
-            canAccessForm(user, 'form_almoxarifado_inventario') || canAccessForm(user, 'form_almoxarifado_cadastro_itens') ||
+            canAccessForm(user, 'form_almoxarifado_solicitacao_extra') || canAccessForm(user, 'form_almoxarifado_inventario') || canAccessForm(user, 'form_almoxarifado_cadastro_itens') ||
             canAccessForm(user, 'form_almoxarifado_ficha_epi'))
         ) {
           return <RecebimentoAlmox user={user} onNavigate={handleNavigate} />;
@@ -867,6 +868,12 @@ export default function App() {
             canAccessForm(user, 'form_almoxarifado_ficha_epi'))
         ) {
           return <RequisicaoBalcao user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/almoxarifado-solicitacao-extra':
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_almoxarifado_solicitacao_extra')) {
+          return <SolicitacaoExtraordinaria user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

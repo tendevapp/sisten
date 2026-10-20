@@ -35,7 +35,7 @@ import {
 } from '../../lib/almoxarifado';
 import {
   PREFIXO_REQ_BALCAO, ROTULO_TIPO_MOVIMENTO, adicionarGrupoPep, adicionarItemAoGrupo, adicionarLinha,
-  alertaDaLinha, alertasRequisicao, achatarGruposPep, agruparLinhasPorDeposito, agruparLinhasPorDestino, agruparLinhasPorPep, buscarMateriaisEmDepositos, chaveDeposito, localizarMaterialParaSaida, semDepositosSemSaida,
+  alertaDaLinha, alertasRequisicao, achatarGruposPep, agruparLinhasPorDeposito, agruparLinhasPorDestino, agruparLinhasPorPep, buscarMateriaisEmDepositos, chaveDeposito, localizarMaterialParaSaida, semDepositosSemSaida, somenteComSaldo,
   criarGrupoPep, definirDepositoDoGrupo, definirDestinoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
   removerItemDoGrupo, atualizarQtdItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao,
   type GrupoPepBalcao, type LinhaBalcao, type MaterialDisponivel, type MaterialNoDeposito, type PepAplicacao, type TipoMovimentoBalcao,
@@ -1741,13 +1741,15 @@ function AdicionarItem({
 
   // 0105 (Transferência Produção) é só destino: nunca há saída dele, então não é opção de item.
   const estoqueComSaida = useMemo(() => semDepositosSemSaida(estoquePorDeposito), [estoquePorDeposito]);
+  // A lista de escolha não mostra material com saldo 0 na ZL0024 (o QR e o "Adicionar sem saldo" seguem aceitando).
+  const estoqueComSaldo = useMemo(() => somenteComSaldo(estoqueComSaida), [estoqueComSaida]);
   const resultados = useMemo(
-    () => buscarMateriaisEmDepositos(estoqueComSaida, texto, depositoFixo, isDepositoInativo),
-    [estoqueComSaida, texto, depositoFixo],
+    () => buscarMateriaisEmDepositos(estoqueComSaldo, texto, depositoFixo, isDepositoInativo),
+    [estoqueComSaldo, texto, depositoFixo],
   );
   const totalMateriais = depositoFixo
-    ? estoqueComSaida.get(depositoFixo)?.size ?? 0
-    : new Set([...estoqueComSaida.values()].flatMap((m) => [...m.keys()])).size;
+    ? estoqueComSaldo.get(depositoFixo)?.size ?? 0
+    : new Set([...estoqueComSaldo.values()].flatMap((m) => [...m.keys()])).size;
 
   const escolher = (m: MaterialNoDeposito | undefined) => {
     if (!m) return;
