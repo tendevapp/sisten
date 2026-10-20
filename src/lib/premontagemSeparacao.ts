@@ -15,14 +15,17 @@ import type { ProjItem, ProjOrdemItem } from '../types';
 type ItemRomaneio = Pick<ProjOrdemItem, 'id' | 'separado' | 'qtd_separada' | 'qtd_total'>;
 
 /**
- * Localização para buscar o item: a gravada no romaneio na abertura da ordem
- * e, sem ela, a atual do cadastro do projeto.
+ * Localização para buscar a peça: a posição do Cadastro de Itens › Itens BOM
+ * (`alm_bom_itens_cadastro.posicao_estoque`, mantida pelo almoxarifado — é a
+ * que vale hoje); sem ela, a gravada no romaneio na abertura e, por fim, a do
+ * cadastro do projeto.
  */
 export function localizacaoDoItem(
   oi: Pick<ProjOrdemItem, 'localizador'>,
   item?: Pick<ProjItem, 'localizador'> | null,
+  cadastroBom?: { posicao_estoque: string | null } | null,
 ): string | null {
-  return oi.localizador?.trim() || item?.localizador?.trim() || null;
+  return cadastroBom?.posicao_estoque?.trim() || oi.localizador?.trim() || item?.localizador?.trim() || null;
 }
 
 /**

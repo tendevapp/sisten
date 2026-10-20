@@ -22,8 +22,10 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, Ban, ChevronDown, ChevronRight, Loader2, MapPin, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Ban, Camera, ChevronDown, ChevronRight, Loader2, MapPin, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
+import { useLightbox } from '../ui/Lightbox';
+import type { CadastroBom } from '../../lib/almoxBomCadastroApi';
 import { useToast } from '../ui/Toast';
 import { Campo, inputCls } from './campos';
 import { formatDateTimeBR, formatQtd } from '../../lib/format';
@@ -40,6 +42,8 @@ import type { Profile, ProjItem, ProjOrdemItem, ProjOrdemPremontagem } from '../
 
 interface Props {
   ordem: ProjOrdemPremontagem;
+  /** Cadastro de Itens › Itens BOM, por part number normalizado: posição e foto. */
+  cadastroBom?: Map<string, CadastroBom>;
   user: Profile;
   arvore: ArvoreBom;
   itens: ProjItem[];
@@ -50,9 +54,10 @@ interface Props {
 }
 
 export default function ModalEditarOrdemPremontagem({
-  ordem, user, arvore, itens, itemPorPn, saldoPorPn, onFechar, onSalvo,
+  ordem, cadastroBom, user, arvore, itens, itemPorPn, saldoPorPn, onFechar, onSalvo,
 }: Props) {
   const toast = useToast();
+  const lb = useLightbox();
   const usuario = { id: user.id, nome: user.name };
 
   const [observacao, setObservacao] = useState(ordem.observacao ?? '');
@@ -397,7 +402,8 @@ export default function ModalEditarOrdemPremontagem({
 
             const linha = (oi: ProjOrdemItem) => {
               const item = itemPorId.get(oi.item_id);
-              const local = localizacaoDoItem(oi, item);
+              const cadastro = item ? cadastroBom?.get(item.part_number_norm) : undefined;
+              const local = localizacaoDoItem(oi, item, cadastro);
               const emEdicao = qtdEmEdicao[oi.id] !== undefined;
               const falta = !oi.separado;
               const valor = emEdicao ? qtdEmEdicao[oi.id] : falta ? String(oi.qtd_total) : String(oi.qtd_separada);
@@ -419,6 +425,20 @@ export default function ModalEditarOrdemPremontagem({
                       >
                         <MapPin className="h-3 w-3" /> {local ?? 'Sem localização'}
                       </span>
+                      {cadastro?.url_imagem ? (
+                        <button
+                          type="button"
+                          onClick={() => lb.abrir([{ url: cadastro.url_imagem!, legenda: `${item?.part_number ?? ''} — ${item?.descricao || item?.description || ''}${local ? ` · ${local}` : ''}` }])}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold cursor-pointer hover:opacity-80"
+                          style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+                        >
+                          <Camera className="h-3 w-3" /> Ver foto
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                          <Camera className="h-3 w-3" /> Sem foto
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -634,6 +654,7 @@ export default function ModalEditarOrdemPremontagem({
           <X className="h-3.5 w-3.5" /> Fechar
         </button>
       </ModalFooter>
+      {lb.elemento}
     </Modal>
   );
 }

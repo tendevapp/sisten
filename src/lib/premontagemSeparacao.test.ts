@@ -5,6 +5,11 @@ const item = (id: string, separado: boolean, qtd_total: number, qtd_separada = s
   ({ id, separado, qtd_total, qtd_separada });
 
 describe('localizacaoDoItem', () => {
+  it('usa a do Cadastro de Itens BOM primeiro', () => {
+    expect(localizacaoDoItem({ localizador: 'R2-A3' }, { localizador: 'R9' }, { posicao_estoque: '101.020301' })).toBe('101.020301');
+    expect(localizacaoDoItem({ localizador: 'R2-A3' }, null, { posicao_estoque: null })).toBe('R2-A3');
+  });
+
   it('usa a do romaneio e, sem ela, a do cadastro', () => {
     expect(localizacaoDoItem({ localizador: 'R2-A3' }, { localizador: 'R9' })).toBe('R2-A3');
     expect(localizacaoDoItem({ localizador: '  ' }, { localizador: 'R9' })).toBe('R9');

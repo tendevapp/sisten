@@ -30,8 +30,10 @@
  * só ao confirmar a separação o sistema debita o que foi de fato separado.
  */
 
-import React, { useMemo, useState } from 'react';
-import { AlertCircle, Check, ChevronDown, ChevronRight, ClipboardList, FileSpreadsheet, FileText, Loader2, MapPin, PackageX, PackageCheck, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, Check, ChevronDown, ChevronRight, ClipboardList, FileSpreadsheet, FileText, Camera, Loader2, MapPin, PackageX, PackageCheck, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
+import { useLightbox } from '../ui/Lightbox';
+import { listarCadastrosBom, type CadastroBom } from '../../lib/almoxBomCadastroApi';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { TableCards, TableCardRow, TableDesktop, TableEmpty } from '../ui/DataTable';
 import { useToast } from '../ui/Toast';
@@ -40,7 +42,7 @@ import CadastroItensDesconsiderados from './CadastroItensDesconsiderados';
 import ModalEditarOrdemPremontagem from './ModalEditarOrdemPremontagem';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { formatDateTimeBR, formatInt, formatQtd } from '../../lib/format';
-import { PREFIXO, TRAMOS, type Tramo } from '../../lib/projetos';
+import { PREFIXO, PROJETO_PADRAO, TRAMOS, type Tramo } from '../../lib/projetos';
 import { subconjuntosDoTramo, type ArvoreBom, type ConsumoItem } from '../../lib/projetosBom';
 import { zonasDoTramo, zonaPorId, zonasPendentes, consumoDaZona, rotuloTramoComZona, type ZonaDef, type ZonaId } from '../../lib/projetosZonas';
 import PdfPreviewModal from '../ui/PdfPreviewModal';
@@ -101,6 +103,18 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
   const { tramo, zona } = opcao;
 
   const itemPorId = useMemo(() => new Map(itens.map((i) => [i.id, i])), [itens]);
+
+  // Localização e foto das peças: Cadastro de Itens › Itens BOM (o almoxarifado
+  // mantém a posição e a foto ali), por part number.
+  const projetoDasOrdens = ordens[0]?.projeto ?? PROJETO_PADRAO;
+  const [cadastroBom, setCadastroBom] = useState<Map<string, CadastroBom>>(new Map());
+  useEffect(() => {
+    let ativo = true;
+    listarCadastrosBom(projetoDasOrdens)
+      .then((mapa) => { if (ativo) setCadastroBom(mapa); })
+      .catch((err) => console.warn('Cadastro de Itens BOM indisponível na pré-montagem:', err));
+    return () => { ativo = false; };
+  }, [projetoDasOrdens]);
 
   /** Por tramo_unidade_id: quais zonas já têm ordem registrada (não excluída). */
   const zonasSeparadasPorUnidade = useMemo(() => {
@@ -576,6 +590,7 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
         <ModalSeparacao
           ordem={ordemSeparar}
           itemPorId={itemPorId}
+          cadastroBom={cadastroBom}
           user={user}
           // Fechar no meio recarrega: a fila mostra o progresso e, ao voltar, a tela abre com o que já foi marcado.
           onCancelar={() => { setOrdemSeparar(null); void recarregar(true); }}
@@ -596,6 +611,7 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
       {ordemEditar && (
         <ModalEditarOrdemPremontagem
           ordem={ordemEditar}
+          cadastroBom={cadastroBom}
           user={user}
           arvore={arvore}
           itens={itens}
@@ -622,15 +638,18 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
  * sem o kit completo.
  */
 function ModalSeparacao({
-  ordem, itemPorId, user, onCancelar, onConfirmado,
+  ordem, itemPorId, cadastroBom, user, onCancelar, onConfirmado,
 }: {
   ordem: ProjOrdemPremontagem;
   itemPorId: Map<string, ProjItem>;
+  /** Cadastro de Itens › Itens BOM, por part number normalizado: posição e foto. */
+  cadastroBom: Map<string, CadastroBom>;
   user: Profile;
   onCancelar: () => void;
   onConfirmado: () => void;
 }) {
   const toast = useToast();
+  const lb = useLightbox();
   const [itens, setItens] = useState<ProjOrdemItem[]>(ordem.itens ?? []);
   /** Retrato de quando a tela abriu: o que já vinha separado vai para o resumo recolhível. */
   const [idsSeparadosAoAbrir] = useState(() => new Set((ordem.itens ?? []).filter((i) => i.separado).map((i) => i.id)));
@@ -732,7 +751,8 @@ function ModalSeparacao({
 
   const linha = (oi: ProjOrdemItem) => {
     const item = itemPorId.get(oi.item_id);
-    const local = localizacaoDoItem(oi, item);
+    const cadastro = item ? cadastroBom.get(item.part_number_norm) : undefined;
+    const local = localizacaoDoItem(oi, item, cadastro);
     const delta = oi.separado ? oi.qtd_separada - oi.qtd_total : 0;
     const tom = oi.separado && delta !== 0 ? tomDivergencia(delta) : null;
     return (
@@ -763,6 +783,20 @@ function ModalSeparacao({
               >
                 <MapPin className="h-3 w-3" /> {local ?? 'Sem localização'}
               </span>
+              {cadastro?.url_imagem ? (
+                <button
+                  type="button"
+                  onClick={() => lb.abrir([{ url: cadastro.url_imagem!, legenda: `${item?.part_number ?? ''} — ${item?.descricao || item?.description || ''}${local ? ` · ${local}` : ''}` }])}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold cursor-pointer hover:opacity-80"
+                  style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+                >
+                  <Camera className="h-3 w-3" /> Ver foto
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                  <Camera className="h-3 w-3" /> Sem foto
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -944,6 +978,7 @@ function ModalSeparacao({
           </>
         )}
       </ModalFooter>
+      {lb.elemento}
     </Modal>
   );
 }
