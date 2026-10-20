@@ -477,6 +477,25 @@ export async function adicionarItemPremontagem(
   return data as string;
 }
 
+/**
+ * Tira do romaneio itens que ainda não foram separados (nada debitado) —
+ * para encerrar a ordem sem o kit completo. Linhas já separadas são
+ * ignoradas pela RPC. Devolve quantas saíram.
+ */
+export async function removerItensPremontagem(
+  ordemId: string,
+  ordemItemIds: string[],
+  usuario: { id?: string | null; nome: string },
+): Promise<number> {
+  const { data, error } = await supabase.rpc('proj_remover_itens_premontagem' as any, {
+    p_ordem_id: ordemId,
+    p_ordem_item_ids: ordemItemIds,
+    p_usuario: usuario,
+  } as any);
+  if (error) lancarErroRpc(error, 'Falha ao tirar os itens do romaneio');
+  return Number(data) || 0;
+}
+
 export async function listarAlteracoesPremontagem(ordemId: string): Promise<AlteracaoOrdemPremontagem[]> {
   const { data, error } = await db('proj_ordens_premontagem_alteracoes')
     .select('*')

@@ -22,7 +22,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, Ban, Loader2, Plus, RefreshCw, Save, X } from 'lucide-react';
+import { AlertTriangle, Ban, ChevronDown, ChevronRight, Loader2, MapPin, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 import { Campo, inputCls } from './campos';
@@ -32,9 +32,10 @@ import { subconjuntosDoTramo, type ArvoreBom } from '../../lib/projetosBom';
 import { consumoDaZona, zonasDoTramo, zonaPorId, type ZonaDef } from '../../lib/projetosZonas';
 import {
   adicionarItemPremontagem, cancelarOrdemPremontagem, editarCabecalhoPremontagem, editarItemPremontagem,
-  listarAlteracoesPremontagem, trocarZonaPremontagem,
+  listarAlteracoesPremontagem, removerItensPremontagem, trocarZonaPremontagem,
   type AlteracaoOrdemPremontagem, type TrocarZonaItemInput,
 } from '../../lib/projetosApi';
+import { dividirRomaneio, itensRemoviveis, localizacaoDoItem, resumoSeparacao } from '../../lib/premontagemSeparacao';
 import type { Profile, ProjItem, ProjOrdemItem, ProjOrdemPremontagem } from '../../types';
 
 interface Props {
@@ -61,6 +62,10 @@ export default function ModalEditarOrdemPremontagem({
   const [itensOrdem, setItensOrdem] = useState(ordem.itens ?? []);
   const [qtdEmEdicao, setQtdEmEdicao] = useState<Record<string, string>>({});
   const [salvandoItemId, setSalvandoItemId] = useState<string | null>(null);
+  const [removendo, setRemovendo] = useState(false);
+  /** Retrato de quando a tela abriu: o que já vinha separado vai para o resumo recolhível. */
+  const [idsSeparadosAoAbrir] = useState(() => new Set((ordem.itens ?? []).filter((i) => i.separado).map((i) => i.id)));
+  const [resumoAberto, setResumoAberto] = useState(false);
 
   const [buscaItem, setBuscaItem] = useState('');
   const [itemNovoId, setItemNovoId] = useState('');
@@ -124,8 +129,33 @@ export default function ModalEditarOrdemPremontagem({
     }
   };
 
-  const salvarItem = async (itemId: string) => {
-    const bruto = qtdEmEdicao[itemId];
+  /** Tira do romaneio itens que ficaram sem separar (nada debitado) — encerrar sem o kit completo. */
+  const removerItens = async (alvo: ProjOrdemItem[]) => {
+    if (!alvo.length) return;
+    const pn = (oi: ProjOrdemItem) => itemPorId.get(oi.item_id)?.part_number ?? oi.item_id;
+    const ok = window.confirm(
+      alvo.length === 1
+        ? `Tirar ${pn(alvo[0])} do romaneio? Ele não será separado nem debitado nesta ordem.`
+        : `Tirar os ${alvo.length} itens que faltam separar do romaneio? Eles não serão separados nem debitados nesta ordem.`,
+    );
+    if (!ok) return;
+    setRemovendo(true);
+    try {
+      const qtd = await removerItensPremontagem(ordem.id, alvo.map((i) => i.id), usuario);
+      const ids = new Set(alvo.map((i) => i.id));
+      setItensOrdem((atual) => atual.filter((i) => !ids.has(i.id)));
+      toast.success(`${qtd} item(ns) fora do romaneio.`);
+      onSalvo();
+    } catch (err: any) {
+      toast.error(err?.message || 'Não foi possível tirar os itens do romaneio.');
+    } finally {
+      setRemovendo(false);
+    }
+  };
+
+  /** Grava a quantidade digitada — ou, no item que falta separar, a prevista quando nada foi digitado. */
+  const salvarItem = async (itemId: string, padrao?: number) => {
+    const bruto = qtdEmEdicao[itemId] ?? padrao;
     const valor = Number(String(bruto).replace(',', '.'));
     if (!Number.isFinite(valor) || valor < 0) {
       toast.error('Quantidade inválida.');
@@ -136,7 +166,7 @@ export default function ModalEditarOrdemPremontagem({
       await editarItemPremontagem(itemId, valor, usuario);
       setItensOrdem((atual) => atual.map((i) => (i.id === itemId ? { ...i, qtd_separada: valor, separado: valor > 0 } : i)));
       setQtdEmEdicao((atual) => { const { [itemId]: _omit, ...resto } = atual; return resto; });
-      toast.success('Quantidade corrigida — estoque ajustado.');
+      toast.success(padrao !== undefined ? 'Item separado — estoque debitado.' : 'Quantidade corrigida — estoque ajustado.');
       onSalvo();
     } catch (err: any) {
       toast.error(err?.message || 'Não foi possível corrigir o item.');
@@ -359,50 +389,131 @@ export default function ModalEditarOrdemPremontagem({
             </div>
           )}
 
-          {/* Itens — correção pós-confirmação (inclui os recém-adicionados, ainda com qtd 0) */}
-          {separacaoConfirmada && (
-            <div className="rounded-lg border p-3 space-y-3" style={{ borderColor: 'var(--hairline)' }}>
-              <p className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>Itens do romaneio</p>
-              <p className="text-[11px]" style={{ color: 'var(--abc-b)' }}>
-                Esta ordem já confirmou a separação — mudar a quantidade de um item aqui ajusta o estoque na hora (estorna o débito antigo, se houver, e lança o novo).
-              </p>
-              <ul className="space-y-1.5 max-h-64 overflow-y-auto">
-                {itensOrdem.map((oi) => {
-                  const item = itemPorId.get(oi.item_id);
-                  const emEdicao = qtdEmEdicao[oi.id] !== undefined;
-                  return (
-                    <li key={oi.id} className="flex items-center gap-2 p-2 rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold truncate" style={{ color: 'var(--ink-primary)' }}>{item?.part_number ?? oi.item_id}</p>
-                        <p className="text-[11px] truncate" style={{ color: 'var(--ink-muted)' }}>
-                          {item?.descricao || item?.description || '—'}
-                          {!oi.separado && <span style={{ color: 'var(--abc-b)' }}> · ainda não debitado</span>}
-                        </p>
-                      </div>
-                      <input
-                        value={emEdicao ? qtdEmEdicao[oi.id] : String(oi.qtd_separada)}
-                        onChange={(e) => setQtdEmEdicao((a) => ({ ...a, [oi.id]: e.target.value }))}
-                        inputMode="decimal"
-                        className="w-20 rounded border px-2 py-1 text-xs text-right tabular-nums font-bold"
-                        style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
-                      />
-                      <button
-                        onClick={() => void salvarItem(oi.id)}
-                        disabled={!emEdicao || salvandoItemId === oi.id}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer border disabled:opacity-40"
-                        style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+          {/* Itens — pós-confirmação: o que falta separar em cima (debita ao separar), o já separado num resumo recolhível (correção) */}
+          {separacaoConfirmada && (() => {
+            const { pendentes, anteriores } = dividirRomaneio(itensOrdem, idsSeparadosAoAbrir);
+            const resumo = resumoSeparacao(itensOrdem);
+            const removiveis = itensRemoviveis(pendentes);
+
+            const linha = (oi: ProjOrdemItem) => {
+              const item = itemPorId.get(oi.item_id);
+              const local = localizacaoDoItem(oi, item);
+              const emEdicao = qtdEmEdicao[oi.id] !== undefined;
+              const falta = !oi.separado;
+              const valor = emEdicao ? qtdEmEdicao[oi.id] : falta ? String(oi.qtd_total) : String(oi.qtd_separada);
+              return (
+                <li key={oi.id} className="flex flex-wrap items-center gap-2 p-2 rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
+                  <div className="min-w-0 flex-1 basis-40">
+                    <p className="text-xs font-bold truncate" style={{ color: 'var(--ink-primary)' }}>{item?.part_number ?? oi.item_id}</p>
+                    <p className="text-[11px] truncate" style={{ color: 'var(--ink-muted)' }}>{item?.descricao || item?.description || '—'}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span
+                        className="inline-block px-1.5 py-0.5 rounded text-[10px] font-extrabold tabular-nums tracking-wide"
+                        style={{ background: falta ? 'var(--brand)' : 'var(--ink-muted)', color: '#fff' }}
                       >
-                        {salvandoItemId === oi.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Corrigir'}
+                        {falta ? 'A SEPARAR' : 'PREVISTO'} = {formatQtd(oi.qtd_total)}
+                      </span>
+                      <span
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold"
+                        style={{ borderColor: 'var(--hairline)', color: local ? 'var(--ink-secondary)' : 'var(--ink-muted)' }}
+                      >
+                        <MapPin className="h-3 w-3" /> {local ?? 'Sem localização'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      value={valor}
+                      onChange={(e) => setQtdEmEdicao((a) => ({ ...a, [oi.id]: e.target.value }))}
+                      inputMode="decimal"
+                      aria-label={falta ? 'Quantidade separada' : 'Quantidade corrigida'}
+                      className="w-20 rounded border px-2 py-1 text-xs text-right tabular-nums font-bold"
+                      style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+                    />
+                    <button
+                      onClick={() => void salvarItem(oi.id, falta ? oi.qtd_total : undefined)}
+                      disabled={(!falta && !emEdicao) || salvandoItemId === oi.id || removendo}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer border disabled:opacity-40"
+                      style={falta ? { borderColor: 'var(--brand)', background: 'var(--brand)', color: '#fff' } : { borderColor: 'var(--brand)', color: 'var(--brand)' }}
+                    >
+                      {salvandoItemId === oi.id ? <Loader2 className="h-3 w-3 animate-spin" /> : falta ? 'Separar' : 'Corrigir'}
+                    </button>
+                    {falta && (
+                      <button
+                        onClick={() => void removerItens([oi])}
+                        disabled={removendo || salvandoItemId === oi.id}
+                        title="Tirar do romaneio (não separar este item)"
+                        aria-label="Tirar do romaneio"
+                        className="p-1.5 rounded cursor-pointer disabled:opacity-40 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
-                    </li>
-                  );
-                })}
-                {!itensOrdem.length && (
-                  <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>Nenhum item nesta ordem.</p>
+                    )}
+                  </div>
+                </li>
+              );
+            };
+
+            return (
+              <div className="rounded-lg border p-3 space-y-3" style={{ borderColor: 'var(--hairline)' }}>
+                <p className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>Itens do romaneio</p>
+                <p className="text-[11px]" style={{ color: 'var(--abc-b)' }}>
+                  Esta ordem já confirmou a separação — separar ou corrigir um item aqui ajusta o estoque na hora (estorna o débito antigo, se houver, e lança o novo).
+                </p>
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  <div className="rounded-lg border p-2" style={{ borderColor: 'var(--hairline)' }}>
+                    <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--ink-muted)' }}>Já separado</p>
+                    <p className="text-xs font-extrabold tabular-nums" style={{ color: 'var(--abc-a)' }}>
+                      {resumo.separados} item(ns) · {formatQtd(resumo.pecasSeparadas)} pç
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-2" style={{ borderColor: 'var(--hairline)' }}>
+                    <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--ink-muted)' }}>Falta separar</p>
+                    <p className="text-xs font-extrabold tabular-nums" style={{ color: resumo.faltam ? 'var(--abc-b)' : 'var(--abc-a)' }}>
+                      {resumo.faltam} item(ns) · {formatQtd(resumo.pecasFaltam)} pç
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>Faltam separar ({pendentes.length})</p>
+                  {removiveis.length > 0 && (
+                    <button
+                      onClick={() => void removerItens(removiveis)}
+                      disabled={removendo}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold cursor-pointer border disabled:opacity-40 text-rose-600 border-rose-300 dark:border-rose-900/60"
+                    >
+                      {removendo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                      Tirar os {removiveis.length} que faltam
+                    </button>
+                  )}
+                </div>
+                {pendentes.length ? (
+                  <ul className="space-y-1.5 max-h-72 overflow-y-auto">{pendentes.map(linha)}</ul>
+                ) : (
+                  <p className="text-xs" style={{ color: 'var(--abc-a)' }}>Nada falta separar nesta ordem.</p>
                 )}
-              </ul>
-            </div>
-          )}
+
+                {anteriores.length > 0 && (
+                  <div className="rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
+                    <button
+                      onClick={() => setResumoAberto((v) => !v)}
+                      className="w-full flex items-center justify-between gap-2 p-2.5 text-left cursor-pointer"
+                      aria-expanded={resumoAberto}
+                    >
+                      <span className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
+                        Já separados ({anteriores.length}) · {formatQtd(anteriores.reduce((s, i) => s + (i.separado ? Number(i.qtd_separada) || 0 : 0), 0))} pç
+                      </span>
+                      {resumoAberto ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </button>
+                    {resumoAberto && (
+                      <ul className="space-y-1.5 p-2 pt-0 max-h-64 overflow-y-auto">{anteriores.map(linha)}</ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Ações de risco */}
           {ordem.status === 'em_processamento' && (

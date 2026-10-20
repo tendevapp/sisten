@@ -31,7 +31,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { AlertCircle, Check, ChevronDown, ChevronRight, ClipboardList, FileSpreadsheet, FileText, Loader2, PackageX, PackageCheck, Pencil, Plus, Wrench } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, ChevronRight, ClipboardList, FileSpreadsheet, FileText, Loader2, MapPin, PackageX, PackageCheck, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { TableCards, TableCardRow, TableDesktop, TableEmpty } from '../ui/DataTable';
 import { useToast } from '../ui/Toast';
@@ -51,8 +51,9 @@ import {
 } from '../../lib/projetosRomaneioExport';
 import {
   concluirPremontagem, confirmarSeparacaoPremontagem, criarOrdemPremontagem,
-  marcarItemSeparado, proximoCodigo, ProjSaldoInsuficienteError,
+  marcarItemSeparado, proximoCodigo, removerItensPremontagem, ProjSaldoInsuficienteError,
 } from '../../lib/projetosApi';
+import { dividirRomaneio, itensRemoviveis, localizacaoDoItem, resumoSeparacao } from '../../lib/premontagemSeparacao';
 import type { Profile, ProjItem, ProjOrdemItem, ProjOrdemPremontagem } from '../../types';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
 
@@ -576,7 +577,8 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
           ordem={ordemSeparar}
           itemPorId={itemPorId}
           user={user}
-          onCancelar={() => setOrdemSeparar(null)}
+          // Fechar no meio recarrega: a fila mostra o progresso e, ao voltar, a tela abre com o que já foi marcado.
+          onCancelar={() => { setOrdemSeparar(null); void recarregar(true); }}
           onConfirmado={async () => { setOrdemSeparar(null); await recarregar(true); }}
         />
       )}
@@ -612,6 +614,12 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
  * quantidade que de fato separou) e só então confirma. Cada check já salva
  * na hora (sem debitar); "Confirmar separação" é o único ponto que debita —
  * e alerta antes se algo ficou sem check.
+ *
+ * Separar um kit costuma levar mais de uma ida: ao voltar, a lista de cima
+ * mostra só o que falta (com a quantidade a separar e a localização); o que
+ * já vinha separado fica num resumo recolhível. O que não vai ser separado
+ * pode sair do romaneio, um a um ou todos de uma vez, para encerrar a ordem
+ * sem o kit completo.
  */
 function ModalSeparacao({
   ordem, itemPorId, user, onCancelar, onConfirmado,
@@ -624,13 +632,18 @@ function ModalSeparacao({
 }) {
   const toast = useToast();
   const [itens, setItens] = useState<ProjOrdemItem[]>(ordem.itens ?? []);
+  /** Retrato de quando a tela abriu: o que já vinha separado vai para o resumo recolhível. */
+  const [idsSeparadosAoAbrir] = useState(() => new Set((ordem.itens ?? []).filter((i) => i.separado).map((i) => i.id)));
+  const [resumoAberto, setResumoAberto] = useState(false);
   const [marcandoId, setMarcandoId] = useState<string | null>(null);
+  const [removendo, setRemovendo] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   /** Passo de revisão: lista as divergências de quantidade e espera o "confirmar mesmo assim". */
   const [revisao, setRevisao] = useState(false);
 
-  const separados = itens.filter((i) => i.separado).length;
-  const faltam = itens.length - separados;
+  const resumo = resumoSeparacao(itens);
+  const { pendentes, anteriores } = dividirRomaneio(itens, idsSeparadosAoAbrir);
+  const removiveis = itensRemoviveis(pendentes);
 
   /** Itens com check cuja quantidade separada difere do previsto — para a formatação condicional e o passo de revisão. */
   const divergencias = useMemo(
@@ -667,15 +680,38 @@ function ModalSeparacao({
     setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, qtd_separada: qtd } : i)));
   };
 
+  /** Tira do romaneio itens sem check (nada debitado). */
+  const remover = async (alvo: ProjOrdemItem[]) => {
+    if (!alvo.length) return;
+    const pn = (oi: ProjOrdemItem) => itemPorId.get(oi.item_id)?.part_number ?? oi.item_id;
+    const ok = window.confirm(
+      alvo.length === 1
+        ? `Tirar ${pn(alvo[0])} do romaneio? Ele não será separado nem debitado nesta ordem.`
+        : `Tirar os ${alvo.length} itens que faltam separar do romaneio? Eles não serão separados nem debitados nesta ordem.`,
+    );
+    if (!ok) return;
+    setRemovendo(true);
+    try {
+      const qtd = await removerItensPremontagem(ordem.id, alvo.map((i) => i.id), { id: user.id, nome: user.name });
+      const ids = new Set(alvo.map((i) => i.id));
+      setItens((atual) => atual.filter((i) => !ids.has(i.id)));
+      toast.success(`${qtd} item(ns) fora do romaneio.`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Não foi possível tirar os itens do romaneio.');
+    } finally {
+      setRemovendo(false);
+    }
+  };
+
   const tomDivergencia = (delta: number) => (delta > 0 ? 'var(--abc-b)' : 'var(--abc-c)');
   const rotuloDelta = (delta: number) => (delta > 0 ? `+${formatQtd(delta)}` : `−${formatQtd(Math.abs(delta))}`);
 
   const confirmar = async () => {
     // Passo 1: quantidade separada ≠ prevista → revisar as diferenças antes de debitar.
     if (divergencias.length > 0 && !revisao) { setRevisao(true); return; }
-    if (faltam > 0) {
+    if (resumo.faltam > 0) {
       const ok = window.confirm(
-        `${faltam} de ${itens.length} item(ns) ainda sem check — eles NÃO serão debitados e ficam fora do kit. Confirmar mesmo assim?`,
+        `${resumo.faltam} de ${itens.length} item(ns) ainda sem check — eles NÃO serão debitados e ficam fora do kit. Confirmar mesmo assim?`,
       );
       if (!ok) return;
     }
@@ -692,6 +728,80 @@ function ModalSeparacao({
     } finally {
       setConfirmando(false);
     }
+  };
+
+  const linha = (oi: ProjOrdemItem) => {
+    const item = itemPorId.get(oi.item_id);
+    const local = localizacaoDoItem(oi, item);
+    const delta = oi.separado ? oi.qtd_separada - oi.qtd_total : 0;
+    const tom = oi.separado && delta !== 0 ? tomDivergencia(delta) : null;
+    return (
+      <li key={oi.id} className="flex flex-col gap-2 p-3 border-b last:border-b-0 sm:flex-row sm:items-start" style={{ borderColor: 'var(--hairline)' }}>
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <button
+            onClick={() => void alternar(oi, oi.qtd_separada || oi.qtd_total)}
+            disabled={marcandoId === oi.id || removendo}
+            className="h-6 w-6 shrink-0 rounded border flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
+            style={{ borderColor: oi.separado ? 'var(--abc-a)' : 'var(--hairline)', background: oi.separado ? 'var(--abc-a)' : 'transparent' }}
+            aria-label={oi.separado ? 'Desmarcar' : 'Marcar separado'}
+          >
+            {marcandoId === oi.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : oi.separado && <Check className="h-4 w-4 text-white" />}
+          </button>
+          <div className="min-w-0">
+            <p className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{item?.part_number ?? oi.item_id}</p>
+            <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>{item?.descricao || item?.description || '—'}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span
+                className="inline-block px-1.5 py-0.5 rounded text-[10px] font-extrabold tabular-nums tracking-wide"
+                style={{ background: oi.separado ? 'var(--ink-muted)' : 'var(--brand)', color: '#fff' }}
+              >
+                A SEPARAR = {formatQtd(oi.qtd_total)}
+              </span>
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold"
+                style={{ borderColor: 'var(--hairline)', color: local ? 'var(--ink-secondary)' : 'var(--ink-muted)' }}
+              >
+                <MapPin className="h-3 w-3" /> {local ?? 'Sem localização'}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="pl-9 sm:pl-0 sm:w-28 shrink-0">
+          <div className="flex items-center gap-2 sm:justify-end">
+            <span className="text-[10px] font-bold uppercase tracking-wide sm:hidden" style={{ color: 'var(--ink-muted)' }}>Separado</span>
+            <input
+              value={oi.separado ? oi.qtd_separada : ''}
+              onChange={(e) => {
+                const v = Number(e.target.value.replace(',', '.'));
+                if (Number.isFinite(v)) mudarQtd(oi, v);
+              }}
+              onBlur={() => { if (oi.separado) void marcarItemSeparado(oi.id, true, oi.qtd_separada, { nome: user.name }); }}
+              disabled={!oi.separado}
+              inputMode="decimal"
+              placeholder={oi.separado ? undefined : '—'}
+              className="w-24 sm:w-full rounded border px-2 py-1.5 text-xs text-right tabular-nums font-bold focus:outline-2 disabled:opacity-40"
+              style={{ borderColor: tom ?? 'var(--hairline)', background: 'var(--surface-raised)', color: tom ?? 'var(--ink-primary)', outlineColor: 'var(--brand)' }}
+            />
+            {!oi.separado && (
+              <button
+                onClick={() => void remover([oi])}
+                disabled={removendo}
+                title="Tirar do romaneio (não separar este item)"
+                aria-label="Tirar do romaneio"
+                className="shrink-0 p-1.5 rounded cursor-pointer disabled:opacity-40 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {oi.separado && delta !== 0 && (
+            <p className="mt-1 text-[10px] font-extrabold tabular-nums text-right" style={{ color: tom! }}>
+              {rotuloDelta(delta)} vs previsto
+            </p>
+          )}
+        </div>
+      </li>
+    );
   };
 
   return (
@@ -732,70 +842,71 @@ function ModalSeparacao({
             </ul>
           </div>
         ) : (
-          <div className="space-y-3">
-            <p className="text-xs font-bold" style={{ color: separados === itens.length ? 'var(--abc-a)' : 'var(--abc-b)' }}>
-              {separados}/{itens.length} separado(s)
-              {divergencias.length > 0 && (
-                <span style={{ color: 'var(--abc-b)' }}> · {divergencias.length} com quantidade diferente do previsto</span>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="rounded-lg border p-2" style={{ borderColor: 'var(--hairline)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--ink-muted)' }}>Já separado</p>
+                <p className="text-sm font-extrabold tabular-nums" style={{ color: 'var(--abc-a)' }}>
+                  {resumo.separados} item(ns) · {formatQtd(resumo.pecasSeparadas)} pç
+                </p>
+              </div>
+              <div className="rounded-lg border p-2" style={{ borderColor: 'var(--hairline)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--ink-muted)' }}>Falta separar</p>
+                <p className="text-sm font-extrabold tabular-nums" style={{ color: resumo.faltam ? 'var(--abc-b)' : 'var(--abc-a)' }}>
+                  {resumo.faltam} item(ns) · {formatQtd(resumo.pecasFaltam)} pç
+                </p>
+              </div>
+            </div>
+            {divergencias.length > 0 && (
+              <p className="text-xs font-bold" style={{ color: 'var(--abc-b)' }}>{divergencias.length} com quantidade diferente do previsto</p>
+            )}
+
+            <section className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
+                  {anteriores.length ? 'Faltam separar' : 'Itens do romaneio'} ({pendentes.length})
+                </p>
+                {removiveis.length > 0 && (
+                  <button
+                    onClick={() => void remover(removiveis)}
+                    disabled={removendo}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold cursor-pointer border disabled:opacity-40 text-rose-600 border-rose-300 dark:border-rose-900/60"
+                  >
+                    {removendo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                    Tirar os {removiveis.length} que faltam
+                  </button>
+                )}
+              </div>
+              {pendentes.length ? (
+                <ul className="rounded-lg border max-h-[50vh] overflow-y-auto" style={{ borderColor: 'var(--hairline)' }}>
+                  {pendentes.map(linha)}
+                </ul>
+              ) : (
+                <p className="text-xs rounded-lg border p-3" style={{ borderColor: 'var(--hairline)', color: 'var(--abc-a)' }}>
+                  Nada falta separar — confirme para debitar.
+                </p>
               )}
-            </p>
-            <ul className="rounded-lg border max-h-[55vh] overflow-y-auto" style={{ borderColor: 'var(--hairline)' }}>
-              {itens.map((oi) => {
-                const item = itemPorId.get(oi.item_id);
-                const delta = oi.separado ? oi.qtd_separada - oi.qtd_total : 0;
-                const tom = oi.separado && delta !== 0 ? tomDivergencia(delta) : null;
-                return (
-                  <li key={oi.id} className="flex flex-col gap-2 p-3 border-b last:border-b-0 sm:flex-row sm:items-start" style={{ borderColor: 'var(--hairline)' }}>
-                    <div className="flex items-start gap-3 min-w-0 flex-1">
-                      <button
-                        onClick={() => void alternar(oi, oi.qtd_separada || oi.qtd_total)}
-                        disabled={marcandoId === oi.id}
-                        className="h-6 w-6 shrink-0 rounded border flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
-                        style={{ borderColor: oi.separado ? 'var(--abc-a)' : 'var(--hairline)', background: oi.separado ? 'var(--abc-a)' : 'transparent' }}
-                        aria-label={oi.separado ? 'Desmarcar' : 'Marcar separado'}
-                      >
-                        {marcandoId === oi.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : oi.separado && <Check className="h-4 w-4 text-white" />}
-                      </button>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{item?.part_number ?? oi.item_id}</p>
-                        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                          {item?.descricao || item?.description || '—'}{oi.localizador ? ` · ${oi.localizador}` : ''}
-                        </p>
-                        <span
-                          className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold tabular-nums tracking-wide"
-                          style={{ background: 'var(--brand)', color: '#fff' }}
-                        >
-                          PREVISTO = {formatQtd(oi.qtd_total)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="pl-9 sm:pl-0 sm:w-28 shrink-0">
-                      <div className="flex items-center gap-2 sm:justify-end">
-                        <span className="text-[10px] font-bold uppercase tracking-wide sm:hidden" style={{ color: 'var(--ink-muted)' }}>Separado</span>
-                        <input
-                          value={oi.separado ? oi.qtd_separada : ''}
-                          onChange={(e) => {
-                            const v = Number(e.target.value.replace(',', '.'));
-                            if (Number.isFinite(v)) mudarQtd(oi, v);
-                          }}
-                          onBlur={() => { if (oi.separado) void marcarItemSeparado(oi.id, true, oi.qtd_separada, { nome: user.name }); }}
-                          disabled={!oi.separado}
-                          inputMode="decimal"
-                          placeholder={oi.separado ? undefined : '—'}
-                          className="w-24 sm:w-full rounded border px-2 py-1.5 text-xs text-right tabular-nums font-bold focus:outline-2 disabled:opacity-40"
-                          style={{ borderColor: tom ?? 'var(--hairline)', background: 'var(--surface-raised)', color: tom ?? 'var(--ink-primary)', outlineColor: 'var(--brand)' }}
-                        />
-                      </div>
-                      {oi.separado && delta !== 0 && (
-                        <p className="mt-1 text-[10px] font-extrabold tabular-nums text-right" style={{ color: tom! }}>
-                          {rotuloDelta(delta)} vs previsto
-                        </p>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            </section>
+
+            {anteriores.length > 0 && (
+              <section className="rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
+                <button
+                  onClick={() => setResumoAberto((v) => !v)}
+                  className="w-full flex items-center justify-between gap-2 p-3 text-left cursor-pointer"
+                  aria-expanded={resumoAberto}
+                >
+                  <span className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
+                    Já separados antes ({anteriores.length}) · {formatQtd(anteriores.reduce((s, i) => s + (i.separado ? Number(i.qtd_separada) || 0 : 0), 0))} pç
+                  </span>
+                  {resumoAberto ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </button>
+                {resumoAberto && (
+                  <ul className="border-t max-h-[40vh] overflow-y-auto" style={{ borderColor: 'var(--hairline)' }}>
+                    {anteriores.map(linha)}
+                  </ul>
+                )}
+              </section>
+            )}
           </div>
         )}
       </ModalBody>
@@ -819,11 +930,11 @@ function ModalSeparacao({
         ) : (
           <>
             <button onClick={onCancelar} disabled={confirmando} className="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
-              Fechar
+              Fechar e continuar depois
             </button>
             <button
               onClick={() => void confirmar()}
-              disabled={confirmando || separados === 0}
+              disabled={confirmando || resumo.separados === 0}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50"
               style={{ background: 'var(--brand)' }}
             >
