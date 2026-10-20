@@ -35,6 +35,7 @@ import {
 } from '../../lib/almoxBomCadastroApi';
 import { gerarPdfEtiquetasBom } from '../../lib/pdfExport/exportEtiquetasBomPdf';
 import { gerarPdfCatalogoBom } from '../../lib/pdfExport/exportCatalogoBomPdf';
+import { DEPOSITOS_PLANTA, identificarDeposito } from '../../lib/depositoNomenclatura';
 
 interface Props {
   user: Profile;
@@ -46,9 +47,6 @@ interface Props {
 type FiltroFoto = 'todos' | 'com_foto' | 'sem_foto';
 type FiltroLocal = 'todos' | 'com_local' | 'sem_local';
 type Ordem = 'padrao' | 'local_asc' | 'local_desc' | 'pn_asc' | 'pn_desc';
-
-/** Depósito = prefixo da localização, antes do primeiro ponto (ex: 101.A10 -> 101). */
-const depositoDe = (local?: string | null) => (local ? local.trim().split('.')[0].toUpperCase() : '');
 
 const LOTE = 60;
 const CHAVE_COR = 'sisten_etiqueta_cor';
@@ -137,16 +135,25 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
   );
 
   const depositos = useMemo(() => {
-    const s = new Set<string>();
-    cadastros.forEach((c) => { const d = depositoDe(c.posicao_estoque); if (d) s.add(d); });
-    return [...s].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+    const mapa = new Map<string, string>();
+    for (const d of DEPOSITOS_PLANTA) {
+      mapa.set(d.id, d.nome);
+    }
+    cadastros.forEach((c) => {
+      const dep = identificarDeposito(c.posicao_estoque);
+      if (dep && !mapa.has(dep.id)) {
+        mapa.set(dep.id, dep.nome);
+      }
+    });
+    return [...mapa.entries()].map(([id, nome]) => ({ id, nome }));
   }, [cadastros]);
 
   const filtrados = useMemo(() => {
     const tokens = buscaChips.map(normalizarParaBusca).filter(Boolean);
     const lista = itens.filter((i) => {
       const cad = cadastros.get(i.chave);
-      if (filtroDeposito && depositoDe(cad?.posicao_estoque) !== filtroDeposito) return false;
+      const dep = identificarDeposito(cad?.posicao_estoque);
+      if (filtroDeposito && dep?.id !== filtroDeposito) return false;
       if (filtroGrupo && !i.grupos.includes(filtroGrupo)) return false;
       if (filtroSecao && !i.secoes.some((s) => s.secao === filtroSecao)) return false;
       if (filtroFoto === 'com_foto' && !cad?.imagem_path) return false;
@@ -154,7 +161,7 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
       if (filtroLocal === 'com_local' && !cad?.posicao_estoque) return false;
       if (filtroLocal === 'sem_local' && cad?.posicao_estoque) return false;
       if (tokens.length && !casarTokens(
-        [i.partNumber, i.chave, i.descricao, i.descricaoEn, i.qingdao, i.codSap, cad?.posicao_estoque, cad?.etiqueta_descricao, ...i.grupos],
+        [i.partNumber, i.chave, i.descricao, i.descricaoEn, i.qingdao, i.codSap, cad?.posicao_estoque, dep?.nome, cad?.etiqueta_descricao, ...i.grupos],
         tokens,
       )) return false;
       return true;
@@ -344,7 +351,7 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
           </select>
           <select value={filtroDeposito} onChange={(e) => setFiltroDeposito(e.target.value)} className={selectCls} aria-label="Depósito">
             <option value="">Todos os depósitos</option>
-            {depositos.map((d) => <option key={d} value={d}>Depósito {d}</option>)}
+            {depositos.map((d) => <option key={d.id} value={d.id}>{d.nome}</option>)}
           </select>
           <select value={ordem} onChange={(e) => setOrdem(e.target.value as Ordem)} className={selectCls} aria-label="Ordenar">
             <option value="padrao">Ordem da BOM</option>
@@ -437,6 +444,7 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
                       ))}
                       <span
                         className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5"
+                        title={identificarDeposito(cad?.posicao_estoque)?.nome || undefined}
                         style={cad?.posicao_estoque
                           ? { background: 'color-mix(in srgb, var(--status-good) 14%, transparent)', color: 'var(--status-good)' }
                           : { background: 'color-mix(in srgb, var(--status-warning) 14%, transparent)', color: 'var(--status-warning)' }}
@@ -711,7 +719,14 @@ function ModalPecaBom({
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>Localização no depósito</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>Localização no depósito</label>
+              {local && (
+                <span className="text-[10px] font-bold" style={{ color: 'var(--brand)' }}>
+                  {identificarDeposito(local)?.nome}
+                </span>
+              )}
+            </div>
             <input value={local} onChange={(e) => setLocal(e.target.value.toUpperCase())} placeholder="Ex: 101.A10" className={`${inputCls} font-mono`} />
           </div>
           <div>
