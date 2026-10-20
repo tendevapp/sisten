@@ -11,6 +11,9 @@ import {
   caixaDoRetangulo,
   caixaDaEstante,
   localizar,
+  numeracaoInvertidaDeFrente,
+  retanguloDoVaoPx,
+  vaosDaVistaDeFrente,
   vistasRapidas,
   quantidadeVaos,
   type Caixa,
@@ -157,5 +160,50 @@ describe('gembaLayout - vistasRapidas', () => {
       expect(x.vista.alvo[0]).toBeGreaterThan(gx1);
       expect(x.vista.alvo[0]).toBeLessThan(gx2);
     }
+  });
+});
+
+describe('gembaLayout - vista 2D', () => {
+  it('o alvo guarda estante, bloco, andar e apartamento do endereço', () => {
+    const anexo = localizar(interpretarPosicao('104.130218')!)!;
+    const { estante, indice } = acharBloco('0004', 13)!;
+    expect(anexo.alvo).toEqual({ estanteId: estante.id, indice, andar: 2, apartamento: 18 });
+    const chao = localizar(interpretarPosicao('101.040000')!)!;
+    expect(chao.alvo).toMatchObject({ estanteId: 'dep_0001', andar: 0 });
+    expect(chao.alvo!.apartamento).toBeUndefined();
+  });
+
+  it('andar fora do mapa guarda só o vão; área e depósito não têm alvo', () => {
+    const aprox = localizar(interpretarPosicao('104.020900')!)!;
+    expect(aprox.alvo).toEqual({ estanteId: 'rua_04', indice: 1 });
+    expect(localizar(interpretarPosicao('102.ANEXO')!)!.alvo).toBeUndefined();
+    expect(localizar(interpretarPosicao('101.ARAMES')!)!.alvo).toBeUndefined();
+  });
+
+  it('o retângulo do vão na planta cai dentro do galpão e acompanha o centro da caixa 3D', () => {
+    for (const e of ESTANTES) {
+      for (let i = 0; i < quantidadeVaos(e); i++) {
+        const [x1, y1, x2, y2] = retanguloDoVaoPx(e, i);
+        expect(x2).toBeGreaterThan(x1);
+        expect(y2).toBeGreaterThan(y1);
+        const c = caixaDoVao(e, i).centro;
+        expect(c[0] / METROS_POR_PX).toBeCloseTo((x1 + x2) / 2, 5);
+        expect(c[2] / METROS_POR_PX).toBeCloseTo((y1 + y2) / 2, 5);
+      }
+    }
+  });
+
+  it('a vista de frente mostra 3 vãos com o alvo no meio e desliza nas pontas', () => {
+    const rua04 = ESTANTES.find(e => e.id === 'rua_04')!;
+    // Rua 04 corre para oeste (x cai) com a face ao sul: de frente, o Bloco 1 fica à direita.
+    expect(numeracaoInvertidaDeFrente(rua04)).toBe(true);
+    expect(vaosDaVistaDeFrente(rua04, 5)).toEqual([6, 5, 4]);
+    expect(vaosDaVistaDeFrente(rua04, 0)).toEqual([2, 1, 0]);
+    const ultimo = quantidadeVaos(rua04) - 1;
+    expect(vaosDaVistaDeFrente(rua04, ultimo)).toEqual([ultimo, ultimo - 1, ultimo - 2]);
+    const dep = ESTANTES.find(e => e.id === 'dep_0001')!;
+    // Depósito 0001: face norte, corre para oeste → de frente a numeração cresce para a direita.
+    expect(numeracaoInvertidaDeFrente(dep)).toBe(false);
+    expect(vaosDaVistaDeFrente(dep, 5)).toEqual([4, 5, 6]);
   });
 });

@@ -12,7 +12,7 @@
 
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, Box, ClipboardList, Home, Keyboard, Layers, Loader2, Map as MapIcon, MapPin, Navigation,
+  AlertTriangle, ArrowLeft, Box, ClipboardList, Home, Keyboard, Loader2, Map as MapIcon, MapPin, Navigation,
   PackageMinus, RefreshCw, Search, Warehouse, X,
 } from 'lucide-react';
 import type { Profile } from '../../types';
@@ -32,6 +32,8 @@ import { useLightbox } from '../../components/ui/Lightbox';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import EscolhaAcaoItemQr, { acoesDoItemQr } from '../../components/EscolhaAcaoItemQr';
 import type { SelecaoVao } from '../../components/almoxarifado/gemba/GembaCena';
+
+import Gemba2D from '../../components/almoxarifado/gemba/Gemba2D';
 
 const GembaCena = lazy(() => import('../../components/almoxarifado/gemba/GembaCena'));
 
@@ -145,6 +147,9 @@ export default function Gemba({ user, onNavigate }: Props) {
   const reduzido = useMovimentoReduzido();
   const lightbox = useLightbox();
   const webgl = useMemo(temWebGL, []);
+  // Sem WebGL só existe o 2D; com WebGL abre no 3D e o usuário alterna.
+  const [modoEscolhido, setModoEscolhido] = useState<'3d' | '2d'>(() => (parametroUrl('vista') === '2d' ? '2d' : '3d'));
+  const modo: '3d' | '2d' = webgl ? modoEscolhido : '2d';
 
   const [indice, setIndice] = useState<IndiceGemba | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -321,7 +326,7 @@ export default function Gemba({ user, onNavigate }: Props) {
         <h1 className="flex items-center gap-2 text-xl font-extrabold" style={{ color: 'var(--ink-primary)' }}>
           <Warehouse className="h-6 w-6" style={{ color: 'var(--brand)' }} />
           Gemba
-          <span className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>almoxarifado em 3D</span>
+          <span className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>almoxarifado em {modo === '3d' ? '3D' : '2D'}</span>
         </h1>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
@@ -523,8 +528,19 @@ export default function Gemba({ user, onNavigate }: Props) {
         {painel}
       </aside>
 
-      <section className="relative order-1 h-[52%] shrink-0 lg:order-2 lg:h-auto lg:flex-1">
-        {webgl ? (
+      <section className={`relative order-1 h-[52%] shrink-0 lg:order-2 lg:h-auto lg:flex-1 ${modo === '2d' ? 'flex flex-col' : ''}`}>
+        {modo === '2d' ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <Gemba2D
+              destaques={destaques}
+              principal={principal}
+              selecao={selecao}
+              onClicarVao={clicarVao}
+              rotuloVao={rotuloVao}
+              reduzido={reduzido}
+            />
+          </div>
+        ) : (
           <ErrorBoundary>
             <Suspense
               fallback={(
@@ -547,23 +563,39 @@ export default function Gemba({ user, onNavigate }: Props) {
               />
             </Suspense>
           </ErrorBoundary>
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm" style={{ color: 'var(--ink-muted)' }}>
-            <Layers className="h-8 w-8" />
-            Este aparelho não exibe 3D (WebGL desligado). O endereço continua no painel.
-            {destaques[principal] && (
-              <span className="font-extrabold" style={{ color: 'var(--ink-primary)' }}>{destaques[principal].trilha.join(' › ')}</span>
-            )}
-          </div>
         )}
 
-        {webgl && (
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap justify-end gap-1.5 p-2">
+        <div className={modo === '2d' ? 'order-first flex flex-wrap justify-end gap-1.5 px-2 pt-2' : 'pointer-events-none absolute inset-x-0 top-0 flex flex-wrap justify-end gap-1.5 p-2'}>
             {(item || selecao || posicaoAvulsa) && (
               <button type="button" onClick={limpar} className={`pointer-events-auto ${botaoMapa}`} style={estiloBotaoMapa}>
                 <X className="h-3.5 w-3.5" /> Limpar
               </button>
             )}
+            {webgl && (
+              <div
+                role="group"
+                aria-label="Modo de visualização"
+                className="pointer-events-auto inline-flex overflow-hidden rounded-xl border shadow-sm backdrop-blur"
+                style={{ borderColor: 'var(--hairline)', background: 'color-mix(in srgb, var(--surface-card) 85%, transparent)' }}
+              >
+                {(['3d', '2d'] as const).map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setModoEscolhido(m)}
+                    aria-pressed={modo === m}
+                    className="px-2.5 py-1.5 text-[11px] font-extrabold transition-colors"
+                    style={{
+                      background: modo === m ? 'var(--brand)' : 'transparent',
+                      color: modo === m ? '#fff' : 'var(--ink-secondary)',
+                    }}
+                  >
+                    {m.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            )}
+            {modo === '3d' && (<>
             <button type="button" onClick={() => irPara(vistaGeral())} className={`pointer-events-auto ${botaoMapa}`} style={estiloBotaoMapa}>
               <Home className="h-3.5 w-3.5" /> Visão geral
             </button>
@@ -591,10 +623,10 @@ export default function Gemba({ user, onNavigate }: Props) {
                 <MapPin className="h-3.5 w-3.5" /> Ir ao item
               </button>
             )}
+            </>)}
           </div>
-        )}
-        {webgl && <LegendaCarga />}
-        {webgl && (
+        {modo === '3d' && <LegendaCarga />}
+        {modo === '3d' && (
           <div
             className="pointer-events-none absolute bottom-2 right-2 hidden items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold lg:flex"
             style={{ borderColor: 'var(--hairline)', background: 'color-mix(in srgb, var(--surface-card) 88%, transparent)', color: 'var(--ink-secondary)' }}

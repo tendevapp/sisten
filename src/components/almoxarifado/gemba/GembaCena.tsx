@@ -9,7 +9,7 @@
  * o que poupa bateria no celular.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { CameraControls } from '@react-three/drei';
@@ -20,7 +20,7 @@ import GembaPiso from './GembaPiso';
 import GembaEstante from './GembaEstante';
 import GembaMarcos from './GembaMarcos';
 import GembaDestaque from './GembaDestaque';
-import { coresGemba } from './coresGemba';
+import { coresGemba, useEscuro } from './coresGemba';
 import { criarMateriais, descartarMateriais } from './recursos';
 
 export interface SelecaoVao {
@@ -43,18 +43,6 @@ interface Props {
   porZona: Record<string, number>;
   /** Texto da dica ao passar o mouse num vão; `null` esconde. */
   rotuloVao: (estanteId: string, indice: number) => string | null;
-}
-
-function useEscuro(): boolean {
-  return useSyncExternalStore(
-    aviso => {
-      const obs = new MutationObserver(aviso);
-      obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-      return () => obs.disconnect();
-    },
-    () => document.documentElement.classList.contains('dark'),
-    () => false,
-  );
 }
 
 const [OX, , OZ] = centroDoGalpao();

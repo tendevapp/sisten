@@ -7,6 +7,8 @@
  * em âmbar e o bloco clicado no verde do SISTEN.
  */
 
+import { useSyncExternalStore } from 'react';
+
 export interface CoresGemba {
   fundo: string;
   chaoExterno: string;
@@ -74,4 +76,17 @@ const ESCURO: CoresGemba = {
 
 export function coresGemba(escuro: boolean): CoresGemba {
   return escuro ? ESCURO : CLARO;
+}
+
+/** Tema escuro do app (classe `dark` no <html>), reativo. */
+export function useEscuro(): boolean {
+  return useSyncExternalStore(
+    aviso => {
+      const obs = new MutationObserver(aviso);
+      obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+      return () => obs.disconnect();
+    },
+    () => document.documentElement.classList.contains('dark'),
+    () => false,
+  );
 }

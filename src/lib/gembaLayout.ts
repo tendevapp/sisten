@@ -320,8 +320,18 @@ export interface Vista {
   enquadrar?: Vec2;
 }
 
+/** Prateleira exata do endereço, para a vista 2D de frente. `andar` e `apartamento` só quando o mapa os acha. */
+export interface AlvoPrateleira {
+  estanteId: string;
+  indice: number;
+  andar?: number;
+  apartamento?: number;
+}
+
 export interface Localizacao {
   caixas: Caixa[];
+  /** Presente quando o endereço cai num bloco de uma estante. */
+  alvo?: AlvoPrateleira;
   /** Ids das estantes ou zonas envolvidas. */
   estruturas: string[];
   trilha: string[];
@@ -409,15 +419,19 @@ export function localizar(endereco: Endereco): Localizacao | null {
 
   let caixa: Caixa | null = null;
   let aproximado = false;
+  const alvo: AlvoPrateleira = { estanteId: estante.id, indice };
   const andar = caixaDoAndar(estante, indice, endereco.andar);
   if (andar) {
     trilha.push(endereco.andar === 0 ? 'Chão' : `Andar ${doisDigitos(endereco.andar)}`);
     caixa = andar;
+    alvo.andar = endereco.andar;
     if (endereco.apartamento != null) {
       trilha.push(`Apto ${doisDigitos(endereco.apartamento)}`);
       const apto = caixaDoApartamento(estante, indice, endereco.andar, endereco.apartamento);
-      if (apto) caixa = apto;
-      else aproximado = true;
+      if (apto) {
+        caixa = apto;
+        alvo.apartamento = endereco.apartamento;
+      } else aproximado = true;
     }
   } else {
     trilha.push(`Andar ${doisDigitos(endereco.andar)}`);
@@ -426,7 +440,43 @@ export function localizar(endereco: Endereco): Localizacao | null {
   }
 
   const vista = estante.apartamentos ? vistaNoCorredor(caixa, estante) : vistaDeFrente(caixa, estante.face, 10);
-  return { caixas: [caixa], estruturas: [estante.id], trilha, aproximado, vista };
+  return { caixas: [caixa], alvo, estruturas: [estante.id], trilha, aproximado, vista };
+}
+
+/** Retângulo [x1, y1, x2, y2] do vão na planta, em px. */
+export function retanguloDoVaoPx(e: EstanteGemba, indice: number): Retangulo {
+  const { u, n } = eixoDaEstante(e);
+  const passo = e.larguraBlocoM / METROS_POR_PX;
+  const profundidade = e.profundidadeM / METROS_POR_PX;
+  const ax = e.inicio[0] + u[0] * passo * indice;
+  const ay = e.inicio[1] + u[1] * passo * indice;
+  const bx = ax + u[0] * passo;
+  const by = ay + u[1] * passo;
+  const xs = [ax, bx, ax + n[0] * profundidade, bx + n[0] * profundidade];
+  const ys = [ay, by, ay + n[1] * profundidade, by + n[1] * profundidade];
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+/**
+ * Quem está de pé no corredor, de frente para a estante, vê a numeração dos blocos
+ * crescer para a esquerda (a estante corre para a esquerda de quem olha)?
+ */
+export function numeracaoInvertidaDeFrente(e: EstanteGemba): boolean {
+  const { u, n } = eixoDaEstante(e);
+  // Quem olha para -n tem a mão direita em (n.z, -n.x) no plano da planta.
+  return u[0] * n[1] - u[1] * n[0] < 0;
+}
+
+/**
+ * Vãos que a vista de frente mostra: `quantidade` vãos com o `indice` no meio (a
+ * janela desliza nas pontas), na ordem em que aparecem da esquerda para a direita.
+ */
+export function vaosDaVistaDeFrente(e: EstanteGemba, indice: number, quantidade = 3): number[] {
+  const total = quantidadeVaos(e);
+  const n = Math.min(quantidade, total);
+  const inicio = Math.min(Math.max(indice - Math.floor(n / 2), 0), total - n);
+  const lista = Array.from({ length: n }, (_, k) => inicio + k);
+  return numeracaoInvertidaDeFrente(e) ? lista.reverse() : lista;
 }
 
 /** Câmera de frente para um vão clicado. */
