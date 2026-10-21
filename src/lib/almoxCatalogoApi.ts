@@ -204,6 +204,9 @@ const cacheUrlsAssinadas = new Map<string, UrlAssinada>();
 const VALIDADE_URL_S = 86400;
 const REUSO_URL_MS = 80000 * 1000;
 
+/** Caminhos por chamada de `createSignedUrls`; o Storage aceita até 1.000. */
+const CAMINHOS_POR_ASSINATURA = 500;
+
 /**
  * As URLs assinadas também ficam no aparelho (IndexedDB). Cada assinatura nova
  * leva um token diferente, e URL diferente é foto baixada de novo: sem isso,
@@ -325,18 +328,24 @@ export async function obterUrlsFotosCatalogoLote(
     porBucket.set(b, lista);
   }
 
-  // Executa em paralelo para cada bucket em apenas 1 requisição batch
+  // O Storage recusa o pedido INTEIRO acima de 1.000 caminhos
+  // (MAX_OBJECTS_PER_REQUEST); o catálogo já passou disso, então assina em
+  // fatias, em paralelo, e uma fatia que falhe não derruba as outras.
+  const fatias: Array<[string, string[]]> = [];
+  for (const [bucket, paths] of porBucket) {
+    for (let i = 0; i < paths.length; i += CAMINHOS_POR_ASSINATURA) {
+      fatias.push([bucket, paths.slice(i, i + CAMINHOS_POR_ASSINATURA)]);
+    }
+  }
   await Promise.all(
-    Array.from(porBucket.entries()).map(async ([bucket, paths]) => {
-      if (paths.length === 0) return;
+    fatias.map(async ([bucket, paths]) => {
       try {
         const { data, error } = await supabase.storage.from(bucket).createSignedUrls(paths, VALIDADE_URL_S);
-        if (!error && data) {
-          for (const res of data) {
-            if (res.signedUrl && res.path) {
-              mapa.set(res.path, res.signedUrl);
-              guardarUrlAssinada(`${bucket}:${res.path}`, res.signedUrl);
-            }
+        if (error) throw error;
+        for (const res of data ?? []) {
+          if (res.signedUrl && res.path) {
+            mapa.set(res.path, res.signedUrl);
+            guardarUrlAssinada(`${bucket}:${res.path}`, res.signedUrl);
           }
         }
       } catch (err) {
