@@ -11,7 +11,7 @@
 
 import { supabase } from '../db/supabaseClient';
 import { comprimirImagemUpload } from './imageCompression';
-import { BUCKET_CATALOGO, extensaoDaImagem, obterUrlFotoCatalogo, obterUrlsFotosCatalogoLote } from './almoxCatalogoApi';
+import { BUCKET_CATALOGO, CACHE_FOTO_CATALOGO, extensaoDaImagem, obterUrlFotoCatalogo, obterUrlsFotosCatalogoLote } from './almoxCatalogoApi';
 import { PROJETO_PADRAO } from './projetos';
 import type { Profile } from '../types';
 
@@ -118,7 +118,7 @@ export async function salvarCadastroBom(
     const caminho = `${PASTA_FOTOS_BOM}/peca-${payload.partNumberNorm}-${Date.now()}.${ext}`;
     const { error: erroUpload } = await supabase.storage
       .from(BUCKET_CATALOGO)
-      .upload(caminho, comprimido, { contentType: comprimido.type || 'image/jpeg', upsert: false });
+      .upload(caminho, comprimido, { contentType: comprimido.type || 'image/jpeg', cacheControl: CACHE_FOTO_CATALOGO, upsert: false });
     if (erroUpload) throw new Error(`Falha no upload da foto: ${erroUpload.message}`);
     pathEnviado = caminho;
     imagem = {

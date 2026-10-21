@@ -65,6 +65,7 @@ vi.mock('../db/supabaseClient', () => {
       in: (c: string, vs: any[]) => { filtros.push(l => vs.includes(l[c])); return q; },
       not: (c: string) => { filtros.push(l => l[c] != null); return q; },
       order: () => q,
+      range: () => q,
       maybeSingle: async () => { const r = executar(); return { data: r.data?.[0] ?? null, error: r.error }; },
       single: async () => { const r = executar(); return { data: r.data?.[0] ?? null, error: r.error }; },
       then: (ok: any, erro: any) => Promise.resolve(executar()).then(ok, erro),

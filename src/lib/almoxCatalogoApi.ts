@@ -10,8 +10,10 @@
  * comprimidas aos itens para alimentar o catálogo e exibir na Solicitação de Compras.
  */
 
+import { createStore, get, set, type UseStore } from 'idb-keyval';
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
+import { buscarTudo } from './buscarTudo';
 import { comprimirImagemUpload } from './imageCompression';
 import { isProjetoItem } from './demandas';
 import { SSMA_BOOK_EPIS_BUCKET } from './ssmaBookEpisApi';
@@ -21,6 +23,11 @@ import type { EstoqueItem, CadastroGrupoMercadoria, RequestAttachment, Profile }
 export const PREFIXO_CAT_ITEM = 'CAT';
 export const BUCKET_CATALOGO = 'request-attachments';
 export const PASTA_CATALOGO = 'almox-catalogo';
+/**
+ * Cache-Control das fotos do catálogo (s). O nome leva timestamp e o arquivo
+ * nunca é sobrescrito, então o navegador pode guardar por um ano.
+ */
+export const CACHE_FOTO_CATALOGO = '31536000';
 /** Tabela do catálogo compartilhado (migration 20260929140000). */
 export const TABELA_CATALOGO = 'alm_catalogo_itens';
 /** Onde o catálogo morava antes da tabela — só lido para migrar o que ficou no aparelho. */
@@ -190,7 +197,62 @@ export function salvarListaFixaCatalogoLocal(lista: ItemConsumivelZl0024[]): voi
   }
 }
 
-const cacheUrlsAssinadas = new Map<string, { url: string; expiraEm: number }>();
+type UrlAssinada = { url: string; expiraEm: number };
+const cacheUrlsAssinadas = new Map<string, UrlAssinada>();
+
+/** A URL assinada vale 24 h; reaproveita por ~22 h para nunca entregar uma prestes a vencer. */
+const VALIDADE_URL_S = 86400;
+const REUSO_URL_MS = 80000 * 1000;
+
+/**
+ * As URLs assinadas também ficam no aparelho (IndexedDB). Cada assinatura nova
+ * leva um token diferente, e URL diferente é foto baixada de novo: sem isso,
+ * toda abertura do Cadastro de Itens rebaixava as mil fotos do catálogo em vez
+ * de usar o que o navegador já tinha.
+ */
+const CHAVE_URLS_NO_APARELHO = 'catalogo';
+let lojaUrls: UseStore | null | undefined;
+let urlsDoAparelho: Promise<void> | null = null;
+let gravacaoUrls: ReturnType<typeof setTimeout> | null = null;
+
+function lojaUrlsAssinadas(): UseStore | null {
+  if (lojaUrls === undefined) lojaUrls = typeof indexedDB === 'undefined' ? null : createStore('sisten-urls-fotos', 'urls');
+  return lojaUrls;
+}
+
+function carregarUrlsDoAparelho(): Promise<void> {
+  if (!urlsDoAparelho) {
+    urlsDoAparelho = (async () => {
+      const loja = lojaUrlsAssinadas();
+      if (!loja) return;
+      try {
+        const salvas = await get<Array<[string, UrlAssinada]>>(CHAVE_URLS_NO_APARELHO, loja);
+        const agora = Date.now();
+        for (const [chave, valor] of salvas ?? []) {
+          if (valor.expiraEm > agora && !cacheUrlsAssinadas.has(chave)) cacheUrlsAssinadas.set(chave, valor);
+        }
+      } catch { /* IndexedDB bloqueado (aba anônima): segue só com a memória */ }
+    })();
+  }
+  return urlsDoAparelho;
+}
+
+function guardarUrlAssinada(chave: string, url: string): void {
+  cacheUrlsAssinadas.set(chave, { url, expiraEm: Date.now() + REUSO_URL_MS });
+  const loja = lojaUrlsAssinadas();
+  if (!loja || gravacaoUrls) return;
+  // Agrupa as gravações de um lote inteiro numa só escrita.
+  gravacaoUrls = setTimeout(() => {
+    gravacaoUrls = null;
+    const agora = Date.now();
+    const validas = [...cacheUrlsAssinadas].filter(([, v]) => v.expiraEm > agora);
+    void set(CHAVE_URLS_NO_APARELHO, validas, loja).catch(() => { /* sem espaço: fica só na memória */ });
+  }, 500);
+}
+
+function bucketDaFoto(cleanPath: string, bucketPreferencial?: string): string {
+  return bucketPreferencial || (cleanPath.startsWith('epis/') ? SSMA_BOOK_EPIS_BUCKET : BUCKET_CATALOGO);
+}
 
 /**
  * Obtém URL assinada da imagem do catálogo no Supabase Storage com cache em memória.
@@ -202,25 +264,26 @@ export async function obterUrlFotoCatalogo(path?: string | null, bucketPreferenc
   if (!supabase) return null;
 
   const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-  const cacheKey = `${bucketPreferencial || 'auto'}:${cleanPath}`;
+  const bucket = bucketDaFoto(cleanPath, bucketPreferencial);
+  const cacheKey = `${bucket}:${cleanPath}`;
+  await carregarUrlsDoAparelho();
   const emCache = cacheUrlsAssinadas.get(cacheKey);
   if (emCache && emCache.expiraEm > Date.now()) {
     return emCache.url;
   }
 
   try {
-    const bucket = bucketPreferencial || (cleanPath.startsWith('epis/') ? SSMA_BOOK_EPIS_BUCKET : BUCKET_CATALOGO);
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(cleanPath, 86400);
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(cleanPath, VALIDADE_URL_S);
     if (!error && data?.signedUrl) {
-      cacheUrlsAssinadas.set(cacheKey, { url: data.signedUrl, expiraEm: Date.now() + 80000 * 1000 });
+      guardarUrlAssinada(cacheKey, data.signedUrl);
       return data.signedUrl;
     }
     // Fallback caso a foto resida em outro bucket
     const outros = [SSMA_BOOK_EPIS_BUCKET, BUCKET_CATALOGO, 'alm-catalogo'].filter(b => b !== bucket);
     for (const b of outros) {
-      const { data: d2 } = await supabase.storage.from(b).createSignedUrl(cleanPath, 86400);
+      const { data: d2 } = await supabase.storage.from(b).createSignedUrl(cleanPath, VALIDADE_URL_S);
       if (d2?.signedUrl) {
-        cacheUrlsAssinadas.set(cacheKey, { url: d2.signedUrl, expiraEm: Date.now() + 80000 * 1000 });
+        guardarUrlAssinada(cacheKey, d2.signedUrl);
         return d2.signedUrl;
       }
     }
@@ -240,6 +303,7 @@ export async function obterUrlsFotosCatalogoLote(
 ): Promise<Map<string, string>> {
   const mapa = new Map<string, string>();
   if (!supabase || itens.length === 0) return mapa;
+  await carregarUrlsDoAparelho();
 
   const porBucket = new Map<string, string[]>();
   for (const item of itens) {
@@ -249,14 +313,13 @@ export async function obterUrlsFotosCatalogoLote(
       continue;
     }
     const cleanPath = item.path.startsWith('/') ? item.path.slice(1) : item.path;
-    const cacheKey = `${item.bucket || 'auto'}:${cleanPath}`;
-    const emCache = cacheUrlsAssinadas.get(cacheKey);
+    const b = bucketDaFoto(cleanPath, item.bucket);
+    const emCache = cacheUrlsAssinadas.get(`${b}:${cleanPath}`);
     if (emCache && emCache.expiraEm > Date.now()) {
       mapa.set(cleanPath, emCache.url);
       continue;
     }
 
-    const b = item.bucket || (cleanPath.startsWith('epis/') ? SSMA_BOOK_EPIS_BUCKET : BUCKET_CATALOGO);
     const lista = porBucket.get(b) || [];
     if (!lista.includes(cleanPath)) lista.push(cleanPath);
     porBucket.set(b, lista);
@@ -267,15 +330,12 @@ export async function obterUrlsFotosCatalogoLote(
     Array.from(porBucket.entries()).map(async ([bucket, paths]) => {
       if (paths.length === 0) return;
       try {
-        const { data, error } = await supabase.storage.from(bucket).createSignedUrls(paths, 86400);
+        const { data, error } = await supabase.storage.from(bucket).createSignedUrls(paths, VALIDADE_URL_S);
         if (!error && data) {
           for (const res of data) {
             if (res.signedUrl && res.path) {
               mapa.set(res.path, res.signedUrl);
-              cacheUrlsAssinadas.set(`${bucket}:${res.path}`, {
-                url: res.signedUrl,
-                expiraEm: Date.now() + 80000 * 1000,
-              });
+              guardarUrlAssinada(`${bucket}:${res.path}`, res.signedUrl);
             }
           }
         }
@@ -348,12 +408,15 @@ export function converterItemCatalogoEmAnexo(item: CatalogoItem): RequestAttachm
  */
 export async function listarItensCatalogo(): Promise<CatalogoItem[]> {
   if (!supabase) return [];
-  const { data, error } = await tabelaCatalogo().select('*').eq('ativo', true).order('codigo_sap');
-  if (error) {
+  // Paginado: o catálogo passou de mil itens, e o que passava do corte do
+  // PostgREST (os códigos mais altos) sumia da tela de todo mundo.
+  try {
+    return await buscarTudo<CatalogoItem>((de, ate) =>
+      tabelaCatalogo().select('*').eq('ativo', true).order('codigo_sap').order('id').range(de, ate));
+  } catch (error) {
     console.error('[almoxCatalogoApi] Falha ao listar o catálogo:', error);
     return [];
   }
-  return (data ?? []) as CatalogoItem[];
 }
 
 /** Registro ativo do catálogo para o material — só a tabela, sem o fallback do Book de EPIs. */
@@ -570,11 +633,13 @@ export async function carregarPosicoesMaterial(): Promise<Map<string, string[]>>
   const mapa = new Map<string, string[]>();
   if (!supabase) return mapa;
   try {
-    const { data, error } = await (supabase.from as any)('alm_posicao_material_atual')
-      .select('codigo_sap, posicao')
-      .range(0, 19999);
-    if (error) throw error;
-    for (const row of (data ?? []) as Array<{ codigo_sap: string; posicao: string }>) {
+    const linhas = await buscarTudo<{ codigo_sap: string; posicao: string }>((de, ate) =>
+      (supabase!.from as any)('alm_posicao_material_atual')
+        .select('codigo_sap, posicao')
+        .order('codigo_sap')
+        .order('posicao')
+        .range(de, ate));
+    for (const row of linhas) {
       const lista = mapa.get(row.codigo_sap);
       if (!lista) mapa.set(row.codigo_sap, [row.posicao]);
       else if (!lista.includes(row.posicao)) lista.push(row.posicao);
@@ -1271,10 +1336,13 @@ export async function carregarItensConsumiveisZl0024(forcar = false): Promise<It
 export async function carregarGruposMercadoria(): Promise<CadastroGrupoMercadoria[]> {
   if (supabase) {
     try {
-      const { data, error } = await (supabase.from as any)('cadastro_grupo_mercadoria')
-        .select('codigo, denominacao, denominacao2, classificacao_nivel1, classificacao_nivel2, codigo_pai');
-      if (!error && data && data.length > 0) {
-        return data as CadastroGrupoMercadoria[];
+      const data = await buscarTudo<CadastroGrupoMercadoria>((de, ate) =>
+        (supabase!.from as any)('cadastro_grupo_mercadoria')
+          .select('codigo, denominacao, denominacao2, classificacao_nivel1, classificacao_nivel2, codigo_pai')
+          .order('codigo')
+          .range(de, ate));
+      if (data.length > 0) {
+        return data;
       }
     } catch (err) {
       console.warn('[almoxCatalogoApi] Falha ao consultar cadastro_grupo_mercadoria:', err);
@@ -1417,6 +1485,7 @@ export async function salvarItemCatalogo(
         // Caminho único (leva o timestamp): não há o que sobrescrever, e o
         // bucket não tem política de UPDATE — upsert seria barrado pelo RLS.
         upsert: false,
+        cacheControl: CACHE_FOTO_CATALOGO,
       });
     if (uploadError) throw new Error(`Falha no upload da foto: ${uploadError.message}`);
 
@@ -1608,7 +1677,7 @@ export async function adicionarFotosAdicionais(
       const caminho = `${PASTA_CATALOGO}/material-${codigoSap}-extra-${Date.now()}-${i}.${ext}`;
       const { error: erroUpload } = await supabase.storage
         .from(BUCKET_CATALOGO)
-        .upload(caminho, comprimido, { contentType: comprimido.type || 'image/jpeg', upsert: false });
+        .upload(caminho, comprimido, { contentType: comprimido.type || 'image/jpeg', cacheControl: CACHE_FOTO_CATALOGO, upsert: false });
       if (erroUpload) throw new Error(erroUpload.message);
       pathEnviado = caminho;
 
@@ -1653,7 +1722,7 @@ export async function substituirFotoAdicional(
   const caminho = `${PASTA_CATALOGO}/material-${codigoSap}-extra-${Date.now()}.${ext}`;
   const { error: erroUpload } = await supabase.storage
     .from(BUCKET_CATALOGO)
-    .upload(caminho, comprimido, { contentType: comprimido.type || 'image/jpeg', upsert: false });
+    .upload(caminho, comprimido, { contentType: comprimido.type || 'image/jpeg', cacheControl: CACHE_FOTO_CATALOGO, upsert: false });
   if (erroUpload) throw new Error(`Falha no upload da foto: ${erroUpload.message}`);
 
   const { data, error } = await tabelaFotosAdicionais()

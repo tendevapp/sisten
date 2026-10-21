@@ -61,6 +61,9 @@ interface CadastroItensAlmoxProps {
 type FiltroRapido = 'todos' | 'com_foto' | 'sem_foto' | 'com_localizacao';
 type ModoVisualizacao = 'cards' | 'tabela';
 
+/** Itens desenhados por vez; "Mostrar mais" acrescenta outro lote. */
+const LOTE_ITENS = 60;
+
 export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAlmoxProps) {
   const toast = useToast();
 
@@ -267,6 +270,12 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       return true;
     });
   }, [itens, buscaChips, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, posicaoDoItem, localizacoesDoItem]);
+
+  // Desenha em lotes (como a aba BOM): o catálogo passa de mil itens com foto,
+  // e montar todos de uma vez trava o celular e baixa dezenas de MB de imagem.
+  const [visiveisQtd, setVisiveisQtd] = useState(LOTE_ITENS);
+  useEffect(() => { setVisiveisQtd(LOTE_ITENS); }, [buscaChips, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, modoVis]);
+  const itensVisiveis = useMemo(() => itensFiltrados.slice(0, visiveisQtd), [itensFiltrados, visiveisQtd]);
 
   // Estatísticas e KPIs
   const kpis = useMemo(() => {
@@ -1466,7 +1475,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       ) : modoVis === 'cards' ? (
         /* Visualização em Cards (Estilo Catálogo / Book) */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {itensFiltrados.map((item) => (
+          {itensVisiveis.map((item) => (
             <div
               key={item.codigo_sap}
               className="rounded-xl border shadow-xs flex flex-col justify-between overflow-hidden transition-all hover:shadow-md"
@@ -1527,6 +1536,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         alt={item.descricao}
                         className="h-full w-full object-contain drop-shadow-xs transition-transform duration-300 group-hover:scale-105"
                         loading="lazy"
+                        decoding="async"
                       />
                       {/* Overlay com botões no hover */}
                       <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center gap-2">
@@ -1684,7 +1694,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ borderColor: 'var(--hairline)' }}>
-                {itensFiltrados.map((item) => (
+                {itensVisiveis.map((item) => (
                   <tr key={item.codigo_sap} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition">
                     <td className="py-2 pl-3">
                       <input
@@ -1702,7 +1712,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                           onClick={() => setImagemZoom({ url: item.url_foto!, titulo: item.descricao, codigo: item.codigo_sap })}
                           className="h-10 w-10 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-700 relative group cursor-pointer"
                         >
-                          <img src={item.url_foto} alt="" className="h-full w-full object-cover" />
+                          <img src={item.url_foto} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                           <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white">
                             <Eye className="h-3.5 w-3.5" />
                           </span>
@@ -1763,6 +1773,17 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
             </table>
           </div>
         </div>
+      )}
+
+      {!carregando && itensFiltrados.length > itensVisiveis.length && (
+        <button
+          type="button"
+          onClick={() => setVisiveisQtd((q) => q + LOTE_ITENS)}
+          className="w-full rounded-xl border py-2.5 text-xs font-bold cursor-pointer"
+          style={{ borderColor: 'var(--hairline)', color: 'var(--brand)' }}
+        >
+          Mostrar mais ({itensFiltrados.length - itensVisiveis.length} restantes)
+        </button>
       )}
 
       {/* Modal: Tirar Foto / Cadastrar Imagem */}

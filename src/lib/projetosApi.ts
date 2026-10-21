@@ -18,6 +18,7 @@ import { supabase } from '../db/supabaseClient';
 import { comprimirImagemUpload, type PreparedAttachment } from './imageCompression';
 import { apenasVigentes, marcarExcluido } from './softDelete';
 import { PROJETO_PADRAO, PrefixoFormulario, hojeISO, proximoCodigoDoDia } from './projetos';
+import { buscarTudo } from './buscarTudo';
 import type {
   ProjBomNo,
   ProjEntregaProducao,
@@ -36,26 +37,6 @@ import type {
 const db = (tabela: string) => (supabase.from as any)(tabela);
 
 const BUCKET_EVIDENCIAS = 'proj-evidencias';
-
-/**
- * O PostgREST devolve no máximo 1.000 linhas por requisição. A BOM tem 1.257
- * e o razão cresce sem teto, então toda leitura de tabela grande pagina.
- */
-async function buscarTudo<T>(
-  montarQuery: (de: number, ate: number) => any,
-  pagina = 1000,
-): Promise<T[]> {
-  const saida: T[] = [];
-  for (let i = 0; ; i += 1) {
-    const de = i * pagina;
-    const { data, error } = await montarQuery(de, de + pagina - 1);
-    if (error) throw new Error(error.message);
-    const lote = (data ?? []) as T[];
-    saida.push(...lote);
-    if (lote.length < pagina) break;
-  }
-  return saida;
-}
 
 /**
  * O erro do PostgREST embrulha a exceção do Postgres. O `details` das RPCs de
