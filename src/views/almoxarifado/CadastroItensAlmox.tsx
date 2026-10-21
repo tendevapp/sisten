@@ -20,6 +20,13 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import {
+  OPCOES_FILTRO_DATA,
+  alteradoNoIntervalo,
+  formatarAlteracao,
+  intervaloDoFiltro,
+  type FiltroDataAlteracao,
+} from '../../lib/filtroDataAlteracao';
+import {
   carregarDadosCatalogoCompleto,
   buscarMateriaisParaAdicao,
   pesquisarCatalogoSapOnline,
@@ -60,6 +67,7 @@ interface CadastroItensAlmoxProps {
 
 type FiltroRapido = 'todos' | 'com_foto' | 'sem_foto' | 'com_localizacao';
 type ModoVisualizacao = 'cards' | 'tabela';
+type FiltroEtiqueta = 'todas' | 'impressa' | 'nao_impressa';
 
 /** Itens desenhados por vez; "Mostrar mais" acrescenta outro lote. */
 const LOTE_ITENS = 60;
@@ -143,6 +151,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [filtroNivel2, setFiltroNivel2] = useState<string>('todos');
   const [filtroGrupo, setFiltroGrupo] = useState<string>('todos');
   const [filtroLocalizacao, setFiltroLocalizacao] = useState<string>('todas');
+  const [filtroData, setFiltroData] = useState<FiltroDataAlteracao>('todas');
+  const [periodoData, setPeriodoData] = useState({ de: '', ate: '' });
+  const [filtroEtiqueta, setFiltroEtiqueta] = useState<FiltroEtiqueta>('todas');
   const [modoVis, setModoVis] = useState<ModoVisualizacao>('cards');
 
   // Modal de Cadastro de Foto
@@ -233,8 +244,16 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   // Itens filtrados
   const itensFiltrados = useMemo(() => {
     const tokens = buscaChips.map(normalizarParaBusca).filter(Boolean);
+    const intervaloData = intervaloDoFiltro(filtroData, periodoData);
 
-    return itens.filter(it => {
+    const filtrados = itens.filter(it => {
+      if (!alteradoNoIntervalo(it.item_catalogo?.updated_at, intervaloData)) return false;
+
+      // Item sem cadastro no catálogo nunca teve etiqueta impressa.
+      const etiquetaImpressa = Boolean(it.item_catalogo?.etiqueta_impressa_em);
+      if (filtroEtiqueta === 'impressa' && !etiquetaImpressa) return false;
+      if (filtroEtiqueta === 'nao_impressa' && etiquetaImpressa) return false;
+
       const localizacoes = localizacoesDoItem(it);
 
       // Filtro de texto por palavras-chave
@@ -269,12 +288,17 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
       return true;
     });
-  }, [itens, buscaChips, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, posicaoDoItem, localizacoesDoItem]);
+
+    // Último alterado primeiro; quem nunca foi cadastrado vai para o fim, na
+    // ordem em que já vinha (sort estável).
+    const alteradoEm = (it: ItemConsumivelZl0024) => it.item_catalogo?.updated_at ?? '';
+    return filtrados.sort((a, b) => alteradoEm(b).localeCompare(alteradoEm(a)));
+  }, [itens, buscaChips, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, filtroData, periodoData, filtroEtiqueta, posicaoDoItem, localizacoesDoItem]);
 
   // Desenha em lotes (como a aba BOM): o catálogo passa de mil itens com foto,
   // e montar todos de uma vez trava o celular e baixa dezenas de MB de imagem.
   const [visiveisQtd, setVisiveisQtd] = useState(LOTE_ITENS);
-  useEffect(() => { setVisiveisQtd(LOTE_ITENS); }, [buscaChips, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, modoVis]);
+  useEffect(() => { setVisiveisQtd(LOTE_ITENS); }, [buscaChips, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, filtroData, periodoData, filtroEtiqueta, modoVis]);
   const itensVisiveis = useMemo(() => itensFiltrados.slice(0, visiveisQtd), [itensFiltrados, visiveisQtd]);
 
   // Estatísticas e KPIs
@@ -285,8 +309,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     const comLocalizacao = itens.filter(item => localizacoesDoItem(item).length > 0).length;
     const pctCobertura = total > 0 ? (comFoto / total) * 100 : 0;
     const saldoTotal = itens.reduce((acc, i) => acc + i.saldo_total, 0);
+    const etiquetaImpressa = itens.filter(i => i.item_catalogo?.etiqueta_impressa_em).length;
 
-    return { total, comFoto, semFoto, comLocalizacao, pctCobertura, saldoTotal };
+    return { total, comFoto, semFoto, comLocalizacao, pctCobertura, saldoTotal, etiquetaImpressa };
   }, [itens, localizacoesDoItem]);
 
   // Sugestões para o campo Adicionar Item
@@ -1350,8 +1375,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           </div>
         </div>
 
-        {/* Linha secundária de filtros: Subcategoria, Grupo e Localização */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t" style={{ borderColor: 'var(--hairline)' }}>
+        {/* Linha secundária de filtros: Subcategoria, Grupo, Localização e Data de alteração */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 pt-2 border-t" style={{ borderColor: 'var(--hairline)' }}>
           <div>
             <label className="text-[10px] font-bold block mb-1 uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
               Subcategoria (Nível 2)
@@ -1401,6 +1426,54 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               {opcoesLocalizacoes.map(posicao => (
                 <option key={posicao} value={posicao}>{posicao}</option>
               ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold block mb-1 uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+              Data de alteração
+            </label>
+            <select
+              value={filtroData}
+              onChange={(e) => setFiltroData(e.target.value as FiltroDataAlteracao)}
+              className="w-full py-1.5 px-2.5 text-xs rounded-lg border"
+              style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+            >
+              {OPCOES_FILTRO_DATA.map(op => (
+                <option key={op.valor} value={op.valor}>{op.rotulo}</option>
+              ))}
+            </select>
+            {filtroData === 'periodo' && (
+              <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                {([['de', 'De'], ['ate', 'Até']] as const).map(([campo, rotulo]) => (
+                  <label key={campo} className="text-[10px] font-bold" style={{ color: 'var(--ink-muted)' }}>
+                    {rotulo}
+                    <input
+                      type="date"
+                      value={periodoData[campo]}
+                      onChange={(e) => setPeriodoData(p => ({ ...p, [campo]: e.target.value }))}
+                      className="mt-0.5 w-full py-1 px-2 text-xs rounded-lg border font-normal"
+                      style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold block mb-1 uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+              Etiqueta
+            </label>
+            <select
+              value={filtroEtiqueta}
+              onChange={(e) => setFiltroEtiqueta(e.target.value as FiltroEtiqueta)}
+              className="w-full py-1.5 px-2.5 text-xs rounded-lg border"
+              style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+            >
+              <option value="todas">Com e sem etiqueta</option>
+              <option value="impressa">Etiqueta impressa ({kpis.etiquetaImpressa})</option>
+              <option value="nao_impressa">Sem etiqueta impressa ({kpis.total - kpis.etiquetaImpressa})</option>
             </select>
           </div>
         </div>
@@ -1620,6 +1693,15 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         <span style={{ color: 'var(--ink-muted)' }}>Registro:</span>
                         <span className="font-mono text-[10px] font-bold text-slate-500">
                           {item.item_catalogo.codigo_registro}
+                        </span>
+                      </div>
+                    )}
+                    {item.item_catalogo?.updated_at && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span style={{ color: 'var(--ink-muted)' }}>Alterado em:</span>
+                        <span className="text-[10px] font-bold text-slate-500 text-right truncate">
+                          {formatarAlteracao(item.item_catalogo.updated_at)}
+                          {item.item_catalogo.atualizado_por_nome ? ` · ${item.item_catalogo.atualizado_por_nome}` : ''}
                         </span>
                       </div>
                     )}
