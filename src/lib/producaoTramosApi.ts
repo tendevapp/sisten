@@ -164,6 +164,20 @@ export async function corrigirEventoTramo(input: CorrigirEventoInput): Promise<{
   return { codigo: data?.codigo ?? null, offline: ehRespostaOffline(data) };
 }
 
+/**
+ * Volta cada tramo para a etapa anterior: desfaz o marco informado (o que
+ * colocou o tramo na etapa atual) e as situações da etapa desfeita. Mandar o
+ * marco, e não "o último", deixa o reenvio da fila idempotente.
+ */
+export async function voltarEtapaTramos(
+  tramos: Array<{ tramoId: string; marco: MarcoTramo }>,
+  motivo: string,
+): Promise<{ desfeitos: number; offline: boolean }> {
+  const { data, error } = await rpc('prod_apt_voltar_etapa_tramos', { p: { tramos, motivo: motivo.trim() } });
+  falhar(error);
+  return { desfeitos: Number(data?.desfeitos ?? 0), offline: ehRespostaOffline(data) };
+}
+
 export async function importarHistoricoTramos(loteId: string, snapshots: SnapshotTramoPlanilha[]) {
   const { data, error } = await rpc('prod_apt_importar_snapshot_tramos', { p: { loteId, snapshots } });
   falhar(error);

@@ -263,6 +263,12 @@ const RPCS: Record<string, ConfigRpc> = {
     resumo: args => String(args?.p?.motivo || ''),
     respostaProvisoria: () => ({ id: null, codigo: null, [MARCA_OFFLINE]: true }),
   },
+  // Manda o marco a desfazer por tramo: reenviar não volta duas etapas.
+  prod_apt_voltar_etapa_tramos: {
+    rotulo: 'Apontamento de tramo — voltar etapa',
+    resumo: args => `${(args?.p?.tramos || []).length} tramo(s) · ${args?.p?.motivo || ''}`,
+    respostaProvisoria: args => ({ desfeitos: (args?.p?.tramos || []).length, pulados: 0, [MARCA_OFFLINE]: true }),
+  },
 
   plan_kaizen_validar: { rotulo: 'Aqui TEN Melhoria! — validação do responsável', respostaProvisoria: () => null },
 

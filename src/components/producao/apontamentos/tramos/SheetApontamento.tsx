@@ -3,16 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Apontar um ou vários tramos (bottom sheet no celular): avançar para a
- * próxima etapa, atualizar a situação ou somar reparos de solda. Com um
- * tramo só, mostra a linha do tempo com correção auditável.
+ * próxima etapa, voltar para a anterior (lançado por engano), atualizar a
+ * situação ou somar reparos de solda. Com um tramo só, mostra a linha do
+ * tempo com correção auditável.
  */
 
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, Loader2, Minus, Plus, Save, WifiOff } from 'lucide-react';
+import { ArrowRight, Loader2, Minus, Plus, Save, Undo2, WifiOff } from 'lucide-react';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../../ui/Modal';
 import { useToast } from '../../../ui/Toast';
 import {
   CONFIG_ETAPA,
+  ETAPAS_TRAMO,
   ETAPA_APOS_MARCO,
   ROTULO_MARCO,
   dataCurta,
@@ -26,13 +28,13 @@ import {
   type TramoAtual,
 } from '../../../../lib/producaoTramos';
 import { adicionarDias } from '../../../../lib/producaoApontamentos';
-import { registrarTramos } from '../../../../lib/producaoTramosApi';
-import { btnPrimario, btnSecundario, inputCls, labelCls } from '../estilos';
+import { registrarTramos, voltarEtapaTramos } from '../../../../lib/producaoTramosApi';
+import { btnPerigo, btnPrimario, btnSecundario, inputCls, labelCls } from '../estilos';
 import LinhaDoTempoTramo from './LinhaDoTempoTramo';
 import { COR_ETAPA } from './visual';
 import type { Profile } from '../../../../types';
 
-type Acao = 'avancar' | 'situacao' | 'reparos';
+type Acao = 'avancar' | 'voltar' | 'situacao' | 'reparos';
 
 interface Props {
   tramos: TramoAtual[];
@@ -73,6 +75,9 @@ export default function SheetApontamento({ tramos, situacoes, hoje, user, onClos
   const etapa: EtapaTramo = tramos[0].etapa;
   const proximo = CONFIG_ETAPA[etapa].proximo;
   const etapaDestino = proximo ? ETAPA_APOS_MARCO[proximo] : etapa;
+  // Voltar desfaz o marco que trouxe o tramo para a etapa atual.
+  const entrada = CONFIG_ETAPA[etapa].entrada;
+  const etapaAnterior = entrada ? ETAPAS_TRAMO[ETAPAS_TRAMO.indexOf(etapa) - 1] : null;
 
   const [acao, setAcao] = useState<Acao>(proximo ? 'avancar' : 'situacao');
   const [data, setData] = useState(hoje);
@@ -82,6 +87,7 @@ export default function SheetApontamento({ tramos, situacoes, hoje, user, onClos
   const [situacao, setSituacao] = useState<string | null>(null);
   const [reparos, setReparos] = useState(1);
   const [observacao, setObservacao] = useState('');
+  const [motivoVolta, setMotivoVolta] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [versaoLinha, setVersaoLinha] = useState(0);
 
@@ -97,10 +103,31 @@ export default function SheetApontamento({ tramos, situacoes, hoje, user, onClos
     });
   }, [acao, proximo, tramos, data, hoje]);
 
-  const precisaObs = !!data && exigeObservacao(data, hoje) && !observacao.trim();
-  const semConteudo = acao === 'situacao' && !situacao;
+  const voltando = acao === 'voltar';
+  const precisaObs = !voltando && !!data && exigeObservacao(data, hoje) && !observacao.trim();
+  const semConteudo = (acao === 'situacao' && !situacao) || (voltando && motivoVolta.trim().length < 3);
+
+  const voltar = async () => {
+    if (!entrada || motivoVolta.trim().length < 3) return;
+    setSalvando(true);
+    try {
+      const r = await voltarEtapaTramos(tramos.map(t => ({ tramoId: t.tramoId, marco: entrada })), motivoVolta);
+      if (r.offline) {
+        toast.success('Sem rede: a volta ficou salva no aparelho. Ela sobe sozinha quando a conexão voltar.');
+        onSalvo(tramos.map(t => t.tramoId));
+      } else {
+        toast.success(r.desfeitos === 1 ? 'Tramo voltou para a etapa anterior.' : `${r.desfeitos} tramos voltaram para a etapa anterior.`);
+        onSalvo([]);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível voltar a etapa.');
+    } finally {
+      setSalvando(false);
+    }
+  };
 
   const salvar = async () => {
+    if (voltando) return voltar();
     if (erros.length || precisaObs || semConteudo || !data) return;
     setSalvando(true);
     try {
@@ -134,6 +161,7 @@ export default function SheetApontamento({ tramos, situacoes, hoje, user, onClos
     ...(proximo ? [{ id: 'avancar' as Acao, rotulo: ROTULO_MARCO[proximo] }] : []),
     { id: 'situacao', rotulo: 'Situação' },
     { id: 'reparos', rotulo: 'Reparos de solda' },
+    ...(etapaAnterior ? [{ id: 'voltar' as Acao, rotulo: 'Voltar etapa' }] : []),
   ];
 
   return (
@@ -177,6 +205,34 @@ export default function SheetApontamento({ tramos, situacoes, hoje, user, onClos
           </div>
         )}
 
+        {voltando && etapaAnterior && entrada && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+              <span className="rounded-md px-2 py-1 text-xs font-bold" style={{ background: cor.fundo, color: cor.texto }}>{CONFIG_ETAPA[etapa].rotulo}</span>
+              <Undo2 className="h-4 w-4 text-slate-400" />
+              <span className="rounded-md px-2 py-1 text-xs font-bold" style={{ background: COR_ETAPA[etapaAnterior].fundo, color: COR_ETAPA[etapaAnterior].texto }}>
+                {CONFIG_ETAPA[etapaAnterior].rotulo}
+              </span>
+            </div>
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Desfaz o marco <strong>{ROTULO_MARCO[entrada]}</strong>
+              {unico?.marcos[entrada] ? ` de ${dataCurta(unico.marcos[entrada]!)}` : ''} e as situações registradas em {CONFIG_ETAPA[etapa].rotulo}.
+              Os lançamentos ficam riscados na linha do tempo, com o motivo e quem voltou.
+            </p>
+            <div>
+              <label className={labelCls} htmlFor="motivo-volta">Motivo (obrigatório)</label>
+              <input
+                id="motivo-volta"
+                value={motivoVolta}
+                onChange={e => setMotivoVolta(e.target.value)}
+                className={inputCls}
+                placeholder="Ex.: liberado para o Pátio por engano"
+              />
+            </div>
+          </div>
+        )}
+
+        {!voltando && (
         <div>
           <span className={labelCls}>{acao === 'avancar' && proximo ? `Data — ${ROTULO_MARCO[proximo]}` : 'Data'}</span>
           <div className="flex flex-wrap items-center gap-2">
@@ -198,6 +254,7 @@ export default function SheetApontamento({ tramos, situacoes, hoje, user, onClos
             <input type="date" value={data} max={hoje} onChange={e => setData(e.target.value)} className={`${inputCls} w-auto min-h-[40px]`} aria-label="Data operacional" />
           </div>
         </div>
+        )}
 
         {acao === 'avancar' && (
           <div>
@@ -235,6 +292,7 @@ export default function SheetApontamento({ tramos, situacoes, hoje, user, onClos
           </div>
         )}
 
+        {!voltando && (
         <div>
           <label className={labelCls} htmlFor="obs-apontamento">
             Observação{precisaObs ? ' — obrigatória para data com mais de 7 dias' : ''}
@@ -248,6 +306,7 @@ export default function SheetApontamento({ tramos, situacoes, hoje, user, onClos
             placeholder="Ex.: retrabalho no flange, aguardando ponte rolante…"
           />
         </div>
+        )}
 
         {erros.length > 0 && (
           <ul className="space-y-1 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
@@ -276,14 +335,19 @@ export default function SheetApontamento({ tramos, situacoes, hoje, user, onClos
               <WifiOff className="h-3.5 w-3.5" /> Sem rede — vai para a fila
             </>
           )}
-          {data && data !== hoje && <>Data: {dataCurta(data)}</>}
+          {!voltando && data && data !== hoje && <>Data: {dataCurta(data)}</>}
         </span>
         <button type="button" onClick={onClose} className={btnSecundario}>
           Fechar
         </button>
-        <button type="button" onClick={salvar} disabled={salvando || erros.length > 0 || precisaObs || semConteudo || !data} className={`${btnPrimario} min-h-[44px]`}>
-          {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {acao === 'avancar' && proximo ? ROTULO_MARCO[proximo] : 'Registrar'}
+        <button
+          type="button"
+          onClick={salvar}
+          disabled={salvando || erros.length > 0 || precisaObs || semConteudo || !data}
+          className={`${voltando ? btnPerigo : btnPrimario} min-h-[44px]`}
+        >
+          {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : voltando ? <Undo2 className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+          {voltando && etapaAnterior ? `Voltar p/ ${CONFIG_ETAPA[etapaAnterior].rotulo}` : acao === 'avancar' && proximo ? ROTULO_MARCO[proximo] : 'Registrar'}
           {tramos.length > 1 ? ` (${tramos.length})` : ''}
         </button>
       </ModalFooter>
