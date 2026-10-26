@@ -31,8 +31,9 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Check, ChevronDown, ChevronRight, ClipboardList, FileSpreadsheet, FileText, Camera, Loader2, MapPin, PackageX, PackageCheck, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, ChevronRight, ClipboardList, FileSpreadsheet, FileText, Camera, Loader2, MapPin, PackageX, PackageCheck, Pencil, Plus, Search, Trash2, Wrench, X } from 'lucide-react';
 import { useLightbox } from '../ui/Lightbox';
+import { criarFiltroPalavrasChave } from '../../lib/buscaKeywords';
 import { listarCadastrosBom, type CadastroBom } from '../../lib/almoxBomCadastroApi';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { TableCards, TableCardRow, TableDesktop, TableEmpty } from '../ui/DataTable';
@@ -653,7 +654,8 @@ function ModalSeparacao({
   const [itens, setItens] = useState<ProjOrdemItem[]>(ordem.itens ?? []);
   /** Retrato de quando a tela abriu: o que já vinha separado vai para o resumo recolhível. */
   const [idsSeparadosAoAbrir] = useState(() => new Set((ordem.itens ?? []).filter((i) => i.separado).map((i) => i.id)));
-  const [resumoAberto, setResumoAberto] = useState(false);
+  const [busca, setBusca] = useState('');
+  const [resumoAbertoManualmente, setResumoAbertoManualmente] = useState<boolean | null>(null);
   const [marcandoId, setMarcandoId] = useState<string | null>(null);
   const [removendo, setRemovendo] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
@@ -663,6 +665,26 @@ function ModalSeparacao({
   const resumo = resumoSeparacao(itens);
   const { pendentes, anteriores } = dividirRomaneio(itens, idsSeparadosAoAbrir);
   const removiveis = itensRemoviveis(pendentes);
+
+  const filtro = useMemo(() => {
+    return criarFiltroPalavrasChave<ProjOrdemItem>(busca, (oi) => {
+      const item = itemPorId.get(oi.item_id);
+      return [
+        item?.part_number,
+        item?.part_number_norm,
+        oi.item_id,
+        item?.descricao,
+        item?.description,
+        item?.cod_sap,
+      ];
+    });
+  }, [busca, itemPorId]);
+
+  const pendentesFiltrados = useMemo(() => pendentes.filter(filtro), [pendentes, filtro]);
+  const anterioresFiltrados = useMemo(() => anteriores.filter(filtro), [anteriores, filtro]);
+
+  const temBusca = Boolean(busca.trim());
+  const resumoAberto = resumoAbertoManualmente ?? (temBusca && anterioresFiltrados.length > 0);
 
   /** Itens com check cuja quantidade separada difere do previsto — para a formatação condicional e o passo de revisão. */
   const divergencias = useMemo(
@@ -895,12 +917,41 @@ function ModalSeparacao({
               <p className="text-xs font-bold" style={{ color: 'var(--abc-b)' }}>{divergencias.length} com quantidade diferente do previsto</p>
             )}
 
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => {
+                  setBusca(e.target.value);
+                  setResumoAbertoManualmente(null);
+                }}
+                placeholder="Pesquisar por part number ou descrição…"
+                className={`${inputCls()} pl-9 pr-8`}
+              />
+              {busca && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBusca('');
+                    setResumoAbertoManualmente(null);
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md cursor-pointer hover:opacity-70 transition-opacity"
+                  style={{ color: 'var(--ink-muted)' }}
+                  aria-label="Limpar pesquisa"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
             <section className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
-                  {anteriores.length ? 'Faltam separar' : 'Itens do romaneio'} ({pendentes.length})
+                  {anteriores.length ? 'Faltam separar' : 'Itens do romaneio'} ({pendentesFiltrados.length}
+                  {temBusca ? ` de ${pendentes.length}` : ''})
                 </p>
-                {removiveis.length > 0 && (
+                {removiveis.length > 0 && !temBusca && (
                   <button
                     onClick={() => void remover(removiveis)}
                     disabled={removendo}
@@ -911,10 +962,14 @@ function ModalSeparacao({
                   </button>
                 )}
               </div>
-              {pendentes.length ? (
+              {pendentesFiltrados.length ? (
                 <ul className="rounded-lg border max-h-[50vh] overflow-y-auto" style={{ borderColor: 'var(--hairline)' }}>
-                  {pendentes.map(linha)}
+                  {pendentesFiltrados.map(linha)}
                 </ul>
+              ) : temBusca ? (
+                <div className="text-xs rounded-lg border p-4 text-center" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                  Nenhum item pendente encontrado para &ldquo;<strong style={{ color: 'var(--ink-primary)' }}>{busca.trim()}</strong>&rdquo;.
+                </div>
               ) : (
                 <p className="text-xs rounded-lg border p-3" style={{ borderColor: 'var(--hairline)', color: 'var(--abc-a)' }}>
                   Nada falta separar — confirme para debitar.
@@ -925,18 +980,24 @@ function ModalSeparacao({
             {anteriores.length > 0 && (
               <section className="rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
                 <button
-                  onClick={() => setResumoAberto((v) => !v)}
+                  onClick={() => setResumoAbertoManualmente(!resumoAberto)}
                   className="w-full flex items-center justify-between gap-2 p-3 text-left cursor-pointer"
                   aria-expanded={resumoAberto}
                 >
                   <span className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
-                    Já separados antes ({anteriores.length}) · {formatQtd(anteriores.reduce((s, i) => s + (i.separado ? Number(i.qtd_separada) || 0 : 0), 0))} pç
+                    Já separados antes ({anterioresFiltrados.length}{temBusca ? ` de ${anteriores.length}` : ''}) · {formatQtd(anteriores.reduce((s, i) => s + (i.separado ? Number(i.qtd_separada) || 0 : 0), 0))} pç
                   </span>
                   {resumoAberto ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </button>
                 {resumoAberto && (
                   <ul className="border-t max-h-[40vh] overflow-y-auto" style={{ borderColor: 'var(--hairline)' }}>
-                    {anteriores.map(linha)}
+                    {anterioresFiltrados.length ? (
+                      anterioresFiltrados.map(linha)
+                    ) : (
+                      <li className="p-3 text-xs text-center" style={{ color: 'var(--ink-muted)' }}>
+                        Nenhum item já separado corresponde à pesquisa.
+                      </li>
+                    )}
                   </ul>
                 )}
               </section>
