@@ -13,9 +13,11 @@ import {
   type ResumoCompraDossie,
   type SituacaoChegada,
 } from '../../../lib/controleEstoqueDossie';
+import type { StatusControleEstoque } from '../../../lib/controleEstoque';
 import { formatQtd, isProjetoItem } from '../../../lib/almoxarifado';
 import { formatDateBR, formatInt } from '../../../lib/format';
 import Pagination from '../../ui/Pagination';
+import FilterDropdown from '../../ui/FilterDropdown';
 import { StatusBadge } from './StatusBadge';
 
 interface Props {
@@ -26,10 +28,15 @@ interface Props {
 
 const PAGE_SIZE = 50;
 
-type VisaoDossie = 'REPOSICAO' | 'TODOS' | AlertaZerado;
+export type StatusFiltroDossie = 'TODOS' | 'REPOSICAO' | StatusControleEstoque;
+export type VisaoDossie = StatusFiltroDossie | AlertaZerado;
 
 const VISOES: { id: VisaoDossie; rotulo: string; dica: string }[] = [
   { id: 'REPOSICAO', rotulo: 'Crítico ou Alerta', dica: 'Materiais abaixo do mínimo ou perto dele.' },
+  { id: 'CRITICO', rotulo: 'Crítico', dica: 'Materiais com saldo abaixo do estoque mínimo.' },
+  { id: 'ALERTA', rotulo: 'Alerta', dica: 'Materiais com saldo perto do estoque mínimo.' },
+  { id: 'OK', rotulo: 'OK', dica: 'Materiais com saldo dentro da faixa ideal.' },
+  { id: 'SEM_DADOS', rotulo: 'Sem dados', dica: 'Materiais sem histórico de consumo.' },
   { id: 'ZERADO_COM_PO', rotulo: ROTULO_ALERTA_ZERADO.ZERADO_COM_PO, dica: 'Saldo zerado e pedido com quantidade a chegar.' },
   { id: 'ZERADO_COM_RM', rotulo: ROTULO_ALERTA_ZERADO.ZERADO_COM_RM, dica: 'Saldo zerado, nenhum pedido em aberto e RM aguardando compra.' },
   { id: 'ZERADO_SEM_REPOSICAO', rotulo: ROTULO_ALERTA_ZERADO.ZERADO_SEM_REPOSICAO, dica: 'Saldo zerado, já movimentou, tem estoque mínimo e não tem pedido em aberto nem RM aguardando compra. RM já atendida por pedido encerrado não conta como reposição.' },
@@ -39,7 +46,20 @@ const VISOES: { id: VisaoDossie; rotulo: string; dica: string }[] = [
 const naVisao = (linha: LinhaDossie, id: VisaoDossie) => {
   if (id === 'TODOS') return true;
   if (id === 'REPOSICAO') return linha.status === 'CRITICO' || linha.status === 'ALERTA';
+  if (id === 'CRITICO' || id === 'ALERTA' || id === 'OK' || id === 'SEM_DADOS') return linha.status === id;
   return linha.alertaZerado === id;
+};
+
+const COR_VISAO: Partial<Record<VisaoDossie, string>> = {
+  REPOSICAO: 'var(--brand)',
+  CRITICO: 'var(--status-critical)',
+  ALERTA: 'var(--status-warning)',
+  OK: 'var(--status-good)',
+  SEM_DADOS: 'var(--ink-muted)',
+  ZERADO_COM_PO: 'var(--status-warning)',
+  ZERADO_COM_RM: 'var(--status-warning)',
+  ZERADO_SEM_REPOSICAO: 'var(--status-critical)',
+  TODOS: 'var(--brand)',
 };
 
 const COR_ALERTA: Record<AlertaZerado, string> = {
@@ -197,7 +217,10 @@ const ListaEntregas = ({ entregas }: { entregas: EntregaDossie[] }) => (
 );
 
 export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }: Props) {
-  const [visao, setVisao] = useState<VisaoDossie>('REPOSICAO');
+  const [visao, setVisao] = useState<VisaoDossie>(() => {
+    const temReposicao = (linhas ?? []).some(l => l.status === 'CRITICO' || l.status === 'ALERTA');
+    return temReposicao ? 'REPOSICAO' : 'TODOS';
+  });
   const [pagina, setPagina] = useState(0);
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
 
@@ -223,6 +246,12 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
   const dicaVisao = VISOES.find(v => v.id === visao)?.dica;
   const materiais = useMemo(() => new Set(visiveis.map(l => l.material)).size, [visiveis]);
   useEffect(() => { setPagina(0); setAbertas(new Set()); }, [visiveis]);
+
+  useEffect(() => {
+    if (linhas.length > 0 && !linhas.some(l => naVisao(l, visao))) {
+      setVisao('TODOS');
+    }
+  }, [linhas]);
 
   const totalPaginas = Math.max(1, Math.ceil(visiveis.length / PAGE_SIZE));
   const pagina50 = useMemo(() => visiveis.slice(pagina * PAGE_SIZE, (pagina + 1) * PAGE_SIZE), [visiveis, pagina]);
@@ -261,6 +290,7 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Visão do dossiê">
           {VISOES.map(v => {
             const ativa = visao === v.id;
+            const cor = COR_VISAO[v.id] ?? 'var(--brand)';
             return (
               <button
                 key={v.id}
@@ -268,13 +298,13 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                 aria-pressed={ativa}
                 onClick={() => setVisao(v.id)}
                 title={v.dica}
-                className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer hover:opacity-90"
+                className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer hover:opacity-90 transition-colors"
                 style={ativa
-                  ? { borderColor: 'var(--brand)', background: tom('var(--brand)', 12), color: 'var(--brand)' }
+                  ? { borderColor: cor, background: tom(cor, 12), color: cor }
                   : { borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-secondary)' }}
               >
                 {v.rotulo}
-                <span className="tabular text-[10px] font-black" style={{ color: ativa ? 'var(--brand)' : 'var(--ink-muted)' }}>{formatInt(materiaisPorVisao.get(v.id) ?? 0)}</span>
+                <span className="tabular text-[10px] font-black" style={{ color: ativa ? cor : 'var(--ink-muted)' }}>{formatInt(materiaisPorVisao.get(v.id) ?? 0)}</span>
               </button>
             );
           })}
@@ -295,7 +325,27 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtro de período">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtros do dossiê">
+        <FilterDropdown
+          label="Status"
+          allLabel="Todos os status"
+          value={
+            visao === 'CRITICO' || visao === 'ALERTA' || visao === 'OK' || visao === 'SEM_DADOS' || visao === 'REPOSICAO'
+              ? visao
+              : undefined
+          }
+          onChange={val => setVisao((val as VisaoDossie) || 'TODOS')}
+          options={[
+            { value: 'CRITICO', label: 'Crítico', sublabel: 'Abaixo do estoque mínimo' },
+            { value: 'ALERTA', label: 'Alerta', sublabel: 'Perto do estoque mínimo' },
+            { value: 'REPOSICAO', label: 'Crítico ou Alerta', sublabel: 'Abaixo ou perto do mínimo' },
+            { value: 'OK', label: 'OK', sublabel: 'Dentro da faixa ideal' },
+            { value: 'SEM_DADOS', label: 'Sem dados', sublabel: 'Sem histórico de consumo' },
+          ]}
+          preferredWidth={220}
+          title="Filtrar por status do estoque"
+        />
+
         <select
           value={campoData}
           onChange={e => setCampoData(e.target.value as CampoDataDossie)}
