@@ -10,6 +10,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { AlertTriangle, Download, ExternalLink, FileText, Loader2, X } from 'lucide-react';
+import PdfPaginasCanvas, { navegadorSemPdfEmbutido } from './PdfPaginasCanvas';
 
 export interface PdfGerado {
   bytes: Uint8Array;
@@ -145,14 +146,18 @@ export default function PdfPreviewModal({ gerar, onClose, tituloPadrao, onBaixar
             </div>
           ) : (
             <>
-              {pdf && (
+              {pdf && (navegadorSemPdfEmbutido() ? (
+                <div className="absolute inset-0 overflow-auto">
+                  <PdfPaginasCanvas key={pdf.url} bytes={pdf.bytes} />
+                </div>
+              ) : (
                 <iframe
                   key={pdf.url}
                   src={pdf.url}
                   title="Pré-visualização do PDF"
                   className="h-full min-h-[70vh] w-full border-0"
                 />
-              )}
+              ))}
               {gerando && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/70 backdrop-blur-xs dark:bg-slate-950/70">
                   <Loader2 className="h-8 w-8 animate-spin text-blue-600" />

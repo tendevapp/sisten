@@ -653,7 +653,8 @@ export class PdfTextWriter {
 
       let cellX = MARGIN;
       adjustedHeaders.forEach((h, colIndex) => {
-        let cellText = sanitizeText(row[colIndex] || '-');
+        // celula e linha unica: \n nao existe no WinAnsi e derruba o PDF
+        let cellText = sanitizeText(row[colIndex] || '-').replace(/\s*\n+\s*/g, ' - ');
         const maxCellWidth = h.width - 10;
         if (this.font.widthOfTextAtSize(cellText, 8) > maxCellWidth) {
           while (cellText.length > 3 && this.font.widthOfTextAtSize(cellText + '...', 8) > maxCellWidth) {
