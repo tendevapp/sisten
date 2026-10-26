@@ -227,3 +227,15 @@ export async function baixarRetiradaSemSaldo(id: string, requisicaoCodigo: strin
   if (error) throw new Error(error.message);
   return Number(data) || 0;
 }
+
+/**
+ * Reescolhe o depósito dos itens da Requisição no Balcão pendente da retirada
+ * pelo saldo atual da ZL0024 (ela nasce no 0004, quando ainda não há saldo).
+ * Mantém o PEP já escolhido. Devolve o código RQB, ou null se não houver
+ * requisição pendente.
+ */
+export async function atualizarDepositosRequisicaoDaRetirada(codigoRss: string): Promise<string | null> {
+  const { data, error } = await (supabase.rpc as any)('alm_sol_extra_atualizar_depositos_rqb', { p_codigo_rss: codigoRss });
+  if (error) throw new Error(error.message);
+  return (data as string | null) ?? null;
+}

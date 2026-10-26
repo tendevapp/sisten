@@ -34,7 +34,7 @@ import {
   DEPOSITO_DESCRICAO, formatDeposito, isDepositoInativo, ordenarDepositos,
 } from '../../lib/almoxarifado';
 import {
-  PREFIXO_REQ_BALCAO, ROTULO_TIPO_MOVIMENTO, adicionarGrupoPep, adicionarItemAoGrupo, adicionarLinha,
+  ORIGEM_RETIRADA_SEM_SALDO, PREFIXO_REQ_BALCAO, ROTULO_TIPO_MOVIMENTO, adicionarGrupoPep, adicionarItemAoGrupo, adicionarLinha,
   alertaDaLinha, alertasRequisicao, achatarGruposPep, agruparLinhasPorDeposito, agruparLinhasPorDestino, agruparLinhasPorPep, buscarMateriaisEmDepositos, chaveDeposito, localizarMaterialParaSaida, semDepositosSemSaida, somenteComSaldo,
   criarGrupoPep, definirDepositoDoGrupo, definirDestinoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
   removerItemDoGrupo, atualizarQtdItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao,
@@ -1109,12 +1109,22 @@ function ModalRequisicao({
   const alertas = alertasRequisicao(todasLinhas);
 
   const pendenteConfirmacao = !!registro?.pendente_confirmacao;
+  // Retirada sem saldo (Solicitação Extraordinária): só confirma com saldo na
+  // ZL0024 cobrindo cada item no depósito escolhido — é o que mostra que a NF
+  // entrou. O banco recusa igual (alm_req_balcao_salvar).
+  const daRetiradaSemSaldo = registro?.origem === ORIGEM_RETIRADA_SEM_SALDO;
+  const itensAindaSemSaldo = daRetiradaSemSaldo ? todasLinhas.filter((l) => !(l.saldo >= l.quantidade)) : [];
+  const confirmacaoBloqueada = pendenteConfirmacao && itensAindaSemSaldo.length > 0;
 
   /** `confirmar`: só vale em requisição pendente — libera para exportação. */
   const salvar = async (continuar: boolean, confirmar = false) => {
     setTentouSalvar(true);
     if (erros.length > 0) {
       toast.error(erros[0]);
+      return;
+    }
+    if (confirmar && confirmacaoBloqueada) {
+      toast.error(`Ainda sem saldo na ZL0024: ${itensAindaSemSaldo.map((l) => l.material).join(', ')}. Confirme quando a NF for lançada.`);
       return;
     }
     setSalvando(true);
@@ -1302,12 +1312,25 @@ function ModalRequisicao({
             >
               <p className="font-bold" style={{ color: 'var(--status-serious)' }}>
                 <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />
-                Pendente de confirmação{registro?.origem_ref ? ` — gerada pela ficha ${registro.origem_ref}` : ''}
+                Pendente de confirmação{registro?.origem_ref ? ` — gerada ${daRetiradaSemSaldo ? 'pela retirada sem saldo' : 'pela ficha'} ${registro.origem_ref}` : ''}
               </p>
-              <p className="mt-0.5">
-                Confira os itens, o depósito e, principalmente, o <strong>PEP</strong> (sugerido pelo setor do colaborador).
-                Só depois de <strong>Confirmar e liberar</strong> ela entra na exportação para o SAP.
-              </p>
+              {daRetiradaSemSaldo ? (
+                <p className="mt-0.5">
+                  O material saiu antes da NF ser lançada. Quando o item tiver saldo na ZL0024, escolha o depósito e o <strong>PEP</strong> e
+                  <strong> confirme</strong> — a retirada fica baixada e a requisição entra na exportação para o SAP.
+                </p>
+              ) : (
+                <p className="mt-0.5">
+                  Confira os itens, o depósito e, principalmente, o <strong>PEP</strong> (sugerido pelo setor do colaborador).
+                  Só depois de <strong>Confirmar e liberar</strong> ela entra na exportação para o SAP.
+                </p>
+              )}
+              {confirmacaoBloqueada && (
+                <p className="mt-1.5 font-bold" style={{ color: 'var(--status-critical)' }}>
+                  Ainda sem saldo na ZL0024 — não dá para confirmar:{' '}
+                  {itensAindaSemSaldo.map((l) => `${l.material} (precisa ${formatQtd(l.quantidade)}, saldo ${formatQtd(l.saldo)} no ${formatDeposito(l.deposito)})`).join('; ')}.
+                </p>
+              )}
             </div>
           )}
 
@@ -1587,7 +1610,8 @@ function ModalRequisicao({
               </button>
               <button
                 onClick={() => void salvar(false, true)}
-                disabled={salvando}
+                disabled={salvando || confirmacaoBloqueada}
+                title={confirmacaoBloqueada ? 'Item ainda sem saldo na ZL0024 — confirme quando a NF for lançada' : undefined}
                 className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
                 style={{ background: 'var(--brand)' }}
               >
@@ -2053,7 +2077,7 @@ function ModalDetalhe({
             )}
             <Linha rotulo="Observação" valor={r.observacao} />
             <Linha rotulo="Doc. SAP" valor={r.doc_sap ? `${r.doc_sap} · ${r.doc_sap_por ?? ''} em ${formatDateTimeBR(r.doc_sap_em)}` : null} />
-            <Linha rotulo="Origem" valor={r.origem === 'ficha_epi' ? `Ficha de EPI ${r.origem_ref ?? ''}`.trim() : null} />
+            <Linha rotulo="Origem" valor={r.origem === 'ficha_epi' ? `Ficha de EPI ${r.origem_ref ?? ''}`.trim() : r.origem === ORIGEM_RETIRADA_SEM_SALDO ? `Retirada sem saldo ${r.origem_ref ?? ''}`.trim() : null} />
             <Linha rotulo="Confirmação" valor={r.confirmada_em ? `${r.confirmada_por ?? '—'} em ${formatDateTimeBR(r.confirmada_em)}` : r.pendente_confirmacao ? 'Pendente — não entra na exportação' : null} />
             <Linha rotulo="Registrado por" valor={`${r.criado_por_nome ?? '—'} em ${formatDateTimeBR(r.created_at)}`} />
             <Linha

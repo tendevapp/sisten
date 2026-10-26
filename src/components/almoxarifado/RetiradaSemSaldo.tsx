@@ -10,8 +10,8 @@
  * - `ResumoRetirada`       — identificação, materiais, aprovação e baixa;
  * - `BotaoPdfRetirada`     — PDF para imprimir; antes da aprovação avisa e
  *                            pede "gerar mesmo assim";
- * - `BaixaRetiradaModal`   — NF lançada + saldo na ZL0024 → gera a Requisição
- *                            no Balcão e marca a retirada como baixada.
+ * - `BaixaRetiradaModal`   — saldo da ZL0024 de cada item e atalho para a
+ *                            Requisição no Balcão pendente da retirada.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -24,12 +24,12 @@ import PdfPreviewModal from '../ui/PdfPreviewModal';
 import { formatQtd } from '../../lib/format';
 import { formatarDataBR } from '../../lib/fichaEpi';
 import { formatDeposito } from '../../lib/almoxarifado';
-import { indexarEstoquePorDeposito, type PepAplicacao } from '../../lib/requisicaoBalcao';
-import { buscarEstoqueBalcao, listarAplicacoesBalcao } from '../../lib/requisicaoBalcaoApi';
+import { indexarEstoquePorDeposito } from '../../lib/requisicaoBalcao';
+import { buscarEstoqueBalcao } from '../../lib/requisicaoBalcaoApi';
 import { CHAVE_ABRIR_REQUISICAO_BALCAO } from '../../lib/fichaEpiRequisicao';
 import { APROVACAO_SOL_EXTRA_ROTULO, rotuloStatusSolExtra, type AprovacaoSolExtra } from '../../lib/solicitacaoExtra';
 import type { SolExtra } from '../../lib/solicitacaoExtraApi';
-import { darBaixaRetiradaSemSaldo, planejarBaixa, type LinhaBaixa } from '../../lib/retiradaSemSaldoBaixa';
+import { planejarBaixa, requisicaoDaRetirada, type LinhaBaixa } from '../../lib/retiradaSemSaldoBaixa';
 import { gerarRetiradaSemSaldoPdf } from '../../lib/pdfExport/exportRetiradaSemSaldoPdf';
 import { GaleriaFotosSolExtra } from './FotosSolicitacaoExtra';
 
@@ -209,37 +209,30 @@ export function BotaoPdfRetirada({ registro, className }: { registro: SolExtra; 
 }
 
 /**
- * Baixa pelo almoxarifado: mostra onde cada item sai e o saldo da ZL0024
- * agora, pede o PEP e a confirmação de que a NF foi lançada, gera a
- * Requisição no Balcão e marca a retirada como baixada.
+ * Baixa pelo almoxarifado. A Requisição no Balcão da retirada já nasceu
+ * pendente de confirmação (trigger no registro da RSS); aqui se vê o saldo
+ * da ZL0024 de cada item agora e se abre a requisição no Balcão — lá o
+ * almoxarifado escolhe depósito e PEP e confirma, o que só é aceito com
+ * saldo. Confirmada, a retirada fica baixada sozinha.
  */
 export function BaixaRetiradaModal({
-  registro, user, onClose, onFeito, onNavigate,
+  registro, user, onClose, onNavigate,
 }: {
   registro: SolExtra;
   user: Profile;
   onClose: () => void;
-  onFeito: () => void;
+  onFeito?: () => void;
   onNavigate: (path: string) => void;
 }) {
   const toast = useToast();
   const [carregando, setCarregando] = useState(true);
   const [linhas, setLinhas] = useState<LinhaBaixa[]>([]);
-  const [peps, setPeps] = useState<PepAplicacao[]>([]);
-  const [pepWbs, setPepWbs] = useState('');
-  const [confirmado, setConfirmado] = useState(false);
-  const [obs, setObs] = useState('');
-  const [salvando, setSalvando] = useState(false);
-  const [gerada, setGerada] = useState<string | null>(null);
+  const [abrindo, setAbrindo] = useState(false);
 
   useEffect(() => {
     let ativo = true;
-    Promise.all([buscarEstoqueBalcao(true), listarAplicacoesBalcao().catch(() => [] as PepAplicacao[])])
-      .then(([estoque, lista]) => {
-        if (!ativo) return;
-        setLinhas(planejarBaixa(registro.itens, indexarEstoquePorDeposito(estoque, true)));
-        setPeps(lista);
-      })
+    buscarEstoqueBalcao(true)
+      .then(estoque => { if (ativo) setLinhas(planejarBaixa(registro.itens, indexarEstoquePorDeposito(estoque, true))); })
       .catch(err => toast.error(`Não foi possível ler o saldo da ZL0024: ${err instanceof Error ? err.message : String(err)}`))
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
@@ -247,46 +240,30 @@ export function BaixaRetiradaModal({
 
   const semSaldo = linhas.filter(l => !l.cobre);
   const aprovada = registro.aprovacao_status === 'APROVADA';
-  const pep = peps.find(p => p.wbs === pepWbs) ?? null;
 
-  const darBaixa = async () => {
-    if (!pep) {
-      toast.warning('Escolha a aplicação (centro de custo / PEP).');
-      return;
-    }
-    setSalvando(true);
+  const abrirRequisicao = async () => {
+    setAbrindo(true);
     try {
-      const codigo = await darBaixaRetiradaSemSaldo({ registro, linhas, pep, usuarioNome: user.name, obs });
-      setGerada(codigo);
-      toast.success(`Retirada ${registro.codigo} baixada com a requisição ${codigo}.`);
-      onFeito();
+      const codigo = await requisicaoDaRetirada(registro, linhas, user.name);
+      try { sessionStorage.setItem(CHAVE_ABRIR_REQUISICAO_BALCAO, codigo); } catch { /* sem storage: abre a lista */ }
+      onClose();
+      onNavigate('/formularios/almoxarifado-requisicao-balcao');
     } catch (err) {
-      toast.error(`Não foi possível dar baixa: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`Não foi possível abrir a requisição: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      setSalvando(false);
+      setAbrindo(false);
     }
-  };
-
-  const abrirRequisicao = () => {
-    if (!gerada) return;
-    try { sessionStorage.setItem(CHAVE_ABRIR_REQUISICAO_BALCAO, gerada); } catch { /* sem storage: abre a lista */ }
-    onNavigate('/formularios/almoxarifado-requisicao-balcao');
   };
 
   return (
-    <Modal onClose={onClose} maxWidth="max-w-3xl" ariaLabel="Dar baixa na retirada sem saldo" disableOutsideClose={salvando}>
+    <Modal onClose={onClose} maxWidth="max-w-3xl" ariaLabel="Dar baixa na retirada sem saldo" disableOutsideClose={abrindo}>
       <ModalHeader onClose={onClose}>
         <p className="font-mono text-xs font-bold text-blue-700 dark:text-blue-400">{registro.codigo}</p>
-        <h3 className="truncate text-base font-bold text-slate-900 dark:text-slate-50">Dar baixa — Requisição no Balcão</h3>
+        <h3 className="truncate text-base font-bold text-slate-900 dark:text-slate-50">Baixa no balcão</h3>
       </ModalHeader>
 
       <ModalBody className="space-y-4">
-        {gerada ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
-            <p className="flex items-center gap-2 font-bold"><PackageCheck className="h-5 w-5" /> Requisição {gerada} gerada</p>
-            <p className="mt-1">A retirada {registro.codigo} saiu das pendências. A requisição já entra na exportação para o SAP — abra se precisar ajustar depósito ou PEP.</p>
-          </div>
-        ) : carregando ? (
+        {carregando ? (
           <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Lendo o saldo da ZL0024…</p>
         ) : (
           <>
@@ -311,7 +288,7 @@ export function BaixaRetiradaModal({
                   <tr>
                     <th className="px-3 py-1.5 text-left">Material</th>
                     <th className="px-3 py-1.5 text-right">Quant.</th>
-                    <th className="px-3 py-1.5 text-left">Depósito de saída</th>
+                    <th className="px-3 py-1.5 text-left">Depósito com saldo</th>
                     <th className="px-3 py-1.5 text-right">Saldo ZL0024</th>
                   </tr>
                 </thead>
@@ -323,7 +300,7 @@ export function BaixaRetiradaModal({
                         <span className="block text-xs text-slate-500">{l.descricao}</span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums">{formatQtd(l.quantidade)} {l.unidade}</td>
-                      <td className="px-3 py-1.5 text-xs">{formatDeposito(l.deposito)}</td>
+                      <td className="px-3 py-1.5 text-xs">{l.saldoDeposito > 0 ? formatDeposito(l.deposito) : '—'}</td>
                       <td className={`whitespace-nowrap px-3 py-1.5 text-right tabular-nums font-semibold ${l.cobre ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                         {formatQtd(l.saldoDeposito)}
                         {l.saldoTotal !== l.saldoDeposito && <span className="block text-[10px] font-normal text-slate-400">total {formatQtd(l.saldoTotal)}</span>}
@@ -333,69 +310,35 @@ export function BaixaRetiradaModal({
                 </tbody>
               </table>
             </div>
-            {semSaldo.length > 0 && (
-              <p className="flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300">
+            {semSaldo.length > 0 ? (
+              <p className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                {semSaldo.length === 1 ? 'Um item ainda não tem' : `${semSaldo.length} itens ainda não têm`} saldo suficiente na última ZL0024 importada. Se a NF já foi lançada e a ZL0024 ainda não foi atualizada, a requisição sai sinalizada sem saldo.
+                {semSaldo.length === 1 ? 'Um item ainda não tem' : `${semSaldo.length} itens ainda não têm`} saldo na ZL0024 — a requisição no balcão continua pendente
+                e só pode ser confirmada quando a NF for lançada e a ZL0024 for atualizada.
+              </p>
+            ) : (
+              <p className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
+                <PackageCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                Todos os itens têm saldo. Abra a requisição, confira depósito e PEP e confirme — a retirada fica baixada.
               </p>
             )}
-
-            <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-300">
-                Aplicação (centro de custo / PEP) <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={pepWbs}
-                onChange={e => setPepWbs(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-              >
-                <option value="">Escolha…</option>
-                {peps.map(p => <option key={p.wbs} value={p.wbs}>{p.nome} · {p.wbs}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-300">Observação</label>
-              <input
-                value={obs}
-                onChange={e => setObs(e.target.value)}
-                placeholder="Ex.: NF 12345 lançada em 27/10"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-              />
-            </div>
-            <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
-              <input type="checkbox" checked={confirmado} onChange={e => setConfirmado(e.target.checked)} className="mt-0.5 h-4 w-4 accent-emerald-600" />
-              <span className="text-slate-800 dark:text-slate-100">Confirmo que a <strong>nota fiscal já foi lançada</strong> e o item já tem saldo na ZL0024.</span>
-            </label>
           </>
         )}
       </ModalBody>
 
       <ModalFooter>
-        {gerada ? (
-          <>
-            <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
-              Fechar
-            </button>
-            <button type="button" onClick={abrirRequisicao} className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700">
-              Abrir requisição {gerada}
-            </button>
-          </>
-        ) : (
-          <>
-            <button type="button" onClick={onClose} disabled={salvando} className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-60 dark:text-slate-300 dark:hover:bg-slate-800">
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={darBaixa}
-              disabled={salvando || carregando || !confirmado || !pepWbs}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-              Dar baixa e gerar requisição
-            </button>
-          </>
-        )}
+        <button type="button" onClick={onClose} disabled={abrindo} className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-60 dark:text-slate-300 dark:hover:bg-slate-800">
+          Fechar
+        </button>
+        <button
+          type="button"
+          onClick={() => void abrirRequisicao()}
+          disabled={abrindo || carregando}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {abrindo ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
+          Abrir requisição no balcão
+        </button>
       </ModalFooter>
     </Modal>
   );

@@ -261,7 +261,7 @@ export default function SolicitacaoExtraForm({
       }
       const criada = await criarSolicitacaoExtra(dados, user.name, id);
       if (dados.projeto) lembrarProjeto(dados.projeto);
-      if (criada.codigo && semSaldo) toast.success(`Retirada ${criada.codigo} registrada e enviada para a aprovação do gestor do setor.`);
+      if (criada.codigo && semSaldo) toast.success(`Retirada ${criada.codigo} registrada: foi para a aprovação do gestor e gerou a Requisição no Balcão pendente (confirma quando o item tiver saldo na ZL0024).`);
       else if (criada.codigo) toast.success(`Solicitação ${criada.codigo} registrada. A baixa fica pendente de regularização no SAP.`);
       else toast.info('Solicitação salva no aparelho. O código sai quando a conexão voltar e sincronizar.');
       limpar();

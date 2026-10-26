@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Loader2, PackageX, Pencil, RefreshCw, RotateCcw, Search, Trash2, XCircle } from 'lucide-react';
+import { Check, FileSpreadsheet, Loader2, PackageX, Pencil, RefreshCw, RotateCcw, Search, Trash2, XCircle } from 'lucide-react';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import { useToast } from '../ui/Toast';
@@ -25,6 +25,8 @@ import {
 import { chaveNaoEntregue } from '../../lib/projetosImportacao';
 import { normalizarPartNumber } from '../../lib/projetos';
 import { parseMb51Number } from '../../lib/mb51';
+import { exportarPlanilhaEntregasPendentes } from '../../lib/entregasPendentesPlanilha';
+import { hojeISO } from '../../lib/projetos';
 import type { Profile } from '../../types';
 
 const ROTULO_STATUS: Record<StatusEntregaPendente, string> = {
@@ -119,6 +121,16 @@ export default function EntregasPendentes({ user, podeLancar, versao }: { user: 
     }
   };
 
+  /** Baixa o que está na tela (filtro + busca). */
+  const exportarExcel = () => {
+    try {
+      const arquivo = exportarPlanilhaEntregasPendentes(filtrados, hojeISO());
+      toast.success(`${arquivo} — ${filtrados.length} item(ns).`);
+    } catch (err: any) {
+      toast.error(`Não foi possível gerar o Excel: ${err?.message || err}`);
+    }
+  };
+
   // Nada pendente e nada resolvido: não ocupa espaço na tela.
   if (!carregando && lista.length === 0) return null;
 
@@ -156,6 +168,16 @@ export default function EntregasPendentes({ user, podeLancar, versao }: { user: 
             <option value="NAO_VIRA">Não virão</option>
             <option value="todos">Todos</option>
           </select>
+          <button
+            type="button"
+            onClick={exportarExcel}
+            disabled={!filtrados.length}
+            title="Baixa em Excel os itens da lista (filtro e busca atuais)"
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer text-emerald-700 dark:text-emerald-400 disabled:opacity-40"
+            style={{ borderColor: 'var(--hairline)' }}
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" /> Exportar Excel
+          </button>
           <button type="button" onClick={() => void carregar()} disabled={carregando} className="rounded-lg border p-1.5 cursor-pointer disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }} aria-label="Atualizar">
             <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'animate-spin' : ''}`} />
           </button>
