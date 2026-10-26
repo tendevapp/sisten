@@ -119,8 +119,8 @@ export function consumirItemQrPendente(agora = Date.now()): string | null {
 // Botão "Ler QR" do cabeçalho
 //
 // O QR lido pelo SISTEN pergunta o que fazer com o item: baixa no balcão
-// (Requisição no Balcão com o item já escolhido) ou contagem do Inventário
-// Cíclico. A escolha viaja como item pendente + um evento: a tela de destino
+// (Requisição no Balcão com o item já escolhido), contagem do Inventário
+// Cíclico ou Solicitação Extraordinária (saída sem saldo). A escolha viaja como item pendente + um evento: a tela de destino
 // consome o pendente ao abrir, e o evento acorda a que já estava aberta (trocar
 // de rota para a mesma rota não dispara `hashchange`).
 // ---------------------------------------------------------------------------
@@ -152,6 +152,19 @@ export function guardarItemInventarioPendente(codigo: string, agora = Date.now()
 
 export function consumirItemInventarioPendente(agora = Date.now()): string | null {
   return consumirPendente(CHAVE_ITEM_INVENTARIO_PENDENTE, agora);
+}
+
+/** Solicitação Extraordinária (FRM.ALM-0013): saída sem saldo, com o item lido já na tabela. */
+export const ROTA_SOLICITACAO_EXTRA = '/formularios/almoxarifado-solicitacao-extra';
+export const CHAVE_ITEM_SOL_EXTRA_PENDENTE = 'sisten_qr_item_sol_extra_pendente';
+export const EVENTO_ITEM_QR_SOL_EXTRA = 'sisten:item-qr-sol-extra';
+
+export function guardarItemSolExtraPendente(codigo: string, agora = Date.now()): void {
+  guardarPendente(CHAVE_ITEM_SOL_EXTRA_PENDENTE, codigo, agora);
+}
+
+export function consumirItemSolExtraPendente(agora = Date.now()): string | null {
+  return consumirPendente(CHAVE_ITEM_SOL_EXTRA_PENDENTE, agora);
 }
 
 /**

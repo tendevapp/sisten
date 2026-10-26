@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  descreverMotivo, lerNumero, normalizarPorMotivo, turnoDaHora, validarSolExtra, type DadosSolExtra,
+  descreverMotivo, lerNumero, normalizarPorMotivo, podeAprovarRetirada, rotuloStatusSolExtra, turnoDaHora, validarSolExtra,
+  type DadosSolExtra,
 } from './solicitacaoExtra';
 import { SOL_EXTRA_COLUNAS, montarLinhasSolExtra } from './solicitacaoExtraPlanilha';
 import type { SolExtra } from './solicitacaoExtraApi';
 
 const base: DadosSolExtra = {
+  tipo: 'PROJETO',
   data: '2026-10-20',
   hora: '08:30',
   turno: '1',
@@ -17,6 +19,25 @@ const base: DadosSolExtra = {
   area_reparada_m2: null,
   rugosidade_um: null,
   observacao: null,
+  retirante_id: null,
+  retirante_nome: null,
+  retirante_matricula: null,
+  setor_solicitante_id: null,
+  setor_solicitante_nome: null,
+};
+
+const semSaldo: DadosSolExtra = {
+  ...base,
+  tipo: 'SEM_SALDO',
+  turno: null,
+  projeto: null,
+  tramo: null,
+  motivo: null,
+  retirante_id: 'p1',
+  retirante_nome: 'JOSÉ DA SILVA',
+  retirante_matricula: '12345',
+  setor_solicitante_id: '9',
+  setor_solicitante_nome: 'Manutenção',
 };
 
 describe('validarSolExtra', () => {
@@ -116,5 +137,41 @@ describe('montarLinhasSolExtra (exportação Excel)', () => {
   it('pendente sai sem doc. SAP e campos opcionais vazios', () => {
     const [l] = montarLinhasSolExtra([{ ...registro, status: 'PENDENTE', doc_sap: null, area_reparada_m2: null, turno: null, itens: [base.itens[0]] }]);
     expect([l['Situação'], l['Doc. SAP'], l['Área reparada (m²)'], l['Turno']]).toEqual(['Aguardando regularização', '', '', '']);
+  });
+});
+
+describe('retirada sem saldo', () => {
+  it('pede quem retira, setor e hora — motivo não', () => {
+    expect(validarSolExtra(semSaldo)).toEqual([]);
+    expect(validarSolExtra({ ...semSaldo, retirante_nome: ' ', setor_solicitante_id: null, hora: null })).toEqual([
+      'Informe quem está retirando (matrícula ou nome).',
+      'Escolha o setor solicitante.',
+      'Informe a hora da retirada.',
+    ]);
+  });
+
+  it('normalizar limpa os campos da folha de Projeto e mantém o retirante', () => {
+    const d = normalizarPorMotivo({ ...semSaldo, projeto: 'GW', tramo: 'T1', turno: '2', motivo: 'LIMPEZA' });
+    expect([d.projeto, d.tramo, d.turno, d.motivo]).toEqual([null, null, null, null]);
+    expect(d.retirante_nome).toBe('JOSÉ DA SILVA');
+  });
+
+  it('projeto não leva retirante nem setor', () => {
+    const d = normalizarPorMotivo({ ...base, retirante_nome: 'X', setor_solicitante_id: '9' });
+    expect([d.retirante_nome, d.setor_solicitante_id]).toEqual([null, null]);
+  });
+
+  it('aprova o admin ou o aprovador do setor solicitante', () => {
+    const r = { tipo: 'SEM_SALDO' as const, setor_solicitante_id: '9' };
+    expect(podeAprovarRetirada(r, { roles: ['admin'] })).toBe(true);
+    expect(podeAprovarRetirada(r, { roles: ['gestor'], aprovador_setores: ['9'] })).toBe(true);
+    expect(podeAprovarRetirada(r, { roles: ['gestor'], aprovador_setores: ['2'] })).toBe(false);
+    expect(podeAprovarRetirada({ ...r, tipo: 'PROJETO' }, { roles: ['admin'] })).toBe(false);
+  });
+
+  it('situação no vocabulário de cada tipo', () => {
+    expect(rotuloStatusSolExtra('PENDENTE', 'SEM_SALDO')).toBe('Aguardando baixa');
+    expect(rotuloStatusSolExtra('REGULARIZADA', 'SEM_SALDO')).toBe('Baixada no balcão');
+    expect(rotuloStatusSolExtra('REGULARIZADA')).toBe('Regularizada no SAP');
   });
 });

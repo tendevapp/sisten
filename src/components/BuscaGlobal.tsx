@@ -9,10 +9,14 @@
  * Páginas, formulários, solicitações e RMs vêm de dados já no aparelho e
  * respondem a cada tecla; materiais vão à RPC `buscar_materiais`, com
  * debounce, e a resposta atrasada de uma digitação anterior é descartada.
+ *
+ * Escolher um material não sai da busca: abre a situação dele (saldo, RM,
+ * pedido, previsão de entrega, MIGO — `SituacaoMaterialResumo`), com o botão
+ * para o Catálogo SAP. Esc ou ← volta à lista; digitar também.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CornerDownLeft, FileText, Loader2, Search, X } from 'lucide-react';
+import { ArrowLeft, CornerDownLeft, ExternalLink, FileText, Loader2, Search, X } from 'lucide-react';
 import type { Profile } from '../types';
 import {
   buscarLocal,
@@ -23,6 +27,7 @@ import {
 } from '../lib/buscaGlobal';
 import { normalizarTermo } from '../lib/materiais';
 import { useDebounce } from '../lib/useDebounce';
+import SituacaoMaterialResumo from './almoxarifado/SituacaoMaterialResumo';
 
 interface Props {
   user: Profile;
@@ -38,6 +43,8 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
   const [materiais, setMateriais] = useState<ResultadoBusca[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [ativo, setAtivo] = useState(0);
+  // Material escolhido: a paleta mostra a situação dele no lugar da lista.
+  const [materialAberto, setMaterialAberto] = useState<ResultadoBusca | null>(null);
   const campoRef = useRef<HTMLInputElement>(null);
   const listaRef = useRef<HTMLUListElement>(null);
   const requisicaoRef = useRef(0);
@@ -86,24 +93,42 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
   }, [ativo, lista]);
 
   // Esc em captura: fecha só a busca, sem derrubar um modal que esteja por baixo.
+  // Com a situação de um material aberta, o Esc volta à lista.
   useEffect(() => {
     const aoTeclar = (ev: KeyboardEvent) => {
       if (ev.key !== 'Escape') return;
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      onFechar();
+      if (materialAberto) {
+        setMaterialAberto(null);
+        campoRef.current?.focus();
+      } else {
+        onFechar();
+      }
     };
     window.addEventListener('keydown', aoTeclar, true);
     return () => window.removeEventListener('keydown', aoTeclar, true);
-  }, [onFechar]);
+  }, [onFechar, materialAberto]);
 
-  const abrir = (r: ResultadoBusca | undefined) => {
-    if (!r) return;
+  const navegar = (r: ResultadoBusca) => {
     onFechar();
     onNavigate(r.path);
   };
 
+  const abrir = (r: ResultadoBusca | undefined) => {
+    if (!r) return;
+    if (r.grupo === 'Materiais') setMaterialAberto(r);
+    else navegar(r);
+  };
+
   const aoTeclarNoCampo = (ev: React.KeyboardEvent<HTMLInputElement>) => {
+    if (materialAberto) {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        navegar(materialAberto);
+      }
+      return;
+    }
     if (ev.key === 'ArrowDown') {
       ev.preventDefault();
       if (lista.length) setAtivo(a => (a + 1) % lista.length);
@@ -130,7 +155,9 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label="Busca global"
-        className="flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl dark:bg-slate-900 sm:h-auto sm:max-h-[70vh] sm:max-w-xl sm:rounded-2xl sm:border sm:border-slate-200 dark:sm:border-slate-700"
+        className={`flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl dark:bg-slate-900 sm:h-auto sm:rounded-2xl sm:border sm:border-slate-200 dark:sm:border-slate-700 ${
+          materialAberto ? 'sm:max-h-[85vh] sm:max-w-2xl' : 'sm:max-h-[70vh] sm:max-w-xl'
+        }`}
       >
         <div className="flex items-center gap-2 border-b border-slate-200 px-3 dark:border-slate-700">
           <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
@@ -138,7 +165,10 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
             ref={campoRef}
             type="text"
             value={termo}
-            onChange={ev => setTermo(ev.target.value)}
+            onChange={ev => {
+              setTermo(ev.target.value);
+              setMaterialAberto(null);
+            }}
             onKeyDown={aoTeclarNoCampo}
             role="combobox"
             aria-expanded={lista.length > 0}
@@ -161,6 +191,32 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
           </button>
         </div>
 
+        {materialAberto ? (
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="mb-3 flex items-start gap-2">
+              <button
+                type="button"
+                onClick={() => { setMaterialAberto(null); campoRef.current?.focus(); }}
+                aria-label="Voltar aos resultados"
+                className="mt-0.5 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="font-mono text-xs font-bold text-blue-700 dark:text-blue-400">{materialAberto.id}</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{materialAberto.titulo}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navegar(materialAberto)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:border-blue-400 hover:text-blue-700 dark:border-slate-700 dark:text-slate-200"
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> Catálogo SAP
+              </button>
+            </div>
+            <SituacaoMaterialResumo material={materialAberto.id} mostrarCabecalho={false} />
+          </div>
+        ) : (
         <ul ref={listaRef} id={ID_LISTA} role="listbox" aria-label="Resultados" className="min-h-0 flex-1 overflow-y-auto p-2">
           {lista.map((r, i) => {
             const Icone = r.icone ?? FileText;
@@ -208,10 +264,15 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
             </li>
           )}
         </ul>
+        )}
 
         <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2 text-[11px] text-slate-400 dark:border-slate-700">
-          <span className="min-w-0 truncate">{dica ?? 'Materiais aparecem com 3 letras ou 4 dígitos.'}</span>
-          <span className="hidden shrink-0 sm:inline">↑↓ navegar · Enter abrir · Esc fechar</span>
+          <span className="min-w-0 truncate">
+            {materialAberto ? 'Situação do material: saldo, RM, pedido, entrega e MIGO.' : dica ?? 'Materiais aparecem com 3 letras ou 4 dígitos — Enter mostra a situação.'}
+          </span>
+          <span className="hidden shrink-0 sm:inline">
+            {materialAberto ? 'Enter Catálogo SAP · Esc voltar' : '↑↓ navegar · Enter abrir · Esc fechar'}
+          </span>
         </div>
       </div>
     </div>

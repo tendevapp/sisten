@@ -352,6 +352,9 @@ export const DEPOSITO_EPI = '0002';
 /** Origem gravada em `alm_req_balcao.origem` para as requisições vindas da ficha. */
 export const ORIGEM_FICHA_EPI = 'ficha_epi';
 
+/** Origem das requisições que dão baixa numa retirada sem saldo (RSS) da Solicitação Extraordinária. */
+export const ORIGEM_RETIRADA_SEM_SALDO = 'sol_extra_sem_saldo';
+
 const AREAS_DE_PRODUCAO = ['producao', 'calderaria', 'solda', 'jato', 'pintura', 'lixamento', 'usinagem', 'montagem'];
 
 /**

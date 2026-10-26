@@ -16,6 +16,12 @@
  * O modelo é detectado pelo cabeçalho colado (ou, na falta dele, pelo formato).
  */
 
+/**
+ * Onde o Processamento de NF mora desde 26/10/2026: aba de Geral › Pendências.
+ * O endereço antigo (`/suprimentos/pendencias-processamento`) continua abrindo a aba.
+ */
+export const ROTA_PENDENCIAS_PROCESSAMENTO = '/pendencias?aba=processamento';
+
 export const NOME_SETOR_SUPRIMENTOS = 'Suprimentos';
 export const CATEGORIA_PENDENCIA_PROCESSAMENTO = 'Pendência de Processamento';
 export const CATEGORIA_AJUSTE_PEDIDO = 'Ajuste de Pedido';
@@ -681,7 +687,7 @@ export function montarCorpoEmailConclusao(params: {
     '------------------------------------------------------------',
     '',
     'Para acompanhar os chamados e o histórico de processamento, acesse o SISTEN:',
-    origemUrl || 'https://sisten.ten.ind.br/#/suprimentos/pendencias-processamento',
+    origemUrl || `https://sisten.ten.ind.br/#${ROTA_PENDENCIAS_PROCESSAMENTO}`,
   ];
 
   return [...cabecalho, blocosItens.join('\n\n'), ...rodape].join('\n');

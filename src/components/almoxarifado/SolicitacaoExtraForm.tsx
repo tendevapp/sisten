@@ -14,18 +14,31 @@
  * Material fora do cadastro entra digitado à mão.
  *
  * Com `registro`, vira a edição: campos preenchidos, mesmo botão de salvar.
+ *
+ * `tipo` SEM_SALDO troca o cabeçalho da folha de Projeto (projeto, turno,
+ * tramo, motivo) por quem retira (cadastro do RH ou digitado), setor
+ * solicitante, data e hora — a retirada vai para a aprovação do gestor do
+ * setor e para a baixa do almoxarifado.
+ *
+ * `itemQr` é o item lido no "Ler QR" do cabeçalho: entra na primeira linha
+ * vazia (ou numa nova) com descrição e unidade do cadastro, e a quantidade
+ * fica para a pessoa preencher.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Save, Search, Trash2 } from 'lucide-react';
-import type { Profile } from '../../types';
+import type { Profile, RhPessoa, Sector } from '../../types';
 import { useToast } from '../ui/Toast';
+import SeletorColaborador, { type ColaboradorEscolhido } from './SeletorColaborador';
+import { localDb } from '../../db/localDb';
+import { listarRhPessoas } from '../../lib/rhApi';
 import { hojeISO } from '../../lib/fichaEpi';
 import { horaAgora } from '../../lib/portariaApi';
 import { buscarMateriais, type MaterialDisponivel } from '../../lib/requisicaoBalcao';
+import { normalizeCode } from '../../lib/almoxarifado';
 import {
   MOTIVOS_SOL_EXTRA, lerNumero, normalizarPorMotivo, turnoDaHora, validarSolExtra,
-  type DadosSolExtra, type MotivoSolExtra, type TurnoSolExtra,
+  type DadosSolExtra, type MotivoSolExtra, type TipoSolExtra, type TurnoSolExtra,
 } from '../../lib/solicitacaoExtra';
 import {
   atualizarSolicitacaoExtra, criarSolicitacaoExtra, listarCatalogoParaSolicitacao, type SolExtra,
@@ -33,12 +46,18 @@ import {
 
 interface Props {
   user: Profile;
+  /** Padrão PROJETO; na edição vale o tipo do registro. */
+  tipo?: TipoSolExtra;
   onSalvo: () => void;
   /** Registro em edição; sem ele, o formulário lança uma solicitação nova. */
   registro?: SolExtra;
   onCancelar?: () => void;
   /** Projetos já usados, para sugerir no campo. */
   projetosSugeridos?: string[];
+  /** Item lido no QR do cabeçalho; `n` muda a cada leitura. */
+  itemQr?: { codigo: string; n: number } | null;
+  /** Avisa que o item lido já entrou na tabela (para não entrar de novo). */
+  onItemQrAplicado?: () => void;
 }
 
 interface LinhaItem {
@@ -77,9 +96,13 @@ function lembrarProjeto(projeto: string) {
 
 const qtdTexto = (n: number) => String(n).replace('.', ',');
 
-export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancelar, projetosSugeridos = [] }: Props) {
+export default function SolicitacaoExtraForm({
+  user, tipo: tipoProp = 'PROJETO', onSalvo, registro, onCancelar, projetosSugeridos = [], itemQr, onItemQrAplicado,
+}: Props) {
   const toast = useToast();
   const editando = !!registro;
+  const tipo: TipoSolExtra = registro?.tipo ?? tipoProp;
+  const semSaldo = tipo === 'SEM_SALDO';
   const [data, setData] = useState(registro?.data || hojeISO());
   const [hora, setHora] = useState(registro?.hora?.slice(0, 5) || (editando ? '' : horaAgora()));
   const [turno, setTurno] = useState<TurnoSolExtra | null>(registro ? registro.turno : turnoDaHora(horaAgora()));
@@ -95,8 +118,21 @@ export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancel
   const [area, setArea] = useState(registro?.area_reparada_m2 != null ? qtdTexto(registro.area_reparada_m2) : '');
   const [rugosidade, setRugosidade] = useState(registro?.rugosidade_um != null ? qtdTexto(registro.rugosidade_um) : '');
   const [observacao, setObservacao] = useState(registro?.observacao || '');
+  const [retirante, setRetirante] = useState<ColaboradorEscolhido>({
+    id: registro?.retirante_id ?? null,
+    nome: registro?.retirante_nome || '',
+    registro: registro?.retirante_matricula ?? null,
+  });
+  const [setorId, setSetorId] = useState(registro?.setor_solicitante_id || '');
+  const [pessoas, setPessoas] = useState<RhPessoa[]>([]);
+  const setores = useMemo<Sector[]>(
+    () => (semSaldo ? [...localDb.getSectors()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) : []),
+    [semSaldo],
+  );
   const [salvando, setSalvando] = useState(false);
   const [catalogo, setCatalogo] = useState<MaterialDisponivel[]>([]);
+  // Carregado ou falhou: o item do QR só entra depois, para vir com descrição.
+  const [catalogoPronto, setCatalogoPronto] = useState(false);
 
   useEffect(() => {
     let ativo = true;
@@ -105,9 +141,47 @@ export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancel
       .catch(err => {
         console.warn('Cadastro de Itens indisponível na Solicitação Extraordinária:', err);
         if (ativo) toast.warning('Não foi possível carregar o Cadastro de Itens — digite código e descrição à mão.');
-      });
+      })
+      .finally(() => { if (ativo) setCatalogoPronto(true); });
     return () => { ativo = false; };
   }, [toast]);
+
+  useEffect(() => {
+    if (!semSaldo) return;
+    let ativo = true;
+    listarRhPessoas()
+      .then(lista => { if (ativo) setPessoas(lista.filter(p => p.ativo)); })
+      .catch(err => console.warn('Cadastro do RH indisponível na retirada sem saldo:', err));
+    return () => { ativo = false; };
+  }, [semSaldo]);
+
+  useEffect(() => {
+    if (!itemQr || !catalogoPronto) return;
+    const alvo = normalizeCode(itemQr.codigo);
+    onItemQrAplicado?.();
+    if (linhas.some(l => normalizeCode(l.material) === alvo)) {
+      toast.info(`Item ${itemQr.codigo} já está na solicitação.`);
+      return;
+    }
+    const vazia = linhas.find(l => !l.material.trim() && !l.descricao.trim() && !l.quantidade.trim());
+    if (!vazia && linhas.length >= MAX_ITENS) {
+      toast.warning(`A solicitação já tem ${MAX_ITENS} itens.`);
+      return;
+    }
+    const doCadastro = catalogo.find(m => normalizeCode(m.material) === alvo);
+    const preenchida: LinhaItem = {
+      chave: vazia?.chave ?? novaChave(),
+      material: doCadastro?.material ?? itemQr.codigo.trim().toUpperCase(),
+      descricao: doCadastro?.descricao ?? '',
+      unidade: doCadastro?.unidade || 'UN',
+      quantidade: '',
+    };
+    setLinhas(lista => (vazia ? lista.map(l => (l.chave === vazia.chave ? preenchida : l)) : [...lista, preenchida]));
+    if (doCadastro) toast.success(`Item ${preenchida.material} incluído — informe a quantidade.`);
+    else toast.warning(`Item ${preenchida.material} não está no Cadastro de Itens — preencha a descrição.`);
+    // Roda por leitura (itemQr.n), com o cadastro já carregado.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemQr, catalogoPronto]);
 
   const alterarLinha = (chave: string, patch: Partial<LinhaItem>) =>
     setLinhas(lista => lista.map(l => (l.chave === chave ? { ...l, ...patch } : l)));
@@ -115,6 +189,7 @@ export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancel
   const limpar = () => {
     setLinhas([linhaVazia()]);
     setMotivo(null); setMotivoDetalhe(''); setArea(''); setRugosidade(''); setObservacao(''); setTramo('');
+    setRetirante({ id: null, nome: '', registro: null });
     const h = horaAgora();
     setData(hojeISO()); setHora(h); setTurno(turnoDaHora(h));
   };
@@ -130,6 +205,7 @@ export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancel
         quantidade: lerNumero(l.quantidade) ?? 0,
       }));
     const dados = normalizarPorMotivo({
+      tipo,
       data,
       hora: hora || null,
       turno,
@@ -141,6 +217,11 @@ export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancel
       area_reparada_m2: lerNumero(area),
       rugosidade_um: lerNumero(rugosidade),
       observacao: observacao.trim() || null,
+      retirante_id: retirante.id,
+      retirante_nome: retirante.nome.trim().toUpperCase() || null,
+      retirante_matricula: retirante.registro,
+      setor_solicitante_id: setorId || null,
+      setor_solicitante_nome: setores.find(st => st.id === setorId)?.name ?? registro?.setor_solicitante_nome ?? null,
     });
     const erros = validarSolExtra(dados);
     if (erros.length) {
@@ -158,7 +239,8 @@ export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancel
       }
       const criada = await criarSolicitacaoExtra(dados, user.name);
       if (dados.projeto) lembrarProjeto(dados.projeto);
-      if (criada.codigo) toast.success(`Solicitação ${criada.codigo} registrada. A baixa fica pendente de regularização no SAP.`);
+      if (criada.codigo && semSaldo) toast.success(`Retirada ${criada.codigo} registrada e enviada para a aprovação do gestor do setor.`);
+      else if (criada.codigo) toast.success(`Solicitação ${criada.codigo} registrada. A baixa fica pendente de regularização no SAP.`);
       else toast.info('Solicitação salva no aparelho. O código sai quando a conexão voltar e sincronizar.');
       limpar();
       onSalvo();
@@ -171,6 +253,40 @@ export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancel
 
   return (
     <form onSubmit={salvar} className="space-y-4">
+      {semSaldo ? (
+        <section className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-4 sm:p-5">
+          <div className="col-span-2">
+            <span className={rotulo}>
+              Quem está retirando <span className="text-red-500">*</span>
+            </span>
+            <SeletorColaborador pessoas={pessoas} valor={retirante} onChange={setRetirante} />
+          </div>
+          <div className="col-span-2">
+            <label className={rotulo}>
+              Setor solicitante <span className="text-red-500">*</span>
+            </label>
+            <select value={setorId} onChange={e => setSetorId(e.target.value)} className={campo}>
+              <option value="">Escolha o setor…</option>
+              {setores.map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={rotulo}>
+              Data <span className="text-red-500">*</span>
+            </label>
+            <input type="date" value={data} required max={hojeISO()} onChange={e => setData(e.target.value)} className={campo} />
+          </div>
+          <div>
+            <label className={rotulo}>
+              Hora <span className="text-red-500">*</span>
+            </label>
+            <input type="time" value={hora} onChange={e => setHora(e.target.value)} className={campo} />
+          </div>
+          <p className="col-span-2 self-end text-[11px] text-slate-400">
+            Vai para a aprovação do gestor do setor solicitante e fica pendente de baixa no almoxarifado até o item ter saldo na ZL0024.
+          </p>
+        </section>
+      ) : (
       <section className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-4 sm:p-5">
         <div className="col-span-2">
           <label className={rotulo}>Projeto</label>
@@ -214,13 +330,16 @@ export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancel
           <input type="date" value={data} required max={hojeISO()} onChange={e => setData(e.target.value)} className={campo} />
         </div>
       </section>
+      )}
 
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">
             Materiais <span className="text-red-500">*</span>
           </h3>
-          <span className="text-[11px] text-slate-400">Material sem saldo na ZL0024 — a baixa é regularizada no SAP depois</span>
+          <span className="text-[11px] text-slate-400">
+            {semSaldo ? 'Material sem saldo na ZL0024 — a baixa sai no balcão quando a NF for lançada' : 'Material sem saldo na ZL0024 — a baixa é regularizada no SAP depois'}
+          </span>
         </div>
         <div className="space-y-3">
           {linhas.map((l, i) => (
@@ -249,6 +368,8 @@ export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancel
       </section>
 
       <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+        {!semSaldo && (
+        <>
         <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">
           Motivo <span className="text-red-500">*</span>
         </h3>
@@ -291,8 +412,10 @@ export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancel
             );
           })}
         </div>
+        </>
+        )}
         <div>
-          <label className={rotulo}>Observação</label>
+          <label className={rotulo}>{semSaldo ? 'Observação (para que é o material)' : 'Observação'}</label>
           <textarea value={observacao} onChange={e => setObservacao(e.target.value)} rows={2} className={campo} />
         </div>
       </section>
@@ -314,7 +437,7 @@ export default function SolicitacaoExtraForm({ user, onSalvo, registro, onCancel
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
         >
           {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {salvando ? 'Enviando...' : editando ? 'Salvar alterações' : 'Registrar solicitação'}
+          {salvando ? 'Enviando...' : editando ? 'Salvar alterações' : semSaldo ? 'Registrar retirada' : 'Registrar solicitação'}
         </button>
       </div>
       {!editando && <p className="text-center text-[11px] text-slate-400 sm:text-right">Registrado por {user.name}</p>}

@@ -40,6 +40,7 @@ const ProfileView = lazy(() => import('./views/ProfileView'));
 const CadastrosSap = lazy(() => import('./views/CadastrosSap'));
 const CatalogosSuprimentos = lazy(() => import('./views/CatalogosSuprimentos'));
 const Reports = lazy(() => import('./views/Reports'));
+const Pendencias = lazy(() => import('./views/Pendencias'));
 const Compras = lazy(() => import('./views/Compras'));
 const AnaliseCotacoes = lazy(() => import('./views/AnaliseCotacoes'));
 const HistoricoCotacoes = lazy(() => import('./views/HistoricoCotacoes'));
@@ -87,7 +88,6 @@ const PlanejamentoFormulariosHub = lazy(() => import('./views/planejamento/Plane
 const AquiTenMelhoriaView = lazy(() => import('./views/planejamento/AquiTenMelhoriaView'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
 const CalcImpostos = lazy(() => import('./views/CalcImpostos'));
-const PendenciasProcessamento = lazy(() => import('./views/PendenciasProcessamento'));
 const PendenciasRecebimento = lazy(() => import('./views/PendenciasRecebimento'));
 const PendenciasRecebimentoRnc = lazy(() => import('./views/PendenciasRecebimentoRnc'));
 const PortariaHub = lazy(() => import('./views/portaria/PortariaHub'));
@@ -1066,8 +1066,9 @@ export default function App() {
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/suprimentos/pendencias-processamento':
+        // Endereço antigo: o Processamento de NF agora é uma aba de Geral › Pendências.
         if (canAccessPage(user, 'sup_pendencias_processamento')) {
-          return <PendenciasProcessamento user={user} onNavigate={handleNavigate} />;
+          return <Pendencias user={user} onNavigate={handleNavigate} abaInicial="processamento" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -1178,6 +1179,12 @@ export default function App() {
       case '/suprimentos/catalogos':
         if (canAccessPage(user, 'sup_catalogos')) {
           return <CatalogosSuprimentos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/pendencias':
+        if (canAccessPage(user, 'geral_pendencias')) {
+          return <Pendencias user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

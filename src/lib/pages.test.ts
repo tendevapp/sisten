@@ -566,3 +566,22 @@ describe('Treinamentos', () => {
     expect(canGerenciarTreinamentos(mockUser({ roles: ['gestor'], page_access: { trein_gerenciar: true } }))).toBe(true);
   });
 });
+
+describe('Pendências', () => {
+  it('Processamento de NF: só o setor Suprimentos, salvo liberação individual do admin', () => {
+    expect(canAccessPage(mockUser({ roles: ['comprador'], sector_id: '5' }), 'sup_pendencias_processamento')).toBe(true);
+    expect(canAccessPage(mockUser({ roles: ['visualizador'], sector_id: '5' }), 'sup_pendencias_processamento')).toBe(true);
+    // Comprador de outro setor não vê mais pelo papel.
+    expect(canAccessPage(mockUser({ roles: ['comprador'], sector_id: '2' }), 'sup_pendencias_processamento')).toBe(false);
+    expect(canAccessPage(mockUser({ roles: ['gestor'], sector_id: '7', page_access: { sup_pendencias_processamento: true } }), 'sup_pendencias_processamento')).toBe(true);
+    expect(canAccessPage(mockUser({ roles: ['comprador'], sector_id: '5', page_access: { sup_pendencias_processamento: false } }), 'sup_pendencias_processamento')).toBe(false);
+  });
+
+  it('a página abre para Suprimentos, Almoxarifado e aprovadores; fica fora do menu de Suprimentos', () => {
+    expect(canAccessPage(mockUser({ sector_id: '5' }), 'geral_pendencias')).toBe(true);
+    expect(canAccessPage(mockUser({ sector_id: '2' }), 'geral_pendencias')).toBe(true);
+    expect(canAccessPage(mockUser({ sector_id: '9', aprovador_setores: ['9'] }), 'geral_pendencias')).toBe(true);
+    expect(canAccessPage(mockUser({ sector_id: '9' }), 'geral_pendencias')).toBe(false);
+    expect(PAGES.find(p => p.id === 'sup_pendencias_processamento')).toMatchObject({ group: 'GERAL', menuPai: '/pendencias' });
+  });
+});

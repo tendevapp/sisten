@@ -14,12 +14,14 @@ import {
   ETIQUETAS_POR_FOLHA,
   codigoDoQr,
   consumirItemInventarioPendente,
+  consumirItemSolExtraPendente,
   consumirItemQrEscolha,
   guardarItemQrEscolha,
   consumirItemQrPendente,
   conteudoQrEtiqueta,
   dadosEtiquetaDoItem,
   guardarItemInventarioPendente,
+  guardarItemSolExtraPendente,
   guardarItemQrPendente,
   haItemQrPendente,
   hashSemItem,
@@ -108,6 +110,16 @@ describe('item do QR pendente (sobrevive ao login)', () => {
   it('o pendente do inventário também expira em 30 minutos', () => {
     guardarItemInventarioPendente('1437274', 0);
     expect(consumirItemInventarioPendente(31 * 60 * 1000)).toBeNull();
+  });
+
+  it('o pendente da solicitação extraordinária é separado, entra uma vez e expira', () => {
+    guardarItemSolExtraPendente('1435264', 1_000);
+    expect(haItemQrPendente(2_000)).toBe(false);
+    expect(consumirItemInventarioPendente(2_000)).toBeNull();
+    expect(consumirItemSolExtraPendente(2_000)).toBe('1435264');
+    expect(consumirItemSolExtraPendente(2_000)).toBeNull();
+    guardarItemSolExtraPendente('1435264', 0);
+    expect(consumirItemSolExtraPendente(31 * 60 * 1000)).toBeNull();
   });
 });
 

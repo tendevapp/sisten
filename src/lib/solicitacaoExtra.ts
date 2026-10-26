@@ -6,12 +6,36 @@
  * (FRM.ALM-0013) — regras puras do formulário.
  *
  * Saída de material sem saldo na ZL0024 porque a NF ainda não foi lançada:
- * o material sai agora e a baixa é regularizada no SAP depois (status
- * PENDENTE → REGULARIZADA com o doc SAP).
+ * o material sai agora e a baixa é regularizada depois (status
+ * PENDENTE → REGULARIZADA).
+ *
+ * Dois tipos:
+ *  - PROJETO (SEM-DDMMYY-NN): a folha de sempre — projeto, tramo, motivo;
+ *    regulariza com o doc SAP.
+ *  - SEM_SALDO (RSS-DDMMYY-NN): retirada por colaborador de qualquer setor —
+ *    quem retira, itens, data/hora, setor solicitante. O gestor do setor
+ *    aprova em Aprovações; o almoxarifado dá baixa em Pendências gerando a
+ *    Requisição no Balcão quando o item ganha saldo.
  */
 
 export const PREFIXO_SOL_EXTRA = 'SEM';
+export const PREFIXO_SOL_EXTRA_SEM_SALDO = 'RSS';
 export const CODIGO_FRM_SOL_EXTRA = 'FRM.ALM-0013';
+
+export type TipoSolExtra = 'PROJETO' | 'SEM_SALDO';
+
+export const TIPO_SOL_EXTRA_ROTULO: Record<TipoSolExtra, string> = {
+  PROJETO: 'Projeto',
+  SEM_SALDO: 'Sem saldo',
+};
+
+export type AprovacaoSolExtra = 'PENDENTE' | 'APROVADA' | 'REPROVADA';
+
+export const APROVACAO_SOL_EXTRA_ROTULO: Record<AprovacaoSolExtra, string> = {
+  PENDENTE: 'Aguardando aprovação',
+  APROVADA: 'Aprovada pelo gestor',
+  REPROVADA: 'Reprovada pelo gestor',
+};
 
 export type MotivoSolExtra =
   | 'REPARO_PINTURA' | 'PERDA_PREPARACAO' | 'PERDA_ACIDENTAL' | 'PERDA_QUEBRA_EQUIPAMENTO'
@@ -41,6 +65,12 @@ export const STATUS_SOL_EXTRA_ROTULO: Record<StatusSolExtra, string> = {
   REGULARIZADA: 'Regularizada no SAP',
 };
 
+/** Situação da baixa no vocabulário de cada tipo (a Sem Saldo baixa no balcão). */
+export function rotuloStatusSolExtra(status: StatusSolExtra, tipo: TipoSolExtra = 'PROJETO'): string {
+  if (tipo === 'SEM_SALDO') return status === 'PENDENTE' ? 'Aguardando baixa' : 'Baixada no balcão';
+  return STATUS_SOL_EXTRA_ROTULO[status];
+}
+
 export function rotuloMotivo(motivo: MotivoSolExtra): string {
   return MOTIVOS_SOL_EXTRA.find(m => m.valor === motivo)?.rotulo ?? motivo;
 }
@@ -53,6 +83,7 @@ export interface ItemSolExtra {
 }
 
 export interface DadosSolExtra {
+  tipo: TipoSolExtra;
   data: string;
   hora: string | null;
   turno: TurnoSolExtra | null;
@@ -64,6 +95,12 @@ export interface DadosSolExtra {
   area_reparada_m2: number | null;
   rugosidade_um: number | null;
   observacao: string | null;
+  /** Sem Saldo: quem retira — do cadastro do RH (`retirante_id`) ou digitado. */
+  retirante_id: string | null;
+  retirante_nome: string | null;
+  retirante_matricula: string | null;
+  setor_solicitante_id: string | null;
+  setor_solicitante_nome: string | null;
 }
 
 /** Número digitado com vírgula ou ponto; vazio vira null, inválido vira NaN. */
@@ -82,6 +119,11 @@ export function lerNumero(texto: string): number | null {
 export function validarSolExtra(d: DadosSolExtra): string[] {
   const erros: string[] = [];
   if (!d.data) erros.push('Informe a data.');
+  if (d.tipo === 'SEM_SALDO') {
+    if (!d.retirante_nome?.trim()) erros.push('Informe quem está retirando (matrícula ou nome).');
+    if (!d.setor_solicitante_id) erros.push('Escolha o setor solicitante.');
+    if (!d.hora) erros.push('Informe a hora da retirada.');
+  }
   if (d.itens.length === 0) erros.push('Inclua pelo menos um material.');
   d.itens.forEach((it, i) => {
     if (!it.material.trim()) erros.push(`Item ${i + 1}: informe o código SAP.`);
@@ -89,7 +131,7 @@ export function validarSolExtra(d: DadosSolExtra): string[] {
   });
   const repetidos = d.itens.map(it => it.material.trim()).filter((m, i, l) => m && l.indexOf(m) !== i);
   if (repetidos.length) erros.push(`Material repetido: ${[...new Set(repetidos)].join(', ')} — some as quantidades numa linha só.`);
-  if (!d.motivo) erros.push('Marque o motivo.');
+  if (d.tipo === 'PROJETO' && !d.motivo) erros.push('Marque o motivo.');
   if (d.motivo === 'REPARO_PINTURA' && !d.motivo_detalhe?.trim()) erros.push('Reparo de pintura: descreva o motivo do reparo.');
   if (d.motivo === 'OUTROS' && !d.motivo_detalhe?.trim()) erros.push('Outros motivos: especifique o motivo.');
   if (d.area_reparada_m2 !== null && !(d.area_reparada_m2 > 0)) erros.push('Área reparada inválida.');
@@ -102,12 +144,23 @@ export function validarSolExtra(d: DadosSolExtra): string[] {
  * para "Limpeza" não deixa a área reparada esquecida no registro.
  */
 export function normalizarPorMotivo(d: DadosSolExtra): DadosSolExtra {
+  if (d.tipo === 'SEM_SALDO') {
+    return {
+      ...d, turno: null, projeto: null, tramo: null,
+      motivo: null, motivo_detalhe: null, area_reparada_m2: null, rugosidade_um: null,
+    };
+  }
   const usaDetalhe = d.motivo === 'REPARO_PINTURA' || d.motivo === 'OUTROS';
   return {
     ...d,
     motivo_detalhe: usaDetalhe ? d.motivo_detalhe?.trim() || null : null,
     area_reparada_m2: d.motivo === 'REPARO_PINTURA' ? d.area_reparada_m2 : null,
     rugosidade_um: d.motivo === 'PERDA_RUGOSIDADE' ? d.rugosidade_um : null,
+    retirante_id: null,
+    retirante_nome: null,
+    retirante_matricula: null,
+    setor_solicitante_id: null,
+    setor_solicitante_nome: null,
   };
 }
 
@@ -128,4 +181,18 @@ export function turnoDaHora(hora: string): TurnoSolExtra | null {
   if (h >= 6 && h < 14) return '1';
   if (h >= 14 && h < 22) return '2';
   return '3';
+}
+
+/**
+ * Quem aprova a retirada sem saldo: o admin e os aprovadores do setor
+ * solicitante (`aprovador_setores`, a mesma lista das compras do setor). A
+ * RPC `alm_sol_extra_aprovar` confere de novo no banco.
+ */
+export function podeAprovarRetirada(
+  r: { tipo: TipoSolExtra; setor_solicitante_id: string | null },
+  user: { roles: string[]; aprovador_setores?: string[] },
+): boolean {
+  if (r.tipo !== 'SEM_SALDO') return false;
+  if (user.roles.includes('admin')) return true;
+  return !!r.setor_solicitante_id && !!user.aprovador_setores?.includes(r.setor_solicitante_id);
 }

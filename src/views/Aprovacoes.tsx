@@ -7,6 +7,10 @@
  * verificacao de sinais do catalogo SAP (saldo em estoque, RM aberta)
  * e decisao (aprovar, devolver para revisao, rejeitar e aprovacao em lote).
  * Totalmente compativel com modo claro (light) e modo escuro (dark).
+ *
+ * Quem aprova algum setor (ou o admin) ve tambem a aba "Retiradas sem saldo":
+ * retiradas de material ainda sem saldo na ZL0024 registradas no
+ * almoxarifado para o setor (ver components/aprovacoes/RetiradasSemSaldoPainel).
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -15,7 +19,7 @@ import {
   CheckCircle2, CheckSquare, ChevronRight, Clock, Download, ExternalLink,
   ArrowLeft, FileEdit, FileSpreadsheet, FileText, Filter, Layers, RefreshCw, Search,
   Square, User, X, XCircle, ArrowUpRight, ShieldCheck, DollarSign,
-  HelpCircle, Bug, Lightbulb, Maximize2,
+  HelpCircle, Bug, Lightbulb, Maximize2, PackageOpen, ShoppingCart,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request, RequestAttachment, RequestItem, Sector, RequestStatus, RequestStatusHistory } from '../types';
@@ -34,6 +38,8 @@ import { exportCompraPdf, gerarCompraPdf } from '../lib/pdfExport/exportCompraPd
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
+import RetiradasSemSaldoPainel, { setoresDeAprovacao } from '../components/aprovacoes/RetiradasSemSaldoPainel';
+import { listarRetiradasSemSaldo } from '../lib/solicitacaoExtraApi';
 
 interface Props {
   user: Profile;
@@ -111,7 +117,62 @@ const SUGESTOES_PARECER = [
   'Orçamento não previsto para o setor no período.',
 ];
 
+type TipoAprovacao = 'compras' | 'sem-saldo';
+
+function parametrosDaRota(): URLSearchParams {
+  return new URLSearchParams(window.location.hash.split('?')[1] || '');
+}
+
 export default function Aprovacoes({ user, onNavigate }: Props) {
+  const podeRetiradas = user.roles.includes('admin') || (user.aprovador_setores?.length ?? 0) > 0;
+  const [tipo, setTipo] = useState<TipoAprovacao>(() =>
+    podeRetiradas && parametrosDaRota().get('tipo') === 'sem-saldo' ? 'sem-saldo' : 'compras',
+  );
+  const [idRetirada] = useState(() => (parametrosDaRota().get('tipo') === 'sem-saldo' ? parametrosDaRota().get('id') : null));
+  const [pendentesRetirada, setPendentesRetirada] = useState(0);
+
+  // Contagem da aba mesmo com Compras aberta.
+  useEffect(() => {
+    if (!podeRetiradas) return;
+    let ativo = true;
+    listarRetiradasSemSaldo({ aprovacao: 'PENDENTE', setores: setoresDeAprovacao(user) })
+      .then(l => { if (ativo) setPendentesRetirada(l.length); })
+      .catch(() => { /* sem a contagem a aba abre igual */ });
+    return () => { ativo = false; };
+  }, [podeRetiradas, user]);
+
+  if (!podeRetiradas) return <AprovacoesCompras user={user} onNavigate={onNavigate} />;
+
+  const aba = (ativa: boolean) =>
+    `inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition ${
+      ativa ? 'bg-white text-blue-700 shadow-2xs dark:bg-slate-700 dark:text-blue-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+    }`;
+
+  return (
+    <div>
+      <div className="mx-auto max-w-[1680px] px-3 pt-3 sm:px-5 sm:pt-5">
+        <div className="flex min-w-0 overflow-x-auto no-scrollbar rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80 sm:inline-flex">
+          <button type="button" className={aba(tipo === 'compras')} onClick={() => setTipo('compras')}>
+            <ShoppingCart className="h-3.5 w-3.5" /> Compras
+          </button>
+          <button type="button" className={aba(tipo === 'sem-saldo')} onClick={() => setTipo('sem-saldo')}>
+            <PackageOpen className="h-3.5 w-3.5" /> Retiradas sem saldo
+            {pendentesRetirada > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[10px] text-white">{pendentesRetirada}</span>}
+          </button>
+        </div>
+      </div>
+      {tipo === 'compras' ? (
+        <AprovacoesCompras user={user} onNavigate={onNavigate} />
+      ) : (
+        <div className="mx-auto max-w-[1680px] p-3 sm:p-5">
+          <RetiradasSemSaldoPainel user={user} idInicial={idRetirada} onPendentes={setPendentesRetirada} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AprovacoesCompras({ user, onNavigate }: Props) {
   const toast = useToast();
   const tour = usePageTour('aprovacoes-compras', APROVACOES_TOUR_STEPS.length);
 

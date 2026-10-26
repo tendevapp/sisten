@@ -85,7 +85,6 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       sup_contratos: 'Contratos vigentes, aditivos e demandas contratuais.',
       sup_dashboards: 'Indicadores de carteira, OTD e análise de compras.',
       sup_estimador_frete: 'Estimativa de custo de frete por rota e modal.',
-      sup_pendencias_processamento: 'Baixa das notas fiscais pendentes de processamento abertas via chamado.',
       sup_pendencias_recebimento: 'Avaria, falta e entrega parcial do recebimento do almoxarifado aguardando a devolutiva do comprador do PO.',
       sup_pendencias_recebimento_rnc: 'RNC abertas a partir das devolutivas de recebimento (devolução ou verificação com o fornecedor), com o andamento da tratativa.',
       sup_calc_impostos: 'Calculadora e memória de cálculo de tributos (ICMS, PIS, COFINS, IPI) para Uso/Consumo e Imobilizado.',

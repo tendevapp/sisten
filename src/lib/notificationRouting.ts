@@ -9,6 +9,7 @@
 
 import type { Notification, Profile } from '../types';
 import { localDb } from '../db/localDb';
+import { ROTA_PENDENCIAS_PROCESSAMENTO } from './supPendenciasProcessamento';
 
 /**
  * Resolve a rota de destino para onde o usuario deve ser navegado ao clicar
@@ -153,7 +154,7 @@ export function resolverRotaNotificacao(notif: Notification, user: Profile): str
     textoCompleto.includes('pendencia') ||
     textoCompleto.includes('processamento nf')
   ) {
-    return '/suprimentos/pendencias-processamento';
+    return ROTA_PENDENCIAS_PROCESSAMENTO;
   }
 
   if (

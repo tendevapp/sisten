@@ -10,6 +10,9 @@
  * O atendente conclui cada nota com uma nota de resolução; o solicitante é
  * notificado a cada conclusão e o Outlook é aberto para envio de e-mail de
  * notificação para victor.oliveira@ten.ind.br (individual ou consolidado em lote).
+ *
+ * Desde 26/10/2026 mora na aba "Processamento de NF" de Geral › Pendências
+ * (`embutida`: o título fica com a página de Pendências).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -52,6 +55,7 @@ import {
   camposExibicao,
   rotuloNumero,
   rotuloModelo,
+  ROTA_PENDENCIAS_PROCESSAMENTO,
   montarAssuntoEmailConclusao,
   montarCorpoEmailConclusao,
   type ItemConcluidoEmail,
@@ -69,6 +73,8 @@ import PendenciasSubnav from '../components/suprimentos/PendenciasSubnav';
 interface PendenciasProcessamentoProps {
   user: Profile;
   onNavigate: (path: string) => void;
+  /** Dentro de Geral › Pendências: sem o título próprio. */
+  embutida?: boolean;
 }
 
 const cardStyle: React.CSSProperties = {
@@ -325,7 +331,7 @@ function LogAcoesPendencia({
   );
 }
 
-export default function PendenciasProcessamento({ user, onNavigate }: PendenciasProcessamentoProps) {
+export default function PendenciasProcessamento({ user, onNavigate, embutida = false }: PendenciasProcessamentoProps) {
   const toast = useToast();
   const [grupos, setGrupos] = useState<GrupoPendencia[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -646,7 +652,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
     const corpo = montarCorpoEmailConclusao({
       itens: itensEmail,
       usuarioAtendente: user?.name || 'Suprimentos',
-      origemUrl: `${window.location.origin}/#/suprimentos/pendencias-processamento`,
+      origemUrl: `${window.location.origin}/#${ROTA_PENDENCIAS_PROCESSAMENTO}`,
     });
 
     const mailtoUrl = montarMailtoComConfig({
@@ -763,6 +769,11 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
   return (
     <div className="space-y-6 text-left w-full pb-24">
       <PendenciasSubnav user={user} atual="sup_pendencias_processamento" onNavigate={onNavigate} versao={grupos} />
+      {embutida ? (
+        <p className="text-sm" style={{ color: 'var(--ink-secondary)' }}>
+          Notas fiscais aguardando processamento, abertas por chamado. Dê baixa em cada uma com a resolução e notifique por e-mail no Outlook.
+        </p>
+      ) : (
       <div className="reveal">
         <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2" style={{ color: 'var(--ink-primary)' }}>
           <ReceiptText className="h-7 w-7" style={{ color: 'var(--ink-muted)' }} />
@@ -772,6 +783,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
           Notas fiscais aguardando processamento, abertas por chamado. Dê baixa em cada uma com a resolução e notifique por e-mail no Outlook.
         </p>
       </div>
+      )}
 
       {/* Abas: fila de baixa x análise dos dados */}
       <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 w-fit border border-slate-200/50 dark:border-slate-800 reveal">

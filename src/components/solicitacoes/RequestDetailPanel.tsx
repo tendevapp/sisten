@@ -43,6 +43,7 @@ import {
 } from '../../lib/solicitacoesCentral';
 import HelpdeskSatisfactionCard from '../helpdesk/HelpdeskSatisfactionCard';
 import ReenviarEmailModal from './ReenviarEmailModal';
+import { ROTA_PENDENCIAS_PROCESSAMENTO } from '../../lib/supPendenciasProcessamento';
 
 interface Props {
   request: Request;
@@ -101,7 +102,7 @@ function moduloOperacional(r: Request, user: Profile, sectors?: Sector[]): { rot
 
     // Chamados de Suprimentos (Pendências de Processamento de Notas) vão para a tela de Pendências
     if (secName.includes('suprimento') || catName.includes('pendência') || catName.includes('processamento')) {
-      return { rotulo: 'Abrir em Pendências de Processamento', path: `/suprimentos/pendencias-processamento` };
+      return { rotulo: 'Abrir em Pendências de Processamento', path: ROTA_PENDENCIAS_PROCESSAMENTO };
     }
     // Chamados de Jurídico / Contratos
     if (secName.includes('jurídico') || secName.includes('juridico') || catName.includes('contrato')) {

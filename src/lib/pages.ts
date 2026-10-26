@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX, ShieldAlert, Warehouse, GraduationCap,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX, ShieldAlert, Warehouse, GraduationCap, ListTodo,
 } from 'lucide-react';
 import { Profile, Role, Sector } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
@@ -55,6 +55,16 @@ export const PAGES: PageDef[] = [
   { id: 'materiais_busca', group: 'GERAL', label: 'Catálogo SAP', path: '/materiais/busca', icon: Search, defaultRoles: '*' },
   { id: 'rastreio', group: 'GERAL', label: 'Rastreio Compras', path: '/rastreio', icon: Route, defaultRoles: '*' },
   { id: 'relatorios', group: 'GERAL', label: 'Relatórios', path: '/relatorios', icon: BarChart3, defaultRoles: '*' },
+  // Pendências do setor do usuário: retiradas sem saldo (baixa no Almoxarifado
+  // e aprovação dos gestores) e Processamento de NF (Suprimentos). Nasce só
+  // admin (regra 4); quem tem alguma dessas pendências entra pela regra de
+  // `canAccessPage` — os demais o admin libera na Gestão de Acessos.
+  { id: 'geral_pendencias', group: 'GERAL', label: 'Pendências', path: '/pendencias', icon: ListTodo, defaultRoles: ['admin'] },
+  // Processamento de NF saiu do menu de Suprimentos em 26/10/2026 e virou a aba
+  // "Processamento de NF" de Pendências. O `id` é chave de `profiles.page_access`
+  // e não muda; o endereço antigo continua abrindo a aba (notificações e e-mails
+  // já enviados apontam para ele). Acesso: setor Suprimentos — ver canAccessPage.
+  { id: 'sup_pendencias_processamento', group: 'GERAL', label: 'Pendências — Processamento de NF', path: '/suprimentos/pendencias-processamento', icon: ReceiptText, defaultRoles: ['admin'], menuPai: '/pendencias' },
   { id: 'sobre', group: 'GERAL', label: 'Sobre o SISTEN', path: '/sobre', icon: Info, defaultRoles: '*' },
 
   // Central de Solicitações: uma página só, com abas de escopo. Antes eram
@@ -90,11 +100,10 @@ export const PAGES: PageDef[] = [
   // `/suprimentos/compras`. O antigo é redirecionado em App.tsx.
   { id: 'sup_central_compras', group: 'SUPRIMENTOS', label: 'Central Compras', path: '/suprimentos/compras', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_analise_cotacoes', group: 'SUPRIMENTOS', label: 'Análise de Cotações', path: '/suprimentos/cotacoes', icon: FileSpreadsheet, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
-  { id: 'sup_pendencias_processamento', group: 'SUPRIMENTOS', label: 'Pendências de Processamento', path: '/suprimentos/pendencias-processamento', icon: ReceiptText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   // Subpágina de Pendências (sem botão no menu; o PendenciasSubnav liga as duas): divergência/parcial da conferência do almoxarifado → devolutiva do comprador do PO.
-  { id: 'sup_pendencias_recebimento', group: 'SUPRIMENTOS', label: 'Pendências de Recebimento', path: '/suprimentos/pendencias-recebimento', icon: PackageX, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'], menuPai: '/suprimentos/pendencias-processamento' },
+  { id: 'sup_pendencias_recebimento', group: 'SUPRIMENTOS', label: 'Pendências de Recebimento', path: '/suprimentos/pendencias-recebimento', icon: PackageX, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'], menuPai: '/pendencias' },
   // Subpágina de Pendências: o que virou RNC (NCR do Recebimento) por decisão do comprador — acompanha a verificação com o fornecedor.
-  { id: 'sup_pendencias_recebimento_rnc', group: 'SUPRIMENTOS', label: 'Pendências de Recebimento — RNC', path: '/suprimentos/pendencias-recebimento-rnc', icon: ShieldAlert, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'], menuPai: '/suprimentos/pendencias-processamento' },
+  { id: 'sup_pendencias_recebimento_rnc', group: 'SUPRIMENTOS', label: 'Pendências de Recebimento — RNC', path: '/suprimentos/pendencias-recebimento-rnc', icon: ShieldAlert, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'], menuPai: '/pendencias' },
   // Correção de incoerência: menu prometia coordenador_suprimentos, App.tsx
   // só liberava admin/comprador. Padrão alinhado ao menu (permissão sap.fornecedores).
   { id: 'sup_fornecedores', group: 'SUPRIMENTOS', label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
@@ -857,8 +866,30 @@ export function isUserSetorFinanceiro(user: Profile): boolean {
   return SETORES_FINANCEIRO_IDS.includes(user.sector_id);
 }
 
+/** Setor Almoxarifado em `core_setores` (mesmo id dos formulários do almox). */
+export const SETOR_ALMOXARIFADO_ID = '2';
+
+/** O usuário é do Almoxarifado? */
+export function isUserSetorAlmoxarifado(user: Profile): boolean {
+  return user.sector_id === SETOR_ALMOXARIFADO_ID;
+}
+
+/** Setor Suprimentos em `core_setores`. */
+export const SETOR_SUPRIMENTOS_ID = '5';
+
+/** O usuário é do Suprimentos? */
+export function isUserSetorSuprimentos(user: Profile): boolean {
+  return user.sector_id === SETOR_SUPRIMENTOS_ID;
+}
+
 export function canAccessPage(user: Profile, pageId: string): boolean {
   if (user.roles.includes('admin')) return true;
+
+  // Processamento de NF (aba de Pendências): só o setor Suprimentos, salvo
+  // liberação ou bloqueio individual do admin na Gestão de Acessos.
+  if (pageId === 'sup_pendencias_processamento') {
+    return user.page_access?.sup_pendencias_processamento ?? isUserSetorSuprimentos(user);
+  }
 
   if (pageId === 'ssma') return canAccessFormGroup(user, 'ssma');
 
@@ -911,6 +942,15 @@ export function canAccessPage(user: Profile, pageId: string): boolean {
 
   // Aprovador de compras: libera tambem se o usuario tiver setores sob aprovacao
   if (pageId === 'sol_aprovacoes' && (user.aprovador_setores?.length ?? 0) > 0) {
+    return true;
+  }
+
+  // Pendências: quem tem pendência a tratar — o Almoxarifado (baixa das
+  // retiradas sem saldo), os aprovadores de setor e quem vê o Processamento de NF.
+  if (pageId === 'geral_pendencias' && (
+    isUserSetorAlmoxarifado(user)
+    || (user.aprovador_setores?.length ?? 0) > 0
+    || canAccessPage(user, 'sup_pendencias_processamento'))) {
     return true;
   }
 

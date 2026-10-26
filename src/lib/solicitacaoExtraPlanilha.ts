@@ -11,16 +11,20 @@
  */
 
 import * as XLSX from 'xlsx';
-import { STATUS_SOL_EXTRA_ROTULO, rotuloMotivo } from './solicitacaoExtra';
+import { APROVACAO_SOL_EXTRA_ROTULO, TIPO_SOL_EXTRA_ROTULO, rotuloMotivo, rotuloStatusSolExtra } from './solicitacaoExtra';
 import type { SolExtra } from './solicitacaoExtraApi';
 
 export const SOL_EXTRA_COLUNAS = [
   'Código',
+  'Tipo',
   'Data',
   'Hora',
   'Turno',
   'Projeto',
   'Nº tramo',
+  'Quem retirou',
+  'Setor solicitante',
+  'Aprovação',
   'Item',
   'Código SAP',
   'Descrição',
@@ -33,6 +37,7 @@ export const SOL_EXTRA_COLUNAS = [
   'Observação',
   'Situação',
   'Doc. SAP',
+  'Requisição balcão',
   'Regularizado por',
   'Regularizado em',
   'Registrado por',
@@ -61,23 +66,28 @@ export function montarLinhasSolExtra(registros: SolExtra[]): LinhaPlanilhaSolExt
   return registros.flatMap(r =>
     r.itens.map((it, i) => ({
       'Código': r.codigo ?? '',
+      'Tipo': TIPO_SOL_EXTRA_ROTULO[r.tipo ?? 'PROJETO'],
       'Data': dataBR(r.data),
       'Hora': r.hora?.slice(0, 5) ?? '',
       'Turno': r.turno ? `${r.turno}º` : '',
       'Projeto': r.projeto ?? '',
       'Nº tramo': r.tramo ?? '',
+      'Quem retirou': [r.retirante_nome, r.retirante_matricula].filter(Boolean).join(' · '),
+      'Setor solicitante': r.setor_solicitante_nome ?? '',
+      'Aprovação': r.aprovacao_status ? APROVACAO_SOL_EXTRA_ROTULO[r.aprovacao_status] : '',
       'Item': i + 1,
       'Código SAP': it.material,
       'Descrição': it.descricao ?? '',
       'Quantidade': Number(it.quantidade),
       'Unidade': it.unidade ?? '',
-      'Motivo': rotuloMotivo(r.motivo),
+      'Motivo': r.motivo ? rotuloMotivo(r.motivo) : '',
       'Detalhe do motivo': r.motivo_detalhe ?? '',
       'Área reparada (m²)': r.area_reparada_m2 != null ? Number(r.area_reparada_m2) : '',
       'Rugosidade (µm)': r.rugosidade_um != null ? Number(r.rugosidade_um) : '',
       'Observação': r.observacao ?? '',
-      'Situação': STATUS_SOL_EXTRA_ROTULO[r.status],
+      'Situação': rotuloStatusSolExtra(r.status, r.tipo),
       'Doc. SAP': r.doc_sap ?? '',
+      'Requisição balcão': r.requisicao_balcao_codigo ?? '',
       'Regularizado por': r.regularizado_por_nome ?? '',
       'Regularizado em': dataHoraBR(r.regularizado_em),
       'Registrado por': r.criado_por_nome ?? '',
@@ -98,10 +108,11 @@ export function exportarPlanilhaSolExtra(registros: SolExtra[]): { arquivo: stri
   const ws = XLSX.utils.json_to_sheet(linhas, { header: [...SOL_EXTRA_COLUNAS] });
   ws['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(SOL_EXTRA_COLUNAS.length - 1)}${Math.max(linhas.length + 1, 1)}` };
   ws['!cols'] = [
-    { wch: 15 }, { wch: 11 }, { wch: 7 }, { wch: 7 }, { wch: 16 }, { wch: 12 },
+    { wch: 15 }, { wch: 10 }, { wch: 11 }, { wch: 7 }, { wch: 7 }, { wch: 16 }, { wch: 12 },
+    { wch: 28 }, { wch: 20 }, { wch: 22 },
     { wch: 6 }, { wch: 20 }, { wch: 40 }, { wch: 11 }, { wch: 8 },
     { wch: 34 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 30 },
-    { wch: 24 }, { wch: 14 }, { wch: 22 }, { wch: 17 }, { wch: 22 },
+    { wch: 24 }, { wch: 14 }, { wch: 16 }, { wch: 22 }, { wch: 17 }, { wch: 22 },
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Solicitacoes');

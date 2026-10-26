@@ -5,9 +5,9 @@
  * Botão "Ler QR" do cabeçalho do SISTEN.
  *
  * Lê o QR da etiqueta de prateleira (a mesma do cadastro de itens do Almox) e
- * entrega o item ao diálogo que pergunta o que fazer: baixa de estoque ou
- * inventário cíclico (`EscolhaAcaoItemQr`). Só aparece para quem acessa ao
- * menos um dos dois formulários. A etiqueta BOM (peça do projeto) abre direto
+ * entrega o item ao diálogo que pergunta o que fazer: baixa de estoque,
+ * inventário cíclico ou solicitação extraordinária (`EscolhaAcaoItemQr`). Só
+ * aparece para quem acessa ao menos um desses formulários. A etiqueta BOM (peça do projeto) abre direto
  * a peça no Cadastro de Itens.
  */
 
@@ -56,7 +56,7 @@ export default function LeitorQrHeader({ user, onNavigate }: Props) {
         type="button"
         onClick={() => setLendo(true)}
         aria-label="Ler QR de etiqueta de material"
-        title="Ler QR da etiqueta do material (baixa de estoque ou inventário)"
+        title="Ler QR da etiqueta do material (baixa, inventário ou solicitação extraordinária)"
         className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-slate-400 dark:hover:bg-slate-800"
       >
         <QrCode className="h-5.5 w-5.5" />

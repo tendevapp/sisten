@@ -16,10 +16,18 @@
  * Gravar/editar/excluir: autor ou admin (RLS). Regularizar (doc SAP da baixa):
  * qualquer um com login, pela RPC `alm_sol_extra_regularizar`, como o doc SAP
  * da Requisição no Balcão.
+ *
+ * Tipo Sem Saldo (migration `20261026120000_alm_sol_extra_sem_saldo`): código
+ * RSS, aprovação do gestor do setor solicitante pela RPC `alm_sol_extra_aprovar`
+ * e baixa do almoxarifado pela `alm_sol_extra_baixar`, que grava o código da
+ * Requisição no Balcão gerada. Aprovação e baixa não entram na fila offline:
+ * são de escritório e o resultado depende do servidor.
  */
 
 import { supabase } from '../db/supabaseClient';
-import type { DadosSolExtra, ItemSolExtra, MotivoSolExtra, StatusSolExtra, TurnoSolExtra } from './solicitacaoExtra';
+import type {
+  AprovacaoSolExtra, DadosSolExtra, ItemSolExtra, MotivoSolExtra, StatusSolExtra, TipoSolExtra, TurnoSolExtra,
+} from './solicitacaoExtra';
 import type { MaterialDisponivel } from './requisicaoBalcao';
 
 /** A tabela ainda não está em `database.types.ts` — mesmo atalho do Kaizen. */
@@ -27,6 +35,7 @@ const db = () => (supabase.from as any)('alm_solicitacao_extra');
 
 export interface SolExtra {
   id: string;
+  tipo: TipoSolExtra;
   codigo: string | null;
   data: string;
   hora: string | null;
@@ -34,7 +43,7 @@ export interface SolExtra {
   projeto: string | null;
   tramo: string | null;
   itens: ItemSolExtra[];
-  motivo: MotivoSolExtra;
+  motivo: MotivoSolExtra | null;
   motivo_detalhe: string | null;
   area_reparada_m2: number | null;
   rugosidade_um: number | null;
@@ -45,6 +54,18 @@ export interface SolExtra {
   regularizado_por: string | null;
   regularizado_por_nome: string | null;
   regularizado_em: string | null;
+  retirante_id: string | null;
+  retirante_nome: string | null;
+  retirante_matricula: string | null;
+  setor_solicitante_id: string | null;
+  setor_solicitante_nome: string | null;
+  aprovacao_status: AprovacaoSolExtra | null;
+  aprovado_por: string | null;
+  aprovado_por_nome: string | null;
+  aprovado_em: string | null;
+  aprovacao_obs: string | null;
+  /** Requisição no Balcão (RQB) que deu baixa na retirada sem saldo. */
+  requisicao_balcao_codigo: string | null;
   criado_por: string | null;
   criado_por_nome: string | null;
   created_at: string;
@@ -82,6 +103,10 @@ export async function listarCatalogoParaSolicitacao(): Promise<MaterialDisponive
   }
 }
 
+/** Registro gravado antes da coluna `tipo` (ou cópia offline antiga) é de Projeto. */
+const comTipo = (rows: unknown[]): SolExtra[] =>
+  (rows as SolExtra[]).map(r => ({ ...r, tipo: r.tipo ?? 'PROJETO' }));
+
 export async function listarSolicitacoesExtra(): Promise<SolExtra[]> {
   const { data, error } = await db()
     .select('*')
@@ -90,7 +115,28 @@ export async function listarSolicitacoesExtra(): Promise<SolExtra[]> {
     .order('created_at', { ascending: false })
     .limit(1000);
   if (error) throw new Error(error.message);
-  return (data || []) as SolExtra[];
+  return comTipo(data || []);
+}
+
+/**
+ * Retiradas sem saldo de um recorte — sem o teto de 1.000 do PostgREST
+ * importar aqui: as pendentes são poucas; o histórico da Aprovação vem limitado.
+ */
+export async function listarRetiradasSemSaldo(filtro: {
+  status?: StatusSolExtra;
+  aprovacao?: AprovacaoSolExtra;
+  setores?: string[];
+} = {}): Promise<SolExtra[]> {
+  let q = db().select('*').eq('tipo', 'SEM_SALDO').is('excluido_em', null);
+  if (filtro.status) q = q.eq('status', filtro.status);
+  if (filtro.aprovacao) q = q.eq('aprovacao_status', filtro.aprovacao);
+  if (filtro.setores) q = q.in('setor_solicitante_id', filtro.setores.length ? filtro.setores : ['__nenhum__']);
+  const { data, error } = await q
+    .order('data', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1000);
+  if (error) throw new Error(error.message);
+  return comTipo(data || []);
 }
 
 export async function criarSolicitacaoExtra(dados: DadosSolExtra, autorNome: string): Promise<SolExtra> {
@@ -99,7 +145,7 @@ export async function criarSolicitacaoExtra(dados: DadosSolExtra, autorNome: str
     .select()
     .single();
   if (error) throw new Error(error.message);
-  return data as SolExtra;
+  return { ...(data as SolExtra), tipo: (data as SolExtra)?.tipo ?? dados.tipo };
 }
 
 /** Edição pelo autor ou admin (a RLS recusa os demais; o trigger trava a já regularizada). */
@@ -121,6 +167,28 @@ export async function regularizarSolicitacoesExtra(ids: string[], docSap: string
     p_ids: ids,
     p_doc_sap: docSap,
     p_obs: obs ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return Number(data) || 0;
+}
+
+/** Gestor aprova (ou reprova, com motivo) uma ou várias retiradas sem saldo. Devolve quantas mudaram. */
+export async function aprovarRetiradasSemSaldo(ids: string[], aprovar: boolean, obs?: string): Promise<number> {
+  const { data, error } = await (supabase.rpc as any)('alm_sol_extra_aprovar', {
+    p_ids: ids,
+    p_aprovar: aprovar,
+    p_obs: obs?.trim() || null,
+  });
+  if (error) throw new Error(error.message);
+  return Number(data) || 0;
+}
+
+/** Almoxarifado dá baixa na retirada sem saldo com a requisição no balcão gerada. */
+export async function baixarRetiradaSemSaldo(id: string, requisicaoCodigo: string, obs?: string): Promise<number> {
+  const { data, error } = await (supabase.rpc as any)('alm_sol_extra_baixar', {
+    p_id: id,
+    p_requisicao_codigo: requisicaoCodigo,
+    p_obs: obs?.trim() || null,
   });
   if (error) throw new Error(error.message);
   return Number(data) || 0;

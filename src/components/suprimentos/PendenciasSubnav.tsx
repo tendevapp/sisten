@@ -16,9 +16,10 @@ import { canAccessPage } from '../../lib/pages';
 import { contarRncEmAberto } from '../../lib/pendenciasRecebimento';
 import { contarMinhasAguardando, listarPendenciasRnc } from '../../lib/pendenciasRecebimentoApi';
 import { contarNotasAguardando } from '../../lib/supPendenciasApi';
+import { ROTA_PENDENCIAS_PROCESSAMENTO } from '../../lib/supPendenciasProcessamento';
 
 const SUBPAGINAS = [
-  { id: 'sup_pendencias_processamento', rotulo: 'Processamento de NF', path: '/suprimentos/pendencias-processamento', icon: ReceiptText },
+  { id: 'sup_pendencias_processamento', rotulo: 'Processamento de NF', path: ROTA_PENDENCIAS_PROCESSAMENTO, icon: ReceiptText },
   { id: 'sup_pendencias_recebimento', rotulo: 'Recebimento', path: '/suprimentos/pendencias-recebimento', icon: PackageX },
   { id: 'sup_pendencias_recebimento_rnc', rotulo: 'RNC', path: '/suprimentos/pendencias-recebimento-rnc', icon: ShieldAlert },
 ] as const;

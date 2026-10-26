@@ -11,11 +11,17 @@
  * de uma vez na lista (a baixa no SAP costuma juntar saídas).
  *
  * Todos veem; só autor/admin edita ou exclui, e só enquanto pendente.
+ *
+ * "Nova solicitação" pergunta o tipo: de Projeto (a folha FRM.ALM-0013 de
+ * sempre) ou Sem Saldo — retirada por colaborador de qualquer setor, que vai
+ * para a aprovação do gestor do setor (Solicitações › Aprovações) e para a
+ * baixa do almoxarifado (Geral › Pendências), com PDF para imprimir.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, BadgeCheck, ClipboardPlus, FileSpreadsheet, ListChecks, Loader2, Pencil, PlusCircle, RefreshCw, Search, Trash2,
+  ArrowLeft, BadgeCheck, ClipboardPlus, FileSpreadsheet, HardHat, ListChecks, Loader2, PackageCheck, PackageOpen, Pencil, PlusCircle,
+  RefreshCw, Search, Trash2,
 } from 'lucide-react';
 import type { Profile } from '../../types';
 import { useToast } from '../../components/ui/Toast';
@@ -29,12 +35,17 @@ import { formatarDataBR } from '../../lib/fichaEpi';
 import { formatQtd } from '../../lib/format';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import {
-  CODIGO_FRM_SOL_EXTRA, STATUS_SOL_EXTRA_ROTULO, descreverMotivo, type StatusSolExtra,
+  CODIGO_FRM_SOL_EXTRA, TIPO_SOL_EXTRA_ROTULO, descreverMotivo, rotuloStatusSolExtra, type StatusSolExtra, type TipoSolExtra,
 } from '../../lib/solicitacaoExtra';
+import {
+  AprovacaoChip, BaixaRetiradaModal, BotaoPdfRetirada, ResumoRetirada,
+} from '../../components/almoxarifado/RetiradaSemSaldo';
+import { podeDarBaixaRetirada } from '../../lib/retiradaSemSaldoBaixa';
 import {
   excluirSolicitacaoExtra, listarSolicitacoesExtra, regularizarSolicitacoesExtra, type SolExtra,
 } from '../../lib/solicitacaoExtraApi';
 import { exportarPlanilhaSolExtra } from '../../lib/solicitacaoExtraPlanilha';
+import { EVENTO_ITEM_QR_SOL_EXTRA, consumirItemSolExtraPendente } from '../../lib/etiquetaMaterial';
 
 interface Props {
   user: Profile;
@@ -48,12 +59,28 @@ const COR_STATUS: Record<StatusSolExtra, string> = {
   REGULARIZADA: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
 };
 
-function Status({ status }: { status: StatusSolExtra }) {
-  return <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${COR_STATUS[status]}`}>{STATUS_SOL_EXTRA_ROTULO[status]}</span>;
+function Status({ status, tipo }: { status: StatusSolExtra; tipo?: TipoSolExtra }) {
+  return <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${COR_STATUS[status]}`}>{rotuloStatusSolExtra(status, tipo)}</span>;
+}
+
+function TipoChip({ tipo }: { tipo: TipoSolExtra }) {
+  return (
+    <span
+      className={`whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+        tipo === 'SEM_SALDO' ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+      }`}
+    >
+      {TIPO_SOL_EXTRA_ROTULO[tipo]}
+    </span>
+  );
 }
 
 const resumoItens = (s: SolExtra) =>
   s.itens.length === 1 ? `${s.itens[0].material} · ${s.itens[0].descricao}` : `${s.itens.length} materiais`;
+
+/** Coluna "motivo" da lista: na retirada sem saldo, quem retirou e para qual setor. */
+const motivoOuRetirante = (s: SolExtra) =>
+  s.tipo === 'SEM_SALDO' ? `${s.retirante_nome || '—'} · ${s.setor_solicitante_nome || '—'}` : descreverMotivo(s);
 
 export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
   const toast = useToast();
@@ -65,6 +92,10 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [regularizando, setRegularizando] = useState<SolExtra[] | null>(null);
   const [abertoId, setAbertoId] = useState<string | null>(null);
+  // Tipo escolhido em "Nova solicitação"; null mostra a escolha.
+  const [tipoNova, setTipoNova] = useState<TipoSolExtra | null>(null);
+  const [filtroTipo, setFiltroTipo] = useState<TipoSolExtra | 'todos'>('todos');
+  const [baixando, setBaixando] = useState<SolExtra | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -81,15 +112,35 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
     carregar();
   }, [carregar]);
 
+  // QR do cabeçalho: consome o item pendente ao abrir e acorda com a tela já
+  // aberta. `n` faz o mesmo código lido de novo virar outro pedido.
+  const [itemQr, setItemQr] = useState<{ codigo: string; n: number } | null>(null);
+  useEffect(() => {
+    const ler = () => {
+      const codigo = consumirItemSolExtraPendente();
+      if (!codigo) return;
+      setAba('nova');
+      setAbertoId(null);
+      setItemQr((atual) => ({ codigo, n: (atual?.n ?? 0) + 1 }));
+    };
+    ler();
+    window.addEventListener(EVENTO_ITEM_QR_SOL_EXTRA, ler);
+    return () => window.removeEventListener(EVENTO_ITEM_QR_SOL_EXTRA, ler);
+  }, []);
+
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return lista.filter(s => {
       if (filtroStatus !== 'todos' && s.status !== filtroStatus) return false;
+      if (filtroTipo !== 'todos' && s.tipo !== filtroTipo) return false;
       if (!termo) return true;
-      return [s.codigo, s.projeto, s.tramo, s.doc_sap, s.criado_por_nome, s.motivo_detalhe, ...s.itens.flatMap(i => [i.material, i.descricao])]
-        .some(v => (v || '').toLowerCase().includes(termo));
+      return [
+        s.codigo, s.projeto, s.tramo, s.doc_sap, s.criado_por_nome, s.motivo_detalhe,
+        s.retirante_nome, s.retirante_matricula, s.setor_solicitante_nome, s.requisicao_balcao_codigo,
+        ...s.itens.flatMap(i => [i.material, i.descricao]),
+      ].some(v => (v || '').toLowerCase().includes(termo));
     });
-  }, [lista, busca, filtroStatus]);
+  }, [lista, busca, filtroStatus, filtroTipo]);
 
   const projetosSugeridos = useMemo(
     () => [...new Set(lista.map(s => s.projeto).filter((p): p is string => !!p))].sort(),
@@ -98,7 +149,8 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
 
   const pendentes = lista.filter(s => s.status === 'PENDENTE').length;
   const aberto = lista.find(s => s.id === abertoId) || null;
-  const pendentesVisiveis = filtrados.filter(s => s.status === 'PENDENTE' && s.codigo);
+  // Regularização por doc SAP é só da de Projeto; a Sem Saldo baixa no balcão (Pendências).
+  const pendentesVisiveis = filtrados.filter(s => s.tipo === 'PROJETO' && s.status === 'PENDENTE' && s.codigo);
   const selecionadas = lista.filter(s => selecionados.has(s.id));
 
   const alternar = (id: string) =>
@@ -128,7 +180,7 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
     }`;
 
   const caixa = (s: SolExtra) =>
-    s.status === 'PENDENTE' && s.codigo ? (
+    s.tipo === 'PROJETO' && s.status === 'PENDENTE' && s.codigo ? (
       <input
         type="checkbox"
         checked={selecionados.has(s.id)}
@@ -157,14 +209,14 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
           <div className="min-w-0">
             <h1 className="font-display text-xl font-bold text-slate-900 dark:text-slate-50 sm:text-2xl">Solicitação Extraordinária de Materiais</h1>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Estruturais · {CODIGO_FRM_SOL_EXTRA} — saída de material ainda sem saldo (NF não lançada); a baixa é regularizada no SAP depois.
+              {CODIGO_FRM_SOL_EXTRA} — saída de material ainda sem saldo (NF não lançada): de Projeto, regularizada no SAP; ou Sem Saldo, aprovada pelo gestor e baixada no balcão.
             </p>
           </div>
         </div>
       </div>
 
       <div className="flex min-w-0 overflow-x-auto no-scrollbar rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80 sm:inline-flex">
-        <button type="button" className={abaClasse(aba === 'nova')} onClick={() => setAba('nova')}>
+        <button type="button" className={abaClasse(aba === 'nova')} onClick={() => { setAba('nova'); if (aba === 'nova') setTipoNova(null); }}>
           <PlusCircle className="h-3.5 w-3.5" /> Nova solicitação
         </button>
         <button type="button" className={abaClasse(aba === 'registros')} onClick={() => setAba('registros')}>
@@ -173,15 +225,33 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
         </button>
       </div>
 
-      {aba === 'nova' ? (
-        <SolicitacaoExtraForm
-          user={user}
-          projetosSugeridos={projetosSugeridos}
-          onSalvo={() => {
-            carregar();
-            setAba('registros');
-          }}
-        />
+      {aba === 'nova' && !tipoNova ? (
+        <EscolhaTipo onEscolher={setTipoNova} />
+      ) : aba === 'nova' && tipoNova ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <TipoChip tipo={tipoNova} />
+            <span className="font-semibold text-slate-700 dark:text-slate-200">
+              {tipoNova === 'SEM_SALDO' ? 'Retirada sem saldo' : 'Solicitação de projeto'}
+            </span>
+            <button type="button" onClick={() => setTipoNova(null)} className="font-bold text-blue-700 hover:underline dark:text-blue-400">
+              Trocar tipo
+            </button>
+          </div>
+          <SolicitacaoExtraForm
+            key={tipoNova}
+            user={user}
+            tipo={tipoNova}
+            projetosSugeridos={projetosSugeridos}
+            itemQr={itemQr}
+            onItemQrAplicado={() => setItemQr(null)}
+            onSalvo={() => {
+              carregar();
+              setTipoNova(null);
+              setAba('registros');
+            }}
+          />
+        </div>
       ) : (
         <div className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -195,6 +265,18 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
               />
             </div>
             <select
+              value={filtroTipo}
+              onChange={e => {
+                setFiltroTipo(e.target.value as TipoSolExtra | 'todos');
+                setSelecionados(new Set());
+              }}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            >
+              <option value="todos">Todos os tipos</option>
+              <option value="PROJETO">Projeto</option>
+              <option value="SEM_SALDO">Sem saldo</option>
+            </select>
+            <select
               value={filtroStatus}
               onChange={e => {
                 setFiltroStatus(e.target.value as StatusSolExtra | 'todos');
@@ -202,8 +284,8 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
               }}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             >
-              <option value="PENDENTE">Aguardando regularização</option>
-              <option value="REGULARIZADA">Regularizadas no SAP</option>
+              <option value="PENDENTE">Aguardando regularização / baixa</option>
+              <option value="REGULARIZADA">Regularizadas / baixadas</option>
               <option value="todos">Todas</option>
             </select>
             <button
@@ -257,13 +339,17 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
                       {caixa(s)}
                       <button type="button" onClick={() => setAbertoId(s.id)} className="block min-w-0 flex-1 space-y-1.5 text-left">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-400">{s.codigo || 'Pendente de sincronização'}</span>
-                          <Status status={s.status} />
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-400">{s.codigo || 'Pendente de sincronização'}</span>
+                            <TipoChip tipo={s.tipo} />
+                          </span>
+                          <Status status={s.status} tipo={s.tipo} />
                         </div>
                         <p className="line-clamp-2 text-sm text-slate-800 dark:text-slate-100">{resumoItens(s)}</p>
                         <p className="truncate text-xs text-slate-500">
-                          {formatarDataBR(s.data)}{s.tramo && ` · ${s.tramo}`} · {descreverMotivo(s)}
+                          {formatarDataBR(s.data)}{s.tramo && ` · ${s.tramo}`} · {motivoOuRetirante(s)}
                         </p>
+                        {s.tipo === 'SEM_SALDO' && <AprovacaoChip status={s.aprovacao_status} />}
                         {s.doc_sap && <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Doc. SAP {s.doc_sap}</p>}
                       </button>
                     </div>
@@ -276,11 +362,12 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
                     <TableHeadRow>
                       <Th label="" />
                       <Th label="Código" />
+                      <Th label="Tipo" />
                       <Th label="Data" />
                       <Th label="Tramo" />
                       <Th label="Materiais" />
-                      <Th label="Motivo" />
-                      <Th label="Doc. SAP" />
+                      <Th label="Motivo / retirada" />
+                      <Th label="Doc. SAP / RQB" />
                       <Th label="Situação" />
                     </TableHeadRow>
                     <TableBody>
@@ -288,12 +375,18 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
                         <Tr key={s.id} onClick={() => setAbertoId(s.id)}>
                           <Td>{caixa(s)}</Td>
                           <Td><span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-400">{s.codigo || '—'}</span></Td>
+                          <Td>
+                            <div className="flex flex-col items-start gap-1">
+                              <TipoChip tipo={s.tipo} />
+                              {s.tipo === 'SEM_SALDO' && <AprovacaoChip status={s.aprovacao_status} />}
+                            </div>
+                          </Td>
                           <Td>{formatarDataBR(s.data)}</Td>
                           <Td>{s.tramo || '—'}</Td>
                           <Td><span className="line-clamp-1 max-w-xs">{resumoItens(s)}</span></Td>
-                          <Td><span className="line-clamp-1 max-w-[14rem]">{descreverMotivo(s)}</span></Td>
-                          <Td><span className="font-mono">{s.doc_sap || '—'}</span></Td>
-                          <Td><Status status={s.status} /></Td>
+                          <Td><span className="line-clamp-1 max-w-[14rem]">{motivoOuRetirante(s)}</span></Td>
+                          <Td><span className="font-mono">{s.doc_sap || s.requisicao_balcao_codigo || '—'}</span></Td>
+                          <Td><Status status={s.status} tipo={s.tipo} /></Td>
                         </Tr>
                       ))}
                     </TableBody>
@@ -313,6 +406,17 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
           onClose={() => setAbertoId(null)}
           onAlterado={carregar}
           onRegularizar={() => setRegularizando([aberto])}
+          onDarBaixa={() => setBaixando(aberto)}
+        />
+      )}
+
+      {baixando && (
+        <BaixaRetiradaModal
+          registro={baixando}
+          user={user}
+          onNavigate={onNavigate}
+          onClose={() => setBaixando(null)}
+          onFeito={carregar}
         />
       )}
 
@@ -336,7 +440,7 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
 // ===========================================================================
 
 function DetalheModal({
-  user, registro, projetosSugeridos, onClose, onAlterado, onRegularizar,
+  user, registro, projetosSugeridos, onClose, onAlterado, onRegularizar, onDarBaixa,
 }: {
   user: Profile;
   registro: SolExtra;
@@ -344,6 +448,7 @@ function DetalheModal({
   onClose: () => void;
   onAlterado: () => void;
   onRegularizar: () => void;
+  onDarBaixa: () => void;
 }) {
   const toast = useToast();
   const [editando, setEditando] = useState(false);
@@ -352,15 +457,18 @@ function DetalheModal({
 
   const pendente = registro.status === 'PENDENTE';
   const ehAdmin = !!user.roles?.includes('admin');
+  const semSaldo = registro.tipo === 'SEM_SALDO';
   // Regularizada fica como foi baixada no SAP; só o admin mexe (o banco trava igual).
-  const podeEditar = podeEditarFormulario(user, registro) && (pendente || ehAdmin);
+  // Retirada sem saldo já decidida pelo gestor também fica como foi aprovada.
+  const decidida = semSaldo && registro.aprovacao_status !== 'PENDENTE';
+  const podeEditar = podeEditarFormulario(user, registro) && ((pendente && !decidida) || ehAdmin);
 
   if (editando) {
     return (
       <Modal onClose={() => setEditando(false)} maxWidth="max-w-4xl" ariaLabel="Editar solicitação" disableOutsideClose>
         <ModalHeader onClose={() => setEditando(false)}>
           <p className="font-mono text-xs font-bold text-blue-700 dark:text-blue-400">{registro.codigo || 'Aguardando sincronização'}</p>
-          <h3 className="truncate text-base font-bold text-slate-900 dark:text-slate-50">Editar solicitação extraordinária</h3>
+          <h3 className="truncate text-base font-bold text-slate-900 dark:text-slate-50">{semSaldo ? 'Editar retirada sem saldo' : 'Editar solicitação extraordinária'}</h3>
         </ModalHeader>
         <ModalBody className="bg-slate-50 dark:bg-slate-950/40">
           <SolicitacaoExtraForm
@@ -397,9 +505,16 @@ function DetalheModal({
     <Modal onClose={onClose} maxWidth="max-w-3xl" ariaLabel="Detalhe da solicitação extraordinária">
       <ModalHeader onClose={onClose}>
         <p className="font-mono text-xs font-bold text-blue-700 dark:text-blue-400">{registro.codigo || 'Aguardando sincronização'}</p>
-        <h3 className="truncate text-base font-bold text-slate-900 dark:text-slate-50">Solicitação Extraordinária de Materiais Estruturais</h3>
+        <h3 className="truncate text-base font-bold text-slate-900 dark:text-slate-50">
+          {semSaldo ? 'Retirada de Material sem Saldo' : 'Solicitação Extraordinária de Materiais Estruturais'}
+        </h3>
       </ModalHeader>
 
+      {semSaldo ? (
+        <ModalBody>
+          <ResumoRetirada registro={registro} />
+        </ModalBody>
+      ) : (
       <ModalBody className="space-y-5">
         <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800/50 sm:grid-cols-4">
           <Info rotulo="Projeto" valor={registro.projeto} />
@@ -458,6 +573,7 @@ function DetalheModal({
           </section>
         )}
       </ModalBody>
+      )}
 
       <ModalFooter>
         {podeEditar && (
@@ -478,10 +594,23 @@ function DetalheModal({
             <Pencil className="h-4 w-4" /> Editar
           </button>
         )}
+        {semSaldo && <BotaoPdfRetirada registro={registro} />}
         <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
           Fechar
         </button>
-        {pendente && registro.codigo && (
+        {semSaldo && pendente && registro.codigo && podeDarBaixaRetirada(user) && (
+          <button
+            type="button"
+            onClick={() => {
+              onDarBaixa();
+              onClose();
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
+          >
+            <PackageCheck className="h-4 w-4" /> Dar baixa
+          </button>
+        )}
+        {!semSaldo && pendente && registro.codigo && (
           <button
             type="button"
             onClick={onRegularizar}
@@ -580,6 +709,45 @@ function RegularizarModal({ registros, onClose, onFeito }: { registros: SolExtra
         </button>
       </ModalFooter>
     </Modal>
+  );
+}
+
+// ===========================================================================
+// Escolha do tipo da nova solicitação
+// ===========================================================================
+
+function EscolhaTipo({ onEscolher }: { onEscolher: (tipo: TipoSolExtra) => void }) {
+  const opcoes: { tipo: TipoSolExtra; icone: typeof HardHat; titulo: string; texto: string }[] = [
+    {
+      tipo: 'PROJETO',
+      icone: HardHat,
+      titulo: 'De Projeto',
+      texto: 'Material estrutural para projeto/tramo, com o motivo da folha (reparo de pintura, perda, mist coat…). Regulariza com o doc SAP.',
+    },
+    {
+      tipo: 'SEM_SALDO',
+      icone: PackageOpen,
+      titulo: 'Sem Saldo',
+      texto: 'Colaborador de qualquer setor retira item que ainda não tem saldo na ZL0024. Vai para a aprovação do gestor do setor, sai em PDF para assinar e fica pendente de baixa no almoxarifado.',
+    },
+  ];
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {opcoes.map(o => (
+        <button
+          key={o.tipo}
+          type="button"
+          onClick={() => onEscolher(o.tipo)}
+          className="group flex flex-col items-start gap-2 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-xs transition hover:border-blue-400 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-600"
+        >
+          <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${o.tipo === 'SEM_SALDO' ? 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'}`}>
+            <o.icone className="h-5 w-5" />
+          </span>
+          <span className="text-base font-bold text-slate-900 group-hover:text-blue-700 dark:text-slate-50 dark:group-hover:text-blue-300">{o.titulo}</span>
+          <span className="text-sm text-slate-600 dark:text-slate-300">{o.texto}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
