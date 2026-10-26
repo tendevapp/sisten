@@ -446,3 +446,41 @@ export function descreverFiltro(filtro: FiltroRelatorioAse): string {
 
   return partes.join(' | ');
 }
+
+// =====================================================================
+// Transporte por localidade (resumo do dia na lista de ASEs)
+// =====================================================================
+
+export type LocalidadeTransporte = 'JACOBINA' | 'BATATA' | 'CAATINGA' | 'SEM_ROTA';
+
+/**
+ * Localidade de embarque de quem pediu transporte, lida do cadastro de rotas
+ * (rh_rotas). A Rota 04 vai a Batata e Caatinga do Moura e o ponto de embarque
+ * começa pelo nome do lugar ("Batata / Ponto dos Taxistas"); as demais rotas
+ * (01–03 e Rota Turno) rodam dentro de Jacobina. Quem não tem rota cadastrada
+ * fica em SEM_ROTA em vez de ser contado em Jacobina por suposição.
+ */
+export function localidadeTransporte(it: {
+  rota_transporte?: string | null;
+  ponto_embarque_transporte?: string | null;
+}): LocalidadeTransporte {
+  const ponto = (it.ponto_embarque_transporte ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (ponto.includes('batata')) return 'BATATA';
+  if (ponto.includes('caatinga')) return 'CAATINGA';
+  if (ponto.trim() || it.rota_transporte?.trim()) return 'JACOBINA';
+  return 'SEM_ROTA';
+}
+
+/** Conta, por localidade, os itens com transporte marcado. */
+export function contarTransportePorLocalidade(
+  itens: Array<{ transporte: boolean; rota_transporte?: string | null; ponto_embarque_transporte?: string | null }>,
+): Record<LocalidadeTransporte, number> {
+  const contagem: Record<LocalidadeTransporte, number> = { JACOBINA: 0, BATATA: 0, CAATINGA: 0, SEM_ROTA: 0 };
+  for (const it of itens) {
+    if (it.transporte) contagem[localidadeTransporte(it)] += 1;
+  }
+  return contagem;
+}

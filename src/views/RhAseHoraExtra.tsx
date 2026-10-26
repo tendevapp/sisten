@@ -47,7 +47,7 @@ import {
   descreverFiltroListaAse, filtrarListaAse, idsUsuariosAuditoria, montarAuditoriaAse, type FiltroListaAse,
 } from '../lib/aseAuditoria';
 import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
-import { acharLinhas, horasPorAreaSubsetor, SEM_INFO } from '../lib/aseRelatorio';
+import { acharLinhas, contarTransportePorLocalidade, horasPorAreaSubsetor, SEM_INFO } from '../lib/aseRelatorio';
 import { canAccessAseRelatorio, canViewAllAse } from '../lib/pages';
 import { podeEditarFormulario } from '../lib/permissoesFormularios';
 import {
@@ -653,6 +653,7 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
               {/* Cabeçalho da Data de Execução com Totais e Ações de Exportação Consolidada */}
               {(() => {
                 const totalTranspDia = grupo.solicitacoes.reduce((acc, s) => acc + s.itens.filter(it => it.transporte).length, 0);
+                const transpPorLocal = contarTransportePorLocalidade(grupo.solicitacoes.flatMap(s => s.itens));
                 const totalRefDia = grupo.solicitacoes.reduce((acc, s) => acc + s.itens.filter(it => it.refeicao).length, 0);
                 const isExportingPdf = exportandoData === `pdf-${grupo.dataExecucao}`;
 
@@ -687,6 +688,26 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
                               <span className="rounded bg-sky-100 text-sky-800 px-1.5 py-0.2 text-[10px] font-bold dark:bg-sky-950/60 dark:text-sky-300">
                                 {totalTranspDia} Transp.
                               </span>
+                              {transpPorLocal.JACOBINA > 0 && (
+                                <span className="rounded bg-sky-50 text-sky-700 ring-1 ring-sky-200 px-1.5 py-0.2 text-[10px] font-semibold dark:bg-sky-950/30 dark:text-sky-300 dark:ring-sky-900" title="Pediram transporte com embarque em Jacobina (Rotas 01–03 e Rota Turno)">
+                                  {transpPorLocal.JACOBINA} Jacobina
+                                </span>
+                              )}
+                              {transpPorLocal.BATATA > 0 && (
+                                <span className="rounded bg-sky-50 text-sky-700 ring-1 ring-sky-200 px-1.5 py-0.2 text-[10px] font-semibold dark:bg-sky-950/30 dark:text-sky-300 dark:ring-sky-900" title="Pediram transporte com embarque em Batata (Rota 04)">
+                                  {transpPorLocal.BATATA} Batata
+                                </span>
+                              )}
+                              {transpPorLocal.CAATINGA > 0 && (
+                                <span className="rounded bg-sky-50 text-sky-700 ring-1 ring-sky-200 px-1.5 py-0.2 text-[10px] font-semibold dark:bg-sky-950/30 dark:text-sky-300 dark:ring-sky-900" title="Pediram transporte com embarque em Caatinga do Moura (Rota 04)">
+                                  {transpPorLocal.CAATINGA} Caatinga
+                                </span>
+                              )}
+                              {transpPorLocal.SEM_ROTA > 0 && (
+                                <span className="rounded bg-amber-50 text-amber-800 ring-1 ring-amber-200 px-1.5 py-0.2 text-[10px] font-semibold dark:bg-amber-950/30 dark:text-amber-300 dark:ring-amber-900" title="Pediram transporte mas não têm rota cadastrada em RH › Rotas">
+                                  {transpPorLocal.SEM_ROTA} sem rota
+                                </span>
+                              )}
                             </>
                           )}
                           {totalRefDia > 0 && (

@@ -5,6 +5,7 @@ import {
   acharLinhas, agruparPor, descreverFiltro, filtrarSolicitacoes, filtroVazio,
   horasPorAreaSubsetor, intervaloDoPreset, opcoesDe, porRota, resumoAse, rotuloDia,
   serieDiaria, setorDe, topColaboradores, chaveColaboradorAse, SEM_INFO,
+  contarTransportePorLocalidade, localidadeTransporte,
 } from './aseRelatorio';
 
 function item(over: Partial<AseHoraExtraItem> = {}): AseHoraExtraItem {
@@ -320,5 +321,28 @@ describe('descreverFiltro', () => {
 
   it('sem período informa histórico completo', () => {
     expect(descreverFiltro(filtroVazio())).toBe('Período: todo o histórico');
+  });
+});
+
+describe('localidadeTransporte', () => {
+  it('lê Batata e Caatinga pelo ponto de embarque da Rota 04', () => {
+    expect(localidadeTransporte({ rota_transporte: 'Rota 04', ponto_embarque_transporte: 'Batata / Ponto dos Taxistas' })).toBe('BATATA');
+    expect(localidadeTransporte({ rota_transporte: 'Rota 04', ponto_embarque_transporte: 'Caatinga do Moura / Na praça' })).toBe('CAATINGA');
+  });
+
+  it('demais rotas contam como Jacobina; sem cadastro fica sem rota', () => {
+    expect(localidadeTransporte({ rota_transporte: 'Rota 02', ponto_embarque_transporte: 'Em frente ao Valetão' })).toBe('JACOBINA');
+    expect(localidadeTransporte({ rota_transporte: 'Rota Turno', ponto_embarque_transporte: null })).toBe('JACOBINA');
+    expect(localidadeTransporte({ rota_transporte: null, ponto_embarque_transporte: null })).toBe('SEM_ROTA');
+  });
+
+  it('conta só quem pediu transporte', () => {
+    const c = contarTransportePorLocalidade([
+      item({ transporte: true, rota_transporte: 'Rota 01', ponto_embarque_transporte: 'No posto Texaco' }),
+      item({ transporte: true, rota_transporte: 'Rota 04', ponto_embarque_transporte: 'Batata / Ponto dos Taxistas' }),
+      item({ transporte: false, rota_transporte: 'Rota 04', ponto_embarque_transporte: 'Caatinga do Moura / No Posto' }),
+      item({ transporte: true }),
+    ]);
+    expect(c).toEqual({ JACOBINA: 1, BATATA: 1, CAATINGA: 0, SEM_ROTA: 1 });
   });
 });
