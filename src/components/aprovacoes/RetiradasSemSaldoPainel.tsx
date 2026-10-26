@@ -244,7 +244,8 @@ export default function RetiradasSemSaldoPainel({
   );
 }
 
-function DecisaoModal({
+/** Aprovar ou reprovar (com motivo) uma ou várias retiradas. Também usado no detalhe da solicitação. */
+export function DecisaoModal({
   registros, aprovar, onClose, onFeito,
 }: {
   registros: SolExtra[];

@@ -3,8 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Situação de um material — o mini-relatório do Ctrl+K e da leitura do QR da
- * etiqueta: saldo por depósito (ZL0024), RM aberta (ME5A), pedido (ZL0132)
- * com previsão de entrega e MIGO, entradas da MB51 e o último movimento.
+ * etiqueta: saldo por depósito (ZL0024), chegada física no almoxarifado ainda
+ * sem MIGO (conferência do Recebimento / marcação do Rastreio), RM aberta
+ * (ME5A), pedido (ZL0132) com previsão de entrega e MIGO, entradas da MB51 e
+ * o último movimento.
  *
  * Vem da RPC `alm_situacao_material` (migration `20261026150000`), que aplica
  * as regras do Dossiê do Controle de Estoque a um material só — a view do
@@ -53,6 +55,26 @@ export interface PedidoSituacao {
   quantidade_pendente: number;
   recebido_mb51: number | null;
   ultima_entrada: string | null;
+  /** Data da chegada física mais recente registrada para a linha (RI-PO). */
+  chegada_almox: string | null;
+}
+
+/** Chegada física no almoxarifado: conferência do Recebimento (RCM) ou marcação do Rastreio. */
+export interface ChegadaSituacao {
+  codigo: string | null;
+  data: string;
+  pedido: string | null;
+  ri_po: string | null;
+  /** Contada na conferência; nula na marcação do Rastreio. */
+  quantidade: number | null;
+  unidade: string | null;
+  parcial: boolean;
+  divergencia: boolean;
+  tipo_divergencia: string | null;
+  registrado_por: string | null;
+  origem: 'conferencia' | 'rastreio';
+  /** Primeira MIGO do pedido a partir da chegada; nula = ainda não entrou saldo. */
+  migo_em: string | null;
 }
 
 export interface SituacaoMaterial {
@@ -66,8 +88,10 @@ export interface SituacaoMaterial {
   posicao_cadastro: string | null;
   estoque_minimo: number | null;
   estoque_importado_em: string | null;
+  movimentos_importados_em: string | null;
   rms: RmSituacao[];
   pedidos: PedidoSituacao[];
+  chegadas: ChegadaSituacao[];
   ultimo_movimento: {
     data: string | null;
     tipo: string | null;
@@ -82,24 +106,42 @@ export interface SituacaoMaterial {
 // Regras de exibição (puras)
 // ---------------------------------------------------------------------------
 
-export type SituacaoPedido = 'atrasado' | 'aberto' | 'recebido';
+export type SituacaoPedido = 'chegou' | 'atrasado' | 'aberto' | 'recebido';
 
 /**
- * Pedido com quantidade pendente está aberto — atrasado se a remessa prevista
- * já passou. Datas comparadas como texto ISO (sem `new Date`, que volta um dia
+ * Pedido com quantidade pendente está aberto — "chegou" se há chegada física
+ * sem MIGO para ele (material na prateleira, sem saldo ainda; quem chama
+ * cruza com `aguardandoMigo`), senão atrasado se a remessa prevista já
+ * passou. Datas comparadas como texto ISO (sem `new Date`, que volta um dia
  * em UTC-3).
  */
-export function situacaoPedido(p: Pick<PedidoSituacao, 'quantidade_pendente' | 'remessa_prevista'>, hojeISO: string): SituacaoPedido {
+export function situacaoPedido(
+  p: Pick<PedidoSituacao, 'quantidade_pendente' | 'remessa_prevista'>,
+  hojeISO: string,
+  chegouSemMigo = false,
+): SituacaoPedido {
   if (!(p.quantidade_pendente > 0)) return 'recebido';
+  if (chegouSemMigo) return 'chegou';
   if (p.remessa_prevista && p.remessa_prevista.slice(0, 10) < hojeISO) return 'atrasado';
   return 'aberto';
 }
 
 export const ROTULO_SITUACAO_PEDIDO: Record<SituacaoPedido, string> = {
+  chegou: 'Chegou — aguardando MIGO',
   atrasado: 'Entrega atrasada',
   aberto: 'Aguardando entrega',
   recebido: 'Recebido',
 };
+
+/** Chegadas sem MIGO e a quantidade contada nelas (a marcação do Rastreio não tem quantidade). */
+export function aguardandoMigo(chegadas: ChegadaSituacao[]): { chegadas: ChegadaSituacao[]; quantidade: number; semQuantidade: number } {
+  const pendentes = chegadas.filter(c => !c.migo_em);
+  return {
+    chegadas: pendentes,
+    quantidade: pendentes.reduce((s, c) => s + (Number(c.quantidade) || 0), 0),
+    semQuantidade: pendentes.filter(c => c.quantidade == null).length,
+  };
+}
 
 export const ROTULO_SITUACAO_RM: Record<SituacaoRm, string> = {
   sem_pedido: 'Sem pedido',
@@ -141,6 +183,7 @@ export async function buscarSituacaoMaterial(material: string, forcar = false): 
     dados.saldo_total = Number(dados.saldo_total) || 0;
     dados.depositos = dados.depositos ?? [];
     dados.rms = dados.rms ?? [];
+    dados.chegadas = dados.chegadas ?? [];
     dados.pedidos = (dados.pedidos ?? []).map(p => ({ ...p, quantidade_pendente: Number(p.quantidade_pendente) || 0 }));
   }
   cache.set(k, { em: Date.now(), dados });

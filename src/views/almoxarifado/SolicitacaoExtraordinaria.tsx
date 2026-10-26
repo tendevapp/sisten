@@ -20,7 +20,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, BadgeCheck, ClipboardPlus, FileSpreadsheet, HardHat, ListChecks, Loader2, PackageCheck, PackageOpen, Pencil, PlusCircle,
+  ArrowLeft, BadgeCheck, CheckCircle2, ClipboardPlus, FileSpreadsheet, HardHat, XCircle, ListChecks, Loader2, PackageCheck, PackageOpen, Pencil, PlusCircle,
   RefreshCw, Search, Trash2,
 } from 'lucide-react';
 import type { Profile } from '../../types';
@@ -41,6 +41,9 @@ import {
   AprovacaoChip, BaixaRetiradaModal, BotaoPdfRetirada, ResumoRetirada,
 } from '../../components/almoxarifado/RetiradaSemSaldo';
 import { podeDarBaixaRetirada } from '../../lib/retiradaSemSaldoBaixa';
+import { podeAprovarRetirada } from '../../lib/solicitacaoExtra';
+import { DecisaoModal } from '../../components/aprovacoes/RetiradasSemSaldoPainel';
+import { GaleriaFotosSolExtra } from '../../components/almoxarifado/FotosSolicitacaoExtra';
 import {
   excluirSolicitacaoExtra, listarSolicitacoesExtra, regularizarSolicitacoesExtra, type SolExtra,
 } from '../../lib/solicitacaoExtraApi';
@@ -454,6 +457,7 @@ function DetalheModal({
   const [editando, setEditando] = useState(false);
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
+  const [decidindo, setDecidindo] = useState<boolean | null>(null);
 
   const pendente = registro.status === 'PENDENTE';
   const ehAdmin = !!user.roles?.includes('admin');
@@ -560,6 +564,13 @@ function DetalheModal({
           {registro.observacao && <p className="whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">{registro.observacao}</p>}
         </section>
 
+        {(registro.fotos?.length ?? 0) > 0 && (
+          <section className="space-y-1.5">
+            <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Fotos dos itens</h4>
+            <GaleriaFotosSolExtra fotos={registro.fotos} />
+          </section>
+        )}
+
         {registro.status === 'REGULARIZADA' && (
           <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
             <p className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-300">
@@ -595,6 +606,24 @@ function DetalheModal({
           </button>
         )}
         {semSaldo && <BotaoPdfRetirada registro={registro} />}
+        {semSaldo && registro.aprovacao_status === 'PENDENTE' && registro.codigo && podeAprovarRetirada(registro, user) && (
+          <>
+            <button
+              type="button"
+              onClick={() => setDecidindo(false)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-bold text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:bg-slate-900 dark:text-rose-300"
+            >
+              <XCircle className="h-4 w-4" /> Reprovar
+            </button>
+            <button
+              type="button"
+              onClick={() => setDecidindo(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-emerald-300"
+            >
+              <CheckCircle2 className="h-4 w-4" /> Aprovar
+            </button>
+          </>
+        )}
         <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
           Fechar
         </button>
@@ -620,6 +649,18 @@ function DetalheModal({
           </button>
         )}
       </ModalFooter>
+
+      {decidindo !== null && (
+        <DecisaoModal
+          registros={[registro]}
+          aprovar={decidindo}
+          onClose={() => setDecidindo(null)}
+          onFeito={() => {
+            setDecidindo(null);
+            onAlterado();
+          }}
+        />
+      )}
 
       {confirmarExclusao && (
         <ConfirmDialog

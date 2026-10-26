@@ -75,6 +75,16 @@ export function rotuloMotivo(motivo: MotivoSolExtra): string {
   return MOTIVOS_SOL_EXTRA.find(m => m.valor === motivo)?.rotulo ?? motivo;
 }
 
+/** Foto dos itens no bucket `alm-recebimento` (pasta `solicitacao-extra/<id>/`). */
+export interface FotoSolExtra {
+  path: string;
+  nome: string;
+  tipo: string;
+}
+
+/** Limite de fotos por solicitação (o banco aceita até 12). */
+export const MAX_FOTOS_SOL_EXTRA = 8;
+
 export interface ItemSolExtra {
   material: string;
   descricao: string;
@@ -101,6 +111,10 @@ export interface DadosSolExtra {
   retirante_matricula: string | null;
   setor_solicitante_id: string | null;
   setor_solicitante_nome: string | null;
+  fotos: FotoSolExtra[];
+  /** Sem Saldo: assinatura desenhada por quem retira (data URL PNG). */
+  assinatura_retirante: string | null;
+  assinatura_retirante_em: string | null;
 }
 
 /** Número digitado com vírgula ou ponto; vazio vira null, inválido vira NaN. */
@@ -161,6 +175,8 @@ export function normalizarPorMotivo(d: DadosSolExtra): DadosSolExtra {
     retirante_matricula: null,
     setor_solicitante_id: null,
     setor_solicitante_nome: null,
+    assinatura_retirante: null,
+    assinatura_retirante_em: null,
   };
 }
 

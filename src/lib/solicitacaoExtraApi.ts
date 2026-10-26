@@ -25,8 +25,9 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import type { PreparedAttachment } from './imageCompression';
 import type {
-  AprovacaoSolExtra, DadosSolExtra, ItemSolExtra, MotivoSolExtra, StatusSolExtra, TipoSolExtra, TurnoSolExtra,
+  AprovacaoSolExtra, DadosSolExtra, FotoSolExtra, ItemSolExtra, MotivoSolExtra, StatusSolExtra, TipoSolExtra, TurnoSolExtra,
 } from './solicitacaoExtra';
 import type { MaterialDisponivel } from './requisicaoBalcao';
 
@@ -66,6 +67,9 @@ export interface SolExtra {
   aprovacao_obs: string | null;
   /** Requisição no Balcão (RQB) que deu baixa na retirada sem saldo. */
   requisicao_balcao_codigo: string | null;
+  fotos: FotoSolExtra[];
+  assinatura_retirante: string | null;
+  assinatura_retirante_em: string | null;
   criado_por: string | null;
   criado_por_nome: string | null;
   created_at: string;
@@ -105,7 +109,7 @@ export async function listarCatalogoParaSolicitacao(): Promise<MaterialDisponive
 
 /** Registro gravado antes da coluna `tipo` (ou cópia offline antiga) é de Projeto. */
 const comTipo = (rows: unknown[]): SolExtra[] =>
-  (rows as SolExtra[]).map(r => ({ ...r, tipo: r.tipo ?? 'PROJETO' }));
+  (rows as SolExtra[]).map(r => ({ ...r, tipo: r.tipo ?? 'PROJETO', fotos: Array.isArray(r.fotos) ? r.fotos : [] }));
 
 export async function listarSolicitacoesExtra(): Promise<SolExtra[]> {
   const { data, error } = await db()
@@ -139,9 +143,13 @@ export async function listarRetiradasSemSaldo(filtro: {
   return comTipo(data || []);
 }
 
-export async function criarSolicitacaoExtra(dados: DadosSolExtra, autorNome: string): Promise<SolExtra> {
+/**
+ * `id` vem de fora quando há fotos: elas sobem antes, na pasta do registro,
+ * e o insert já leva os caminhos (um insert só — cabe na fila offline).
+ */
+export async function criarSolicitacaoExtra(dados: DadosSolExtra, autorNome: string, id: string = crypto.randomUUID()): Promise<SolExtra> {
   const { data, error } = await db()
-    .insert({ ...dados, id: crypto.randomUUID(), criado_por_nome: autorNome })
+    .insert({ ...dados, id, criado_por_nome: autorNome })
     .select()
     .single();
   if (error) throw new Error(error.message);
@@ -170,6 +178,32 @@ export async function regularizarSolicitacoesExtra(ids: string[], docSap: string
   });
   if (error) throw new Error(error.message);
   return Number(data) || 0;
+}
+
+// ---------------------------------------------------------------------------
+// Fotos dos itens (regra 1 do CLAUDE.md: chegam aqui já comprimidas/carimbadas)
+// ---------------------------------------------------------------------------
+
+const BUCKET_FOTOS = 'alm-recebimento';
+
+/** Sobe uma foto já preparada (`prepararFotoCarimbada`) para a pasta da solicitação. */
+export async function subirFotoSolExtra(solicitacaoId: string, foto: PreparedAttachment): Promise<FotoSolExtra> {
+  const extensao = (foto.name.split('.').pop() || 'jpg').toLowerCase();
+  const path = `solicitacao-extra/${solicitacaoId}/${Math.random().toString(36).slice(2, 9)}.${extensao}`;
+  const { error } = await supabase.storage.from(BUCKET_FOTOS).upload(path, foto.blob, { contentType: foto.mimeType, upsert: false });
+  if (error) throw new Error(`Falha no upload da foto: ${error.message}`);
+  return { path, nome: foto.name, tipo: foto.mimeType };
+}
+
+/** URLs assinadas (24 h) das fotos, por caminho. */
+export async function assinarFotosSolExtra(paths: string[]): Promise<Record<string, string>> {
+  if (!paths.length) return {};
+  const { data } = await supabase.storage.from(BUCKET_FOTOS).createSignedUrls(paths, 60 * 60 * 24);
+  const mapa: Record<string, string> = {};
+  (data ?? []).forEach((item: { path: string | null; signedUrl: string }) => {
+    if (item?.path && item?.signedUrl) mapa[item.path] = item.signedUrl;
+  });
+  return mapa;
 }
 
 /** Gestor aprova (ou reprova, com motivo) uma ou várias retiradas sem saldo. Devolve quantas mudaram. */

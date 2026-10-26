@@ -14,7 +14,7 @@
  *                            no Balcão e marca a retirada como baixada.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, BadgeCheck, CheckCircle2, Clock, FileDown, Loader2, PackageCheck, XCircle } from 'lucide-react';
 import type { Profile } from '../../types';
 import { useToast } from '../ui/Toast';
@@ -31,6 +31,7 @@ import { APROVACAO_SOL_EXTRA_ROTULO, rotuloStatusSolExtra, type AprovacaoSolExtr
 import type { SolExtra } from '../../lib/solicitacaoExtraApi';
 import { darBaixaRetiradaSemSaldo, planejarBaixa, type LinhaBaixa } from '../../lib/retiradaSemSaldoBaixa';
 import { gerarRetiradaSemSaldoPdf } from '../../lib/pdfExport/exportRetiradaSemSaldoPdf';
+import { GaleriaFotosSolExtra } from './FotosSolicitacaoExtra';
 
 const COR_APROVACAO: Record<AprovacaoSolExtra, string> = {
   PENDENTE: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
@@ -105,6 +106,19 @@ export function ResumoRetirada({ registro: r }: { registro: SolExtra }) {
           </table>
         </div>
         {r.observacao && <p className="whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">{r.observacao}</p>}
+        <GaleriaFotosSolExtra fotos={r.fotos ?? []} />
+      </section>
+
+      <section className="space-y-1.5">
+        <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Assinatura de quem retirou</h4>
+        {r.assinatura_retirante ? (
+          <div className="flex items-end gap-3">
+            <img src={r.assinatura_retirante} alt={`Assinatura de ${r.retirante_nome || 'quem retirou'}`} className="h-16 max-w-[14rem] rounded-lg border border-slate-200 bg-white object-contain p-1 dark:border-slate-700" />
+            {r.assinatura_retirante_em && <span className="text-[11px] text-slate-500">em {dataHora(r.assinatura_retirante_em)}</span>}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500 dark:text-slate-400">Não coletada — edite a retirada para coletar, ou assine no PDF impresso.</p>
+        )}
       </section>
 
       {aprovacao !== 'PENDENTE' && (
@@ -137,12 +151,16 @@ export function ResumoRetirada({ registro: r }: { registro: SolExtra }) {
 
 /**
  * Botão "PDF": aprovada, gera direto; antes disso avisa que o documento sai
- * marcado "Aguardando aprovação" e só gera se a pessoa confirmar.
+ * marcado "Aguardando aprovação" e só gera se a pessoa confirmar. Com fotos,
+ * a pré-visualização tem a opção "Incluir fotos" (regera ao marcar).
  */
 export function BotaoPdfRetirada({ registro, className }: { registro: SolExtra; className?: string }) {
   const [confirmar, setConfirmar] = useState(false);
   const [aberto, setAberto] = useState(false);
+  const [incluirFotos, setIncluirFotos] = useState(false);
   const aprovada = registro.aprovacao_status === 'APROVADA';
+  const qtdFotos = registro.fotos?.length ?? 0;
+  const gerar = useCallback(() => gerarRetiradaSemSaldoPdf(registro, { incluirFotos }), [registro, incluirFotos]);
 
   return (
     <>
@@ -175,9 +193,15 @@ export function BotaoPdfRetirada({ registro, className }: { registro: SolExtra; 
       )}
       {aberto && (
         <PdfPreviewModal
-          gerar={() => gerarRetiradaSemSaldoPdf(registro)}
+          gerar={gerar}
           onClose={() => setAberto(false)}
           tituloPadrao={`Retirada sem saldo ${registro.codigo || ''}`}
+          acoesExtras={qtdFotos > 0 ? (
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200">
+              <input type="checkbox" checked={incluirFotos} onChange={e => setIncluirFotos(e.target.checked)} className="h-4 w-4 accent-blue-600" />
+              Incluir fotos ({qtdFotos})
+            </label>
+          ) : undefined}
         />
       )}
     </>

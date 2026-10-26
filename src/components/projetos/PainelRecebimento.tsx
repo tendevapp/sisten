@@ -22,6 +22,7 @@ import { PREFIXO, hojeISO } from '../../lib/projetos';
 import { explodirRecebimento, ExplosaoIndisponivelError, type NoBom } from '../../lib/projetosBom';
 import { proximoCodigo, registrarEntradaNf, estornarDocumento } from '../../lib/projetosApi';
 import ImportarNotasEntrada from './ImportarNotasEntrada';
+import EntregasPendentes from './EntregasPendentes';
 import type { Profile } from '../../types';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
 
@@ -57,6 +58,8 @@ export default function PainelRecebimento({ dados, user, podeLancar }: Props) {
   const [creditos, setCreditos] = useState<LinhaCredito[]>([]);
   const [torresEquivalentes, setTorresEquivalentes] = useState<number | null>(null);
   const [erros, setErros] = useState<Record<string, string>>({});
+  // Muda a cada importação: a lista de itens pendentes de entrega recarrega.
+  const [versaoPendentes, setVersaoPendentes] = useState(0);
 
   const fornecedores = useMemo(
     () => Array.from(new Set(arvore.nos.map((n) => n.fornecedor).filter(Boolean))).sort(),
@@ -235,7 +238,7 @@ export default function PainelRecebimento({ dados, user, podeLancar }: Props) {
               subprojetos={subprojetos}
               subprojetoAtivoId={subprojetoAtivo?.id}
               user={user}
-              onImportado={() => void recarregar(true)}
+              onImportado={() => { void recarregar(true); setVersaoPendentes((v) => v + 1); }}
             />
             <button
               onClick={() => { limpar(); setAberto(true); }}
@@ -251,6 +254,8 @@ export default function PainelRecebimento({ dados, user, podeLancar }: Props) {
           </p>
         )}
       </div>
+
+      <EntregasPendentes user={user} podeLancar={podeLancar} versao={versaoPendentes} />
 
       {loading && <div className="h-48 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
 

@@ -3077,6 +3077,8 @@ export interface ProjItem {
   /** Fora do romaneio de ordens de pré-montagem (chapa/placa de aço, flange, cerca quadrada — gerido fora deste fluxo). */
   ignorar_premontagem: boolean;
   observacao: string | null;
+  /** Cadastrado pela importação de recebimento: chegou, mas não existe na BOM. */
+  fora_da_bom?: boolean;
   created_at?: string;
   updated_at?: string;
 }

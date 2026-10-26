@@ -9,11 +9,18 @@
  * Aprovada no sistema, o quadro de autorização traz o nome do gestor e a
  * data/hora da aprovação. Antes disso o documento sai marcado "AGUARDANDO
  * APROVAÇÃO" — a tela avisa e pede confirmação antes de gerar.
+ *
+ * A assinatura coletada na tela entra sobre a linha "Quem retirou". As fotos
+ * dos itens são opcionais (a tela pergunta): vão no fim, em grade, reduzidas
+ * por `embutirFotoPdf` (ver `fotosPdf.ts`).
  */
 
+import type { PDFImage } from 'pdf-lib';
 import {
-  createDoc, docToPdfGerado, PdfTextWriter, type PdfGerado,
+  createDoc, docToPdfGerado, MARGIN, PAGE_WIDTH, PDF_COLORS, PdfTextWriter, type PdfGerado,
 } from './core';
+import { embutirFotoPdf, LADO_FOTO } from './fotosPdf';
+import { assinarFotosSolExtra } from '../solicitacaoExtraApi';
 import { formatQtd } from '../format';
 import { formatarDataBR } from '../fichaEpi';
 import { APROVACAO_SOL_EXTRA_ROTULO, CODIGO_FRM_SOL_EXTRA, rotuloStatusSolExtra } from '../solicitacaoExtra';
@@ -23,9 +30,51 @@ export type { PdfGerado };
 
 const COR_APROVACAO = { PENDENTE: 'amber', APROVADA: 'green', REPROVADA: 'red' } as const;
 
+const LARGURA = PAGE_WIDTH - MARGIN * 2;
+
+/** Fotos em grade de 3 por linha, cada uma centrada na sua célula. */
+async function desenharFotos(w: PdfTextWriter, urls: string[]) {
+  const imagens: PDFImage[] = [];
+  for (const url of urls) {
+    const img = await embutirFotoPdf(w.getDoc(), url, LADO_FOTO.GRADE).catch(() => null);
+    if (img) imagens.push(img);
+  }
+  if (!imagens.length) return;
+  w.drawSectionHeader('Fotos dos itens', imagens.length);
+  const porLinha = Math.min(3, imagens.length);
+  const gap = 8;
+  const celW = (LARGURA - gap * (porLinha - 1)) / porLinha;
+  const celH = porLinha === 1 ? 260 : porLinha === 2 ? 180 : 130;
+  for (let i = 0; i < imagens.length; i += porLinha) {
+    w.ensureSpace(celH + gap);
+    const page = w.getPage();
+    const topo = w.getY();
+    imagens.slice(i, i + porLinha).forEach((img, j) => {
+      const x = MARGIN + j * (celW + gap);
+      page.drawRectangle({ x, y: topo - celH, width: celW, height: celH, color: PDF_COLORS.cardBg, borderColor: PDF_COLORS.cardBorder, borderWidth: 1 });
+      const escala = Math.min((celW - 8) / img.width, (celH - 8) / img.height);
+      const dw = img.width * escala;
+      const dh = img.height * escala;
+      page.drawImage(img, { x: x + (celW - dw) / 2, y: topo - celH + (celH - dh) / 2, width: dw, height: dh });
+    });
+    w.setY(topo - celH - gap);
+  }
+}
+
+/** PNG da assinatura (data URL) pronto para o PDF; inválido vira null e a linha fica em branco. */
+async function embutirAssinatura(w: PdfTextWriter, dataUrl: string | null): Promise<PDFImage | null> {
+  if (!dataUrl?.startsWith('data:image/png;base64,')) return null;
+  try {
+    const bytes = await (await fetch(dataUrl)).arrayBuffer();
+    return await w.getDoc().embedPng(bytes);
+  } catch {
+    return null;
+  }
+}
+
 const dataHora = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '-');
 
-export async function gerarRetiradaSemSaldoPdf(r: SolExtra): Promise<PdfGerado> {
+export async function gerarRetiradaSemSaldoPdf(r: SolExtra, opcoes: { incluirFotos?: boolean } = {}): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const w = new PdfTextWriter(doc, font, fontBold, logo);
   const codigo = r.codigo || 'Pendente de sincronização';
@@ -96,12 +145,37 @@ export async function gerarRetiradaSemSaldoPdf(r: SolExtra): Promise<PdfGerado> 
     3,
   );
 
-  w.spacer(18);
+  // Assinatura desenhada entra sobre a linha "Quem retirou" (1ª das 3 colunas).
+  const assinatura = await embutirAssinatura(w, r.assinatura_retirante);
+  w.ensureSpace(110);
+  const topoAssinaturas = w.getY();
+  w.spacer(assinatura ? 48 : 18);
+  if (assinatura) {
+    const colW = LARGURA / 3;
+    const linhaY = w.getY() - 30;
+    const altura = 44;
+    const largura = colW - 32;
+    const escala = Math.min(largura / assinatura.width, altura / assinatura.height);
+    const dw = assinatura.width * escala;
+    const dh = assinatura.height * escala;
+    w.getPage().drawImage(assinatura, { x: MARGIN + (colW - dw) / 2, y: linhaY + 2, width: dw, height: dh });
+    if (r.assinatura_retirante_em) {
+      w.getPage().drawText(`Assinado em ${dataHora(r.assinatura_retirante_em)}`, {
+        x: MARGIN + 16, y: Math.min(topoAssinaturas - 4, linhaY + 2 + dh + 4), size: 6.5, font: w.getFont(), color: PDF_COLORS.mutedLabel,
+      });
+    }
+  }
   w.drawSignatures([
     { role: 'Quem retirou', name: r.retirante_nome || undefined },
     { role: 'Almoxarifado', name: r.criado_por_nome || undefined },
     { role: 'Gestor — autorização', name: aprovacao === 'APROVADA' ? r.aprovado_por_nome || undefined : undefined },
   ]);
+
+  if (opcoes.incluirFotos && r.fotos?.length) {
+    const urls = await assinarFotosSolExtra(r.fotos.map(f => f.path)).catch(() => ({} as Record<string, string>));
+    w.spacer(14);
+    await desenharFotos(w, r.fotos.map(f => urls[f.path]).filter(Boolean));
+  }
 
   w.finalizeDoc(CODIGO_FRM_SOL_EXTRA);
   const nome = (r.codigo || `retirada-sem-saldo-${r.id.slice(0, 8)}`).toLowerCase();

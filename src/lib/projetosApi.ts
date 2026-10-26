@@ -127,6 +127,38 @@ export async function atualizarItem(
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Cadastra no catálogo do projeto itens que chegaram mas não existem na BOM
+ * (`fora_da_bom = true`). Quem já estiver lá não é tocado. Devolve o
+ * catálogo atualizado desses part numbers, para a importação creditar.
+ */
+export async function cadastrarItensForaDaBom(
+  itens: { partNumber: string; partNumberNorm: string; codSap: string | null; descricao: string; uom: string | null; fornecedor: string | null }[],
+  usuarioNome: string,
+  projeto = PROJETO_PADRAO,
+): Promise<ProjItem[]> {
+  if (!itens.length) return [];
+  const linhas = itens.map((i) => ({
+    projeto,
+    part_number: i.partNumber.trim(),
+    part_number_norm: i.partNumberNorm,
+    cod_sap: i.codSap?.trim() || null,
+    descricao: i.descricao.trim() || null,
+    uom: i.uom?.trim() || 'each',
+    fornecedor: i.fornecedor?.trim() || null,
+    fora_da_bom: true,
+    observacao: `Cadastrado pela importação de recebimento (fora da BOM) — ${usuarioNome}, ${new Date().toLocaleDateString('pt-BR')}.`,
+  }));
+  const { error } = await db('proj_itens').upsert(linhas, { onConflict: 'projeto,part_number_norm', ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+  const { data, error: erroLeitura } = await db('proj_itens')
+    .select('*')
+    .eq('projeto', projeto)
+    .in('part_number_norm', itens.map((i) => i.partNumberNorm));
+  if (erroLeitura) throw new Error(erroLeitura.message);
+  return (data ?? []) as ProjItem[];
+}
+
 /** Atualiza `ignorar_premontagem` de vários itens de uma vez — o cadastro salva em lote. */
 export async function atualizarItensIgnorarPremontagem(alteracoes: { id: string; ignorar_premontagem: boolean }[]): Promise<void> {
   await Promise.all(alteracoes.map((a) => atualizarItem(a.id, { ignorar_premontagem: a.ignorar_premontagem })));
@@ -801,3 +833,192 @@ export async function salvarPlanejamentoTorre(params: {
   if (error) throw new Error(error.message);
 }
 
+
+// ---------------------------------------------------------------------------
+// Itens não entregues (CHECK vazio/0/"-" na importação de recebimento)
+// ---------------------------------------------------------------------------
+
+export type StatusEntregaPendente = 'PENDENTE' | 'ENTREGUE' | 'NAO_VIRA';
+
+export interface ProjEntregaPendente {
+  id: string;
+  projeto: string;
+  chave: string;
+  item_id: string | null;
+  part_number: string;
+  part_number_norm: string;
+  cod_sap: string | null;
+  descricao: string | null;
+  quantidade_esperada: number | null;
+  uom: string | null;
+  numero_nf: string;
+  data_nf: string | null;
+  pedido: string | null;
+  numero_kit: string | null;
+  aplicacao: string | null;
+  fornecedor: string | null;
+  observacao: string | null;
+  linha_planilha: number | null;
+  status: StatusEntregaPendente;
+  resolvido_em: string | null;
+  resolvido_por_nome: string | null;
+  resolucao_nf: string | null;
+  resolucao_nota_codigo: string | null;
+  resolucao_obs: string | null;
+  criado_por_nome: string | null;
+  created_at: string;
+}
+
+export interface EntregaPendenteInput {
+  chave: string;
+  item_id: string | null;
+  part_number: string;
+  part_number_norm: string;
+  cod_sap: string | null;
+  descricao: string | null;
+  quantidade_esperada: number | null;
+  uom: string | null;
+  numero_nf: string;
+  data_nf: string | null;
+  pedido: string | null;
+  numero_kit: string | null;
+  aplicacao: string | null;
+  fornecedor: string | null;
+  observacao: string | null;
+  linha_planilha: number | null;
+}
+
+/** Grava os não entregues; a mesma pendência (mesma chave) já gravada não duplica. Devolve quantas eram novas. */
+export async function registrarEntregasPendentes(
+  lista: EntregaPendenteInput[],
+  user: { id: string; name: string },
+  projeto = PROJETO_PADRAO,
+): Promise<number> {
+  if (!lista.length) return 0;
+  const { data, error } = await db('proj_entregas_pendentes')
+    .upsert(
+      lista.map((l) => ({ ...l, projeto, criado_por_id: user.id, criado_por_nome: user.name })),
+      { onConflict: 'projeto,chave', ignoreDuplicates: true },
+    )
+    .select('id');
+  if (error) throw new Error(error.message);
+  return (data ?? []).length;
+}
+
+export async function listarEntregasPendentes(
+  status?: StatusEntregaPendente,
+  projeto = PROJETO_PADRAO,
+): Promise<ProjEntregaPendente[]> {
+  return buscarTudo<ProjEntregaPendente>((de, ate) => {
+    let q = db('proj_entregas_pendentes').select('*').eq('projeto', projeto).is('excluido_em', null);
+    if (status) q = q.eq('status', status);
+    return q.order('data_nf', { ascending: true, nullsFirst: false }).order('numero_nf').order('part_number').range(de, ate);
+  });
+}
+
+/** Dá baixa (chegou / não virá) em uma ou várias pendências abertas. */
+export async function resolverEntregasPendentes(
+  ids: string[],
+  status: Exclude<StatusEntregaPendente, 'PENDENTE'>,
+  resolucao: { nf?: string | null; notaCodigo?: string | null; obs?: string | null },
+  user: { id: string; name: string },
+): Promise<void> {
+  if (!ids.length) return;
+  const { error } = await db('proj_entregas_pendentes')
+    .update({
+      status,
+      resolvido_em: new Date().toISOString(),
+      resolvido_por_id: user.id,
+      resolvido_por_nome: user.name,
+      resolucao_nf: resolucao.nf?.trim() || null,
+      resolucao_nota_codigo: resolucao.notaCodigo?.trim() || null,
+      resolucao_obs: resolucao.obs?.trim() || null,
+    })
+    .in('id', ids)
+    .eq('status', 'PENDENTE')
+    .is('excluido_em', null);
+  if (error) throw new Error(error.message);
+}
+
+/** Reabre uma pendência resolvida por engano. */
+export async function reabrirEntregaPendente(id: string): Promise<void> {
+  const { error } = await db('proj_entregas_pendentes')
+    .update({ status: 'PENDENTE', resolvido_em: null, resolvido_por_id: null, resolvido_por_nome: null, resolucao_nf: null, resolucao_nota_codigo: null, resolucao_obs: null })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/** Campos que a pessoa corrige na tela (a planilha veio errada, o PO mudou...). */
+export type EdicaoEntregaPendente = Pick<
+  ProjEntregaPendente,
+  'part_number' | 'cod_sap' | 'descricao' | 'quantidade_esperada' | 'uom' | 'numero_nf' | 'data_nf' | 'pedido' | 'numero_kit' | 'aplicacao' | 'observacao'
+>;
+
+/**
+ * Corrige uma pendência. A chave (NF|PN|PO|kit|aplicação) acompanha a
+ * correção — é ela que impede a reimportação de duplicar; se já existir outra
+ * pendência com a mesma chave, o banco recusa e a tela avisa. Trocar o part
+ * number desfaz o vínculo com o item do catálogo (`item_id`).
+ */
+export async function editarEntregaPendente(
+  atual: ProjEntregaPendente,
+  campos: EdicaoEntregaPendente,
+  chave: string,
+  partNumberNorm: string,
+  user: { name: string },
+): Promise<void> {
+  const { error } = await db('proj_entregas_pendentes')
+    .update({
+      ...campos,
+      chave,
+      part_number_norm: partNumberNorm,
+      item_id: partNumberNorm === atual.part_number_norm ? atual.item_id : null,
+      editado_por_nome: user.name,
+      editado_em: new Date().toISOString(),
+    })
+    .eq('id', atual.id);
+  if (error) {
+    if (error.code === '23505') throw new Error('Já existe uma pendência com a mesma NF, part number, PO, kit e aplicação.');
+    throw new Error(error.message);
+  }
+}
+
+/** Exclusão lógica: some da lista e da baixa automática, fica no banco. */
+export async function excluirEntregasPendentes(ids: string[], user: { id: string; name: string }): Promise<void> {
+  if (!ids.length) return;
+  const { error } = await db('proj_entregas_pendentes')
+    .update({ excluido_em: new Date().toISOString(), excluido_por_id: user.id, excluido_por_nome: user.name })
+    .in('id', ids);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Entradas de NF vigentes destas NFs, com o que cada uma creditou — para a
+ * importação saber o que já foi lançado e não duplicar.
+ */
+export async function listarEntradasExistentes(nfs: string[], projeto = PROJETO_PADRAO): Promise<import('./projetosImportacao').EntradaExistente[]> {
+  const lista = [...new Set(nfs.map((n) => n.trim() || 'S/N'))];
+  if (!lista.length) return [];
+  const notas = await buscarTudo<{ id: string; codigo: string; numero_nf: string; data_entrada: string; created_at: string; criado_por_nome: string | null }>((de, ate) =>
+    db('proj_notas_entrada')
+      .select('id, codigo, numero_nf, data_entrada, created_at, criado_por_nome')
+      .eq('projeto', projeto)
+      .is('excluido_em', null)
+      .in('numero_nf', lista)
+      .order('created_at')
+      .range(de, ate),
+  );
+  if (!notas.length) return [];
+  const movimentos: { documento_id: string; item_id: string; quantidade: number }[] = [];
+  // Em fatias: a URL do `in()` não comporta centenas de ids de uma vez.
+  for (let i = 0; i < notas.length; i += 100) {
+    const ids = notas.slice(i, i + 100).map((n) => n.id);
+    movimentos.push(...await buscarTudo<{ documento_id: string; item_id: string; quantidade: number }>((de, ate) =>
+      db('proj_movimentos').select('documento_id, item_id, quantidade').in('documento_id', ids).is('excluido_em', null).range(de, ate),
+    ));
+  }
+  return notas.map((n) => ({
+    ...n,
+    movimentos: movimentos.filter((m) => m.documento_id === n.id).map((m) => ({ item_id: m.item_id, quantidade: Number(m.quantidade) })),
+  }));
+}

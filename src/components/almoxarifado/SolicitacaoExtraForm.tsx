@@ -20,6 +20,10 @@
  * solicitante, data e hora — a retirada vai para a aprovação do gestor do
  * setor e para a baixa do almoxarifado.
  *
+ * Fotos dos itens (os dois tipos) sobem comprimidas e carimbadas antes do
+ * insert, na pasta do registro; a Sem Saldo coleta ainda a assinatura de
+ * quem retira, desenhada na tela.
+ *
  * `itemQr` é o item lido no "Ler QR" do cabeçalho: entra na primeira linha
  * vazia (ou numa nova) com descrição e unidade do cadastro, e a quantidade
  * fica para a pessoa preencher.
@@ -32,16 +36,18 @@ import { useToast } from '../ui/Toast';
 import SeletorColaborador, { type ColaboradorEscolhido } from './SeletorColaborador';
 import { localDb } from '../../db/localDb';
 import { listarRhPessoas } from '../../lib/rhApi';
+import type { PreparedAttachment } from '../../lib/imageCompression';
+import { CampoAssinaturaRetirante, SeletorFotosSolExtra } from './FotosSolicitacaoExtra';
 import { hojeISO } from '../../lib/fichaEpi';
 import { horaAgora } from '../../lib/portariaApi';
 import { buscarMateriais, type MaterialDisponivel } from '../../lib/requisicaoBalcao';
 import { normalizeCode } from '../../lib/almoxarifado';
 import {
   MOTIVOS_SOL_EXTRA, lerNumero, normalizarPorMotivo, turnoDaHora, validarSolExtra,
-  type DadosSolExtra, type MotivoSolExtra, type TipoSolExtra, type TurnoSolExtra,
+  type DadosSolExtra, type FotoSolExtra, type MotivoSolExtra, type TipoSolExtra, type TurnoSolExtra,
 } from '../../lib/solicitacaoExtra';
 import {
-  atualizarSolicitacaoExtra, criarSolicitacaoExtra, listarCatalogoParaSolicitacao, type SolExtra,
+  atualizarSolicitacaoExtra, criarSolicitacaoExtra, listarCatalogoParaSolicitacao, subirFotoSolExtra, type SolExtra,
 } from '../../lib/solicitacaoExtraApi';
 
 interface Props {
@@ -124,6 +130,9 @@ export default function SolicitacaoExtraForm({
     registro: registro?.retirante_matricula ?? null,
   });
   const [setorId, setSetorId] = useState(registro?.setor_solicitante_id || '');
+  const [fotosGravadas, setFotosGravadas] = useState<FotoSolExtra[]>(registro?.fotos ?? []);
+  const [fotosNovas, setFotosNovas] = useState<PreparedAttachment[]>([]);
+  const [assinatura, setAssinatura] = useState<string | null>(registro?.assinatura_retirante ?? null);
   const [pessoas, setPessoas] = useState<RhPessoa[]>([]);
   const setores = useMemo<Sector[]>(
     () => (semSaldo ? [...localDb.getSectors()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) : []),
@@ -190,6 +199,8 @@ export default function SolicitacaoExtraForm({
     setLinhas([linhaVazia()]);
     setMotivo(null); setMotivoDetalhe(''); setArea(''); setRugosidade(''); setObservacao(''); setTramo('');
     setRetirante({ id: null, nome: '', registro: null });
+    fotosNovas.forEach(f => URL.revokeObjectURL(f.previewUrl));
+    setFotosNovas([]); setFotosGravadas([]); setAssinatura(null);
     const h = horaAgora();
     setData(hojeISO()); setHora(h); setTurno(turnoDaHora(h));
   };
@@ -222,6 +233,11 @@ export default function SolicitacaoExtraForm({
       retirante_matricula: retirante.registro,
       setor_solicitante_id: setorId || null,
       setor_solicitante_nome: setores.find(st => st.id === setorId)?.name ?? registro?.setor_solicitante_nome ?? null,
+      fotos: fotosGravadas,
+      assinatura_retirante: assinatura,
+      assinatura_retirante_em: assinatura === (registro?.assinatura_retirante ?? null)
+        ? registro?.assinatura_retirante_em ?? null
+        : assinatura ? new Date().toISOString() : null,
     });
     const erros = validarSolExtra(dados);
     if (erros.length) {
@@ -231,13 +247,19 @@ export default function SolicitacaoExtraForm({
 
     setSalvando(true);
     try {
+      // Fotos novas sobem antes, na pasta do registro (o id nasce aqui na criação).
+      const id = registro?.id ?? crypto.randomUUID();
+      const subidas: FotoSolExtra[] = [];
+      for (const f of fotosNovas) subidas.push(await subirFotoSolExtra(id, f));
+      dados.fotos = [...fotosGravadas, ...subidas];
+
       if (registro) {
         await atualizarSolicitacaoExtra(registro.id, dados);
         toast.success(registro.codigo ? `Solicitação ${registro.codigo} atualizada.` : 'Solicitação atualizada.');
         onSalvo();
         return;
       }
-      const criada = await criarSolicitacaoExtra(dados, user.name);
+      const criada = await criarSolicitacaoExtra(dados, user.name, id);
       if (dados.projeto) lembrarProjeto(dados.projeto);
       if (criada.codigo && semSaldo) toast.success(`Retirada ${criada.codigo} registrada e enviada para a aprovação do gestor do setor.`);
       else if (criada.codigo) toast.success(`Solicitação ${criada.codigo} registrada. A baixa fica pendente de regularização no SAP.`);
@@ -365,6 +387,16 @@ export default function SolicitacaoExtraForm({
             <Plus className="h-3.5 w-3.5" /> Adicionar item
           </button>
         )}
+        <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
+          <p className={rotulo}>Fotos dos itens</p>
+          <SeletorFotosSolExtra
+            existentes={fotosGravadas}
+            onRemoverExistente={path => setFotosGravadas(l => l.filter(f => f.path !== path))}
+            novas={fotosNovas}
+            setNovas={setFotosNovas}
+            disabled={salvando}
+          />
+        </div>
       </section>
 
       <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
@@ -419,6 +451,14 @@ export default function SolicitacaoExtraForm({
           <textarea value={observacao} onChange={e => setObservacao(e.target.value)} rows={2} className={campo} />
         </div>
       </section>
+
+      {semSaldo && (
+        <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Assinatura de quem retira</h3>
+          <CampoAssinaturaRetirante valor={assinatura} nome={retirante.nome} onChange={setAssinatura} disabled={salvando} />
+          <p className="text-[11px] text-slate-400">Sai no PDF da retirada, na linha "Quem retirou". Sem ela, a linha fica em branco para assinar no papel.</p>
+        </section>
+      )}
 
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         {onCancelar && (

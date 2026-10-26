@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowRight, CheckCircle2, ListTodo, PackageCheck, PackageOpen, ReceiptText, RefreshCw } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ListTodo, PackageCheck, PackageOpen, ReceiptText, RefreshCw, XCircle } from 'lucide-react';
 import type { Profile } from '../types';
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
@@ -30,7 +30,8 @@ import { podeDarBaixaRetirada } from '../lib/retiradaSemSaldoBaixa';
 import {
   AprovacaoChip, BaixaRetiradaModal, BotaoPdfRetirada, ResumoRetirada, resumoItensRetirada,
 } from '../components/almoxarifado/RetiradaSemSaldo';
-import { setoresDeAprovacao } from '../components/aprovacoes/RetiradasSemSaldoPainel';
+import { DecisaoModal, setoresDeAprovacao } from '../components/aprovacoes/RetiradasSemSaldoPainel';
+import { podeAprovarRetirada } from '../lib/solicitacaoExtra';
 import { canAccessPage } from '../lib/pages';
 import { contarNotasAguardando } from '../lib/supPendenciasApi';
 import PendenciasProcessamento from './PendenciasProcessamento';
@@ -135,6 +136,7 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState<SolExtra | null>(null);
   const [baixando, setBaixando] = useState<SolExtra | null>(null);
+  const [decidindo, setDecidindo] = useState<{ registro: SolExtra; aprovar: boolean } | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -241,6 +243,24 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
             <button type="button" onClick={() => setAberto(null)} className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
               Fechar
             </button>
+            {aberto.aprovacao_status === 'PENDENTE' && aberto.codigo && podeAprovarRetirada(aberto, user) && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setDecidindo({ registro: aberto, aprovar: false })}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-bold text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:bg-slate-900 dark:text-rose-300"
+                >
+                  <XCircle className="h-4 w-4" /> Reprovar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDecidindo({ registro: aberto, aprovar: true })}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-emerald-300"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Aprovar
+                </button>
+              </>
+            )}
             {ehAlmox && aberto.status === 'PENDENTE' && aberto.codigo && (
               <button
                 type="button"
@@ -252,6 +272,19 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
             )}
           </ModalFooter>
         </Modal>
+      )}
+
+      {decidindo && (
+        <DecisaoModal
+          registros={[decidindo.registro]}
+          aprovar={decidindo.aprovar}
+          onClose={() => setDecidindo(null)}
+          onFeito={() => {
+            setDecidindo(null);
+            setAberto(null);
+            carregar();
+          }}
+        />
       )}
 
       {baixando && (

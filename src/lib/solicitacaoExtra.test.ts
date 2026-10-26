@@ -24,6 +24,9 @@ const base: DadosSolExtra = {
   retirante_matricula: null,
   setor_solicitante_id: null,
   setor_solicitante_nome: null,
+  fotos: [],
+  assinatura_retirante: null,
+  assinatura_retirante_em: null,
 };
 
 const semSaldo: DadosSolExtra = {
@@ -156,9 +159,12 @@ describe('retirada sem saldo', () => {
     expect(d.retirante_nome).toBe('JOSÉ DA SILVA');
   });
 
-  it('projeto não leva retirante nem setor', () => {
-    const d = normalizarPorMotivo({ ...base, retirante_nome: 'X', setor_solicitante_id: '9' });
-    expect([d.retirante_nome, d.setor_solicitante_id]).toEqual([null, null]);
+  it('projeto não leva retirante, setor nem assinatura; fotos valem para os dois tipos', () => {
+    const foto = { path: 'solicitacao-extra/x/a.jpg', nome: 'a.jpg', tipo: 'image/jpeg' };
+    const d = normalizarPorMotivo({ ...base, retirante_nome: 'X', setor_solicitante_id: '9', assinatura_retirante: 'data:image/png;base64,AA', fotos: [foto] });
+    expect([d.retirante_nome, d.setor_solicitante_id, d.assinatura_retirante]).toEqual([null, null, null]);
+    expect(d.fotos).toEqual([foto]);
+    expect(normalizarPorMotivo({ ...semSaldo, assinatura_retirante: 'data:image/png;base64,AA' }).assinatura_retirante).toBe('data:image/png;base64,AA');
   });
 
   it('aprova o admin ou o aprovador do setor solicitante', () => {

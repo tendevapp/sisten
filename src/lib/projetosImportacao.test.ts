@@ -15,6 +15,14 @@ import {
   reconciliarGrupo,
   consolidarOrdensSaida,
   processarImportacaoMovimentos,
+  checkNaoEntregue,
+  quantidadeEsperada,
+  chaveNaoEntregue,
+  itensForaDoCatalogo,
+  pendenciasAtendidas,
+  observacaoDoCredito,
+  marcarDuplicidades,
+  type EntradaExistente,
   type LinhaImportacao,
 } from './projetosImportacao';
 
@@ -126,7 +134,7 @@ describe('detectarRepeticaoExata', () => {
     ];
     const saida: LinhaImportacao[] = [];
     for (let c = 0; c < n; c += 1) {
-      base.forEach((b, i) => saida.push({ linha: c * 3 + i + 2, dataISO: '2026-08-10', dataBruta: '10/08/2026', situacao: 'Entrada', tramo: null, nf: '5711', codSap: null, partNumberBruto: b.partNumberNorm, uom: null, fornecedor: null, ...b }));
+      base.forEach((b, i) => saida.push({ linha: c * 3 + i + 2, dataISO: '2026-08-10', dataBruta: '10/08/2026', situacao: 'Entrada', tramo: null, nf: '5711', codSap: null, partNumberBruto: b.partNumberNorm, uom: null, fornecedor: null, naoEntregue: false, pedido: null, qtdPorKit: null, qtdKits: null, numeroKit: null, obs: null, ...b }));
     }
     return saida;
   };
@@ -224,12 +232,24 @@ describe('reconciliarGrupo — as pendências reais desta planilha', () => {
     expect(r.pendencias).toHaveLength(1);
   });
 
-  it('quantidade "-" vira pendência sem_quantidade, não credita zero', () => {
-    const rows = [CABECALHO, linha('05/08/2026', '5682', 'BASE', '', '10538277', 'Base', '-')];
+  it('CHECK "-", vazio ou 0 é item não entregue: não credita e não vira pendência de erro', () => {
+    for (const qtd of ['-', '', 0, '0']) {
+      const rows = [CABECALHO, linha('05/08/2026', '5682', 'BASE', '', '10538277', 'Base', qtd)];
+      const { linhas } = parseLinhasImportacao(rows);
+      const [grupo] = agruparPorNota(linhas);
+      const r = reconciliarGrupo(grupo, catalogo);
+      expect(r.creditosEntrada).toHaveLength(0);
+      expect(r.pendencias).toHaveLength(0);
+      expect(r.naoEntregues).toHaveLength(1);
+      expect(r.naoEntregues[0]).toMatchObject({ partNumber: '10538277', itemId: 'i2', nf: '5682' });
+    }
+  });
+
+  it('CHECK com texto que não é número continua pendência sem_quantidade', () => {
+    const rows = [CABECALHO, linha('05/08/2026', '5682', 'BASE', '', '10538277', 'Base', 'OK')];
     const { linhas } = parseLinhasImportacao(rows);
-    const [grupo] = agruparPorNota(linhas);
-    const r = reconciliarGrupo(grupo, catalogo);
-    expect(r.creditosEntrada).toHaveLength(0);
+    const r = reconciliarGrupo(agruparPorNota(linhas)[0], catalogo);
+    expect(r.naoEntregues).toHaveLength(0);
     expect(r.pendencias[0].motivo).toBe('sem_quantidade');
   });
 
@@ -433,5 +453,127 @@ describe('processarImportacaoMovimentos — ponta a ponta com o formato real da 
   it('planilha vazia gera erro fatal claro', () => {
     const { erroFatal } = processarImportacaoMovimentos([CABECALHO], catalogo);
     expect(erroFatal).toMatch(/Nenhuma linha/);
+  });
+});
+
+describe('planilha com PO, Qtd/Kit, Qtd (Kits), Obs. e Número Kit', () => {
+  const CAB_NOVO = ['PO', 'NF', 'Data', 'Aplicação', 'Cod.Sap', 'Part.Number', 'Descrição do Material', 'Qtd/Kit', 'CHECK', 'UND', 'Qtd (Kits)', 'Obs.', 'Número Kit', 'Fornecedor'];
+  const nova = (po: string, nf: string, pn: string, desc: string, porKit: number | string, check: number | string, kits: number | string, obs = '', kit = '') =>
+    [po, nf, '05/08/2026', 'Plataforma', '', pn, desc, porKit, check, 'UN', kits, obs, kit, 'Atlanta'];
+  const catalogo = new Map<string, { id: string; part_number: string }>([
+    ['601059670', { id: 'i1', part_number: '60.10.59670' }],
+    ['10538277', { id: 'i2', part_number: '10538277' }],
+  ]);
+
+  it('mapeia as colunas novas sem exigir Situação (tudo vira entrada)', () => {
+    const { indices, faltando } = mapearColunas(CAB_NOVO);
+    expect(faltando).toEqual([]);
+    expect([indices.pedido, indices.qtd_por_kit, indices.quantidade, indices.qtd_kits, indices.obs, indices.numero_kit]).toEqual([0, 7, 8, 10, 11, 12]);
+  });
+
+  it('leva Obs. e PO para a observação do crédito, sem repetir', () => {
+    const rows = [
+      CAB_NOVO,
+      nova('4100470001', '5682', '60.10.59670', 'Cerca', 2, 2, 1, 'Caixa 3'),
+      nova('4100470001', '5682', '60.10.59670', 'Cerca', 2, 1, 1, 'Caixa 3'),
+    ];
+    const { linhas } = parseLinhasImportacao(rows);
+    const r = reconciliarGrupo(agruparPorNota(linhas)[0], catalogo);
+    expect(r.creditosEntrada[0].quantidade).toBe(3);
+    expect(observacaoDoCredito(r.creditosEntrada[0])).toBe('Caixa 3 | PO 4100470001');
+  });
+
+  it('não entregue guarda PO, kit, Obs. e a quantidade esperada (Qtd/Kit × Qtd Kits)', () => {
+    const rows = [CAB_NOVO, nova('4100470001', '5682', '10538277', 'Base', 4, '-', 3, 'Vem no próximo', 'K-07')];
+    const { linhas } = parseLinhasImportacao(rows);
+    const [ne] = reconciliarGrupo(agruparPorNota(linhas)[0], catalogo).naoEntregues;
+    expect(ne).toMatchObject({ pedido: '4100470001', numeroKit: 'K-07', obs: 'Vem no próximo', quantidadeEsperada: 12 });
+    expect(chaveNaoEntregue(ne)).toBe('5682|10538277|4100470001|K-07|PLATAFORMA');
+  });
+
+  it('quantidade esperada usa a coluna que houver', () => {
+    expect(quantidadeEsperada({ qtdPorKit: 4, qtdKits: null })).toBe(4);
+    expect(quantidadeEsperada({ qtdPorKit: null, qtdKits: null })).toBeNull();
+    expect(checkNaoEntregue('—')).toBe(true);
+    expect(checkNaoEntregue(2)).toBe(false);
+  });
+
+  it('junta os itens fora do catálogo por part number para sugerir o cadastro', () => {
+    const rows = [
+      CAB_NOVO,
+      nova('', '5682', '99.99.00001', 'Suporte novo', 1, 2, 1),
+      nova('', '5682', '9999.00001', 'Suporte novo', 1, 3, 1),
+      nova('', '5682', '60.10.59670', 'Cerca', 1, 1, 1),
+    ];
+    const { linhas } = parseLinhasImportacao(rows);
+    const fora = itensForaDoCatalogo([reconciliarGrupo(agruparPorNota(linhas)[0], catalogo)]);
+    expect(fora).toHaveLength(1);
+    expect(fora[0]).toMatchObject({ partNumberNorm: '999900001', quantidade: 5, descricao: 'Suporte novo', nfs: ['5682'] });
+  });
+
+  it('casa pendência de entrega anterior com o item que chegou (mesmo PN e, se houver, mesmo PO)', () => {
+    const rows = [CAB_NOVO, nova('4100470001', '5900', '10538277', 'Base', 4, 4, 1)];
+    const { linhas } = parseLinhasImportacao(rows);
+    const r = reconciliarGrupo(agruparPorNota(linhas)[0], catalogo);
+    const atendidas = pendenciasAtendidas([
+      { id: 'p1', part_number_norm: '10538277', pedido: '4100470001', numero_nf: '5682' },
+      { id: 'p2', part_number_norm: '10538277', pedido: '4100479999', numero_nf: '5682' },
+      { id: 'p3', part_number_norm: '10538277', pedido: null, numero_nf: '5600' },
+      { id: 'p4', part_number_norm: '601059670', pedido: null, numero_nf: '5600' },
+    ], [r]);
+    expect([...atendidas.entries()]).toEqual([['p1', '5900'], ['p3', '5900']]);
+  });
+});
+
+describe('repetição × caixas diferentes (NF 5682)', () => {
+  const CAB = ['PO', 'NF', 'Data', 'Aplicação', 'Cod.Sap', 'Part.Number', 'Descrição do Material', 'Qtd/Kit', 'CHECK', 'UND', 'Qtd (Kits)', 'Obs.', 'Número Kit', 'Fornecedor'];
+  const l = (pn: string, check: number | string, obs: string) =>
+    ['4100439424', '5682', '05/08/2026', 'Plataforma', '', pn, `Peça ${pn}`, 1, check, 'UND', 1, obs, 1, 'Atlanta'];
+
+  it('mesmos itens em caixas diferentes (Obs.) não são cópia da planilha', () => {
+    const rows = [CAB, l('10538281', 1, 'TRAMO 3 - CX1'), l('10481931', '-', 'TRAMO 3 - CX1'), l('10538281', 1, 'TRAMO 3 - CX2'), l('10481931', '-', 'TRAMO 3 - CX2')];
+    const [grupo] = agruparPorNota(parseLinhasImportacao(rows).linhas);
+    expect(grupo.repeticaoDetectada).toBe(1);
+  });
+
+  it('o mesmo bloco colado duas vezes, com a mesma Obs., ainda é detectado', () => {
+    const rows = [CAB, l('10538281', 1, 'TRAMO 3 - CX1'), l('10481931', 2, 'TRAMO 3 - CX1'), l('10538281', 1, 'TRAMO 3 - CX1'), l('10481931', 2, 'TRAMO 3 - CX1')];
+    const [grupo] = agruparPorNota(parseLinhasImportacao(rows).linhas);
+    expect(grupo.repeticaoDetectada).toBe(2);
+  });
+});
+
+describe('marcarDuplicidades (reimportar a mesma planilha)', () => {
+  const catalogo = new Map<string, { id: string; part_number: string }>([
+    ['601059670', { id: 'i1', part_number: '60.10.59670' }],
+    ['10538277', { id: 'i2', part_number: '10538277' }],
+  ]);
+  const reconciliar = (nf: string, data: string, itens: [string, number][]) => {
+    const rows = [CABECALHO, ...itens.map(([pn, q]) => linha(data, nf, 'Plataforma', '', pn, 'x', q))];
+    return reconciliarGrupo(agruparPorNota(parseLinhasImportacao(rows).linhas)[0], catalogo);
+  };
+  const existente = (id: string, nf: string, data: string, movs: [string, number][]): EntradaExistente => ({
+    id, codigo: `ENP-${id}`, numero_nf: nf, data_entrada: data, created_at: '2026-09-09T11:44:00Z', criado_por_nome: 'X',
+    movimentos: movs.map(([item_id, quantidade]) => ({ item_id, quantidade })),
+  });
+
+  it('mesma NF, data e itens = já importada; somar o mesmo item em linhas diferentes não engana', () => {
+    const r = reconciliar('5682', '05/08/2026', [['60.10.59670', 2], ['10538277', 3]]);
+    const d = marcarDuplicidades([r], [existente('a', '5682', '2026-08-05', [['i2', 3], ['i1', 1], ['i1', 1]])]);
+    expect(d.get(0)).toMatchObject({ tipo: 'identica', codigo: 'ENP-a' });
+  });
+
+  it('mesma NF e data com itens diferentes pede decisão; outra data é nova', () => {
+    const r = reconciliar('5682', '05/08/2026', [['60.10.59670', 2]]);
+    expect(marcarDuplicidades([r], [existente('a', '5682', '2026-08-05', [['i1', 5]])]).get(0)).toEqual({ tipo: 'mesma_nf_data', codigos: ['ENP-a'] });
+    expect(marcarDuplicidades([r], [existente('a', '5682', '2026-08-10', [['i1', 2]])]).size).toBe(0);
+  });
+
+  it('cada entrada gravada casa com um lançamento só', () => {
+    const r1 = reconciliar('5682', '05/08/2026', [['60.10.59670', 2]]);
+    const r2 = reconciliar('5682', '05/08/2026', [['60.10.59670', 2]]);
+    const d = marcarDuplicidades([r1, r2], [existente('a', '5682', '2026-08-05', [['i1', 2]])]);
+    expect(d.get(0)?.tipo).toBe('identica');
+    expect(d.has(1)).toBe(false);
   });
 });

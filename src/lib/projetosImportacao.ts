@@ -6,7 +6,10 @@
  *
  * A planilha de origem (romaneio do fornecedor lançado à mão) tem uma linha
  * por item, com o cabeçalho `Data | Situação | TRAMO | NF | Aplicação |
- * Cod.Sap | Part.Number | Descrição do Material | CHECK | UND | Fornecedor`.
+ * Cod.Sap | Part.Number | Descrição do Material | CHECK | UND | Fornecedor`
+ * — ou a versão com `PO`, `Qtd/Kit`, `Qtd (Kits)`, `Obs.` e `Número Kit`
+ * (sem Situação: tudo é entrada). `CHECK` é a quantidade que entra no saldo;
+ * `Obs.` vai para a observação do movimento de cada item.
  * Cada bloco de linhas consecutivas com a mesma (Data, NF) vira UM lançamento
  * — mesmo desenho dos formulários manuais, só que em lote e sem explosão de
  * BOM: aqui os itens já chegam soltos, um por linha, prontos para creditar
@@ -46,6 +49,15 @@
  *  4. TRAMO em branco numa linha de saída — sem tramo não há para onde abrir
  *     a ordem de separação. Vira pendência `tramo_obrigatorio`, nunca uma
  *     saída "sem destino".
+ *
+ * E duas situações que não são erro:
+ *
+ *  - `CHECK` vazio, 0 ou "-" numa entrada = o item NÃO veio neste
+ *    carregamento. Sai em `naoEntregues` (não é crédito nem pendência) para
+ *    ser gravado em `proj_entregas_pendentes` e acompanhado até chegar.
+ *  - part number legível que não está no catálogo do projeto (fora da BOM):
+ *    segue como pendência `nao_encontrado_no_catalogo`, e `itensForaDoCatalogo`
+ *    junta os dados para a tela oferecer o cadastro antes de importar.
  */
 
 import { excelSerialToISO, parseMb51Number } from './mb51';
@@ -74,6 +86,11 @@ export const COLUNAS_IMPORTACAO_ENTRADA: ColunaImportacaoEntrada[] = [
   { header: 'CHECK', field: 'quantidade', aliases: ['quantidade', 'qtd', 'qtd.', 'check'], obrigatoria: true },
   { header: 'UND', field: 'uom', aliases: ['unidade', 'un', 'und', 'un.'] },
   { header: 'Fornecedor', field: 'fornecedor', aliases: ['forn.', 'fornecedor(a)'] },
+  { header: 'PO', field: 'pedido', aliases: ['pedido', 'pedido de compra', 'nº po', 'n° po', 'no po', 'ordem de compra', 'oc'] },
+  { header: 'Qtd/Kit', field: 'qtd_por_kit', aliases: ['qtd por kit', 'quantidade por kit', 'qtd kit'] },
+  { header: 'Qtd (Kits)', field: 'qtd_kits', aliases: ['qtd kits', 'quantidade de kits', 'kits'] },
+  { header: 'Obs.', field: 'obs', aliases: ['obs', 'observacao', 'observação', 'observacoes', 'observações'] },
+  { header: 'Número Kit', field: 'numero_kit', aliases: ['numero kit', 'nº kit', 'n° kit', 'no kit', 'kit'] },
 ];
 
 /** Minúsculo, sem acento, sem pontuação — para casar cabeçalho digitado de qualquer jeito. */
@@ -152,8 +169,15 @@ export interface LinhaImportacao {
   partNumberNorm: string;
   descricao: string;
   quantidade: number | null;
+  /** CHECK vazio, 0 ou "-": o item não veio neste carregamento. */
+  naoEntregue: boolean;
   uom: string | null;
   fornecedor: string | null;
+  pedido: string | null;
+  qtdPorKit: number | null;
+  qtdKits: number | null;
+  numeroKit: string | null;
+  obs: string | null;
 }
 
 const texto = (v: unknown): string => String(v ?? '').trim();
@@ -162,6 +186,21 @@ const texto = (v: unknown): string => String(v ?? '').trim();
 function partNumberIlegivel(partNumberBruto: string, descricao: string): boolean {
   if (descricao.trim().toUpperCase() === 'ERRO') return true;
   return !/[0-9]/.test(partNumberBruto);
+}
+
+/** CHECK que diz "não veio": célula vazia, traço ou zero. Texto qualquer ("OK", "?") não conta — vira `sem_quantidade`. */
+export function checkNaoEntregue(bruto: unknown): boolean {
+  const t = texto(bruto);
+  if (t === '' || /^[-–—]+$/.test(t)) return true;
+  return parseMb51Number(bruto) === 0;
+}
+
+/** Quantidade que deveria ter vindo: Qtd/Kit × Qtd (Kits) quando há as duas, senão a que houver. */
+export function quantidadeEsperada(l: Pick<LinhaImportacao, 'qtdPorKit' | 'qtdKits'>): number | null {
+  const porKit = l.qtdPorKit != null && l.qtdPorKit > 0 ? l.qtdPorKit : null;
+  const kits = l.qtdKits != null && l.qtdKits > 0 ? l.qtdKits : null;
+  if (porKit != null && kits != null) return porKit * kits;
+  return porKit ?? kits;
 }
 
 /**
@@ -216,8 +255,14 @@ export function parseLinhasImportacao(rawRows: unknown[][]): {
       partNumberNorm: normalizarPartNumber(partNumberBruto),
       descricao,
       quantidade: parseMb51Number(at(row, 'quantidade')),
+      naoEntregue: checkNaoEntregue(at(row, 'quantidade')),
       uom: texto(at(row, 'uom')) || null,
       fornecedor: texto(at(row, 'fornecedor')) || null,
+      pedido: texto(at(row, 'pedido')) || null,
+      qtdPorKit: parseMb51Number(at(row, 'qtd_por_kit')),
+      qtdKits: parseMb51Number(at(row, 'qtd_kits')),
+      numeroKit: texto(at(row, 'numero_kit')) || null,
+      obs: texto(at(row, 'obs')) || null,
     });
   }
 
@@ -280,9 +325,14 @@ export function agruparPorNota(linhas: LinhaImportacao[]): GrupoNotaImportada[] 
   return grupos;
 }
 
-/** Assinatura de uma linha para comparar repetição — ignora `linha`/`dataBruta`, que mudam sem mudar o conteúdo. */
+/**
+ * Assinatura de uma linha para comparar repetição — ignora `linha`/`dataBruta`,
+ * que mudam sem mudar o conteúdo. Obs., Número Kit e PO entram: blocos com os
+ * mesmos itens em caixas diferentes ("TRAMO 3 - CX1" / "CX2") são remessas
+ * distintas, não a planilha colada duas vezes.
+ */
 const assinaturaLinha = (l: LinhaImportacao): string =>
-  [l.partNumberNorm, l.descricao, l.quantidade ?? '', l.aplicacao ?? ''].join('|');
+  [l.partNumberNorm, l.descricao, l.quantidade ?? '', l.naoEntregue ? 'NE' : '', l.aplicacao ?? '', l.obs ?? '', l.numeroKit ?? '', l.pedido ?? ''].join('|');
 
 /**
  * Maior N >= 2 tal que as linhas do grupo são exatamente N cópias consecutivas
@@ -337,6 +387,35 @@ export interface CreditoConsolidado {
   itemId: string;
   quantidade: number;
   linhasOrigem: number[];
+  /** Obs. das linhas somadas (sem repetir) — vira a observação do movimento. */
+  observacoes: string[];
+  /** POs das linhas somadas (sem repetir). */
+  pedidos: string[];
+}
+
+/** Item com CHECK vazio/0/"-": esperado na NF, não veio neste carregamento. */
+export interface ItemNaoEntregue {
+  linha: number;
+  nf: string;
+  dataISO: string | null;
+  pedido: string | null;
+  partNumber: string;
+  partNumberNorm: string;
+  codSap: string | null;
+  descricao: string;
+  quantidadeEsperada: number | null;
+  uom: string | null;
+  aplicacao: string | null;
+  numeroKit: string | null;
+  obs: string | null;
+  fornecedor: string | null;
+  /** Item do catálogo, quando o part number está lá (pode chegar fora da BOM). */
+  itemId: string | null;
+}
+
+/** Chave de deduplicação em `proj_entregas_pendentes`: reimportar a mesma planilha não duplica a pendência. */
+export function chaveNaoEntregue(i: Pick<ItemNaoEntregue, 'nf' | 'partNumberNorm' | 'pedido' | 'numeroKit' | 'aplicacao'>): string {
+  return [i.nf, i.partNumberNorm, i.pedido ?? '', i.numeroKit ?? '', i.aplicacao ?? ''].map((x) => x.trim().toUpperCase()).join('|');
 }
 
 /**
@@ -354,6 +433,11 @@ export interface Pendencia {
   nf: string;
   partNumberBruto: string;
   descricao: string;
+  /** Só em `nao_encontrado_no_catalogo`: o que é preciso para cadastrar o item. */
+  codSap?: string | null;
+  uom?: string | null;
+  fornecedor?: string | null;
+  quantidade?: number | null;
 }
 
 export interface ReconciliacaoGrupo {
@@ -361,6 +445,7 @@ export interface ReconciliacaoGrupo {
   creditosEntrada: CreditoConsolidado[];
   debitosSaida: DebitoConsolidado[];
   pendencias: Pendencia[];
+  naoEntregues: ItemNaoEntregue[];
   totalItens: number;
   totalPecas: number;
 }
@@ -390,12 +475,13 @@ export function rotuloPendencia(m: MotivoPendencia): string {
  */
 export function reconciliarGrupo(
   grupo: GrupoNotaImportada,
-  itemIdPorPn: Map<string, { id: string; part_number: string }>,
+  itemIdPorPn: Map<string, { id: string; part_number: string; descricao?: string | null }>,
   tramosValidos: Set<string> = new Set(),
 ): ReconciliacaoGrupo {
   const creditosPorPn = new Map<string, CreditoConsolidado>();
   const debitosPorChave = new Map<string, DebitoConsolidado>();
   const pendencias: Pendencia[] = [];
+  const naoEntregues: ItemNaoEntregue[] = [];
 
   for (const l of grupo.linhas) {
     const sentido = normalizarSentido(l.situacao);
@@ -407,13 +493,28 @@ export function reconciliarGrupo(
       pendencias.push({ linha: l.linha, motivo: 'part_number_ilegivel', detalhe: l.partNumberBruto || l.descricao, nf: l.nf, partNumberBruto: l.partNumberBruto, descricao: l.descricao });
       continue;
     }
+    // Entrada com CHECK vazio/0/"-": não veio neste carregamento — acompanha, não credita.
+    if (sentido === 'entrada' && l.naoEntregue) {
+      naoEntregues.push({
+        linha: l.linha, nf: l.nf, dataISO: l.dataISO, pedido: l.pedido,
+        partNumber: itemIdPorPn.get(l.partNumberNorm)?.part_number ?? l.partNumberBruto, partNumberNorm: l.partNumberNorm,
+        // Descrição vazia na planilha (PROCV sem vínculo): a do catálogo, quando o item existe.
+        codSap: l.codSap, descricao: l.descricao || itemIdPorPn.get(l.partNumberNorm)?.descricao || '', quantidadeEsperada: quantidadeEsperada(l), uom: l.uom,
+        aplicacao: l.aplicacao, numeroKit: l.numeroKit, obs: l.obs, fornecedor: l.fornecedor,
+        itemId: itemIdPorPn.get(l.partNumberNorm)?.id ?? null,
+      });
+      continue;
+    }
     if (l.quantidade === null || l.quantidade <= 0) {
       pendencias.push({ linha: l.linha, motivo: 'sem_quantidade', detalhe: '', nf: l.nf, partNumberBruto: l.partNumberBruto, descricao: l.descricao });
       continue;
     }
     const item = itemIdPorPn.get(l.partNumberNorm);
     if (!item) {
-      pendencias.push({ linha: l.linha, motivo: 'nao_encontrado_no_catalogo', detalhe: l.partNumberBruto, nf: l.nf, partNumberBruto: l.partNumberBruto, descricao: l.descricao });
+      pendencias.push({
+        linha: l.linha, motivo: 'nao_encontrado_no_catalogo', detalhe: l.partNumberBruto, nf: l.nf, partNumberBruto: l.partNumberBruto, descricao: l.descricao,
+        codSap: l.codSap, uom: l.uom, fornecedor: l.fornecedor, quantidade: l.quantidade,
+      });
       continue;
     }
 
@@ -422,10 +523,13 @@ export function reconciliarGrupo(
       if (atual) {
         atual.quantidade += l.quantidade;
         atual.linhasOrigem.push(l.linha);
+        if (l.obs && !atual.observacoes.includes(l.obs)) atual.observacoes.push(l.obs);
+        if (l.pedido && !atual.pedidos.includes(l.pedido)) atual.pedidos.push(l.pedido);
       } else {
         creditosPorPn.set(l.partNumberNorm, {
           partNumberNorm: l.partNumberNorm, partNumber: item.part_number, descricao: l.descricao,
           itemId: item.id, quantidade: l.quantidade, linhasOrigem: [l.linha],
+          observacoes: l.obs ? [l.obs] : [], pedidos: l.pedido ? [l.pedido] : [],
         });
       }
       continue;
@@ -454,6 +558,7 @@ export function reconciliarGrupo(
       debitosPorChave.set(chave, {
         partNumberNorm: l.partNumberNorm, partNumber: item.part_number, descricao: l.descricao,
         itemId: item.id, quantidade: l.quantidade, linhasOrigem: [l.linha], tramoUnidadeId,
+        observacoes: l.obs ? [l.obs] : [], pedidos: l.pedido ? [l.pedido] : [],
       });
     }
   }
@@ -466,9 +571,149 @@ export function reconciliarGrupo(
     creditosEntrada,
     debitosSaida,
     pendencias,
+    naoEntregues,
     totalItens: creditosEntrada.length + debitosSaida.length,
     totalPecas: creditosEntrada.reduce((s, c) => s + c.quantidade, 0) + debitosSaida.reduce((s, c) => s + c.quantidade, 0),
   };
+}
+
+/** Observação do movimento de um crédito: as Obs. da planilha, mais o PO quando há. */
+export function observacaoDoCredito(c: Pick<CreditoConsolidado, 'observacoes' | 'pedidos'>): string | null {
+  const partes = [...c.observacoes];
+  if (c.pedidos.length) partes.push(`PO ${c.pedidos.join(', ')}`);
+  return partes.length ? partes.join(' | ') : null;
+}
+
+// ---------------------------------------------------------------------------
+// Fora do catálogo (fora da BOM): sugestão de cadastro
+// ---------------------------------------------------------------------------
+
+export interface ItemForaDoCatalogo {
+  partNumber: string;
+  partNumberNorm: string;
+  codSap: string | null;
+  descricao: string;
+  uom: string | null;
+  fornecedor: string | null;
+  quantidade: number;
+  nfs: string[];
+}
+
+/** Part numbers legíveis, com quantidade, que não estão no catálogo — um por PN, somando as linhas. */
+export function itensForaDoCatalogo(reconciliacoes: ReconciliacaoGrupo[]): ItemForaDoCatalogo[] {
+  const porPn = new Map<string, ItemForaDoCatalogo>();
+  for (const r of reconciliacoes) {
+    for (const p of r.pendencias) {
+      if (p.motivo !== 'nao_encontrado_no_catalogo') continue;
+      const norm = normalizarPartNumber(p.partNumberBruto);
+      if (!norm) continue;
+      const atual = porPn.get(norm);
+      if (atual) {
+        atual.quantidade += p.quantidade ?? 0;
+        if (p.nf && !atual.nfs.includes(p.nf)) atual.nfs.push(p.nf);
+        atual.codSap = atual.codSap ?? p.codSap ?? null;
+        if (!atual.descricao && p.descricao) atual.descricao = p.descricao;
+      } else {
+        porPn.set(norm, {
+          partNumber: p.partNumberBruto, partNumberNorm: norm, codSap: p.codSap ?? null, descricao: p.descricao,
+          uom: p.uom ?? null, fornecedor: p.fornecedor ?? null, quantidade: p.quantidade ?? 0, nfs: p.nf ? [p.nf] : [],
+        });
+      }
+    }
+  }
+  return Array.from(porPn.values()).sort((a, b) => a.partNumber.localeCompare(b.partNumber));
+}
+
+// ---------------------------------------------------------------------------
+// Pendências de entrega anteriores que chegaram nesta planilha
+// ---------------------------------------------------------------------------
+
+export interface EntregaPendenteAberta {
+  id: string;
+  part_number_norm: string;
+  pedido: string | null;
+  numero_nf: string;
+}
+
+/**
+ * Pendência aberta cujo item veio creditado nesta importação: mesmo part
+ * number e, quando os dois lados têm PO, o mesmo PO. Devolve id da pendência
+ * → NF da entrada que a atende (a primeira encontrada).
+ */
+export function pendenciasAtendidas(abertas: EntregaPendenteAberta[], reconciliacoes: ReconciliacaoGrupo[]): Map<string, string> {
+  const atendidas = new Map<string, string>();
+  for (const a of abertas) {
+    for (const r of reconciliacoes) {
+      const credito = r.creditosEntrada.find(
+        (c) => c.partNumberNorm === a.part_number_norm && (!a.pedido || !c.pedidos.length || c.pedidos.includes(a.pedido)),
+      );
+      if (credito) { atendidas.set(a.id, r.grupo.nf); break; }
+    }
+  }
+  return atendidas;
+}
+
+// ---------------------------------------------------------------------------
+// Duplicidade com o que já está gravado (reimportar a mesma planilha)
+// ---------------------------------------------------------------------------
+
+/** Entrada de NF já gravada, com o que ela creditou (item → quantidade). */
+export interface EntradaExistente {
+  id: string;
+  codigo: string;
+  numero_nf: string;
+  data_entrada: string;
+  created_at: string;
+  criado_por_nome: string | null;
+  movimentos: { item_id: string; quantidade: number }[];
+}
+
+export type Duplicidade =
+  | { tipo: 'identica'; codigo: string; criadoEm: string; criadoPor: string | null }
+  | { tipo: 'mesma_nf_data'; codigos: string[] };
+
+/** NF como o lançamento grava: vazia vira 'S/N'. */
+const nfGravada = (nf: string) => (nf.trim() || 'S/N').toUpperCase();
+
+/** item → quantidade somada, em texto estável para comparar conteúdo. */
+function conteudo(pares: { item: string; qtd: number }[]): string {
+  const soma = new Map<string, number>();
+  pares.forEach((p) => soma.set(p.item, (soma.get(p.item) ?? 0) + p.qtd));
+  return Array.from(soma.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([i, q]) => `${i}:${Number(q.toFixed(6))}`).join(',');
+}
+
+/**
+ * Para cada lançamento de entrada da planilha (na ordem de `reconciliacoes`),
+ * diz se ele já existe no banco:
+ *  - `identica`: mesma NF, mesma data e os mesmos itens/quantidades de uma
+ *    entrada vigente — não deve ser lançada de novo;
+ *  - `mesma_nf_data`: há entrada da mesma NF na mesma data, mas com itens
+ *    diferentes — pode ser uma 2ª entrega real, quem confere decide.
+ * Cada entrada gravada casa com um lançamento só: se a planilha tem duas
+ * remessas idênticas reais e o banco só uma, a segunda segue como nova.
+ * Índices sem entrada no mapa são novos.
+ */
+export function marcarDuplicidades(reconciliacoes: ReconciliacaoGrupo[], existentes: EntradaExistente[]): Map<number, Duplicidade> {
+  const resultado = new Map<number, Duplicidade>();
+  const usadas = new Set<string>();
+  const conteudoExistente = new Map(existentes.map((e) => [e.id, conteudo(e.movimentos.map((m) => ({ item: m.item_id, qtd: Number(m.quantidade) })))]));
+
+  reconciliacoes.forEach((r, i) => {
+    if (!r.creditosEntrada.length || !r.grupo.dataISO) return;
+    const mesmas = existentes.filter((e) => nfGravada(e.numero_nf) === nfGravada(r.grupo.nf) && e.data_entrada.slice(0, 10) === r.grupo.dataISO);
+    if (!mesmas.length) return;
+    const meu = conteudo(r.creditosEntrada.map((c) => ({ item: c.itemId, qtd: c.quantidade })));
+    const igual = mesmas.find((e) => !usadas.has(e.id) && conteudoExistente.get(e.id) === meu);
+    if (igual) {
+      usadas.add(igual.id);
+      resultado.set(i, { tipo: 'identica', codigo: igual.codigo, criadoEm: igual.created_at, criadoPor: igual.criado_por_nome });
+      return;
+    }
+    // Todas as idênticas já foram casadas com outro lançamento: este é novo.
+    if (mesmas.every((e) => usadas.has(e.id) && conteudoExistente.get(e.id) === meu)) return;
+    resultado.set(i, { tipo: 'mesma_nf_data', codigos: mesmas.map((e) => e.codigo) });
+  });
+  return resultado;
 }
 
 // ---------------------------------------------------------------------------
@@ -536,6 +781,7 @@ export interface ResultadoImportacao {
   totalItens: number;
   totalPecas: number;
   totalPendencias: number;
+  totalNaoEntregues: number;
 }
 
 /** Roda o pipeline inteiro: parse -> agrupa -> reconcilia -> consolida saída. Não faz nenhuma chamada de rede. */
@@ -559,6 +805,7 @@ export function processarImportacaoMovimentos(
       totalItens: grupos.reduce((s, g) => s + g.creditosEntrada.length, 0) + ordensSaida.reduce((s, o) => s + o.itens.length, 0),
       totalPecas: grupos.reduce((s, g) => s + g.creditosEntrada.reduce((x, c) => x + c.quantidade, 0), 0) + ordensSaida.reduce((s, o) => s + o.totalPecas, 0),
       totalPendencias: grupos.reduce((s, g) => s + g.pendencias.length, 0),
+      totalNaoEntregues: grupos.reduce((s, g) => s + g.naoEntregues.length, 0),
     },
     erroFatal: null,
   };

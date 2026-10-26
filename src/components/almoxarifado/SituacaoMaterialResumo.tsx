@@ -7,17 +7,18 @@
  * Ctrl+K (ao escolher um material) e no diálogo do QR da etiqueta.
  *
  * Busca sozinho pelo código (`lib/situacaoMaterial`); compacto para caber num
- * diálogo de celular.
+ * diálogo de celular. O saldo começa recolhido ("Mostrar saldo"): a mesma
+ * tela abre antes do inventário cíclico, que é contagem cega.
  */
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { AlertTriangle, Boxes, ClipboardList, History, Loader2, MapPin, RefreshCw, Truck } from 'lucide-react';
+import { AlertTriangle, Boxes, ClipboardList, Eye, EyeOff, History, Loader2, MapPin, RefreshCw, Truck } from 'lucide-react';
 import { formatQtd } from '../../lib/format';
 import { hojeISO } from '../../lib/fichaEpi';
 import { formatDeposito } from '../../lib/almoxarifado';
 import {
-  ROTULO_SITUACAO_PEDIDO, ROTULO_SITUACAO_RM, abaixoDoMinimo, buscarSituacaoMaterial, documentoComItem, situacaoPedido,
-  type SituacaoMaterial, type SituacaoPedido, type SituacaoRm,
+  ROTULO_SITUACAO_PEDIDO, abaixoDoMinimo, aguardandoMigo, buscarSituacaoMaterial, documentoComItem, situacaoPedido,
+  type ChegadaSituacao, type SituacaoMaterial, type SituacaoPedido,
 } from '../../lib/situacaoMaterial';
 
 /** `2026-10-09` → `09/10/26`, fatiando o texto (sem `new Date`). */
@@ -28,15 +29,10 @@ const dataCurta = (iso: string | null | undefined) => {
 };
 
 const COR_PEDIDO: Record<SituacaoPedido, string> = {
+  chegou: 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300',
   atrasado: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300',
   aberto: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
   recebido: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
-};
-
-const COR_RM: Record<SituacaoRm, string> = {
-  sem_pedido: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300',
-  em_pedido: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300',
-  atendida: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
 };
 
 function Chip({ cor, children }: { cor: string; children: ReactNode }) {
@@ -54,11 +50,33 @@ function Secao({ icone: Icone, titulo, children }: { icone: typeof Boxes; titulo
   );
 }
 
+/** Chegada física ainda sem MIGO, dentro do cartão do pedido. */
+function LinhaChegada({ chegada: c, umb, mostrarPedido }: { chegada: ChegadaSituacao; umb: string; mostrarPedido?: boolean }) {
+  return (
+    <p className="mt-1.5 rounded-md bg-violet-50 px-2 py-1 text-[11px] text-violet-900 dark:bg-violet-950/30 dark:text-violet-200">
+      Chegou {dataCurta(c.data)}
+      {c.quantidade != null && <> · <span className="font-bold tabular-nums">{formatQtd(c.quantidade)} {c.unidade || umb}</span> contados</>}
+      {c.parcial && ' (parcial)'}
+      {c.divergencia && ` · divergência${c.tipo_divergencia ? ` (${c.tipo_divergencia.replace('_', ' ')})` : ''}`}
+      {mostrarPedido && c.pedido && ` · PO ${c.pedido}`}
+      {' · '}{c.codigo ?? 'marcado no Rastreio'}
+      {c.registrado_por && ` · ${c.registrado_por}`}
+      {' — '}está na prateleira, falta a MIGO
+    </p>
+  );
+}
+
 export default function SituacaoMaterialResumo({ material, mostrarCabecalho = true }: { material: string; mostrarCabecalho?: boolean }) {
   const [dados, setDados] = useState<SituacaoMaterial | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [versao, setVersao] = useState(0);
+  // Recolhido a cada item: o saldo só aparece quando a pessoa pede.
+  const [saldoVisivel, setSaldoVisivel] = useState(false);
+
+  useEffect(() => {
+    setSaldoVisivel(false);
+  }, [material]);
 
   useEffect(() => {
     let ativo = true;
@@ -97,9 +115,24 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
   const umb = dados.umb || '';
   const posicoes = [...new Set([dados.posicao_cadastro, ...dados.depositos.map(d => d.posicao)].filter((p): p is string => !!p?.trim()))];
   const abaixo = abaixoDoMinimo(dados);
-  const rmsAbertas = dados.rms.filter(r => r.situacao !== 'atendida');
-  const rmsAtendidas = dados.rms.length - rmsAbertas.length;
-  const pedidosAbertos = dados.pedidos.filter(p => p.quantidade_pendente > 0);
+  // RM que já virou pedido aparece no pedido; aqui fica só a que ainda espera compra.
+  const rmsSemPedido = dados.rms.filter(r => r.situacao === 'sem_pedido');
+  // Entrega que o comprador informou na RM, levada para o pedido dela.
+  const entregaDaRm = new Map<string, { data: string; confirmada: boolean }>();
+  for (const r of dados.rms) {
+    if (r.pedido && r.entrega_prevista && !entregaDaRm.has(r.pedido)) entregaDaRm.set(r.pedido, { data: r.entrega_prevista, confirmada: r.entrega_confirmada });
+  }
+  // Chegada física sem MIGO entra no cartão do pedido (no primeiro, quando o
+  // pedido tem mais de uma linha: a conferência é por RI-PO, não por item).
+  const semMigo = aguardandoMigo(dados.chegadas).chegadas;
+  const pedidosListados = new Set(dados.pedidos.map(p => p.pedido));
+  const chegadasDoPedido = new Map<string, ChegadaSituacao[]>();
+  const chegadasSemPedido: ChegadaSituacao[] = [];
+  for (const c of semMigo) {
+    if (c.pedido && pedidosListados.has(c.pedido)) chegadasDoPedido.set(c.pedido, [...(chegadasDoPedido.get(c.pedido) ?? []), c]);
+    else chegadasSemPedido.push(c);
+  }
+  const pedidoComChegadaMostrada = new Set<string>();
 
   return (
     <div className="space-y-4 text-sm">
@@ -110,22 +143,41 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
         </div>
       )}
 
-      {/* Saldo */}
-      <div className={`rounded-xl border p-3 ${dados.saldo_total > 0 ? 'border-slate-200 dark:border-slate-700' : 'border-rose-200 bg-rose-50/60 dark:border-rose-900 dark:bg-rose-950/20'}`}>
+      {/* Saldo: recolhido até a pessoa pedir — quem vai fazer o inventário
+          cíclico não pode ver o saldo antes de contar (contagem cega). Tudo
+          que entrega a quantidade (número, depósitos, "sem saldo", mínimo,
+          fundo vermelho) fica atrás do botão. */}
+      <div
+        className={`rounded-xl border p-3 ${
+          !saldoVisivel || dados.saldo_total > 0 ? 'border-slate-200 dark:border-slate-700' : 'border-rose-200 bg-rose-50/60 dark:border-rose-900 dark:bg-rose-950/20'
+        }`}
+      >
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Saldo ZL0024</p>
-            <p className={`text-2xl font-extrabold tabular-nums ${dados.saldo_total > 0 ? 'text-slate-900 dark:text-slate-50' : 'text-rose-700 dark:text-rose-300'}`}>
-              {formatQtd(dados.saldo_total)} <span className="text-sm font-semibold text-slate-500">{umb}</span>
-            </p>
+            {saldoVisivel ? (
+              <p className={`text-2xl font-extrabold tabular-nums ${dados.saldo_total > 0 ? 'text-slate-900 dark:text-slate-50' : 'text-rose-700 dark:text-rose-300'}`}>
+                {formatQtd(dados.saldo_total)} <span className="text-sm font-semibold text-slate-500">{umb}</span>
+              </p>
+            ) : (
+              <p className="mt-0.5 text-[11px] text-slate-400">Oculto para não influenciar a contagem do inventário cíclico.</p>
+            )}
           </div>
-          <div className="flex flex-wrap justify-end gap-1">
-            {dados.saldo_total <= 0 && <Chip cor="bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">Sem saldo</Chip>}
-            {abaixo && <Chip cor="bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">Abaixo do mínimo ({formatQtd(dados.estoque_minimo ?? 0)})</Chip>}
-            {pedidosAbertos.length > 0 && <Chip cor="bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">{pedidosAbertos.length} pedido(s) a receber</Chip>}
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            {saldoVisivel && dados.saldo_total <= 0 && <Chip cor="bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">Sem saldo</Chip>}
+            {saldoVisivel && abaixo && <Chip cor="bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">Abaixo do mínimo ({formatQtd(dados.estoque_minimo ?? 0)})</Chip>}
+            <button
+              type="button"
+              onClick={() => setSaldoVisivel(v => !v)}
+              aria-expanded={saldoVisivel}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-bold text-slate-600 hover:border-blue-400 hover:text-blue-700 dark:border-slate-700 dark:text-slate-300"
+            >
+              {saldoVisivel ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              {saldoVisivel ? 'Ocultar saldo' : 'Mostrar saldo'}
+            </button>
           </div>
         </div>
-        {dados.depositos.length > 0 && (
+        {saldoVisivel && dados.depositos.length > 0 && (
           <ul className="mt-2 flex flex-wrap gap-1.5">
             {dados.depositos.map(d => (
               <li key={d.deposito} className="rounded-lg bg-slate-100 px-2 py-1 text-xs dark:bg-slate-800">
@@ -142,22 +194,13 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
         )}
       </div>
 
-      {/* RM */}
-      <Secao icone={ClipboardList} titulo={`RM aberta${rmsAbertas.length ? ` (${rmsAbertas.length})` : ''}`}>
-        {rmsAbertas.length === 0 ? (
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Nenhuma RM aberta{rmsAtendidas > 0 ? ` (${rmsAtendidas} já atendida(s) aguardando baixa na ME5A)` : ''}.
-          </p>
-        ) : (
+      {/* RM ainda sem pedido */}
+      {rmsSemPedido.length > 0 && (
+        <Secao icone={ClipboardList} titulo={`RM aberta sem pedido (${rmsSemPedido.length})`}>
           <ul className="space-y-1.5">
-            {rmsAbertas.map(r => (
+            {rmsSemPedido.map(r => (
               <li key={`${r.requisicao}-${r.item}`} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs dark:border-slate-700">
-                <div className="flex flex-wrap items-center justify-between gap-1">
-                  <span className="font-mono font-bold text-slate-800 dark:text-slate-100">RM {documentoComItem(r.requisicao, r.item)}</span>
-                  <Chip cor={COR_RM[r.situacao]}>
-                    {ROTULO_SITUACAO_RM[r.situacao]}{r.situacao === 'em_pedido' && r.pedido ? ` ${r.pedido}` : ''}
-                  </Chip>
-                </div>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-100">RM {documentoComItem(r.requisicao, r.item)}</span>
                 <p className="mt-0.5 text-slate-600 dark:text-slate-300">
                   {dataCurta(r.data)} · {formatQtd(r.quantidade ?? 0)} {umb}
                   {r.requisitante && ` · ${r.requisitante}`}
@@ -166,17 +209,21 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
               </li>
             ))}
           </ul>
-        )}
-      </Secao>
+        </Secao>
+      )}
 
-      {/* Pedidos */}
+      {/* Pedidos — com a chegada física ainda sem MIGO dentro do cartão */}
       <Secao icone={Truck} titulo="Pedidos (PO)">
-        {dados.pedidos.length === 0 ? (
+        {dados.pedidos.length === 0 && chegadasSemPedido.length === 0 ? (
           <p className="text-xs text-slate-500 dark:text-slate-400">Nenhum pedido para este material.</p>
         ) : (
           <ul className="space-y-1.5">
             {dados.pedidos.map(p => {
-              const sit = situacaoPedido(p, hoje);
+              const chegadas = !pedidoComChegadaMostrada.has(p.pedido) ? chegadasDoPedido.get(p.pedido) ?? [] : [];
+              if (chegadas.length) pedidoComChegadaMostrada.add(p.pedido);
+              const chegou = (chegadasDoPedido.get(p.pedido)?.length ?? 0) > 0;
+              const sit = situacaoPedido(p, hoje, chegou);
+              const daRm = entregaDaRm.get(p.pedido);
               return (
                 <li key={`${p.pedido}-${p.item}`} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs dark:border-slate-700">
                   <div className="flex flex-wrap items-center justify-between gap-1">
@@ -190,10 +237,15 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
                     <div>
                       <dt className="text-slate-400">Prev. entrega</dt>
                       <dd className={`font-semibold ${sit === 'atrasado' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-slate-100'}`}>{dataCurta(p.remessa_prevista)}</dd>
+                      {daRm && p.quantidade_pendente > 0 && daRm.data.slice(0, 10) !== p.remessa_prevista?.slice(0, 10) && (
+                        <dd className="text-[10px] text-slate-500">{daRm.confirmada ? 'confirmada' : 'comprador'} {dataCurta(daRm.data)}</dd>
+                      )}
                     </div>
                     <div>
                       <dt className="text-slate-400">MIGO</dt>
-                      <dd className="font-semibold text-slate-800 dark:text-slate-100">{dataCurta(p.data_migo ?? p.ultima_entrada)}</dd>
+                      <dd className={`font-semibold ${chegou && p.quantidade_pendente > 0 ? 'text-violet-700 dark:text-violet-300' : 'text-slate-800 dark:text-slate-100'}`}>
+                        {chegou && p.quantidade_pendente > 0 ? 'Pendente' : dataCurta(p.data_migo ?? p.ultima_entrada)}
+                      </dd>
                     </div>
                     <div>
                       <dt className="text-slate-400">{p.quantidade_pendente > 0 ? 'Falta receber' : 'Recebido'}</dt>
@@ -203,9 +255,16 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
                       </dd>
                     </div>
                   </dl>
+                  {chegadas.map((c, i) => <LinhaChegada key={`${c.codigo ?? c.ri_po}-${i}`} chegada={c} umb={umb} />)}
                 </li>
               );
             })}
+            {chegadasSemPedido.length > 0 && (
+              <li className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs dark:border-slate-700">
+                <span className="font-bold text-slate-800 dark:text-slate-100">Chegada sem pedido na lista</span>
+                {chegadasSemPedido.map((c, i) => <LinhaChegada key={`${c.codigo ?? c.ri_po}-${i}`} chegada={c} umb={umb} mostrarPedido />)}
+              </li>
+            )}
           </ul>
         )}
       </Secao>
@@ -226,6 +285,7 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
           {dados.estoque_importado_em
             ? `ZL0024 importada em ${new Date(dados.estoque_importado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`
             : 'Data da ZL0024 desconhecida'}
+          {dados.movimentos_importados_em && ` · MB51 em ${new Date(dados.movimentos_importados_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`}
           {' · '}retiradas ainda não lançadas no SAP não abatem
         </span>
         <button

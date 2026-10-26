@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/supabaseClient', () => ({ supabase: {} }));
 
-import { abaixoDoMinimo, documentoComItem, situacaoPedido } from './situacaoMaterial';
+import { abaixoDoMinimo, aguardandoMigo, documentoComItem, situacaoPedido, type ChegadaSituacao } from './situacaoMaterial';
 
 describe('situacaoPedido', () => {
   const hoje = '2026-10-26';
@@ -15,6 +15,37 @@ describe('situacaoPedido', () => {
     expect(situacaoPedido({ quantidade_pendente: 5, remessa_prevista: '2026-10-25' }, hoje)).toBe('atrasado');
     expect(situacaoPedido({ quantidade_pendente: 5, remessa_prevista: '2026-10-26' }, hoje)).toBe('aberto');
     expect(situacaoPedido({ quantidade_pendente: 5, remessa_prevista: null }, hoje)).toBe('aberto');
+  });
+});
+
+describe('situacaoPedido com chegada física', () => {
+  const hoje = '2026-10-26';
+
+  it('pendente que chegou sem MIGO é "chegou", mesmo atrasado', () => {
+    expect(situacaoPedido({ quantidade_pendente: 40, remessa_prevista: '2026-10-23' }, hoje, true)).toBe('chegou');
+  });
+
+  it('sem pendência continua recebido; sem chegada vale a previsão', () => {
+    expect(situacaoPedido({ quantidade_pendente: 0, remessa_prevista: null }, hoje, true)).toBe('recebido');
+    expect(situacaoPedido({ quantidade_pendente: 1, remessa_prevista: '2026-10-23' }, hoje, false)).toBe('atrasado');
+  });
+});
+
+describe('aguardandoMigo', () => {
+  const chegada = (extra: Partial<ChegadaSituacao>): ChegadaSituacao => ({
+    codigo: 'RCM-261026-01', data: '2026-10-26', pedido: '4100473704', ri_po: null, quantidade: 3, unidade: 'UN',
+    parcial: false, divergencia: false, tipo_divergencia: null, registrado_por: null, origem: 'conferencia', migo_em: null, ...extra,
+  });
+
+  it('soma só as chegadas sem MIGO e conta as marcações sem quantidade', () => {
+    const r = aguardandoMigo([
+      chegada({}),
+      chegada({ quantidade: 5, migo_em: '2026-10-27' }),
+      chegada({ origem: 'rastreio', quantidade: null, codigo: null }),
+    ]);
+    expect(r.chegadas).toHaveLength(2);
+    expect(r.quantidade).toBe(3);
+    expect(r.semQuantidade).toBe(1);
   });
 });
 
