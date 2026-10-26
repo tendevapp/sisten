@@ -9,6 +9,7 @@ import { localDb } from '../db/localDb';
 import { Profile } from '../types';
 import { PAGES, canAccessPage, GROUP_ORDER } from '../lib/pages';
 import SistenLogo from './SistenLogo';
+import { useIndicadoresMenu } from '../lib/indicadoresMenu';
 
 const COLLAPSED_GROUPS_KEY = 'sisten:sidebar-collapsed-groups';
 
@@ -63,6 +64,7 @@ interface SidebarProps {
 export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTheme, mobileOpen, onCloseMobile }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(loadCollapsedGroups);
+  const indicadores = useIndicadoresMenu(user);
 
   const toggleGroup = (group: string) => {
     setCollapsedGroups(prev => {
@@ -270,10 +272,24 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                         }`}
                         title={item.label}
                       >
-                        <Icon className={`h-5 w-5 shrink-0 ${collapsed ? 'mr-0' : 'mr-3'}`} />
+                        <span className="relative shrink-0">
+                          <Icon className={`h-5 w-5 shrink-0 ${collapsed ? 'mr-0' : 'mr-3'}`} />
+                          {collapsed && (indicadores[item.id] ?? 0) > 0 && (
+                            <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-slate-900" aria-hidden="true" />
+                          )}
+                        </span>
                         {!collapsed && (
                           <div className="flex flex-1 items-center justify-between min-w-0">
                             <span className="truncate text-left">{item.label}</span>
+                            {(indicadores[item.id] ?? 0) > 0 && (
+                              <span
+                                className="ml-2 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-none text-white"
+                                title={`${indicadores[item.id]} em aberto`}
+                                aria-label={`${indicadores[item.id]} itens em aberto`}
+                              >
+                                {indicadores[item.id] > 99 ? '99+' : indicadores[item.id]}
+                              </span>
+                            )}
                             <span 
                               onClick={(e) => {
                                 e.stopPropagation();
