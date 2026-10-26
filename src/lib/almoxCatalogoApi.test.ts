@@ -9,6 +9,10 @@ import {
   converterItemCatalogoEmAnexo,
   buscarMateriaisParaAdicao,
   pesquisarCatalogoSapOnline,
+  ehDepositoExcluidoSaldo,
+  arredondarSaldo,
+  formatarSaldo,
+  calcularSaldoMaterialEstoque,
   PREFIXO_CAT_ITEM,
   extensaoDaImagem,
   caminhoEhDoCatalogo,
@@ -91,6 +95,30 @@ describe('almoxCatalogoApi - Catálogo de Itens do Almoxarifado', () => {
       quantidade: 30,
       deposito: '0002',
       umb: 'UN',
+    },
+    // Mesmo material consumível no depósito 0105 (Transferência Produção) - NUNCA deve somar ao saldo do almoxarifado!
+    {
+      id: 20,
+      material: '200001',
+      txt_breve_material: 'DISCO DE CORTE 7 POL',
+      texto_pedido_compra: 'DISCO DE CORTE ABRASIVO EXTRA FINO',
+      grp_mercad: 'B01',
+      grupo_mercadorias: 'ABRASIVOS',
+      quantidade: 25,
+      deposito: '0105',
+      umb: 'UN',
+    },
+    // Consumível com saldo APENAS no depósito 0105 (Transferência Produção)
+    {
+      id: 21,
+      material: '200005',
+      txt_breve_material: 'FITA ZEBRADA 200M',
+      texto_pedido_compra: 'FITA ZEBRADA DE ISOLAMENTO',
+      grp_mercad: 'M11',
+      grupo_mercadorias: 'EPI E UNIFORMES',
+      quantidade: 10,
+      deposito: '0105',
+      umb: 'RL',
     },
     // Consumível válido (EPI)
     {
@@ -198,10 +226,11 @@ describe('almoxCatalogoApi - Catálogo de Itens do Almoxarifado', () => {
 
     const disco = resultado.find(i => i.codigo_sap === '200001');
     expect(disco).toBeDefined();
-    // 50 (deposito 0001) + 30 (deposito 0002) = 80 total
+    // 50 (deposito 0001) + 30 (deposito 0002) = 80 total (25 unidades do deposito 0105 estritamente desconsideradas)
     expect(disco?.saldo_total).toBe(80);
     expect(disco?.depositos).toContain('0001');
     expect(disco?.depositos).toContain('0002');
+    expect(disco?.depositos).not.toContain('0105');
     expect(disco?.classificacao_nivel1).toBe('CONSUMÍVEL');
     expect(disco?.classificacao_nivel2).toBe('MRO - Manutenção');
     expect(disco?.tem_foto).toBe(true);
@@ -220,6 +249,9 @@ describe('almoxCatalogoApi - Catálogo de Itens do Almoxarifado', () => {
     // Itens com saldo zero (200003) ou negativo (200004) NUNCA podem aparecer
     expect(resultado.some(i => i.codigo_sap === '200003')).toBe(false);
     expect(resultado.some(i => i.codigo_sap === '200004')).toBe(false);
+
+    // Item com saldo exclusivo no depósito 0105 (200005) não entra pois 0105 é desconsiderado
+    expect(resultado.some(i => i.codigo_sap === '200005')).toBe(false);
 
     // Item estrutural (300001) não entra pois não é consumível
     expect(resultado.some(i => i.codigo_sap === '300001')).toBe(false);
@@ -243,13 +275,14 @@ describe('almoxCatalogoApi - Catálogo de Itens do Almoxarifado', () => {
   });
 
   it('deve buscar materiais por código SAP ou descrição para adicionar ao catálogo com buscarMateriaisParaAdicao', () => {
-    // 1. Busca por código SAP
+    // 1. Busca por código SAP (ignora unidades no depósito 0105)
     const porCodigo = buscarMateriaisParaAdicao('200001', mockEstoque, mockGrupos, mockCatalogo);
     expect(porCodigo.length).toBeGreaterThan(0);
     expect(porCodigo[0].codigo_sap).toBe('200001');
     expect(porCodigo[0].ja_no_catalogo).toBe(true);
     expect(porCodigo[0].tem_foto).toBe(true);
     expect(porCodigo[0].saldo_total).toBe(80);
+    expect(porCodigo[0].depositos).not.toContain('0105');
 
     // 2. Busca por descrição
     const porDescricao = buscarMateriaisParaAdicao('LUVA', mockEstoque, mockGrupos, mockCatalogo);
@@ -264,7 +297,14 @@ describe('almoxCatalogoApi - Catálogo de Itens do Almoxarifado', () => {
     expect(comSaldoZero[0].codigo_sap).toBe('200003');
     expect(comSaldoZero[0].saldo_total).toBe(0);
 
-    // 4. Exclui estritamente itens de projeto iniciados em 100000
+    // 4. Material com saldo apenas no depósito 0105 pode ser encontrado mas com saldo zero no almoxarifado
+    const item0105 = buscarMateriaisParaAdicao('200005', mockEstoque, mockGrupos, mockCatalogo);
+    expect(item0105.length).toBeGreaterThan(0);
+    expect(item0105[0].codigo_sap).toBe('200005');
+    expect(item0105[0].saldo_total).toBe(0);
+    expect(item0105[0].depositos).not.toContain('0105');
+
+    // 5. Exclui estritamente itens de projeto iniciados em 100000
     const buscaProjeto = buscarMateriaisParaAdicao('100000', mockEstoque, mockGrupos, mockCatalogo);
     expect(buscaProjeto).toHaveLength(0);
   });
@@ -441,5 +481,46 @@ describe('caminhoEhDoCatalogo — o catálogo só apaga o que ele mesmo gravou',
 
   it('recusa tentativa de sair da pasta', () => {
     expect(caminhoEhDoCatalogo('almox-catalogo/../RCM-141026-01/a1b2c3d.jpg')).toBe(false);
+  });
+});
+
+describe('exclusão do depósito 0105 e formatação de saldo', () => {
+  it('ehDepositoExcluidoSaldo identifica variações de 0105', () => {
+    expect(ehDepositoExcluidoSaldo('0105')).toBe(true);
+    expect(ehDepositoExcluidoSaldo('105')).toBe(true);
+    expect(ehDepositoExcluidoSaldo(' 0105 ')).toBe(true);
+    expect(ehDepositoExcluidoSaldo('0001')).toBe(false);
+    expect(ehDepositoExcluidoSaldo('0002')).toBe(false);
+    expect(ehDepositoExcluidoSaldo('0004')).toBe(false);
+    expect(ehDepositoExcluidoSaldo(null)).toBe(false);
+    expect(ehDepositoExcluidoSaldo(undefined)).toBe(false);
+  });
+
+  it('arredondarSaldo e formatarSaldo eliminam artefatos de ponto flutuante', () => {
+    expect(arredondarSaldo(16.009999999999998)).toBe(16.01);
+    expect(formatarSaldo(16.009999999999998)).toBe('16.01');
+    expect(formatarSaldo(16)).toBe('16');
+    expect(formatarSaldo(0)).toBe('0');
+    expect(formatarSaldo(null)).toBe('0');
+    expect(formatarSaldo(undefined)).toBe('0');
+  });
+
+  it('calcularSaldoMaterialEstoque soma apenas depósitos válidos e ignora 0105', () => {
+    const itensEstoque = [
+      { material: '1174805', quantidade: 10, deposito: '0001' } as EstoqueItem,
+      { material: '1174805', quantidade: 6, deposito: '0105' } as EstoqueItem,
+      { material: '1174805', quantidade: 2.01, deposito: '0002' } as EstoqueItem,
+      { material: '9999999', quantidade: 15, deposito: '0105' } as EstoqueItem,
+    ];
+
+    const calc = calcularSaldoMaterialEstoque(itensEstoque, '1174805');
+    // 10 (0001) + 2.01 (0002) = 12.01 (as 6 unidades do 0105 são descartadas)
+    expect(calc.saldo).toBe(12.01);
+    expect(calc.depositos).toEqual(['0001', '0002']);
+    expect(calc.depositos).not.toContain('0105');
+
+    const calcSo0105 = calcularSaldoMaterialEstoque(itensEstoque, '9999999');
+    expect(calcSo0105.saldo).toBe(0);
+    expect(calcSo0105.depositos).toEqual([]);
   });
 });

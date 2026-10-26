@@ -142,6 +142,59 @@ export interface SalvarItemCatalogoPayload {
   removerFoto?: boolean;
 }
 
+/**
+ * Depósitos desconsiderados no saldo de estoque do almoxarifado no cadastro de itens.
+ * O depósito 0105 (Transferência Produção) representa materiais já transferidos
+ * para o chão de fábrica / linhas de produção, não fazendo parte do saldo físico
+ * disponível no estoque do almoxarifado.
+ */
+export const DEPOSITOS_EXCLUIDOS_SALDO_CATALOGO: ReadonlySet<string> = new Set(['0105']);
+
+export function ehDepositoExcluidoSaldo(deposito?: string | null): boolean {
+  if (!deposito) return false;
+  const limpo = String(deposito).trim();
+  const normalizado = /^\d+$/.test(limpo) ? limpo.padStart(4, '0') : limpo.toUpperCase();
+  return DEPOSITOS_EXCLUIDOS_SALDO_CATALOGO.has(normalizado) || DEPOSITOS_EXCLUIDOS_SALDO_CATALOGO.has(limpo);
+}
+
+/**
+ * Arredonda quantidades para eliminar dízimas/resíduos de ponto flutuante IEEE 754 (ex: 16.009999999999998 -> 16.01).
+ */
+export function arredondarSaldo(valor: number): number {
+  return Math.round((valor + Number.EPSILON) * 10000) / 10000;
+}
+
+/**
+ * Calcula o saldo consolidado de um material no estoque ZL0024, desconsiderando depósitos fora do almoxarifado (ex: 0105).
+ */
+export function calcularSaldoMaterialEstoque(
+  estoque: EstoqueItem[],
+  materialCode: string
+): { saldo: number; depositos: string[] } {
+  const mat = materialCode.trim();
+  let saldo = 0;
+  const depositos: string[] = [];
+  for (const row of estoque) {
+    if (String(row.material || '').trim() !== mat) continue;
+    const dep = String(row.deposito || '').trim();
+    if (ehDepositoExcluidoSaldo(dep)) continue;
+    const q = Math.max(0, Number(row.quantidade) || 0);
+    saldo += q;
+    if (dep && !depositos.includes(dep)) depositos.push(dep);
+  }
+  return { saldo: arredondarSaldo(saldo), depositos };
+}
+
+/**
+ * Formata um saldo numérico para exibição em tela, arredondando e removendo artefatos flutuantes.
+ */
+export function formatarSaldo(valor: number | string | null | undefined): string {
+  if (valor == null || valor === '') return '0';
+  const num = Number(valor);
+  if (!Number.isFinite(num)) return '0';
+  return String(arredondarSaldo(num));
+}
+
 const tabelaCatalogo = () => (supabase.from as any)(TABELA_CATALOGO);
 
 /**
@@ -725,10 +778,12 @@ export function filtrarEAgruparZl0024Consumiveis(
     }
 
     const deposito = String(row.deposito || '').trim();
+    if (ehDepositoExcluidoSaldo(deposito)) continue;
+
     const itemExistente = mapaMateriais.get(material);
 
     if (itemExistente) {
-      itemExistente.saldo_total += quantidade;
+      itemExistente.saldo_total = arredondarSaldo(itemExistente.saldo_total + quantidade);
       if (deposito && !itemExistente.depositos.includes(deposito)) {
         itemExistente.depositos.push(deposito);
       }
@@ -749,7 +804,7 @@ export function filtrarEAgruparZl0024Consumiveis(
         grupo_mercadorias: String(row.grupo_mercadorias || infoGrupo?.denominacao || cat?.grupo_mercadorias || (epi ? 'EPI E UNIFORMES' : '')).trim(),
         classificacao_nivel1: infoGrupo?.classificacao_nivel1 || cat?.classificacao_nivel1 || (nivel1 ? 'CONSUMÍVEL' : 'CONSUMÍVEL'),
         classificacao_nivel2: nivel2 || cat?.classificacao_nivel2 || (epi ? 'EPI - Segurança' : ''),
-        saldo_total: quantidade,
+        saldo_total: arredondarSaldo(quantidade),
         umb: String(row.umb || cat?.umb || 'UN').trim(),
         depositos: deposito ? [deposito] : [],
         item_catalogo: cat,
@@ -851,14 +906,17 @@ export function buscarMateriaisParaAdicao(
     const epi = mapaEpis.get(mat);
     const temFotoCat = Boolean(cat?.imagem_path);
     const temFotoEpi = !temFotoCat && Boolean(epi?.imagem_path);
-    const qtd = Math.max(0, Number(row.quantidade) || 0);
     const dep = String(row.deposito || '').trim();
+    const depExcluido = ehDepositoExcluidoSaldo(dep);
+    const qtd = depExcluido ? 0 : Math.max(0, Number(row.quantidade) || 0);
 
     const existente = mapaCandidatos.get(mat);
     if (existente) {
-      existente.saldo_total += qtd;
-      if (dep && !existente.depositos.includes(dep)) {
-        existente.depositos.push(dep);
+      if (!depExcluido) {
+        existente.saldo_total = arredondarSaldo(existente.saldo_total + qtd);
+        if (dep && !existente.depositos.includes(dep)) {
+          existente.depositos.push(dep);
+        }
       }
       if (!existente.texto_tecnico && textoTecnico) {
         existente.texto_tecnico = textoTecnico;
@@ -873,8 +931,8 @@ export function buscarMateriaisParaAdicao(
         classificacao_nivel1: infoGrupo?.classificacao_nivel1 || cat?.classificacao_nivel1 || 'CONSUMÍVEL',
         classificacao_nivel2: infoGrupo?.classificacao_nivel2 || cat?.classificacao_nivel2 || (epi ? 'EPI - Segurança' : ''),
         umb: String(row.umb || cat?.umb || 'UN').trim(),
-        saldo_total: qtd,
-        depositos: dep ? [dep] : [],
+        saldo_total: arredondarSaldo(qtd),
+        depositos: dep && !depExcluido ? [dep] : [],
         ja_no_catalogo: Boolean(cat),
         tem_foto: temFotoCat || temFotoEpi,
         url_foto: cat?.url_imagem || epi?.url_imagem || null,
@@ -1005,14 +1063,17 @@ export async function pesquisarCatalogoSapOnline(
             existente.texto_tecnico = r.technicalText.trim();
           }
           if (r.qtdEstoque && existente.saldo_total === 0) {
-            existente.saldo_total = r.qtdEstoque;
+            existente.saldo_total = arredondarSaldo(r.qtdEstoque);
           }
           if (r.depositos && existente.depositos.length === 0) {
-            existente.depositos = r.depositos;
+            existente.depositos = r.depositos.filter(d => !ehDepositoExcluidoSaldo(d));
           }
         } else {
           const cat = dadosCompletos?.itensCatalogo.find(c => c.codigo_sap === mat);
           const epi = dadosCompletos?.mapaEpis.get(mat);
+          const calcEstoque = dadosCompletos?.estoqueCompleto
+            ? calcularSaldoMaterialEstoque(dadosCompletos.estoqueCompleto, mat)
+            : { saldo: 0, depositos: [] };
           const rowEstoque = dadosCompletos?.estoqueCompleto.find(e => String(e.material || '').trim() === mat);
           const grpCodigo = String(rowEstoque?.grp_mercad || cat?.grp_mercad || (epi ? 'M11' : '')).trim().toUpperCase();
           const infoGrupo = mapaGrupos.get(grpCodigo);
@@ -1026,8 +1087,8 @@ export async function pesquisarCatalogoSapOnline(
             classificacao_nivel1: infoGrupo?.classificacao_nivel1 || cat?.classificacao_nivel1 || 'CONSUMÍVEL',
             classificacao_nivel2: infoGrupo?.classificacao_nivel2 || cat?.classificacao_nivel2 || (epi ? 'EPI - Segurança' : ''),
             umb: String(r.unit || rowEstoque?.umb || cat?.umb || 'UN').trim(),
-            saldo_total: r.qtdEstoque || (rowEstoque ? Math.max(0, Number(rowEstoque.quantidade) || 0) : 0),
-            depositos: r.depositos || (rowEstoque?.deposito ? [String(rowEstoque.deposito).trim()] : []),
+            saldo_total: r.qtdEstoque != null ? arredondarSaldo(r.qtdEstoque) : calcEstoque.saldo,
+            depositos: r.depositos ? r.depositos.filter(d => !ehDepositoExcluidoSaldo(d)) : calcEstoque.depositos,
             ja_no_catalogo: Boolean(cat),
             tem_foto: Boolean(cat?.imagem_path || epi?.imagem_path),
             url_foto: cat?.url_imagem || epi?.url_imagem || null,
@@ -1052,6 +1113,9 @@ export async function pesquisarCatalogoSapOnline(
 
             const cat = dadosCompletos?.itensCatalogo.find(c => c.codigo_sap === mat);
             const epi = dadosCompletos?.mapaEpis.get(mat);
+            const calcEstoque = dadosCompletos?.estoqueCompleto
+              ? calcularSaldoMaterialEstoque(dadosCompletos.estoqueCompleto, mat)
+              : { saldo: 0, depositos: [] };
             const rowEstoque = dadosCompletos?.estoqueCompleto.find(e => String(e.material || '').trim() === mat);
             const grpCodigo = String(rowEstoque?.grp_mercad || cat?.grp_mercad || (epi ? 'M11' : '')).trim().toUpperCase();
             const infoGrupo = mapaGrupos.get(grpCodigo);
@@ -1065,8 +1129,8 @@ export async function pesquisarCatalogoSapOnline(
               classificacao_nivel1: infoGrupo?.classificacao_nivel1 || cat?.classificacao_nivel1 || 'CONSUMÍVEL',
               classificacao_nivel2: infoGrupo?.classificacao_nivel2 || cat?.classificacao_nivel2 || (epi ? 'EPI - Segurança' : ''),
               umb: String(m.unit || rowEstoque?.umb || cat?.umb || 'UN').trim(),
-              saldo_total: rowEstoque ? Math.max(0, Number(rowEstoque.quantidade) || 0) : 0,
-              depositos: rowEstoque?.deposito ? [String(rowEstoque.deposito).trim()] : [],
+              saldo_total: calcEstoque.saldo,
+              depositos: calcEstoque.depositos,
               ja_no_catalogo: Boolean(cat),
               tem_foto: Boolean(cat?.imagem_path || epi?.imagem_path),
               url_foto: cat?.url_imagem || epi?.url_imagem || null,
@@ -1206,16 +1270,31 @@ export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<Da
   // Verifica se já existe lista fixa do catálogo persistida
   let listaFixa = obterListaFixaCatalogoLocal();
 
-  if (listaFixa.length === 0) {
-    // Primeira carga inicial: se não houver estoque local em memória, busca uma única vez
-    let estoqueLocal = localDb.getEstoque();
-    if (!estoqueLocal || estoqueLocal.length === 0) {
-      try {
-        estoqueLocal = await localDb.fetchEstoque(false);
-      } catch {
-        estoqueLocal = [];
-      }
+  let estoqueLocal = (localDb.getEstoque() || []) as EstoqueItem[];
+  if (!estoqueLocal || estoqueLocal.length === 0) {
+    try {
+      estoqueLocal = (await localDb.fetchEstoque(false)) || [];
+    } catch {
+      estoqueLocal = [];
     }
+  }
+
+  // Mapa de saldos atuais da ZL0024 excluindo depósitos fora do almoxarifado (ex: 0105 - Transferência Produção)
+  const mapaSaldos = new Map<string, { saldo: number; depositos: string[] }>();
+  if (estoqueLocal && estoqueLocal.length > 0) {
+    for (const row of estoqueLocal) {
+      const mat = String(row.material || '').trim();
+      const dep = String(row.deposito || '').trim();
+      if (!mat || ehDepositoExcluidoSaldo(dep)) continue;
+      const q = Math.max(0, Number(row.quantidade) || 0);
+      const atual = mapaSaldos.get(mat) || { saldo: 0, depositos: [] };
+      atual.saldo = arredondarSaldo(atual.saldo + q);
+      if (dep && !atual.depositos.includes(dep)) atual.depositos.push(dep);
+      mapaSaldos.set(mat, atual);
+    }
+  }
+
+  if (listaFixa.length === 0) {
     if (estoqueLocal && estoqueLocal.length > 0) {
       listaFixa = filtrarEAgruparZl0024Consumiveis(estoqueLocal, grupos, itensCatalogo, true, mapaEpis);
       salvarListaFixaCatalogoLocal(listaFixa);
@@ -1234,11 +1313,26 @@ export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<Da
     const temFotoCat = Boolean(cat?.imagem_path);
     const temFotoEpi = !temFotoCat && Boolean(epi?.imagem_path);
 
+    // Sincroniza saldo e depósitos com o estoque ZL0024 atual, garantindo que 0105 seja removido
+    // e corrigindo eventuais imprecisões de ponto flutuante herdadas do armazenamento local.
+    const infoEstoque = mapaSaldos.get(it.codigo_sap);
+    const saldoAtualizado = estoqueLocal && estoqueLocal.length > 0
+      ? (infoEstoque ? infoEstoque.saldo : 0)
+      : arredondarSaldo(it.saldo_total);
+    const depositosAtualizados = estoqueLocal && estoqueLocal.length > 0
+      ? (infoEstoque ? infoEstoque.depositos : [])
+      : (it.depositos || []).filter(d => !ehDepositoExcluidoSaldo(d));
+
+    it.saldo_total = saldoAtualizado;
+    it.depositos = depositosAtualizados;
+
     // O registro e a URL vêm sempre da tabela/Book de EPIs: o que a lista
     // fixa guardou pode ter sido trocado por outro usuário, e a URL assinada
     // guardada expira em 24 h.
     return {
       ...it,
+      saldo_total: saldoAtualizado,
+      depositos: depositosAtualizados,
       item_catalogo: cat ?? null,
       tem_foto: temFotoCat || temFotoEpi,
       url_foto: cat?.url_imagem || epi?.url_imagem || null,
@@ -1253,6 +1347,7 @@ export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<Da
     const jaExiste = itensAtualizados.some(i => i.codigo_sap === cat.codigo_sap);
     if (!jaExiste) {
       const epi = mapaEpis.get(cat.codigo_sap);
+      const infoEstoque = mapaSaldos.get(cat.codigo_sap);
       const novoItem: ItemConsumivelZl0024 = {
         codigo_sap: cat.codigo_sap,
         descricao: cat.descricao,
@@ -1261,9 +1356,9 @@ export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<Da
         grupo_mercadorias: cat.grupo_mercadorias || (epi ? 'EPI E UNIFORMES' : ''),
         classificacao_nivel1: cat.classificacao_nivel1 || 'CONSUMÍVEL',
         classificacao_nivel2: cat.classificacao_nivel2 || (epi ? 'EPI - Segurança' : ''),
-        saldo_total: cat.saldo_zl0024 || 0,
+        saldo_total: infoEstoque ? infoEstoque.saldo : arredondarSaldo(cat.saldo_zl0024 || 0),
         umb: cat.umb || 'UN',
-        depositos: [],
+        depositos: infoEstoque ? infoEstoque.depositos : [],
         item_catalogo: cat,
         tem_foto: Boolean(cat.imagem_path),
         url_foto: cat.url_imagem || null,
@@ -1313,7 +1408,7 @@ export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<Da
     }
   }
 
-  const estoqueCompleto = (localDb.getEstoque() || []) as EstoqueItem[];
+  const estoqueCompleto = estoqueLocal;
 
   // Posição guardada no banco; o estoque local só completa o que o banco ainda não tem.
   const posicoes = await carregarPosicoesMaterial();
@@ -1425,9 +1520,9 @@ function refletirNaListaFixa(itemSalvo: CatalogoItem): void {
     grupo_mercadorias: itemSalvo.grupo_mercadorias || '',
     classificacao_nivel1: itemSalvo.classificacao_nivel1 || 'CONSUMÍVEL',
     classificacao_nivel2: itemSalvo.classificacao_nivel2 || '',
-    saldo_total: itemSalvo.saldo_zl0024 || 0,
+    saldo_total: arredondarSaldo(itemSalvo.saldo_zl0024 || 0),
     umb: itemSalvo.umb || 'UN',
-    depositos: idxFixa >= 0 ? listaFixa[idxFixa].depositos : [],
+    depositos: idxFixa >= 0 ? listaFixa[idxFixa].depositos.filter(d => !ehDepositoExcluidoSaldo(d)) : [],
     item_catalogo: itemSalvo,
     tem_foto: Boolean(itemSalvo.imagem_path),
     url_foto: null,
@@ -1439,7 +1534,7 @@ function refletirNaListaFixa(itemSalvo: CatalogoItem): void {
     listaFixa[idxFixa] = {
       ...listaFixa[idxFixa],
       ...itemConsumivel,
-      saldo_total: listaFixa[idxFixa].saldo_total || itemConsumivel.saldo_total,
+      saldo_total: arredondarSaldo(listaFixa[idxFixa].saldo_total || itemConsumivel.saldo_total),
     };
   } else {
     listaFixa.unshift(itemConsumivel);

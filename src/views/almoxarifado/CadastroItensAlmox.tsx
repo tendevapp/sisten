@@ -41,6 +41,8 @@ import {
   adicionarFotosAdicionais,
   removerFotoAdicional,
   substituirFotoAdicional,
+  formatarSaldo,
+  arredondarSaldo,
   MAX_FOTOS_ADICIONAIS,
   type FotoAdicionalCatalogo,
   type ItemConsumivelZl0024,
@@ -308,7 +310,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     const semFoto = total - comFoto;
     const comLocalizacao = itens.filter(item => localizacoesDoItem(item).length > 0).length;
     const pctCobertura = total > 0 ? (comFoto / total) * 100 : 0;
-    const saldoTotal = itens.reduce((acc, i) => acc + i.saldo_total, 0);
+    const saldoTotal = arredondarSaldo(itens.reduce((acc, i) => acc + (Number(i.saldo_total) || 0), 0));
     const etiquetaImpressa = itens.filter(i => i.item_catalogo?.etiqueta_impressa_em).length;
 
     return { total, comFoto, semFoto, comLocalizacao, pctCobertura, saldoTotal, etiquetaImpressa };
@@ -1239,7 +1241,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                             {candidato.classificacao_nivel2 && (
                               <span>• {candidato.classificacao_nivel2}</span>
                             )}
-                            <span>• Saldo ZL0024: <strong>{candidato.saldo_total} {candidato.umb}</strong></span>
+                            <span>• Saldo ZL0024: <strong>{formatarSaldo(candidato.saldo_total)} {candidato.umb}</strong></span>
                           </div>
                         </div>
                       </div>
@@ -1593,7 +1595,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                   </div>
 
                   <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 shrink-0">
-                    Saldo: {item.saldo_total} {item.umb}
+                    Saldo: {formatarSaldo(item.saldo_total)} {item.umb}
                   </span>
                 </div>
 
@@ -1834,7 +1836,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                     </td>
                     <td className="py-2 px-3 text-right tabular-nums">
                       <span className="font-bold text-slate-800 dark:text-slate-100">
-                        {item.saldo_total}
+                        {formatarSaldo(item.saldo_total)}
                       </span>{' '}
                       <span className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>{item.umb}</span>
                     </td>
@@ -1921,7 +1923,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                     {itemSelecionado.classificacao_nivel1} • {itemSelecionado.classificacao_nivel2 || 'Geral'}
                   </span>
                   <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200 font-bold">
-                    Saldo: {itemSelecionado.saldo_total} {itemSelecionado.umb}
+                    Saldo: {formatarSaldo(itemSelecionado.saldo_total)} {itemSelecionado.umb}
                   </span>
                 </div>
               </div>
@@ -2556,7 +2558,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                                 <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-1 flex-wrap">
                                   <span>{cand.grp_mercad ? `${cand.grp_mercad} - ${cand.grupo_mercadorias}` : cand.grupo_mercadorias || 'Geral'}</span>
                                   <span>• Unidade: <strong>{cand.umb}</strong></span>
-                                  <span>• Saldo ZL0024: <strong>{cand.saldo_total} {cand.umb}</strong></span>
+                                  <span>• Saldo ZL0024: <strong>{formatarSaldo(cand.saldo_total)} {cand.umb}</strong></span>
                                 </div>
                               </div>
                             </div>
@@ -2612,7 +2614,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                             UMB: {itemSapSelecionado.umb}
                           </span>
                           <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                            Saldo Atual ZL0024: {itemSapSelecionado.saldo_total} {itemSapSelecionado.umb}
+                            Saldo Atual ZL0024: {formatarSaldo(itemSapSelecionado.saldo_total)} {itemSapSelecionado.umb}
                           </span>
                           {itemSapSelecionado.origem_foto === 'book_epi' && (
                             <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
