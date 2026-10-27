@@ -355,7 +355,7 @@ export default function SolicitacaoExtraForm({
       )}
 
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">
             Materiais <span className="text-red-500">*</span>
           </h3>
@@ -580,7 +580,7 @@ function LinhaMaterial({
         <Trash2 className="h-4 w-4" />
       </button>
       {/* No celular quantidade + unidade dividem uma linha; no desktop viram colunas próprias. */}
-      <div className="col-start-2 flex gap-1.5 sm:contents">
+      <div className="col-span-2 col-start-2 flex gap-1.5 sm:contents">
         <input
           value={linha.quantidade}
           disabled={disabled}
@@ -588,7 +588,7 @@ function LinhaMaterial({
           inputMode="decimal"
           placeholder="Quant."
           aria-label={`Quantidade do item ${numero}`}
-          className={`${campo} text-right tabular-nums`}
+          className={`${campo} min-w-0 flex-1 text-right tabular-nums sm:flex-none`}
         />
         <input
           value={linha.unidade}
@@ -596,10 +596,10 @@ function LinhaMaterial({
           onChange={e => onAlterar({ unidade: e.target.value })}
           placeholder="UN"
           aria-label={`Unidade do item ${numero}`}
-          className={`${campo} w-16 shrink-0 px-2 text-center uppercase`}
+          className={`${campo} !w-20 shrink-0 px-2 text-center uppercase sm:!w-full`}
         />
       </div>
-      <div className="relative col-start-2 sm:col-start-auto">
+      <div className="relative col-span-2 col-start-2 sm:col-span-1 sm:col-start-auto">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
         <input
           value={linha.descricao}
