@@ -8,6 +8,11 @@
  * Mesma regra de `posicaoDoMaterial`: a posição digitada no cadastro vale mais
  * que a da ZL0024; sem nenhuma das duas, vale a última posição guardada em
  * `alm_posicao_material` (o material zerou, a prateleira é a mesma).
+ *
+ * As peças da BOM com localização no Cadastro de Itens (aba BOM) entram também,
+ * logo abaixo do cadastro SAP. Peça com código SAP que está na ZL0024 junta com
+ * o material; sem isso vira item próprio pelo part number, com o saldo do
+ * módulo Projetos. Zerado continua no mapa, marcado como zerado.
  */
 
 import type { EstoqueItem } from '../types';
@@ -15,7 +20,7 @@ import type { CatalogoItem } from './almoxCatalogoApi';
 import { interpretarPosicao, separarPosicoes, type Endereco } from './gembaEndereco';
 import { chaveBloco, localizar, localizarDeposito, type Localizacao } from './gembaLayout';
 
-export type OrigemLocal = 'zl0024' | 'ultima' | 'cadastro' | 'deposito';
+export type OrigemLocal = 'zl0024' | 'ultima' | 'cadastro' | 'bom' | 'deposito';
 
 export interface LocalItem {
   /** Posição como veio (vazia quando só o depósito é conhecido). */
@@ -35,6 +40,23 @@ export interface ItemGemba {
   saldoTotal: number;
   depositos: string[];
   locais: LocalItem[];
+  imagemPath: string | null;
+  /** Part number da peça da BOM (só itens que vieram do cadastro BOM). */
+  partNumber: string | null;
+  /** Sem saldo hoje: na ZL0024 ou, para a peça só da BOM, no Projetos. */
+  zerado: boolean;
+}
+
+/** Peça da BOM com localização (`alm_bom_itens_cadastro` + saldo do Projetos). */
+export interface PecaBomGemba {
+  partNumber: string;
+  codSap: string | null;
+  descricao: string;
+  umb: string;
+  /** Como foi digitada; pode ter mais de uma, separadas por vírgula. */
+  posicao: string;
+  /** Saldo no almoxarifado pelo módulo Projetos; `null` sem item no catálogo do projeto. */
+  saldo: number | null;
   imagemPath: string | null;
 }
 
@@ -82,6 +104,7 @@ export function montarIndiceGemba(
   estoque: EstoqueItem[],
   posicoesGuardadas: Map<string, string[]>,
   catalogo: Pick<CatalogoItem, 'codigo_sap' | 'descricao' | 'umb' | 'posicao_estoque' | 'imagem_path'>[],
+  pecasBom: PecaBomGemba[] = [],
 ): IndiceGemba {
   const acumulados = new Map<string, Acumulado>();
   const pegar = (codigo: string): Acumulado => {
@@ -113,15 +136,43 @@ export function montarIndiceGemba(
   const cadastroPorCodigo = new Map(catalogo.filter(c => c.codigo_sap).map(c => [c.codigo_sap, c]));
   for (const codigo of [...posicoesGuardadas.keys(), ...cadastroPorCodigo.keys()]) pegar(codigo);
 
+  // Peça da BOM: junta com o material SAP quando ele já está no índice (o
+  // código pode vir com ou sem zeros à esquerda); senão, item pelo part number.
+  const semZeros = (c: string) => c.replace(/^0+/, '');
+  const codigoPorSemZeros = new Map([...acumulados.keys()].map(c => [semZeros(c), c]));
+  const bomPorCodigo = new Map<string, PecaBomGemba[]>();
+  for (const peca of pecasBom) {
+    if (separarPosicoes(peca.posicao).length === 0) continue;
+    const sap = peca.codSap?.trim();
+    const codigo = (sap && codigoPorSemZeros.get(semZeros(sap))) || peca.partNumber;
+    if (!codigo) continue;
+    pegar(codigo);
+    const lista = bomPorCodigo.get(codigo);
+    if (lista) lista.push(peca);
+    else bomPorCodigo.set(codigo, [peca]);
+  }
+
   const itens: ItemGemba[] = [];
   for (const a of acumulados.values()) {
     const cadastro = cadastroPorCodigo.get(a.codigo);
+    const bom = bomPorCodigo.get(a.codigo) ?? [];
+    // Peça só da BOM (não está na ZL0024): o saldo é o do Projetos.
+    const soDaBom = bom.length > 0 && a.saldoDeposito.size === 0;
+    const saldoBom = bom.some(p => p.saldo != null) ? bom.reduce((s, p) => s + (p.saldo ?? 0), 0) : null;
     let locais: LocalItem[];
     const digitadas = separarPosicoes(cadastro?.posicao_estoque);
+    const posicoesBom = separarPosicoes(bom.map(p => p.posicao).join(','));
     if (digitadas.length > 0) {
       locais = digitadas.map(p => {
         const daZl = a.posicoes.get(p);
         return criarLocal(p, 'cadastro', daZl?.deposito ?? null, daZl?.saldo ?? null);
+      });
+    } else if (posicoesBom.length > 0) {
+      // Saldo por posição só quando há uma: o Projetos não sabe dividir entre prateleiras.
+      locais = posicoesBom.map(p => {
+        const daZl = a.posicoes.get(p);
+        const saldo = daZl?.saldo ?? (soDaBom && posicoesBom.length === 1 ? saldoBom : null);
+        return criarLocal(p, 'bom', daZl?.deposito ?? null, saldo);
       });
     } else if (a.posicoes.size > 0) {
       locais = [...a.posicoes].map(([p, z]) => criarLocal(p, 'zl0024', z.deposito, z.saldo));
@@ -135,14 +186,19 @@ export function montarIndiceGemba(
     }
     locais.sort((x, y) => x.posicao.localeCompare(y.posicao, 'pt-BR', { numeric: true }));
 
+    const saldoTotal = soDaBom ? saldoBom ?? 0 : a.saldoTotal;
     itens.push({
       codigo: a.codigo,
-      descricao: a.descricao || cadastro?.descricao || `Material ${a.codigo}`,
-      umb: a.umb || cadastro?.umb || '',
-      saldoTotal: a.saldoTotal,
-      depositos: [...a.saldoDeposito.keys()].sort(),
+      descricao: a.descricao || cadastro?.descricao || bom[0]?.descricao || `Material ${a.codigo}`,
+      umb: a.umb || cadastro?.umb || bom[0]?.umb || '',
+      saldoTotal,
+      depositos: soDaBom
+        ? [...new Set(locais.map(l => l.deposito).filter((d): d is string => Boolean(d)))].sort()
+        : [...a.saldoDeposito.keys()].sort(),
       locais,
-      imagemPath: cadastro?.imagem_path ?? null,
+      imagemPath: cadastro?.imagem_path ?? bom.find(p => p.imagemPath)?.imagemPath ?? null,
+      partNumber: bom[0]?.partNumber ?? null,
+      zerado: saldoTotal <= 0,
     });
   }
   itens.sort((x, y) => x.descricao.localeCompare(y.descricao, 'pt-BR'));
@@ -173,6 +229,8 @@ function normalizar(texto: string): string {
   return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 }
 
+const semPontos = (partNumber: string | null) => (partNumber ?? '').replace(/[.\-\s]/g, '').toUpperCase();
+
 /**
  * Busca por código SAP (exato ou começo), por palavras da descrição ou por
  * começo de posição quando o termo tem ponto (`104.13`).
@@ -183,14 +241,16 @@ export function buscarItensGemba(indice: IndiceGemba, termo: string, limite = 60
 
   if (/^\d{3}\.\d*$/.test(t) || /^\d{9}$/.test(t)) {
     const prefixo = t.toUpperCase();
+    // Nove dígitos também é part number da BOM sem os pontos (60.10.92715 → 601092715).
     return indice.itens
-      .filter(i => i.locais.some(l => l.posicao.startsWith(prefixo) || l.posicao.replace('.', '').startsWith(prefixo)))
+      .filter(i => i.locais.some(l => l.posicao.startsWith(prefixo) || l.posicao.replace('.', '').startsWith(prefixo))
+        || semPontos(i.partNumber).startsWith(prefixo))
       .slice(0, limite);
   }
 
   const palavras = t.split(' ');
   const encontrados = indice.itens.filter(i => {
-    const alvo = `${i.codigo} ${normalizar(i.descricao)}`;
+    const alvo = `${i.codigo} ${i.partNumber ? `${normalizar(i.partNumber)} ${semPontos(i.partNumber).toLowerCase()} ` : ''}${normalizar(i.descricao)}`;
     return palavras.every(p => alvo.includes(p));
   });
   const peso = (i: ItemGemba): number => {

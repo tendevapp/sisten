@@ -54,6 +54,11 @@ export interface EstanteGemba {
   /** Altura de cada andar a partir do 01. */
   alturasAndarM: number[];
   apartamentos?: GradeApartamentos;
+  /**
+   * Os vãos depois dos blocos numerados recebem, ilustrativo, o material do
+   * depósito que não tem endereço (Ruas 03 e 05: projeto e kits).
+   */
+  semEnderecoNosVaosLivres?: boolean;
 }
 
 export interface ZonaGemba {
@@ -88,7 +93,9 @@ const ANEXO_Y_FIM = 598;
 
 export const ESTANTES: EstanteGemba[] = [
   {
-    id: 'rua_05', deposito: '0005', trilha: ['Rua 05'], face: 'norte', blocos: [],
+    // Blocos 01–12 vêm do cadastro das peças da BOM (105.BBAAPP); quantos são de fato, a calibrar.
+    id: 'rua_05', deposito: '0005', trilha: ['Rua 05'], face: 'norte', blocos: intervalo(1, 12),
+    semEnderecoNosVaosLivres: true,
     inicio: [RUA_X_ENTRADA, COSTAS_05_04], fim: [RUA_X_PORTICO, COSTAS_05_04],
     ...PORTA_PALETE, alturasAndarM: tresAndares,
   },
@@ -100,7 +107,9 @@ export const ESTANTES: EstanteGemba[] = [
     ...PORTA_PALETE, alturasAndarM: tresAndares,
   },
   {
-    id: 'rua_03', deposito: '0003', trilha: ['Rua 03'], face: 'norte', blocos: [],
+    // Blocos 01–12 vêm do cadastro das peças da BOM (103.BBAAPP); quantos são de fato, a calibrar.
+    id: 'rua_03', deposito: '0003', trilha: ['Rua 03'], face: 'norte', blocos: intervalo(1, 12),
+    semEnderecoNosVaosLivres: true,
     inicio: [RUA_X_ENTRADA, COSTAS_03_02], fim: [RUA_X_PORTICO, COSTAS_03_02],
     ...PORTA_PALETE, alturasAndarM: tresAndares,
   },

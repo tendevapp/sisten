@@ -69,13 +69,13 @@ export interface CargaNoAndar {
 
 function temSaldo(item: ItemGemba, saldoLocal: number | null, origem: string): boolean {
   if (saldoLocal != null) return saldoLocal > 0;
-  return origem === 'cadastro' && item.saldoTotal > 0;
+  return (origem === 'cadastro' || origem === 'bom') && item.saldoTotal > 0;
 }
 
 /**
  * Cargas a desenhar: uma por material com saldo em cada posição endereçada; os
- * materiais sem endereço de ruas sem endereçamento (0003, 0005) ocupam os vãos
- * dessas ruas em sequência, só para mostrar quanto material há nelas.
+ * materiais sem endereço das Ruas 03 e 05 ocupam em sequência os vãos sem
+ * número dessas ruas, só para mostrar quanto material há nelas.
  */
 export function montarCargas(indice: IndiceGemba): { cargas: CargaNoAndar[]; porZona: Record<string, number> } {
   const cargas: CargaNoAndar[] = [];
@@ -105,14 +105,16 @@ export function montarCargas(indice: IndiceGemba): { cargas: CargaNoAndar[]; por
   }
 
   for (const [deposito, itens] of semEnderecoPorDeposito) {
-    const estante = ESTANTES.find(e => e.deposito === deposito && e.blocos.length === 0);
+    const estante = ESTANTES.find(e => e.deposito === deposito && e.semEnderecoNosVaosLivres);
     if (!estante) continue;
-    const vaos = quantidadeVaos(estante);
+    const primeiroLivre = estante.blocos.length;
+    const vaos = quantidadeVaos(estante) - primeiroLivre;
+    if (vaos <= 0) continue;
     const andares = estante.alturasAndarM.length + 1;
     itens.slice(0, vaos * andares * 2).forEach((item, n) => {
       const slot = Math.floor(n / 2);
       cargas.push({
-        estanteId: estante.id, indiceVao: slot % vaos, andar: Math.floor(slot / vaos) % andares, apartamento: null,
+        estanteId: estante.id, indiceVao: primeiroLivre + (slot % vaos), andar: Math.floor(slot / vaos) % andares, apartamento: null,
         tipo: tipoDeCarga(item.descricao, item.umb), codigo: item.codigo, semEndereco: true,
       });
     });

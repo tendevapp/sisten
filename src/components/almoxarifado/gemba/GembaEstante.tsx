@@ -105,7 +105,7 @@ function GembaEstante({
     return mapa;
   }, [estante, cargas]);
 
-  const ativo = (i: number) => i < estante.blocos.length || estante.blocos.length === 0;
+  const ativo = (i: number) => i < estante.blocos.length || Boolean(estante.semEnderecoNosVaosLivres);
   const aoClicar = (i: number) => (ev: ThreeEvent<MouseEvent>) => {
     ev.stopPropagation();
     if (ev.delta > ARRASTO_MAXIMO) return;

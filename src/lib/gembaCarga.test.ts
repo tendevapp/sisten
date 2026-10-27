@@ -56,7 +56,17 @@ describe('gembaCarga - montarCargas', () => {
   });
 
   it('material sem endereço de rua sem endereçamento ocupa a rua, marcado como ilustrativo', () => {
-    expect(cargas.find(c => c.codigo === '5')).toMatchObject({ estanteId: 'rua_03', semEndereco: true, tipo: 'perfil' });
+    const carga = cargas.find(c => c.codigo === '5');
+    expect(carga).toMatchObject({ estanteId: 'rua_03', semEndereco: true, tipo: 'perfil' });
+    // Os blocos numerados ficam para o endereçado; o ilustrativo vai para os vãos sem número.
+    expect(carga!.indiceVao).toBeGreaterThanOrEqual(12);
+  });
+
+  it('peça da BOM com posição na Rua 03 ganha carga no bloco', () => {
+    const indice = montarIndiceGemba([], new Map(), [], [
+      { partNumber: '60.10.92715', codSap: null, descricao: 'Placa de conexão', umb: 'each', posicao: '103.010200', saldo: 46, imagemPath: null },
+    ]);
+    expect(montarCargas(indice).cargas.find(c => c.codigo === '60.10.92715')).toMatchObject({ estanteId: 'rua_03', indiceVao: 0, andar: 2, semEndereco: false });
   });
 });
 

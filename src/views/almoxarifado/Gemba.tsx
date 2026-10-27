@@ -6,6 +6,9 @@
  * posição) e acende o lugar exato (Rua/Anexo › Bloco › Andar › Apto) no padrão
  * de endereçamento do procedimento 5.5. Clicar num bloco lista o que tem nele.
  *
+ * Itens: ZL0024, Cadastro de Itens (SAP e peças da BOM com localização) e a
+ * última posição guardada — o zerado aparece com a etiqueta "Zerado".
+ *
  * Só leitura. Links diretos: `#/almoxarifado/gemba?item=1174180` e `?pos=104.130218`.
  * Lógica em `lib/gembaEndereco.ts`, `lib/gembaLayout.ts` e `lib/gembaIndice.ts`.
  */
@@ -71,9 +74,36 @@ function textoSemLugar(endereco: Endereco | null): string {
 const ORIGEM: Record<LocalItem['origem'], string> = {
   zl0024: 'ZL0024',
   cadastro: 'Cadastro',
+  bom: 'Cadastro BOM',
   ultima: 'Última posição (zerado)',
   deposito: 'Sem endereço',
 };
+
+/** Etiqueta curta ao lado do item: zerado (sem saldo hoje) e peça da BOM. */
+function Etiqueta({ tipo }: { tipo: 'zerado' | 'bom' }) {
+  const zerado = tipo === 'zerado';
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[10px] font-extrabold uppercase tracking-wide"
+      style={zerado
+        ? { background: 'rgba(220, 38, 38, 0.12)', color: '#b91c1c' }
+        : { background: 'rgba(37, 99, 235, 0.12)', color: '#1d4ed8' }}
+      title={zerado ? 'Sem saldo hoje; a posição é a última conhecida' : 'Peça da BOM (Cadastro de Itens › BOM)'}
+    >
+      {zerado ? 'Zerado' : 'BOM'}
+    </span>
+  );
+}
+
+function Etiquetas({ item }: { item: ItemGemba }) {
+  if (!item.zerado && !item.partNumber) return null;
+  return (
+    <>
+      {item.partNumber && <Etiqueta tipo="bom" />}
+      {item.zerado && <Etiqueta tipo="zerado" />}
+    </>
+  );
+}
 
 function LocalChip({ local, ativo, onClick }: { local: LocalItem; ativo: boolean; onClick: () => void }) {
   const loc = local.localizacao;
@@ -210,7 +240,9 @@ export default function Gemba({ user, onNavigate }: Props) {
   useEffect(() => {
     if (!indice || linkAplicado.current) return;
     linkAplicado.current = true;
-    const achado = indice.porCodigo.get(parametroUrl('item'));
+    const pedido = parametroUrl('item');
+    // Peça da BOM que juntou com o material SAP fica no código SAP; o link vem pelo part number.
+    const achado = indice.porCodigo.get(pedido) ?? indice.itens.find(i => i.partNumber === pedido);
     if (achado) escolherItem(achado);
   }, [indice, escolherItem]);
 
@@ -258,7 +290,9 @@ export default function Gemba({ user, onNavigate }: Props) {
     if (!estante) return null;
     if (estante.blocos.length === 0) return { estante, bloco: null, itens: semEnderecoDoDeposito(estante.deposito) };
     const bloco = estante.blocos[selecao.indice];
-    if (bloco == null) return null;
+    if (bloco == null) {
+      return estante.semEnderecoNosVaosLivres ? { estante, bloco: null, itens: semEnderecoDoDeposito(estante.deposito) } : null;
+    }
     return { estante, bloco, itens: indice?.porBloco.get(chaveBloco(estante.deposito, bloco)) ?? [] };
   }, [selecao, indice, semEnderecoDoDeposito]);
 
@@ -276,7 +310,11 @@ export default function Gemba({ user, onNavigate }: Props) {
       return `${estante.trilha.join(' · ')} sem endereçamento: ${n} ${n === 1 ? 'item' : 'itens'}`;
     }
     const bloco = estante.blocos[i];
-    if (bloco == null) return null;
+    if (bloco == null) {
+      if (!estante.semEnderecoNosVaosLivres) return null;
+      const n = semEnderecoDoDeposito(estante.deposito).length;
+      return `${estante.trilha.join(' · ')} sem endereço: ${n} ${n === 1 ? 'item' : 'itens'}`;
+    }
     const lista = (indice.porBloco.get(chaveBloco(estante.deposito, bloco)) ?? []).filter(x => (x.local.saldo ?? 0) > 0);
     const titulo = `${estante.trilha.join(' · ')} · Bloco ${doisDigitos(bloco)}`;
     if (lista.length === 0) return `${titulo}: vazio`;
@@ -334,7 +372,7 @@ export default function Gemba({ user, onNavigate }: Props) {
             type="search"
             value={termo}
             onChange={ev => { setTermo(ev.target.value); setSoSemLugar(false); setItem(null); setSelecao(null); }}
-            placeholder="Código SAP, descrição ou posição (104.13)"
+            placeholder="Código SAP, part number, descrição ou posição (104.13)"
             className="w-full rounded-xl border py-2 pl-9 pr-3 text-sm outline-none focus:ring-2"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
           />
@@ -387,16 +425,20 @@ export default function Gemba({ user, onNavigate }: Props) {
                 </div>
               )}
               <div className="min-w-0">
-                <div className="inline-block rounded-md px-1.5 py-0.5 font-mono text-[11px] font-bold" style={{ background: 'var(--ink-primary)', color: 'var(--ink-inverse)' }}>
-                  {item.codigo}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="inline-block rounded-md px-1.5 py-0.5 font-mono text-[11px] font-bold" style={{ background: 'var(--ink-primary)', color: 'var(--ink-inverse)' }}>
+                    {item.codigo}
+                  </span>
+                  <Etiquetas item={item} />
                 </div>
                 <div className="mt-1 text-sm font-extrabold leading-snug" style={{ color: 'var(--ink-primary)' }}>{item.descricao}</div>
                 <div className="mt-0.5 text-xs font-bold tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-                  Saldo: {formatQtd(item.saldoTotal)} {item.umb}
+                  {item.codigo === item.partNumber ? 'Saldo no Projetos' : 'Saldo'}: {formatQtd(item.saldoTotal)} {item.umb}
                 </div>
               </div>
             </div>
-            {acoes.length > 0 && (
+            {/* Peça só da BOM não tem código SAP: não sai no balcão nem no inventário cíclico. */}
+            {acoes.length > 0 && item.codigo !== item.partNumber && (
               <button
                 type="button"
                 onClick={() => setAcaoDoItem(item.codigo)}
@@ -415,7 +457,7 @@ export default function Gemba({ user, onNavigate }: Props) {
             <div className="space-y-2">
               {item.locais.length === 0 && (
                 <div className="text-sm" style={{ color: 'var(--ink-muted)' }}>
-                  Sem posição na ZL0024 nem no cadastro. Material de cliente não é endereçado, só identificado.
+                  Sem posição na ZL0024 nem no Cadastro de Itens. Material de cliente não é endereçado, só identificado.
                 </div>
               )}
               {item.locais.map((l, i) => (
@@ -436,7 +478,7 @@ export default function Gemba({ user, onNavigate }: Props) {
                   {blocoSelecionado.estante.trilha.join(' · ')}
                 </div>
                 <div className="text-lg font-extrabold" style={{ color: 'var(--ink-primary)' }}>
-                  {blocoSelecionado.bloco != null ? `Bloco ${doisDigitos(blocoSelecionado.bloco)}` : 'Sem endereçamento'}
+                  {blocoSelecionado.bloco != null ? `Bloco ${doisDigitos(blocoSelecionado.bloco)}` : 'Sem endereço'}
                 </div>
               </div>
               <button type="button" onClick={() => setSelecao(null)} title="Fechar" className="rounded-lg p-1" style={{ color: 'var(--ink-muted)' }}>
@@ -459,8 +501,10 @@ export default function Gemba({ user, onNavigate }: Props) {
                     >
                       <div className="flex items-baseline justify-between gap-2 text-[11px]">
                         <span className="font-bold" style={{ color: '#b45309' }}>{linhaDoBloco(x)}</span>
-                        <span className="font-bold tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-                          {x.local.saldo != null ? `${formatQtd(x.local.saldo)} ${x.item.umb}` : 'zerado'}
+                        <span className="inline-flex items-center gap-1.5 font-bold tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+                          {x.local.saldo != null && x.local.saldo > 0 && `${formatQtd(x.local.saldo)} ${x.item.umb}`}
+                          {x.item.partNumber && <Etiqueta tipo="bom" />}
+                          {(x.item.zerado || (x.local.saldo != null && x.local.saldo <= 0)) && <Etiqueta tipo="zerado" />}
                         </span>
                       </div>
                       <div className="text-[13px] font-semibold leading-snug" style={{ color: 'var(--ink-primary)' }}>
@@ -498,8 +542,9 @@ export default function Gemba({ user, onNavigate }: Props) {
                 >
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="font-mono text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>{r.codigo}</span>
-                    <span className="text-[11px] font-bold tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-                      {formatQtd(r.saldoTotal)} {r.umb}
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+                      <Etiquetas item={r} />
+                      {!r.zerado && `${formatQtd(r.saldoTotal)} ${r.umb}`}
                     </span>
                   </div>
                   <div className="text-[13px] font-semibold leading-snug" style={{ color: 'var(--ink-primary)' }}>{r.descricao}</div>
