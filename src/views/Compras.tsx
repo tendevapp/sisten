@@ -47,6 +47,14 @@ import {
   mesmoFornecedor, origensDe, ROTULO_ORIGEM, type SugestaoFornecedor,
 } from '../lib/fornecedoresMaterial';
 import MapaCotacaoModal from '../components/cotacoes/MapaCotacaoModal';
+import { MercadoLivreCompraModal, MercadoLivreLinkModal } from '../components/suprimentos/MercadoLivreModais';
+import {
+  FILTRO_ML_SEM_COMPRA, FILTRO_ML_TODOS, observacaoComCompraMl, passaFiltroCompraMl, resumirComprasMl,
+  rotuloCompraMl, type FiltroCompraMl, type ItemMercadoLivre,
+} from '../lib/compraMercadoLivre';
+import {
+  listarItensMercadoLivre, registrarCompraMercadoLivre, removerItemMercadoLivre, salvarLinkMercadoLivre,
+} from '../lib/compraMercadoLivreApi';
 import type { CotacaoProcessoItemDraft } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
 import NovidadesModal from '../components/NovidadesModal';
@@ -346,6 +354,42 @@ const EstoqueTagBadge = ({ situacao }: { situacao: SituacaoEstoqueMaterial | nul
 };
 
 const SEM_TAG_ESTOQUE = 'SEM';
+
+/** Subpáginas da Central (barra ao lado de Tabela/Cards). */
+type PoFilter = 'Todos' | 'Sem PO' | 'Sem MIGO' | 'Contrato' | 'M Livre';
+
+/**
+ * Link do anúncio (abrir + copiar) e número da compra de um item destinado
+ * ao Mercado Livre — coluna da subpágina M Livre e bloco do card.
+ */
+const MercadoLivreLinkInfo = ({ item }: { item: ItemMercadoLivre }) => (
+  <div className="flex flex-col gap-1 items-start text-[11px]">
+    <div className="inline-flex items-center gap-1 max-w-full">
+      <a
+        href={item.link}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 font-bold text-[#0056c6] dark:text-blue-400 hover:underline truncate max-w-[180px]"
+        title={item.link}
+      >
+        <ExternalLink className="h-3 w-3 shrink-0" />
+        <span className="truncate">Anúncio</span>
+      </a>
+      <ClipboardCopyButton text={item.link} label="link do Mercado Livre" size="xs" />
+    </div>
+    {item.numero_compra ? (
+      <span
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 text-slate-900 dark:text-yellow-200 font-mono font-bold text-[10px]"
+        title={`Compra registrada${item.compra_registrada_por_nome ? ` por ${item.compra_registrada_por_nome}` : ''}${item.compra_registrada_em ? ` em ${formatDateBR(item.compra_registrada_em)}` : ''}`}
+      >
+        #{item.numero_compra}
+        <ClipboardCopyButton text={item.numero_compra} label="número da compra ML" size="xs" />
+      </span>
+    ) : (
+      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Aguardando compra</span>
+    )}
+  </div>
+);
 
 /** Item em processo de cotação marcado como compra pelo Mercado Livre. */
 const MercadoLivreTag = ({ cotacoes }: { cotacoes: CotacaoItemVinculo[] }) => {
@@ -736,6 +780,21 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // Modal de mapa de cotação em janela suspensa
   const [mapaCotacaoModal, setMapaCotacaoModal] = useState<{ processoId: string; numero: string } | null>(null);
 
+  // Itens destinados ao Mercado Livre (sup_ml_itens), por ri. Complementar:
+  // se falhar, a Central segue sem a subpágina M Livre preenchida.
+  const [mlItens, setMlItens] = useState<Map<string, ItemMercadoLivre>>(new Map());
+  const carregarMlItens = useCallback(() => {
+    listarItensMercadoLivre()
+      .then(lista => setMlItens(new Map(lista.map(it => [it.ri, it]))))
+      .catch(e => console.warn('Itens do Mercado Livre indisponíveis na Central de Compras:', e));
+  }, []);
+  useEffect(() => { carregarMlItens(); }, [carregarMlItens]);
+  const [mlFiltro, setMlFiltro] = useState<FiltroCompraMl>(FILTRO_ML_SEM_COMPRA);
+  const [mlLinkModal, setMlLinkModal] = useState<{ record: EnrichedSAPRecord; rm: string } | null>(null);
+  const [mlCompraModalAberto, setMlCompraModalAberto] = useState(false);
+  const usuarioMl = useMemo(() => ({ id: user.id, nome: user.name }), [user.id, user.name]);
+  const comprasMl = useMemo(() => resumirComprasMl(Array.from(mlItens.values())), [mlItens]);
+
   const obterCotacoesDoItem = useCallback((r: EnrichedSAPRecord): CotacaoItemVinculo[] => {
     const porRi = r.ri ? cotacoesPorItem.get(r.ri) : undefined;
     if (porRi && porRi.length > 0) return porRi;
@@ -780,7 +839,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
   const [alertFilter, setAlertFilter] = useState<Set<string>>(new Set());
   const [grupoMercFilter, setGrupoMercFilter] = useState<Set<string>>(new Set());
-  const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO' | 'Sem MIGO' | 'Contrato'>(poFilterInicial || 'Todos');
+  const [poFilter, setPoFilter] = useState<PoFilter>(poFilterInicial || 'Todos');
   const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos' | 'Parciais'>('Todos');
   // Consumo x Projeto: item de projeto é o material que começa em 100000 (mesma
   // regra do Rastreio Compras, em `isProjetoItem`). Começa em "todos" — aqui,
@@ -884,7 +943,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   useEffect(() => {
     setVisibleCount(40);
-  }, [searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, estoqueFilter, promessaFilter, poFilter, kpiFilter, viewMode, tipoItemFilter]);
+  }, [searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, estoqueFilter, promessaFilter, poFilter, kpiFilter, viewMode, tipoItemFilter, mlFiltro]);
 
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
@@ -910,8 +969,14 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       return rawRmGroups.map(g => ({ rm: g.rm, items: g.items.filter(it => ehItemDeContrato(it.record)) }))
         .filter(g => g.items.length > 0);
     }
+    // Itens destinados ao Mercado Livre (com ou sem PO), recortados por
+    // "aguardando compra" ou por uma compra específica do ML.
+    if (poFilter === 'M Livre') {
+      return rawRmGroups.map(g => ({ rm: g.rm, items: g.items.filter(it => passaFiltroCompraMl(mlItens.get(it.record.ri), mlFiltro)) }))
+        .filter(g => g.items.length > 0);
+    }
     return rawRmGroups;
-  }, [rawRmGroups, poFilter]);
+  }, [rawRmGroups, poFilter, mlItens, mlFiltro]);
 
   // Resolve o escopo escolhido ("apenas este item" ou "todos do fornecedor") e monta o
   // texto da cotação. No escopo "todos", varre rawRmGroups inteiro (ignora filtros/busca
@@ -1654,6 +1719,63 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     }, failedRis.length > 0 ? 0 : 1200);
   };
 
+  /* Mercado Livre --------------------------------------------------------- */
+
+  const handleSalvarLinkMl = async (r: EnrichedSAPRecord, rm: string, link: string) => {
+    await salvarLinkMercadoLivre({
+      ri: r.ri,
+      rm: rm || null,
+      item_reqc: r.item_reqc || null,
+      material_code: r.material_code || null,
+      texto_breve: r.texto_breve || null,
+      qtd: r.qtd_requisicao ?? null,
+      unidade: r.unidade_medida || null,
+    }, link, usuarioMl, mlItens.has(r.ri));
+    toast.success('Item destinado ao Mercado Livre — aparece na aba M Livre.');
+    carregarMlItens();
+  };
+
+  const handleRemoverMl = async (ri: string) => {
+    await removerItemMercadoLivre(ri);
+    toast.success('Item retirado do Mercado Livre.');
+    carregarMlItens();
+  };
+
+  // Itens marcados que estão no ML, convertidos de `ri_po` para `ri` (o
+  // destino ML é do item da RM, não do pedido).
+  const mlSelecionados = useMemo(() => {
+    const ris = new Set<string>();
+    let foraDoMl = 0;
+    rawRmGroups.forEach(g => g.items.forEach(it => {
+      if (!selectedRis.has(it.record.ri_po)) return;
+      if (mlItens.has(it.record.ri)) ris.add(it.record.ri);
+      else foraDoMl++;
+    }));
+    const rms = Array.from(new Set(Array.from(ris).map(ri => mlItens.get(ri)?.rm).filter(Boolean) as string[])).sort();
+    return { ris: Array.from(ris), rms, foraDoMl };
+  }, [rawRmGroups, selectedRis, mlItens]);
+
+  // Carrinho fechado: grava o número da compra nos itens e acrescenta
+  // "Compra ML #..." na Observação de cada um (mesmo caminho do "Salvar" da
+  // linha, então edições pendentes de status/promessa vão junto).
+  const handleRegistrarCompraMl = async (numero: string) => {
+    const { ris } = mlSelecionados;
+    await registrarCompraMercadoLivre(ris, numero, usuarioMl);
+    const results = await Promise.all(ris.map(ri => {
+      const obs = observacaoComCompraMl(obsInputState[ri] ?? recordByRi.get(ri)?.obs_comprador, numero);
+      return localDb.updateBuyerFields(ri, obs, dateInputState[ri] || '', statusInputState[ri]);
+    }));
+    const falhas = results.filter(ok => !ok).length;
+    if (falhas > 0) {
+      toast.error(`Compra gravada, mas a Observação de ${falhas} item(ns) não foi salva. Escreva ${rotuloCompraMl(numero)} à mão nesses itens.`);
+    } else {
+      toast.success(`${rotuloCompraMl(numero)} gravada em ${ris.length} ${ris.length === 1 ? 'item' : 'itens'}.`);
+    }
+    clearSelection();
+    carregarMlItens();
+    buildSuppliersData();
+  };
+
   // Carrega histórico de observações de uma RM/Item específica
   const handleViewHistory = (ri: string) => {
     const hist = localDb.getObsHistory(ri);
@@ -1846,6 +1968,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           for (const c of cotacoesItem) {
             alvos.push(c.numero);
           }
+          alvos.push(mlItens.get(r.ri)?.numero_compra);
           if (!casarTokens(alvos, tokens)) return false;
         }
         return true;
@@ -1853,7 +1976,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, estoqueFilter, tagEstoqueDe, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem]);
+  }, [rmGroups, searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, estoqueFilter, tagEstoqueDe, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem, mlItens]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -2491,6 +2614,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             >
               Contrato
             </button>
+            <button
+              onClick={() => setPoFilter('M Livre')}
+              className={`px-3 py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'M Livre' ? 'bg-yellow-300 text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              title="Itens destinados à compra pelo Mercado Livre, com o link do anúncio e o número da compra"
+            >
+              M Livre{mlItens.size > 0 ? ` (${mlItens.size})` : ''}
+            </button>
           </div>
 
           {/* View Toggles */}
@@ -2551,6 +2681,42 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         </div>
       </div>
 
+      {/* M Livre: recorte por compra. Fica fora do bloco da lista para não
+          sumir quando o recorte escolhido não tem item. */}
+      {poFilter === 'M Livre' && (() => {
+        const semCompra = Array.from(mlItens.values()).filter(it => !it.numero_compra).length;
+        const chip = (ativo: boolean) => `inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${ativo
+          ? 'bg-yellow-300 border-yellow-400 text-slate-900 shadow-xs'
+          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-yellow-400'}`;
+        return (
+          <div className="rounded-xl border border-yellow-300 dark:border-yellow-900/60 bg-yellow-50/60 dark:bg-yellow-950/10 p-3.5 space-y-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setMlFiltro(FILTRO_ML_SEM_COMPRA)} className={chip(mlFiltro === FILTRO_ML_SEM_COMPRA)}>
+                Aguardando compra ({semCompra})
+              </button>
+              <button type="button" onClick={() => setMlFiltro(FILTRO_ML_TODOS)} className={chip(mlFiltro === FILTRO_ML_TODOS)}>
+                Todos ({mlItens.size})
+              </button>
+              {comprasMl.map(c => (
+                <button
+                  key={c.numero}
+                  type="button"
+                  onClick={() => setMlFiltro(c.numero)}
+                  className={chip(mlFiltro === c.numero)}
+                  title={`${rotuloCompraMl(c.numero)} — RM ${c.rms.join(', ')}${c.registradaEm ? ` · registrada em ${formatDateBR(c.registradaEm)}` : ''}`}
+                >
+                  <span className="font-mono">#{c.numero}</span>
+                  <span className="font-semibold opacity-70">· {c.itens} {c.itens === 1 ? 'item' : 'itens'} · {c.rms.length} RM</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Destine itens pelo botão amarelo <b>Mercado Livre</b> na coluna Ações. Fechou o carrinho? Marque os itens comprados e use <b>Nº da compra ML</b> na barra de seleção.
+            </p>
+          </div>
+        );
+      })()}
+
       {/* KPIs Grid */}
       {!loading && !error && rmGroups.length > 0 && (
         <div data-tour="compras-kpis" className="grid grid-cols-2 lg:grid-cols-6 gap-3.5">
@@ -2558,7 +2724,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-              {poFilter === 'Sem MIGO' ? 'RMs sem MIGO' : poFilter === 'Sem PO' ? 'RMs em aberto' : poFilter === 'Contrato' ? 'RMs de contrato' : 'Total RMs'}
+              {poFilter === 'Sem MIGO' ? 'RMs sem MIGO' : poFilter === 'Sem PO' ? 'RMs em aberto' : poFilter === 'Contrato' ? 'RMs de contrato' : poFilter === 'M Livre' ? 'RMs no ML' : 'Total RMs'}
             </span>
             <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.rms}</p>
           </div>
@@ -2574,7 +2740,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-[#0056c6]" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-              {poFilter === 'Sem MIGO' ? 'Itens Sem MIGO' : poFilter === 'Sem PO' ? 'Itens Sem PO' : poFilter === 'Contrato' ? 'Itens de Contrato' : 'Total Itens'}
+              {poFilter === 'Sem MIGO' ? 'Itens Sem MIGO' : poFilter === 'Sem PO' ? 'Itens Sem PO' : poFilter === 'Contrato' ? 'Itens de Contrato' : poFilter === 'M Livre' ? 'Itens no ML' : 'Total Itens'}
             </span>
             <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.itens}</p>
             {kpiFilter === 'Todos' && (
@@ -2794,7 +2960,18 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         </div>
       )}
 
-      {!loading && !error && rmGroups.length === 0 && (
+      {!loading && !error && rmGroups.length === 0 && poFilter === 'M Livre' && (
+        <div className="flex flex-col items-center justify-center p-12 border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 rounded-xl text-center">
+          <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
+            {mlFiltro === FILTRO_ML_SEM_COMPRA ? 'Nenhum item aguardando compra no Mercado Livre' : 'Nenhum item neste recorte'}
+          </h3>
+          <p className="text-sm text-slate-555 dark:text-slate-455 mt-1 max-w-md">
+            Em Todos ou Sem PO, use o botão amarelo <b>Mercado Livre</b> na coluna Ações para destinar um item e gravar o link do anúncio.
+          </p>
+        </div>
+      )}
+
+      {!loading && !error && rmGroups.length === 0 && poFilter !== 'M Livre' && (
         <div className="flex flex-col items-center justify-center p-16 border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 rounded-xl text-center">
           <Check className="h-12 w-12 text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 rounded-full mb-3" />
           <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Nenhum item pendente (Sem PO)!</h3>
@@ -2890,6 +3067,16 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                   <FileSpreadsheet className="h-3.5 w-3.5" />
                   <span>Criar processo de cotação</span>
                 </button>
+                {mlSelecionados.ris.length > 0 && (
+                  <button
+                    onClick={() => setMlCompraModalAberto(true)}
+                    className="px-4 py-1.5 rounded-lg text-xs font-black bg-yellow-300 hover:bg-yellow-400 text-slate-900 border border-yellow-400 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                    title="Gravar o número da compra do Mercado Livre nos itens marcados (e na Observação de cada um)"
+                  >
+                    <Tag className="h-3.5 w-3.5" />
+                    <span>Nº da compra ML ({mlSelecionados.ris.length})</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -3129,7 +3316,16 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-1 font-semibold">
+                      {mlItens.get(r.ri) && (
+                        <div className="flex items-start gap-2 p-2.5 rounded-xl border border-yellow-300 dark:border-yellow-900/60 bg-yellow-50/70 dark:bg-yellow-950/10">
+                          <span className="px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[9px] font-black tracking-wide uppercase whitespace-nowrap">
+                            Mercado Livre
+                          </span>
+                          <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} />
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 font-semibold">
                         {isModified(r.ri, r) ? (
                           <span className="text-[10px] text-amber-650 dark:text-amber-450 font-black flex items-center gap-1.5 animate-pulse">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
@@ -3145,7 +3341,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                           </span>
                         )}
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           {encontrado && (
                             <button
                               onClick={() => handleSendItemQuoteToAllSuppliers(r, rm, fornecedores)}
@@ -3157,6 +3353,15 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                               <span>Cotação</span>
                             </button>
                           )}
+                          <button
+                            onClick={() => setMlLinkModal({ record: r, rm })}
+                            type="button"
+                            title={mlItens.has(r.ri) ? 'Item no Mercado Livre — ver ou trocar o link' : 'Comprar pelo Mercado Livre: gravar o link do anúncio'}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black transition-all shadow-xs cursor-pointer active:scale-95 active:translate-y-[1px] bg-yellow-300 hover:bg-yellow-400 text-slate-900 border border-yellow-400"
+                          >
+                            {mlItens.has(r.ri) && <Check className="h-3.5 w-3.5" />}
+                            <span>Mercado Livre</span>
+                          </button>
                           <button
                             onClick={() => handleSaveFields(r.ri)}
                             disabled={itemSaveStatus === 'saving'}
@@ -3226,6 +3431,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                       de propósito pra sobrar espaço pra Descrição, que é o
                       campo que a pessoa realmente lê pra identificar o item. */}
                   <Th label="Cotação" width="w-[130px]" />
+                  {poFilter === 'M Livre' && <Th label="Mercado Livre" width="w-[200px]" />}
                   <Th label="PO" width="w-[90px]" />
                   <Th label="Material" width="w-[100px]" />
                   <Th label="Descrição" />
@@ -3375,6 +3581,12 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             <span className="text-slate-350 dark:text-slate-600 font-mono text-xs pl-2" title="Sem processo de cotação vinculado">—</span>
                           )}
                         </td>
+
+                        {poFilter === 'M Livre' && (
+                          <td className="py-3 px-3 w-[200px]">
+                            {mlItens.get(r.ri) && <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} />}
+                          </td>
+                        )}
 
                         {/* PO Status */}
                         <td className="py-3 px-3 w-[90px] whitespace-nowrap">
@@ -3580,6 +3792,14 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                 <span>Cotação</span>
                               </button>
                             )}
+                            <button
+                              onClick={() => setMlLinkModal({ record: r, rm })}
+                              className="px-3 py-1.5 rounded-xl text-[10px] font-black transition-all shadow-xs flex items-center justify-center gap-1 mx-auto min-w-[76px] cursor-pointer active:scale-95 active:translate-y-[1px] bg-yellow-300 hover:bg-yellow-400 text-slate-900 border border-yellow-400"
+                              title={mlItens.has(r.ri) ? 'Item no Mercado Livre — ver ou trocar o link' : 'Comprar pelo Mercado Livre: gravar o link do anúncio'}
+                            >
+                              {mlItens.has(r.ri) && <Check className="h-3 w-3" />}
+                              <span>Mercado Livre</span>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -3608,6 +3828,26 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           </>
           )}
         </div>
+      )}
+
+      {mlLinkModal && (
+        <MercadoLivreLinkModal
+          titulo={`RM ${mlLinkModal.rm} / Item ${mlLinkModal.record.item_reqc} — ${mlLinkModal.record.texto_breve || mlLinkModal.record.material_code || ''}`}
+          existente={mlItens.get(mlLinkModal.record.ri)}
+          onSalvar={link => handleSalvarLinkMl(mlLinkModal.record, mlLinkModal.rm, link)}
+          onRemover={() => handleRemoverMl(mlLinkModal.record.ri)}
+          onClose={() => setMlLinkModal(null)}
+        />
+      )}
+
+      {mlCompraModalAberto && (
+        <MercadoLivreCompraModal
+          quantidadeItens={mlSelecionados.ris.length}
+          rms={mlSelecionados.rms}
+          foraDoMl={mlSelecionados.foraDoMl}
+          onConfirmar={handleRegistrarCompraMl}
+          onClose={() => setMlCompraModalAberto(false)}
+        />
       )}
 
       {/* Observações Históricas Modal / Dialog Drawer */}
