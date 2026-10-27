@@ -11,10 +11,10 @@ import type { LucideIcon } from 'lucide-react';
 import type { SAPRequisicao } from '../types';
 import { casarTokens, extrairPalavrasChave, normalizarParaBusca } from './buscaKeywords';
 
-export type GrupoBusca = 'Páginas' | 'Formulários' | 'Solicitações' | 'Rastreio' | 'Materiais';
+export type GrupoBusca = 'Páginas' | 'Formulários' | 'Solicitações' | 'Rastreio' | 'Materiais' | 'Peças de projeto';
 
 /** Ordem em que os grupos aparecem na lista. */
-export const ORDEM_GRUPOS: GrupoBusca[] = ['Páginas', 'Formulários', 'Solicitações', 'Rastreio', 'Materiais'];
+export const ORDEM_GRUPOS: GrupoBusca[] = ['Páginas', 'Formulários', 'Solicitações', 'Rastreio', 'Materiais', 'Peças de projeto'];
 
 export interface ResultadoBusca {
   /** Único dentro do grupo (serve de `key` e de id do `option`). */

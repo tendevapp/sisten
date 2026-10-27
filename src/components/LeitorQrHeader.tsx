@@ -7,16 +7,18 @@
  * Lê o QR da etiqueta de prateleira (a mesma do cadastro de itens do Almox) e
  * entrega o item ao diálogo que pergunta o que fazer: baixa de estoque,
  * inventário cíclico ou solicitação extraordinária (`EscolhaAcaoItemQr`). Só
- * aparece para quem acessa ao menos um desses formulários. A etiqueta BOM (peça do projeto) abre direto
- * a peça no Cadastro de Itens.
+ * aparece para quem acessa ao menos um desses formulários ou uma das telas da
+ * peça. A etiqueta BOM (peça de projeto) abre o diálogo da peça
+ * (`EscolhaAcaoPecaQr`): situação no Projetos, autonomia por tramo e o que fazer.
  */
 
 import { useState } from 'react';
 import { QrCode } from 'lucide-react';
 import type { Profile } from '../types';
-import { EVENTO_PECA_BOM, codigoDoQr, guardarPecaBomPendente } from '../lib/etiquetaMaterial';
-import { ROTA_CADASTRO_ITENS, pecaDaRota } from '../lib/etiquetaBom';
+import { codigoDoQr } from '../lib/etiquetaMaterial';
+import { pecaDaRota } from '../lib/etiquetaBom';
 import EscolhaAcaoItemQr, { acoesDoItemQr } from './EscolhaAcaoItemQr';
+import EscolhaAcaoPecaQr, { acoesDaPecaQr } from './EscolhaAcaoPecaQr';
 import LeitorQrModal from './ui/LeitorQrModal';
 import { useToast } from './ui/Toast';
 
@@ -29,19 +31,18 @@ export default function LeitorQrHeader({ user, onNavigate }: Props) {
   const toast = useToast();
   const [lendo, setLendo] = useState(false);
   const [codigo, setCodigo] = useState<string | null>(null);
+  const [peca, setPeca] = useState<string | null>(null);
 
-  if (acoesDoItemQr(user).length === 0) return null;
+  if (acoesDoItemQr(user).length === 0 && acoesDaPecaQr(user).length === 0) return null;
 
   const aoLer = (texto: string) => {
     setLendo(false);
     const lido = codigoDoQr(texto);
     if (!lido) {
-      // Etiqueta BOM: abre a peça na aba Itens BOM do Cadastro de Itens.
-      const peca = pecaDaRota(texto);
-      if (peca) {
-        guardarPecaBomPendente(peca);
-        onNavigate(`${ROTA_CADASTRO_ITENS}?aba=bom`);
-        window.setTimeout(() => window.dispatchEvent(new Event(EVENTO_PECA_BOM)), 0);
+      // Etiqueta BOM: situação da peça e o que fazer com ela.
+      const pecaLida = pecaDaRota(texto);
+      if (pecaLida) {
+        setPeca(pecaLida);
         return;
       }
       toast.error('Este QR não é de etiqueta de material do SISTEN.');
@@ -66,6 +67,10 @@ export default function LeitorQrHeader({ user, onNavigate }: Props) {
 
       {codigo && (
         <EscolhaAcaoItemQr user={user} codigo={codigo} onNavigate={onNavigate} onClose={() => setCodigo(null)} />
+      )}
+
+      {peca && (
+        <EscolhaAcaoPecaQr user={user} partNumber={peca} onNavigate={onNavigate} onClose={() => setPeca(null)} />
       )}
     </>
   );

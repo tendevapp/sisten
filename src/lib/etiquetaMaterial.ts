@@ -187,6 +187,21 @@ export function consumirPecaBomPendente(agora = Date.now()): string | null {
   return consumirPendente(CHAVE_PECA_BOM_PENDENTE, agora);
 }
 
+/**
+ * Peça da etiqueta BOM que chegou pelo link do QR (câmera comum) e espera a
+ * pessoa escolher o que fazer — o par de `guardarItemQrEscolha`. Consumida
+ * pelo diálogo de escolha da peça (`EscolhaAcaoPecaQr`).
+ */
+export const CHAVE_PECA_QR_ESCOLHA = 'sisten_qr_peca_escolha';
+
+export function guardarPecaQrEscolha(partNumber: string, agora = Date.now()): void {
+  guardarPendente(CHAVE_PECA_QR_ESCOLHA, partNumber, agora);
+}
+
+export function consumirPecaQrEscolha(agora = Date.now()): string | null {
+  return consumirPendente(CHAVE_PECA_QR_ESCOLHA, agora);
+}
+
 export interface DadosEtiqueta {
   codigo_sap: string;
   descricao: string;

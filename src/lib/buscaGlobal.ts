@@ -16,7 +16,7 @@
  */
 
 import type { LucideIcon } from 'lucide-react';
-import { ClipboardList, FileText, Package, Route, UserRound } from 'lucide-react';
+import { ClipboardList, Cog, FileText, Package, Route, UserRound } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import type { Profile, Request, SAPRequisicao } from '../types';
 import {
@@ -27,6 +27,7 @@ import {
   type ResultadoBusca,
 } from './buscaGlobalRank';
 import { buscarMateriais } from './materiais';
+import { buscarPecasProjeto } from './situacaoPecaProjeto';
 import { MODULE_HOMES } from './moduleHomes';
 import {
   FORMULARIOS_DETALHADOS,
@@ -44,6 +45,7 @@ const LIMITES: Record<GrupoBusca, number> = {
   Solicitações: 5,
   Rastreio: 4,
   Materiais: 6,
+  'Peças de projeto': 5,
 };
 
 // ---------------------------------------------------------------------------
@@ -171,6 +173,22 @@ export async function buscarMateriaisGlobal(termo: string): Promise<ResultadoBus
     subtitulo: `${m.materialCode} · ${m.unit}`,
     path: `/materiais/busca?q=${encodeURIComponent(m.materialCode)}`,
     icone: Package,
+  }));
+}
+
+/**
+ * Peças do projeto (BOM) por part number ou descrição (RPC `proj_buscar_pecas`).
+ * O resultado abre a situação da peça (saldo do Projetos, autonomia por tramo).
+ */
+export async function buscarPecasProjetoGlobal(termo: string): Promise<ResultadoBusca[]> {
+  const linhas = await buscarPecasProjeto(termo, LIMITES['Peças de projeto']);
+  return linhas.map(p => ({
+    id: p.part_number,
+    grupo: 'Peças de projeto',
+    titulo: p.descricao || p.part_number,
+    subtitulo: [p.part_number, p.cod_sap ? `SAP ${p.cod_sap.replace(/^0+/, '')}` : null, p.uom].filter(Boolean).join(' · '),
+    path: `/almoxarifado/gemba?item=${encodeURIComponent(p.part_number)}`,
+    icone: Cog,
   }));
 }
 

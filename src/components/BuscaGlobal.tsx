@@ -13,6 +13,11 @@
  * Escolher um material não sai da busca: abre a situação dele (saldo, RM,
  * pedido, previsão de entrega, MIGO — `SituacaoMaterialResumo`), com o botão
  * para o Catálogo SAP. Esc ou ← volta à lista; digitar também.
+ *
+ * Peças de projeto (BOM, RPC `proj_buscar_pecas`) entram para quem lida com
+ * elas e abrem `SituacaoPecaProjetoResumo`: saldo do Projetos e autonomia por
+ * tramo. Material SAP de projeto (`100000…`) abre esse mesmo resumo quando
+ * está no catálogo do projeto, com a situação SAP dentro.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -21,10 +26,15 @@ import type { Profile } from '../types';
 import {
   buscarLocal,
   buscarMateriaisGlobal,
+  buscarPecasProjetoGlobal,
   combinarResultados,
   paginasRecentes,
   type ResultadoBusca,
 } from '../lib/buscaGlobal';
+import { isProjetoItem } from '../lib/demandas';
+import { canAccessPage } from '../lib/pages';
+import { acoesDaPecaQr } from './EscolhaAcaoPecaQr';
+import SituacaoPecaProjetoResumo from './almoxarifado/SituacaoPecaProjetoResumo';
 import { normalizarTermo } from '../lib/materiais';
 import { useDebounce } from '../lib/useDebounce';
 import SituacaoMaterialResumo from './almoxarifado/SituacaoMaterialResumo';
@@ -36,11 +46,20 @@ interface Props {
 }
 
 const ID_LISTA = 'busca-global-lista';
+
+/** Material SAP de projeto: o resumo da peça (Projetos) quando ela está no catálogo; senão, o do SAP. */
+function ResumoMaterialDeProjeto({ material }: { material: string }) {
+  const [achou, setAchou] = useState<boolean | null>(null);
+  useEffect(() => setAchou(null), [material]);
+  if (achou === false) return <SituacaoMaterialResumo material={material} mostrarCabecalho={false} />;
+  return <SituacaoPecaProjetoResumo chave={material} mostrarCabecalho={false} onCarregado={d => setAchou(Boolean(d))} />;
+}
 const idOpcao = (i: number) => `busca-global-opcao-${i}`;
 
 export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
   const [termo, setTermo] = useState('');
   const [materiais, setMateriais] = useState<ResultadoBusca[]>([]);
+  const [pecas, setPecas] = useState<ResultadoBusca[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [ativo, setAtivo] = useState(0);
   // Material escolhido: a paleta mostra a situação dele no lugar da lista.
@@ -52,6 +71,9 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
   const busca = termo.trim();
   const buscaAtrasada = useDebounce(busca, 220);
   const podeBuscarMateriais = normalizarTermo(buscaAtrasada).tipo !== 'curto';
+  // Peças de projeto só para quem abre alguma tela delas (Cadastro BOM, Gemba, Projetos).
+  const vePecas = useMemo(() => acoesDaPecaQr(user).length > 0, [user]);
+  const pecasRef = useRef(0);
 
   // Materiais: consulta ao servidor, só com o termo parado e com tamanho que valha a ida.
   useEffect(() => {
@@ -74,11 +96,26 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
       });
   }, [buscaAtrasada, podeBuscarMateriais]);
 
+  useEffect(() => {
+    const id = ++pecasRef.current;
+    if (!vePecas || !podeBuscarMateriais) {
+      setPecas([]);
+      return;
+    }
+    buscarPecasProjetoGlobal(buscaAtrasada)
+      .then(r => { if (id === pecasRef.current) setPecas(r); })
+      .catch(() => { if (id === pecasRef.current) setPecas([]); });
+  }, [buscaAtrasada, podeBuscarMateriais, vePecas]);
+
   const recentes = useMemo(() => paginasRecentes(user), [user]);
   const local = useMemo(() => (busca ? buscarLocal(user, busca) : []), [user, busca]);
   // Enquanto digita, os materiais de uma busca anterior ficam de fora: seriam de outro termo.
   const materiaisValidos = busca === buscaAtrasada ? materiais : [];
-  const lista = useMemo(() => (busca ? combinarResultados(local, materiaisValidos) : recentes), [busca, local, materiaisValidos, recentes]);
+  const pecasValidas = busca === buscaAtrasada ? pecas : [];
+  const lista = useMemo(
+    () => (busca ? combinarResultados(local, materiaisValidos, pecasValidas) : recentes),
+    [busca, local, materiaisValidos, pecasValidas, recentes],
+  );
 
   useEffect(() => {
     setAtivo(0);
@@ -117,7 +154,7 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
 
   const abrir = (r: ResultadoBusca | undefined) => {
     if (!r) return;
-    if (r.grupo === 'Materiais') setMaterialAberto(r);
+    if (r.grupo === 'Materiais' || r.grupo === 'Peças de projeto') setMaterialAberto(r);
     else navegar(r);
   };
 
@@ -125,7 +162,7 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
     if (materialAberto) {
       if (ev.key === 'Enter') {
         ev.preventDefault();
-        navegar(materialAberto);
+        if (podeAbrirDestino) navegar(materialAberto);
       }
       return;
     }
@@ -141,6 +178,9 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
     }
   };
 
+  const ehPeca = materialAberto?.grupo === 'Peças de projeto';
+  // Da peça, o atalho é o Gemba (onde ela está); sem acesso a ele, a tela fica sem botão.
+  const podeAbrirDestino = !ehPeca || canAccessPage(user, 'almox_gemba');
   const semResultado = busca !== '' && lista.length === 0 && !carregando;
   const dica = busca !== '' && !podeBuscarMateriais && busca.length < 3 ? 'Digite ao menos 3 letras para incluir materiais.' : null;
 
@@ -206,15 +246,23 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
                 <p className="font-mono text-xs font-bold text-blue-700 dark:text-blue-400">{materialAberto.id}</p>
                 <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{materialAberto.titulo}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => navegar(materialAberto)}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:border-blue-400 hover:text-blue-700 dark:border-slate-700 dark:text-slate-200"
-              >
-                <ExternalLink className="h-3.5 w-3.5" /> Catálogo SAP
-              </button>
+              {podeAbrirDestino && (
+                <button
+                  type="button"
+                  onClick={() => navegar(materialAberto)}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:border-blue-400 hover:text-blue-700 dark:border-slate-700 dark:text-slate-200"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> {ehPeca ? 'Ver no Gemba' : 'Catálogo SAP'}
+                </button>
+              )}
             </div>
-            <SituacaoMaterialResumo material={materialAberto.id} mostrarCabecalho={false} />
+            {ehPeca ? (
+              <SituacaoPecaProjetoResumo chave={materialAberto.id} mostrarCabecalho={false} />
+            ) : vePecas && isProjetoItem(materialAberto.id) ? (
+              <ResumoMaterialDeProjeto material={materialAberto.id} />
+            ) : (
+              <SituacaoMaterialResumo material={materialAberto.id} mostrarCabecalho={false} />
+            )}
           </div>
         ) : (
         <ul ref={listaRef} id={ID_LISTA} role="listbox" aria-label="Resultados" className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -268,10 +316,14 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
 
         <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2 text-[11px] text-slate-400 dark:border-slate-700">
           <span className="min-w-0 truncate">
-            {materialAberto ? 'Situação do material: saldo, RM, pedido, entrega e MIGO.' : dica ?? 'Materiais aparecem com 3 letras ou 4 dígitos — Enter mostra a situação.'}
+            {materialAberto
+              ? ehPeca ? 'Situação da peça: saldo no Projetos, autonomia por tramo e o que vai chegar.' : 'Situação do material: saldo, RM, pedido, entrega e MIGO.'
+              : dica ?? 'Materiais aparecem com 3 letras ou 4 dígitos — Enter mostra a situação.'}
           </span>
           <span className="hidden shrink-0 sm:inline">
-            {materialAberto ? 'Enter Catálogo SAP · Esc voltar' : '↑↓ navegar · Enter abrir · Esc fechar'}
+            {materialAberto
+              ? `${podeAbrirDestino ? `Enter ${ehPeca ? 'Gemba' : 'Catálogo SAP'} · ` : ''}Esc voltar`
+              : '↑↓ navegar · Enter abrir · Esc fechar'}
           </span>
         </div>
       </div>

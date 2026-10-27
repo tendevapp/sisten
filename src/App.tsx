@@ -25,7 +25,7 @@ import EscolhaItemQrGate from './components/EscolhaItemQrGate';
 import Login from './views/Login';
 import Signup from './views/Signup';
 import ResetPassword from './views/ResetPassword';
-import { ROTA_CURTA_QR, ROTA_REQUISICAO_BALCAO, guardarItemQrEscolha, guardarItemQrPendente, guardarPecaBomPendente, haItemQrPendente, haPecaBomPendente, itemDaRota } from './lib/etiquetaMaterial';
+import { ROTA_CURTA_QR, ROTA_REQUISICAO_BALCAO, guardarItemQrEscolha, guardarItemQrPendente, guardarPecaQrEscolha, haItemQrPendente, haPecaBomPendente, itemDaRota } from './lib/etiquetaMaterial';
 import { ROTA_CADASTRO_ITENS, ROTA_CURTA_QR_BOM, pecaDaRota } from './lib/etiquetaBom';
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const Materials = lazy(() => import('./views/Materials'));
@@ -495,12 +495,13 @@ export default function App() {
       // Link longo da Requisição no Balcão com `?item=`: segue direto para ela.
       if (itemQr) guardarItemQrPendente(itemQr);
 
-      // QR da etiqueta BOM (`#/bom?peca=60.13.06262`): abre a peça na aba Itens BOM
-      // do Cadastro de Itens. A peça é guardada já, para sobreviver ao login.
+      // QR da etiqueta BOM (`#/bom?peca=60.13.06262`): como o QR do item, o
+      // diálogo de escolha (`EscolhaItemQrGate`) mostra a situação da peça e
+      // pergunta o que fazer. A peça é guardada já, para sobreviver ao login.
       const pecaQr = pathOnly === ROTA_CURTA_QR_BOM ? pecaDaRota(pathWithParams) : null;
       if (pecaQr) {
-        guardarPecaBomPendente(pecaQr);
-        window.location.replace(`#${ROTA_CADASTRO_ITENS}?aba=bom&peca=${encodeURIComponent(pecaQr)}`);
+        guardarPecaQrEscolha(pecaQr);
+        window.location.replace('#/');
         return;
       }
 
