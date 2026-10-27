@@ -3244,11 +3244,12 @@ export interface ProjOrdemPremontagem {
 export interface ProjKit {
   id: string;
   projeto: string;
-  /** `KIT-T1-3143` — a etiqueta física. */
+  /** `KIT-T1-3143` — a etiqueta física; kit pulmão: `KIT-OPM-271026-01-P1`. */
   rastreio: string;
   codigo: string | null;
   tramo: string;
-  tramo_unidade_id: string;
+  /** Null = kit pulmão (montado sem número de tramo); ganha o número na entrega à produção. */
+  tramo_unidade_id: string | null;
   ordem_id: string | null;
   status: 'em_premontagem' | 'pronto' | 'entregue';
   qualidade_ok: boolean | null;
@@ -3274,7 +3275,8 @@ export interface ProjEntregaProducao {
   subprojeto_id: string | null;
   kit_id: string;
   tramo: string;
-  tramo_unidade_id: string;
+  /** Null = kit pulmão entregue sem número de tramo. */
+  tramo_unidade_id: string | null;
   recebido_por_nome: string;
   observacao: string | null;
   criado_por_id: string | null;

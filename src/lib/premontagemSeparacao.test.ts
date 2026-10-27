@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dividirRomaneio, itensRemoviveis, localizacaoDoItem, resumoSeparacao } from './premontagemSeparacao';
+import { dividirRomaneio, interpretarNumeracaoTramos, itensRemoviveis, localizacaoDoItem, resumoSeparacao } from './premontagemSeparacao';
 
 const item = (id: string, separado: boolean, qtd_total: number, qtd_separada = separado ? qtd_total : 0) =>
   ({ id, separado, qtd_total, qtd_separada });
@@ -37,5 +37,21 @@ describe('resumoSeparacao', () => {
   it('conta itens e peças separados e que faltam', () => {
     expect(resumoSeparacao([item('a', true, 2, 3), item('b', false, 5), item('c', false, 1)]))
       .toEqual({ separados: 1, faltam: 2, pecasSeparadas: 3, pecasFaltam: 6 });
+  });
+});
+
+describe('interpretarNumeracaoTramos', () => {
+  const disponiveis = new Set(['T1-3143', 'T1-3158', 'T1-3173']);
+
+  it('aceita só o número ou o id completo, ignorando repetidos', () => {
+    expect(interpretarNumeracaoTramos('3143, t1-3158 3143', 'T1', disponiveis)).toEqual({ ids: ['T1-3143', 'T1-3158'], invalidos: [] });
+  });
+
+  it('vazio é kit pulmão: nenhum tramo numerado', () => {
+    expect(interpretarNumeracaoTramos('  ', 'T1', disponiveis)).toEqual({ ids: [], invalidos: [] });
+  });
+
+  it('número fora das unidades disponíveis volta como inválido', () => {
+    expect(interpretarNumeracaoTramos('3143;9999', 'T1', disponiveis)).toEqual({ ids: ['T1-3143'], invalidos: ['9999'] });
   });
 });

@@ -28,10 +28,15 @@
  * A ordem NÃO debita ao ser aberta — só congela o romaneio e cria o kit.
  * Quem separa fisicamente vai dando check item a item (parcial inclusive);
  * só ao confirmar a separação o sistema debita o que foi de fato separado.
+ * Saldo zero não trava: peça cuja entrada ainda não foi importada fica com
+ * saldo negativo, e a importação regulariza.
+ *
+ * O número do tramo é opcional: a bancada às vezes monta kit "pulmão", sem
+ * saber para qual torre vai. Kit sem número ganha o tramo na entrega.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Check, ChevronDown, ChevronRight, ClipboardList, FileSpreadsheet, FileText, Camera, Loader2, MapPin, PackageX, PackageCheck, Pencil, Plus, Search, Trash2, Wrench, X } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, ChevronRight, ClipboardList, FileSpreadsheet, FileText, Camera, Loader2, MapPin, PackageCheck, Pencil, Plus, Search, Trash2, Wrench, X } from 'lucide-react';
 import { useLightbox } from '../ui/Lightbox';
 import { criarFiltroPalavrasChave } from '../../lib/buscaKeywords';
 import { listarCadastrosBom, type CadastroBom } from '../../lib/almoxBomCadastroApi';
@@ -54,15 +59,13 @@ import {
 } from '../../lib/projetosRomaneioExport';
 import {
   concluirPremontagem, confirmarSeparacaoPremontagem, criarOrdemPremontagem,
-  marcarItemSeparado, proximoCodigo, removerItensPremontagem, ProjSaldoInsuficienteError,
+  marcarItemSeparado, proximoCodigo, removerItensPremontagem,
 } from '../../lib/projetosApi';
-import { dividirRomaneio, itensRemoviveis, localizacaoDoItem, resumoSeparacao } from '../../lib/premontagemSeparacao';
+import { dividirRomaneio, interpretarNumeracaoTramos, itensRemoviveis, localizacaoDoItem, resumoSeparacao } from '../../lib/premontagemSeparacao';
 import type { Profile, ProjItem, ProjOrdemItem, ProjOrdemPremontagem } from '../../types';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
 
 interface Props { dados: DadosProjetos; user: Profile; podeLancar: boolean }
-
-type Faltante = ProjSaldoInsuficienteError['faltantes'][number];
 
 /** `[3,4,5]` → "Níveis 3–5"; `[4]` → "Nível 4". Não existe "o nível" de um item que atravessa vários grupos. */
 function formatarNiveis(niveis: number[]): string {
@@ -93,9 +96,10 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
   const [aberto, setAberto] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [opcaoChave, setOpcaoChave] = useState<string>(OPCOES_ALVO[0].chave);
-  const [alvos, setAlvos] = useState<string[]>([]);
+  const [qtdKits, setQtdKits] = useState('1');
+  /** Números dos tramos, digitados e opcionais — kit sem número é pulmão. */
+  const [numeracao, setNumeracao] = useState('');
   const [observacao, setObservacao] = useState('');
-  const [faltantes, setFaltantes] = useState<Faltante[]>([]);
   const [ordemApontar, setOrdemApontar] = useState<ProjOrdemPremontagem | null>(null);
   const [ordemSeparar, setOrdemSeparar] = useState<ProjOrdemPremontagem | null>(null);
   const [ordemEditar, setOrdemEditar] = useState<ProjOrdemPremontagem | null>(null);
@@ -165,7 +169,13 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
     () => subconjuntosDoTramo(new Map([[tramo, consumoUtil]]), tramo),
     [consumoUtil, tramo],
   );
-  const kits = alvos.length;
+  const kits = Math.max(0, Math.floor(Number(qtdKits) || 0));
+  const { ids: alvos, invalidos: numerosInvalidos } = useMemo(
+    () => interpretarNumeracaoTramos(numeracao, tramo, new Set(disponiveis.map((t) => t.id))),
+    [numeracao, tramo, disponiveis],
+  );
+  const kitsPulmao = Math.max(0, kits - alvos.length);
+  const numeracaoComErro = numerosInvalidos.length > 0 || alvos.length > kits;
 
   const romaneio = useMemo(
     () =>
@@ -180,6 +190,9 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
       })),
     [grupos, itemPorPn, saldoPorPn, kits],
   );
+
+  /** Só aviso: sem saldo não trava mais — o débito deixa o saldo negativo até a entrada ser importada. */
+  const faltaSaldo = useMemo(() => romaneio.reduce((n, g) => n + g.itens.filter((i) => i.falta).length, 0), [romaneio]);
 
   const semCadastro = useMemo(
     () => romaneio.flatMap((g) => g.itens).filter((i) => !i.itemId),
@@ -206,16 +219,20 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
     [tramo, zona, kits, user.name, romaneio],
   );
 
-  const limpar = () => { setAlvos([]); setObservacao(''); setFaltantes([]); };
+  const limpar = () => { setQtdKits('1'); setNumeracao(''); setObservacao(''); };
 
   const gerar = async () => {
-    if (!alvos.length) { toast.error('Escolha ao menos um tramo alvo.'); return; }
+    if (kits < 1) { toast.error('Informe a quantidade de kits.'); return; }
+    if (numerosInvalidos.length) {
+      toast.error(`Tramo(s) ${numerosInvalidos.join(', ')} não disponível(is) para ${opcao.rotulo} — confira ou deixe sem número.`);
+      return;
+    }
+    if (alvos.length > kits) { toast.error(`${alvos.length} tramo(s) numerado(s) para ${kits} kit(s) — aumente a quantidade.`); return; }
     if (semCadastro.length) {
       toast.error(`${semCadastro.length} item(ns) do romaneio não estão no catálogo — avise a engenharia.`);
       return;
     }
     setSalvando(true);
-    setFaltantes([]);
     try {
       const codigo = await proximoCodigo(PREFIXO.ordem);
       await criarOrdemPremontagem({
@@ -238,18 +255,17 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
         ),
         alvos,
       });
-      toast.success(`Ordem ${codigo} aberta — ${kits} kit(s) de ${opcao.rotulo}. Separe os itens e confirme para debitar.`);
+      toast.success(
+        `Ordem ${codigo} aberta — ${kits} kit(s) de ${opcao.rotulo}` +
+          (kitsPulmao ? ` (${kitsPulmao} pulmão, sem número)` : '') +
+          '. Separe os itens e confirme para debitar.',
+      );
       setAberto(false);
       limpar();
       await recarregar(true);
     } catch (err: any) {
-      if (err instanceof ProjSaldoInsuficienteError) {
-        setFaltantes(err.faltantes);
-        toast.error(`Separação bloqueada: ${err.faltantes.length} item(ns) sem saldo.`);
-      } else {
-        console.error(err);
-        toast.error(err?.message || 'Não foi possível gerar a ordem.');
-      }
+      console.error(err);
+      toast.error(err?.message || 'Não foi possível gerar a ordem.');
     } finally {
       setSalvando(false);
     }
@@ -269,7 +285,7 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
   };
 
   const apontar = async (ordem: ProjOrdemPremontagem, marcados: Record<string, boolean>, nc: string, pendenciaZonas: ZonaDef[]) => {
-    const escolhidos = (ordem.kits ?? []).filter((k) => k.status === 'em_premontagem' && marcados[k.tramo_unidade_id]);
+    const escolhidos = (ordem.kits ?? []).filter((k) => k.status === 'em_premontagem' && marcados[k.id]);
     if (!escolhidos.length) { toast.error('Marque ao menos um kit concluído.'); return; }
     setSalvando(true);
     try {
@@ -283,6 +299,7 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
       const r = await concluirPremontagem(
         ordem.id,
         escolhidos.map((k) => ({
+          kit_id: k.id,
           tramo_unidade_id: k.tramo_unidade_id,
           codigo,
           qualidade_ok: !observacaoFinal,
@@ -442,7 +459,7 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
                 <Campo rotulo="Tramo / zona alvo">
                   <select
                     value={opcaoChave}
-                    onChange={(e) => { setOpcaoChave(e.target.value); setAlvos([]); setFaltantes([]); }}
+                    onChange={(e) => { setOpcaoChave(e.target.value); setNumeracao(''); }}
                     className={inputCls()}
                   >
                     {OPCOES_ALVO.map((o) => {
@@ -462,69 +479,48 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
                 </div>
               </div>
 
-              <Campo rotulo={`Tramos a montar (${kits} selecionado(s))`}>
-                {disponiveis.length ? (
-                  <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto p-2 rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
-                    {disponiveis.map((t) => {
-                      const marcado = alvos.includes(t.id);
-                      return (
-                        <button
-                          key={t.id}
-                          onClick={() => setAlvos((a) => (marcado ? a.filter((x) => x !== t.id) : [...a, t.id]))}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer border transition-colors"
-                          style={{
-                            borderColor: marcado ? 'var(--brand)' : 'var(--hairline)',
-                            background: marcado ? 'var(--brand)' : 'transparent',
-                            color: marcado ? '#fff' : 'var(--ink-secondary)',
-                          }}
-                          title={`Torre ${t.torre_numero}${t.status === 'em_premontagem' ? ' — já em separação (outra zona)' : ''}`}
-                        >
-                          {t.id}{t.status === 'em_premontagem' && '*'}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
-                    Nenhuma unidade de {tramo} disponível para {zona ? zona.rotulo.toLowerCase() : 'separação'} neste subprojeto — pendente ou com esta zona já separada.
-                  </p>
-                )}
-                {disponiveis.some((t) => t.status === 'em_premontagem') && (
-                  <p className="text-[10px] mt-1" style={{ color: 'var(--ink-muted)' }}>* já tem outra zona separada; esta ordem soma mais uma ao mesmo kit.</p>
-                )}
-              </Campo>
+              <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+                <Campo rotulo="Quantidade de kits" erro={kits < 1 ? 'Informe ao menos 1 kit.' : undefined}>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    inputMode="numeric"
+                    value={qtdKits}
+                    onChange={(e) => setQtdKits(e.target.value)}
+                    className={inputCls(kits < 1 ? 'erro' : undefined)}
+                  />
+                </Campo>
+                <Campo
+                  rotulo="Número do tramo (opcional)"
+                  erro={
+                    numerosInvalidos.length
+                      ? `${numerosInvalidos.join(', ')} não disponível(is) para ${opcao.rotulo} — confira ou deixe em branco.`
+                      : alvos.length > kits
+                        ? `${alvos.length} número(s) para ${kits} kit(s) — aumente a quantidade.`
+                        : undefined
+                  }
+                >
+                  <input
+                    value={numeracao}
+                    onChange={(e) => setNumeracao(e.target.value)}
+                    placeholder={`Ex.: ${disponiveis.slice(0, 2).map((t) => t.id.replace(`${tramo}-`, '')).join(', ') || '3143'} — em branco = kit pulmão`}
+                    className={inputCls(numeracaoComErro ? 'erro' : undefined)}
+                  />
+                </Campo>
+              </div>
+              {kits > 0 && !numeracaoComErro && (
+                <p className="text-[11px] -mt-2" style={{ color: 'var(--ink-muted)' }}>
+                  {alvos.length > 0 && <>Numerado(s): <strong style={{ color: 'var(--ink-secondary)' }}>{alvos.join(', ')}</strong>. </>}
+                  {kitsPulmao > 0 && <>{kitsPulmao} kit(s) pulmão, sem número — o tramo pode ser informado na entrega à produção.</>}
+                </p>
+              )}
 
-              {faltantes.length > 0 && (
-                <div className="rounded-lg border border-rose-300 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 p-3">
-                  <p className="text-xs font-extrabold flex items-center gap-1.5 text-rose-700 dark:text-rose-300">
-                    <PackageX className="h-4 w-4" /> Separação bloqueada — {faltantes.length} item(ns) sem saldo
-                  </p>
-                  <div className="mt-2 max-h-48 overflow-y-auto">
-                    <table className="w-full text-[11px]">
-                      <thead>
-                        <tr className="text-rose-700/80 dark:text-rose-300/70">
-                          <th className="text-left py-1">Part number</th>
-                          <th className="text-right py-1">Precisa</th>
-                          <th className="text-right py-1">Tem</th>
-                          <th className="text-right py-1">Falta</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {faltantes.map((f) => (
-                          <tr key={f.item_id} className="border-t border-rose-200/60 dark:border-rose-900/40">
-                            <td className="py-1 text-rose-900 dark:text-rose-200">
-                              <span className="font-bold">{f.part_number}</span>
-                              <span className="ml-1.5 opacity-70">{f.descricao}</span>
-                            </td>
-                            <td className="py-1 text-right tabular-nums">{formatQtd(Number(f.necessario))}</td>
-                            <td className="py-1 text-right tabular-nums">{formatQtd(Number(f.saldo))}</td>
-                            <td className="py-1 text-right tabular-nums font-bold text-rose-700 dark:text-rose-300">{formatQtd(Number(f.falta))}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+              {faltaSaldo > 0 && (
+                <p className="text-xs px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300">
+                  {faltaSaldo} item(ns) sem saldo suficiente no sistema. A separação não trava: o saldo fica negativo e se
+                  regulariza quando a entrada for importada.
+                </p>
               )}
 
               {semCadastro.length > 0 && (
@@ -576,7 +572,7 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
             </button>
             <button
               onClick={() => void gerar()}
-              disabled={salvando || !kits}
+              disabled={salvando || !kits || numeracaoComErro}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50"
               style={{ background: 'var(--brand)' }}
             >
@@ -761,7 +757,8 @@ function ModalSeparacao({
       const r = await confirmarSeparacaoPremontagem(ordem.id, { id: user.id, nome: user.name });
       toast.success(
         `Separação confirmada — ${formatQtd(r.total_pecas_debitadas)} peças debitadas` +
-          (r.itens_faltantes ? `, ${r.itens_faltantes} item(ns) ficaram de fora.` : '.'),
+          (r.itens_faltantes ? `, ${r.itens_faltantes} item(ns) ficaram de fora.` : '.') +
+          (r.itens_saldo_negativo ? ` ${r.itens_saldo_negativo} item(ns) com saldo negativo até a entrada ser importada.` : ''),
       );
       onConfirmado();
     } catch (err: any) {
@@ -1061,7 +1058,7 @@ function ModalApontamento({
 }) {
   const pendentes = (ordem.kits ?? []).filter((k) => k.status === 'em_premontagem');
   const [marcados, setMarcados] = useState<Record<string, boolean>>(
-    Object.fromEntries(pendentes.map((k) => [k.tramo_unidade_id, true])),
+    Object.fromEntries(pendentes.map((k) => [k.id, true])),
   );
   const [nc, setNc] = useState('');
 
@@ -1096,11 +1093,12 @@ function ModalApontamento({
                 <label key={k.id} className="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer" style={{ borderColor: 'var(--hairline)' }}>
                   <input
                     type="checkbox"
-                    checked={!!marcados[k.tramo_unidade_id]}
-                    onChange={(e) => setMarcados((m) => ({ ...m, [k.tramo_unidade_id]: e.target.checked }))}
+                    checked={!!marcados[k.id]}
+                    onChange={(e) => setMarcados((m) => ({ ...m, [k.id]: e.target.checked }))}
                     className="cursor-pointer"
                   />
                   <span className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{k.rastreio}</span>
+                  {!k.tramo_unidade_id && <span className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>pulmão · sem número de tramo</span>}
                 </label>
               ))}
               {!pendentes.length && <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>Todos os kits desta ordem já foram apontados.</p>}

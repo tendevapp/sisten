@@ -306,12 +306,13 @@ export interface OrdemPremontagemInput {
     qtd_total: number;
     localizador?: string | null;
   }[];
+  /** Tramos numerados (até `quantidade_kits`); o que faltar vira kit pulmão, sem número. */
   alvos: string[];
 }
 
 /**
- * Abre a ordem: congela o romaneio e cria o kit por tramo alvo — SEM debitar
- * o almoxarifado. O débito só acontece em `confirmarSeparacaoPremontagem`,
+ * Abre a ordem: congela o romaneio e cria um kit por tramo alvo, mais os kits
+ * pulmão que faltarem para `quantidade_kits` — SEM debitar o almoxarifado. O débito só acontece em `confirmarSeparacaoPremontagem`,
  * depois que quem separa fisicamente marcar os itens (ver `marcarItemSeparado`).
  */
 export async function criarOrdemPremontagem(ordem: OrdemPremontagemInput): Promise<{ id: string; codigo: string }> {
@@ -341,21 +342,31 @@ export async function marcarItemSeparado(
   if (error) lancarErroRpc(error, 'Falha ao marcar o item separado');
 }
 
+export interface ResultadoConfirmacaoSeparacao {
+  itens_totais: number;
+  itens_separados: number;
+  itens_faltantes: number;
+  total_pecas_debitadas: number;
+  /** Itens que ficaram com saldo negativo — a entrada (importação) regulariza. */
+  itens_saldo_negativo: number;
+}
+
 /**
  * Confirma a separação: debita o almoxarifado só pelo que foi de fato
  * marcado como separado. Ação única — depois de confirmada, os checks
- * travam e o apontamento de conclusão (F3) fica liberado.
+ * travam e o apontamento de conclusão (F3) fica liberado. Não trava por
+ * saldo: peça ainda sem entrada importada fica negativa até regularizar.
  */
 export async function confirmarSeparacaoPremontagem(
   ordemId: string,
   usuario: { id?: string | null; nome: string },
-): Promise<{ itens_totais: number; itens_separados: number; itens_faltantes: number; total_pecas_debitadas: number }> {
+): Promise<ResultadoConfirmacaoSeparacao> {
   const { data, error } = await supabase.rpc('proj_confirmar_separacao_premontagem' as any, {
     p_ordem_id: ordemId,
     p_usuario: usuario,
   } as any);
   if (error) lancarErroRpc(error, 'Falha ao confirmar a separação');
-  return data as { itens_totais: number; itens_separados: number; itens_faltantes: number; total_pecas_debitadas: number };
+  return data as ResultadoConfirmacaoSeparacao;
 }
 
 /**
@@ -535,7 +546,7 @@ export async function listarOrdens(
 
 export async function concluirPremontagem(
   ordemId: string,
-  kits: { tramo_unidade_id: string; codigo?: string; qualidade_ok?: boolean; nao_conformidade?: string | null; observacao?: string | null }[],
+  kits: { kit_id: string; tramo_unidade_id: string | null; codigo?: string; qualidade_ok?: boolean; nao_conformidade?: string | null; observacao?: string | null }[],
   usuario: { nome: string },
 ): Promise<{ kits_concluidos: number; kits_restantes: number }> {
   const { data, error } = await supabase.rpc('proj_concluir_premontagem' as any, {
@@ -564,6 +575,8 @@ export interface EntregaProducaoInput {
   turno?: string | null;
   subprojeto_id?: string | null;
   kit_id: string;
+  /** Só para kit pulmão: o tramo (pendente) que ele vai montar. */
+  tramo_unidade_id?: string | null;
   recebido_por_nome: string;
   observacao?: string | null;
   criado_por_id?: string | null;

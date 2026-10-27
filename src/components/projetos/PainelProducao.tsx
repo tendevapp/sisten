@@ -6,7 +6,9 @@
  *
  * A produção não requisita porca nem arruela: ela chama o "Kit T1" pronto. A
  * baixa consome um kit do buffer e marca aquele tramo daquela torre como
- * entregue — é o que move a célula da matriz de progresso.
+ * entregue — é o que move a célula da matriz de progresso. Kit pulmão
+ * (montado sem número de tramo) pode ganhar o tramo aqui; sem ele, sai do
+ * buffer sem mexer na matriz.
  */
 
 import React, { useMemo, useState } from 'react';
@@ -34,12 +36,20 @@ export default function PainelProducao({ dados, user, podeLancar }: Props) {
   const [data, setData] = useState(hojeISO());
   const [turno, setTurno] = useState('A');
   const [kitId, setKitId] = useState('');
+  /** Só para kit pulmão: o tramo (pendente) que ele vai montar — opcional. */
+  const [tramoPulmao, setTramoPulmao] = useState('');
   const [recebidoPor, setRecebidoPor] = useState('');
   const [observacao, setObservacao] = useState('');
   const [erros, setErros] = useState<Record<string, string>>({});
 
   const prontos = useMemo(() => kits.filter((k) => k.status === 'pronto'), [kits]);
   const tramoPorId = useMemo(() => new Map(tramos.map((t) => [t.id, t])), [tramos]);
+  const kitEscolhido = prontos.find((k) => k.id === kitId);
+  const ehPulmao = !!kitEscolhido && !kitEscolhido.tramo_unidade_id;
+  const tramosParaPulmao = useMemo(
+    () => (ehPulmao ? tramos.filter((t) => t.tramo === kitEscolhido!.tramo && t.status === 'pendente') : []),
+    [ehPulmao, kitEscolhido, tramos],
+  );
 
   const salvar = async () => {
     const novos: Record<string, string> = {};
@@ -59,6 +69,7 @@ export default function PainelProducao({ dados, user, podeLancar }: Props) {
         turno,
         subprojeto_id: subprojetoAtivo?.id ?? null,
         kit_id: kitId,
+        tramo_unidade_id: ehPulmao ? tramoPulmao || null : null,
         recebido_por_nome: recebidoPor.trim(),
         observacao: observacao.trim() || null,
         criado_por_id: user.id,
@@ -66,7 +77,7 @@ export default function PainelProducao({ dados, user, podeLancar }: Props) {
       });
       toast.success(`${r.rastreio} entregue à produção (${r.codigo}).`);
       setAberto(false);
-      setKitId(''); setRecebidoPor(''); setObservacao(''); setErros({});
+      setKitId(''); setTramoPulmao(''); setRecebidoPor(''); setObservacao(''); setErros({});
       await recarregar(true);
     } catch (err: any) {
       console.error(err);
@@ -146,13 +157,13 @@ export default function PainelProducao({ dados, user, podeLancar }: Props) {
               </thead>
               <tbody>
                 {entregas.map((e) => {
-                  const t = tramoPorId.get(e.tramo_unidade_id);
+                  const t = e.tramo_unidade_id ? tramoPorId.get(e.tramo_unidade_id) : undefined;
                   return (
                     <tr key={e.id} className="border-b" style={{ borderColor: 'var(--hairline)' }}>
                       <td className="px-3 py-2 font-bold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{e.codigo}</td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>{formatDateBR(e.data)}</td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>{e.turno || '—'}</td>
-                      <td className="px-3 py-2 font-bold whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>KIT-{e.tramo_unidade_id}</td>
+                      <td className="px-3 py-2 font-bold whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>{e.tramo_unidade_id ? `KIT-${e.tramo_unidade_id}` : 'Kit pulmão'}</td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
                         {t ? `Torre ${String(t.torre_numero).padStart(2, '0')} · ${t.tramo}` : e.tramo}
                       </td>
@@ -190,19 +201,32 @@ export default function PainelProducao({ dados, user, podeLancar }: Props) {
               </div>
 
               <Campo rotulo="Kit a entregar" erro={erros.kit}>
-                <select value={kitId} onChange={(e) => setKitId(e.target.value)} className={inputCls(erros.kit)}>
+                <select value={kitId} onChange={(e) => { setKitId(e.target.value); setTramoPulmao(''); }} className={inputCls(erros.kit)}>
                   <option value="">Escolha um kit pronto…</option>
                   {prontos.map((k) => {
-                    const t = tramoPorId.get(k.tramo_unidade_id);
+                    const t = k.tramo_unidade_id ? tramoPorId.get(k.tramo_unidade_id) : undefined;
                     return (
                       <option key={k.id} value={k.id}>
-                        {k.rastreio}{t ? ` — Torre ${String(t.torre_numero).padStart(2, '0')}` : ''}
+                        {k.rastreio}{t ? ` — Torre ${String(t.torre_numero).padStart(2, '0')}` : k.tramo_unidade_id ? '' : ' — pulmão, sem número'}
                         {k.qualidade_ok === false ? ' (com não-conformidade)' : ''}
                       </option>
                     );
                   })}
                 </select>
               </Campo>
+
+              {ehPulmao && (
+                <Campo rotulo="Tramo que o kit vai montar (opcional)">
+                  <select value={tramoPulmao} onChange={(e) => setTramoPulmao(e.target.value)} className={inputCls()}>
+                    <option value="">Sem número — só sai do buffer</option>
+                    {tramosParaPulmao.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.id} — Torre {String(t.torre_numero).padStart(2, '0')}
+                      </option>
+                    ))}
+                  </select>
+                </Campo>
+              )}
 
               <Campo rotulo="Responsável pelo recebimento na produção" erro={erros.recebido}>
                 <input value={recebidoPor} onChange={(e) => setRecebidoPor(e.target.value)} className={inputCls(erros.recebido)} placeholder="Nome de quem recebeu na linha" />

@@ -6221,7 +6221,7 @@ export type Database = {
           recebido_por_nome: string
           subprojeto_id: string | null
           tramo: string
-          tramo_unidade_id: string
+          tramo_unidade_id: string | null
           turno: string | null
         }
         Insert: {
@@ -6239,7 +6239,7 @@ export type Database = {
           recebido_por_nome: string
           subprojeto_id?: string | null
           tramo: string
-          tramo_unidade_id: string
+          tramo_unidade_id?: string | null
           turno?: string | null
         }
         Update: {
@@ -6257,7 +6257,7 @@ export type Database = {
           recebido_por_nome?: string
           subprojeto_id?: string | null
           tramo?: string
-          tramo_unidade_id?: string
+          tramo_unidade_id?: string | null
           turno?: string | null
         }
         Relationships: [
@@ -6362,7 +6362,7 @@ export type Database = {
           rastreio: string
           status: string
           tramo: string
-          tramo_unidade_id: string
+          tramo_unidade_id: string | null
         }
         Insert: {
           codigo?: string | null
@@ -6384,7 +6384,7 @@ export type Database = {
           rastreio: string
           status?: string
           tramo: string
-          tramo_unidade_id: string
+          tramo_unidade_id?: string | null
         }
         Update: {
           codigo?: string | null
@@ -6406,7 +6406,7 @@ export type Database = {
           rastreio?: string
           status?: string
           tramo?: string
-          tramo_unidade_id?: string
+          tramo_unidade_id?: string | null
         }
         Relationships: [
           {

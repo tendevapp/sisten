@@ -49,6 +49,30 @@ export function itensRemoviveis<T extends ItemRomaneio>(itens: T[]): T[] {
   return itens.filter((i) => !i.separado && !(Number(i.qtd_separada) > 0));
 }
 
+/**
+ * Numeração digitada na nova ordem ("3143, 3158" ou "T1-3143"), opcional: a
+ * bancada às vezes monta kit pulmão, sem saber para qual torre vai. Cada
+ * número vira o id da unidade (`T1-3143`) e precisa estar entre as
+ * disponíveis; o que não estiver volta em `invalidos`, repetido é ignorado.
+ */
+export function interpretarNumeracaoTramos(
+  texto: string,
+  tramo: string,
+  disponiveis: ReadonlySet<string>,
+): { ids: string[]; invalidos: string[] } {
+  const ids: string[] = [];
+  const invalidos: string[] = [];
+  for (const parte of texto.split(/[\s,;]+/)) {
+    const bruto = parte.trim().toUpperCase();
+    if (!bruto) continue;
+    const id = /^\d+$/.test(bruto) ? `${tramo}-${bruto}` : bruto;
+    if (ids.includes(id) || invalidos.includes(bruto)) continue;
+    if (disponiveis.has(id)) ids.push(id);
+    else invalidos.push(bruto);
+  }
+  return { ids, invalidos };
+}
+
 /** Contagem para o cabeçalho: itens e peças separados × que faltam. */
 export function resumoSeparacao(itens: ItemRomaneio[]): {
   separados: number;
