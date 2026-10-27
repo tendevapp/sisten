@@ -12,13 +12,16 @@
  * (`EscolhaAcaoPecaQr`): situação no Projetos, autonomia por tramo e o que fazer.
  */
 
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { QrCode } from 'lucide-react';
 import type { Profile } from '../types';
 import { codigoDoQr } from '../lib/etiquetaMaterial';
 import { pecaDaRota } from '../lib/etiquetaBom';
-import EscolhaAcaoItemQr, { acoesDoItemQr } from './EscolhaAcaoItemQr';
-import EscolhaAcaoPecaQr, { acoesDaPecaQr } from './EscolhaAcaoPecaQr';
+import { acoesDaPecaQr, acoesDoItemQr } from '../lib/acoesQr';
+
+// Os diálogos só baixam quando um QR é lido: fora do arquivo principal do app.
+const EscolhaAcaoItemQr = lazy(() => import('./EscolhaAcaoItemQr'));
+const EscolhaAcaoPecaQr = lazy(() => import('./EscolhaAcaoPecaQr'));
 import LeitorQrModal from './ui/LeitorQrModal';
 import { useToast } from './ui/Toast';
 
@@ -65,13 +68,15 @@ export default function LeitorQrHeader({ user, onNavigate }: Props) {
 
       {lendo && <LeitorQrModal onLido={aoLer} onClose={() => setLendo(false)} />}
 
-      {codigo && (
-        <EscolhaAcaoItemQr user={user} codigo={codigo} onNavigate={onNavigate} onClose={() => setCodigo(null)} />
-      )}
+      <Suspense fallback={null}>
+        {codigo && (
+          <EscolhaAcaoItemQr user={user} codigo={codigo} onNavigate={onNavigate} onClose={() => setCodigo(null)} />
+        )}
 
-      {peca && (
-        <EscolhaAcaoPecaQr user={user} partNumber={peca} onNavigate={onNavigate} onClose={() => setPeca(null)} />
-      )}
+        {peca && (
+          <EscolhaAcaoPecaQr user={user} partNumber={peca} onNavigate={onNavigate} onClose={() => setPeca(null)} />
+        )}
+      </Suspense>
     </>
   );
 }

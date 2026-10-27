@@ -33,7 +33,8 @@ import {
 import { useMovimentoReduzido } from '../../components/home/cenas/util';
 import { useLightbox } from '../../components/ui/Lightbox';
 import ErrorBoundary from '../../components/ErrorBoundary';
-import EscolhaAcaoItemQr, { acoesDoItemQr } from '../../components/EscolhaAcaoItemQr';
+import EscolhaAcaoItemQr from '../../components/EscolhaAcaoItemQr';
+import { acoesDoItemQr } from '../../lib/acoesQr';
 import type { SelecaoVao } from '../../components/almoxarifado/gemba/GembaCena';
 
 import Gemba2D from '../../components/almoxarifado/gemba/Gemba2D';

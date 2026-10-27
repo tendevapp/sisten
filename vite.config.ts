@@ -46,6 +46,11 @@ export default defineConfig(() => {
           // fora do precache: carregam sob demanda pelo cache HTTP normal do
           // navegador, sem inflar a instalação do service worker.
           globPatterns: ['**/*.{js,css,svg,woff2,ico}'],
+          // O padrão (2 MiB) derruba o build inteiro quando o chunk principal
+          // passa dele — e a Vercel segue servindo o deploy anterior sem avisar
+          // ninguém (aconteceu em 27/10/2026 com o index em 2,13 MB). O
+          // principal precisa estar no precache para o app abrir sem rede.
+          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
           runtimeCaching: [
             {
               urlPattern: ({ request }) => request.mode === 'navigate',

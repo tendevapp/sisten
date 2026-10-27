@@ -11,11 +11,13 @@
  * (`guardarPecaQrEscolha`) e abre o diálogo da peça.
  */
 
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import type { Profile } from '../types';
 import { consumirItemQrEscolha, consumirPecaQrEscolha } from '../lib/etiquetaMaterial';
-import EscolhaAcaoItemQr from './EscolhaAcaoItemQr';
-import EscolhaAcaoPecaQr from './EscolhaAcaoPecaQr';
+
+// Os diálogos só baixam quando um link de QR chega: fora do arquivo principal do app.
+const EscolhaAcaoItemQr = lazy(() => import('./EscolhaAcaoItemQr'));
+const EscolhaAcaoPecaQr = lazy(() => import('./EscolhaAcaoPecaQr'));
 
 interface Props {
   user: Profile;
@@ -38,7 +40,12 @@ export default function EscolhaItemQrGate({ user, onNavigate }: Props) {
     return () => window.removeEventListener('hashchange', ler);
   }, []);
 
-  if (peca) return <EscolhaAcaoPecaQr user={user} partNumber={peca} onNavigate={onNavigate} onClose={() => setPeca(null)} />;
-  if (!codigo) return null;
-  return <EscolhaAcaoItemQr user={user} codigo={codigo} onNavigate={onNavigate} onClose={() => setCodigo(null)} />;
+  if (!peca && !codigo) return null;
+  return (
+    <Suspense fallback={null}>
+      {peca
+        ? <EscolhaAcaoPecaQr user={user} partNumber={peca} onNavigate={onNavigate} onClose={() => setPeca(null)} />
+        : codigo && <EscolhaAcaoItemQr user={user} codigo={codigo} onNavigate={onNavigate} onClose={() => setCodigo(null)} />}
+    </Suspense>
+  );
 }

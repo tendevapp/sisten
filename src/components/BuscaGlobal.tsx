@@ -33,7 +33,7 @@ import {
 } from '../lib/buscaGlobal';
 import { isProjetoItem } from '../lib/demandas';
 import { canAccessPage } from '../lib/pages';
-import { acoesDaPecaQr } from './EscolhaAcaoPecaQr';
+import { acoesDaPecaQr } from '../lib/acoesQr';
 import SituacaoPecaProjetoResumo from './almoxarifado/SituacaoPecaProjetoResumo';
 import { normalizarTermo } from '../lib/materiais';
 import { useDebounce } from '../lib/useDebounce';

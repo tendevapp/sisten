@@ -22,7 +22,7 @@
 import { useEffect, useState } from 'react';
 import { ClipboardList, FileWarning, PackageMinus, type LucideIcon } from 'lucide-react';
 import type { Profile } from '../types';
-import { canAccessForm } from '../lib/pages';
+import { acoesDoItemQr, type AcaoItemQr } from '../lib/acoesQr';
 import {
   EVENTO_ITEM_QR_BALCAO, EVENTO_ITEM_QR_INVENTARIO, EVENTO_ITEM_QR_SOL_EXTRA, ROTA_INVENTARIO_CICLICO,
   ROTA_REQUISICAO_BALCAO, ROTA_SOLICITACAO_EXTRA,
@@ -40,10 +40,9 @@ interface Props {
   onClose: () => void;
 }
 
-type Acao = 'baixa' | 'inventario' | 'extra';
+type Acao = AcaoItemQr;
 
 interface Destino {
-  formulario: string;
   rota: string;
   guardar: (codigo: string) => void;
   evento: string;
@@ -55,21 +54,18 @@ interface Destino {
 /** Na ordem em que aparecem no diálogo. */
 const DESTINOS: Record<Acao, Destino> = {
   baixa: {
-    formulario: 'form_almoxarifado_requisicao_balcao',
     rota: ROTA_REQUISICAO_BALCAO, guardar: guardarItemQrPendente, evento: EVENTO_ITEM_QR_BALCAO,
     titulo: 'Baixa de estoque',
     explicacao: 'Abre a Requisição no Balcão com o item preenchido. Dá para ler outros QRs e somar itens.',
     icone: PackageMinus,
   },
   inventario: {
-    formulario: 'form_almoxarifado_inventario',
     rota: ROTA_INVENTARIO_CICLICO, guardar: guardarItemInventarioPendente, evento: EVENTO_ITEM_QR_INVENTARIO,
     titulo: 'Inventário cíclico',
     explicacao: 'Abre a contagem cega deste item no Inventário Cíclico.',
     icone: ClipboardList,
   },
   extra: {
-    formulario: 'form_almoxarifado_solicitacao_extra',
     rota: ROTA_SOLICITACAO_EXTRA, guardar: guardarItemSolExtraPendente, evento: EVENTO_ITEM_QR_SOL_EXTRA,
     titulo: 'Solicitação extraordinária',
     explicacao: 'Saída sem saldo na ZL0024 (NF não lançada). Abre a FRM.ALM-0013 com o item na tabela.',
@@ -77,10 +73,8 @@ const DESTINOS: Record<Acao, Destino> = {
   },
 };
 
-/** Ações que a pessoa pode fazer com um item lido, conforme o acesso aos formulários. */
-export function acoesDoItemQr(user: Profile): Acao[] {
-  return (Object.keys(DESTINOS) as Acao[]).filter(acao => canAccessForm(user, DESTINOS[acao].formulario));
-}
+// Quem pode o quê fica em `lib/acoesQr`: o cabeçalho decide sem carregar este diálogo.
+export { acoesDoItemQr };
 
 export default function EscolhaAcaoItemQr({ user, codigo, onNavigate, onClose }: Props) {
   const toast = useToast();

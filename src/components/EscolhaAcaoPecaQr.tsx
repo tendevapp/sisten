@@ -13,23 +13,22 @@
  *  - Gemba: acende a prateleira no mapa do galpão;
  *  - Projetos › Posição & Autonomia: a peça no saldo do projeto inteiro.
  *
- * Cada opção só aparece para quem acessa a tela.
+ * Cada opção só aparece para quem acessa a tela (`lib/acoesQr`).
  */
 
 import { useState } from 'react';
 import { Boxes, ClipboardList, Warehouse, type LucideIcon } from 'lucide-react';
 import type { Profile } from '../types';
-import { canAccessForm, canAccessPage } from '../lib/pages';
+import { ACESSO_ACAO_PECA, acoesDaPecaQr, type AcaoPecaQr } from '../lib/acoesQr';
 import { EVENTO_PECA_BOM, guardarPecaBomPendente } from '../lib/etiquetaMaterial';
 import { ROTA_CADASTRO_ITENS } from '../lib/etiquetaBom';
 import type { SituacaoPecaProjeto } from '../lib/situacaoPecaProjeto';
 import Modal, { ModalBody, ModalHeader } from './ui/Modal';
 import SituacaoPecaProjetoResumo from './almoxarifado/SituacaoPecaProjetoResumo';
 
-type AcaoPeca = 'cadastro' | 'gemba' | 'projetos';
+type AcaoPeca = AcaoPecaQr;
 
 interface DestinoPeca {
-  pode: (user: Profile) => boolean;
   titulo: string;
   explicacao: string;
   icone: LucideIcon;
@@ -37,28 +36,24 @@ interface DestinoPeca {
 
 const DESTINOS: Record<AcaoPeca, DestinoPeca> = {
   cadastro: {
-    pode: user => canAccessForm(user, 'form_almoxarifado_cadastro_itens'),
     titulo: 'Cadastro de Itens (BOM)',
     explicacao: 'Abre a peça: foto, localização e etiqueta.',
     icone: ClipboardList,
   },
   gemba: {
-    pode: user => canAccessPage(user, 'almox_gemba'),
     titulo: 'Ver no Gemba',
     explicacao: 'Acende a prateleira da peça no mapa do almoxarifado.',
     icone: Warehouse,
   },
   projetos: {
-    pode: user => canAccessPage(user, 'almox_projetos'),
     titulo: 'Posição & Autonomia (Projetos)',
     explicacao: 'Saldo e autonomia de todas as peças do projeto.',
     icone: Boxes,
   },
 };
 
-export function acoesDaPecaQr(user: Profile): AcaoPeca[] {
-  return (Object.keys(DESTINOS) as AcaoPeca[]).filter(acao => DESTINOS[acao].pode(user));
-}
+// Quem pode o quê fica em `lib/acoesQr` (ACESSO_ACAO_PECA): o cabeçalho decide sem carregar este diálogo.
+export { acoesDaPecaQr, ACESSO_ACAO_PECA };
 
 interface Props {
   user: Profile;
