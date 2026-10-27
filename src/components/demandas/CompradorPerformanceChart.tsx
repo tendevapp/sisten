@@ -8,6 +8,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList,
 import { UserCheck } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
 import { demandaColor, CompradorInfo, resolveComprador } from '../../lib/demandas';
+import { umRegistroPorItem } from '../../lib/suprimentos';
 import { formatInt, formatPctInt } from '../../lib/format';
 import { useChartConfig, estimateCategoryChartWidth } from '../charts/chartDefaults';
 import ChartCard from '../charts/ChartCard';
@@ -28,7 +29,8 @@ export default function CompradorPerformanceChart({ records, compradores, loadin
 
   const data = useMemo(() => {
     const byBuyer = new Map<string, { comprador: string; requisitadas: number; pedidos: number }>();
-    records.forEach(r => {
+    // Itens de RM, não linhas: a RM com vários pedidos conta uma vez.
+    umRegistroPorItem(records).forEach(r => {
       const nome = resolveComprador(r, compradores);
       if (!byBuyer.has(nome)) byBuyer.set(nome, { comprador: nome, requisitadas: 0, pedidos: 0 });
       const entry = byBuyer.get(nome)!;
@@ -47,7 +49,7 @@ export default function CompradorPerformanceChart({ records, compradores, loadin
     return (
       <ChartTooltip
         title={row.comprador}
-        subtitle={`${formatInt(row.requisitadas)} RM atribuídas`}
+        subtitle={`${formatInt(row.requisitadas)} itens de RM atribuídos`}
         rows={[
           { label: 'Pedidos colocados', value: formatInt(row.pedidos), color: corPedido },
           { label: 'Em aberto', value: formatInt(row.aberto), color: corAberto },
@@ -61,7 +63,7 @@ export default function CompradorPerformanceChart({ records, compradores, loadin
     <ChartCard
       title="Desempenho por Comprador"
       icon={UserCheck}
-      description="RM atribuídas repartidas entre pedidos já colocados e o que segue em aberto. A altura total da barra é a carga do comprador."
+      description="Itens de RM atribuídos, repartidos entre pedidos já colocados e o que segue em aberto. A altura total da barra é a carga do comprador."
       height={320}
       // Uma barra empilhada por comprador (pedidos + aberto) mais o rótulo do
       // total no topo — a lista não é cortada em Top N, então cresce com o

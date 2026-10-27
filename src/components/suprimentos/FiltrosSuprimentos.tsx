@@ -12,9 +12,12 @@
 
 import React from 'react';
 import { RotateCcw } from 'lucide-react';
-import { Criticidade, Granularidade, CompradorInfo, TipoItemFilter } from '../../lib/demandas';
+import { COMPRADOR_OUTROS, Criticidade, Granularidade, CompradorInfo, TipoItemFilter } from '../../lib/demandas';
 import { TipoDemanda } from '../../lib/demandas';
 import { formatInt } from '../../lib/format';
+
+/** Valor do filtro de comprador para a linha "Outros" (não é código de grupo). */
+export const FILTRO_OUTROS = 'outros';
 
 export type ContratoFilter = 'sem_contrato' | 'com_contrato' | 'todos';
 
@@ -167,9 +170,11 @@ export default function FiltrosSuprimentos({
         aria-label="Comprador"
       >
         <option value="todos">Todos os compradores</option>
-        {compradores.map(c => (
+        {compradores.filter(c => c.ativo !== false).map(c => (
           <option key={c.grupo_compras} value={c.grupo_compras}>{c.nome_comprador}</option>
         ))}
+        {/* Inativos e quem não está no cadastro: só histórico, numa opção. */}
+        <option value={FILTRO_OUTROS}>{COMPRADOR_OUTROS}</option>
       </select>
 
       <button

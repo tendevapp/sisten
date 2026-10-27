@@ -5,6 +5,9 @@ import {
   classifyCriticidadeNatureza,
   isProjetoItem,
   resolveDataCorte,
+  resolveComprador,
+  COMPRADOR_OUTROS,
+  type CompradorInfo,
 } from './demandas';
 
 describe('demandas - classificacoes e utilitarios', () => {
@@ -81,5 +84,27 @@ describe('demandas - classificacoes e utilitarios', () => {
       });
       expect(res).toBe('2026-01-10');
     });
+  });
+});
+
+describe('resolveComprador', () => {
+  const compradores: CompradorInfo[] = [
+    { grupo_compras: '358', nome_comprador: 'Isadora', usuario_sistema: 'ISANTOS', ativo: true },
+    { grupo_compras: '610', nome_comprador: 'Giulia', usuario_sistema: 'GAQUINO', ativo: true },
+    { grupo_compras: '602', nome_comprador: 'Jamille', usuario_sistema: 'JSBATISTA\r\n', ativo: false },
+  ];
+
+  it('quem lançou o PO vale mais que o grupo', () => {
+    expect(resolveComprador({ grupo_comprador: '610', criado_por_pedido: 'ISANTOS' }, compradores)).toBe('Isadora');
+    expect(resolveComprador({ grupo_comprador: '610' }, compradores)).toBe('Giulia');
+  });
+
+  it('inativo e quem não está no cadastro somam em Outros', () => {
+    // Login com quebra de linha no cadastro ainda casa.
+    expect(resolveComprador({ grupo_comprador: '358', criado_por_pedido: 'JSBATISTA' }, compradores)).toBe(COMPRADOR_OUTROS);
+    expect(resolveComprador({ grupo_comprador: '602' }, compradores)).toBe(COMPRADOR_OUTROS);
+    expect(resolveComprador({ grupo_comprador: '610', criado_por_pedido: 'WNETO' }, compradores)).toBe(COMPRADOR_OUTROS);
+    expect(resolveComprador({ grupo_comprador: '447' }, compradores)).toBe(COMPRADOR_OUTROS);
+    expect(resolveComprador({ grupo_comprador: '' }, compradores)).toBe('Não atribuído');
   });
 });

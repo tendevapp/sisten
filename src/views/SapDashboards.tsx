@@ -23,11 +23,11 @@ import { EnrichedSAPRecord } from '../types';
 import { formatDateTimeBR } from '../lib/format';
 import {
   classifyTipoDemanda, classifyCriticidade, resolveDataCorte, resolveComprador, CompradorInfo,
-  isProjetoItem,
+  isProjetoItem, COMPRADOR_OUTROS,
 } from '../lib/demandas';
 import { janelaPadrao, janelaAnterior } from '../lib/suprimentos';
 import { ehItemDeContrato } from '../lib/contratoPedido';
-import FiltrosSuprimentos, { EstadoFiltros } from '../components/suprimentos/FiltrosSuprimentos';
+import FiltrosSuprimentos, { EstadoFiltros, FILTRO_OUTROS } from '../components/suprimentos/FiltrosSuprimentos';
 import TabVisaoGeral from '../components/suprimentos/TabVisaoGeral';
 import TabDemandas from '../components/suprimentos/TabDemandas';
 import TabCarteira from '../components/suprimentos/TabCarteira';
@@ -100,7 +100,8 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
 
   const loadCompradores = useCallback(async () => {
     if (!supabase) return;
-    const { data } = await supabase.from('sup_compradores').select('grupo_compras, nome_comprador, usuario_sistema');
+    // `ativo` decide quem vira "Outros" (saiu do setor, fica só no histórico).
+    const { data } = await supabase.from('sup_compradores').select('grupo_compras, nome_comprador, usuario_sistema, ativo');
     if (data) setCompradores(data as CompradorInfo[]);
   }, []);
 
@@ -161,7 +162,9 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
   }, [records]);
 
   const compradorFiltroNome = useMemo(
-    () => compradores.find(c => c.grupo_compras === filtros.comprador)?.nome_comprador,
+    () => (filtros.comprador === FILTRO_OUTROS
+      ? COMPRADOR_OUTROS
+      : compradores.find(c => c.grupo_compras === filtros.comprador)?.nome_comprador),
     [compradores, filtros.comprador]
   );
 
@@ -229,8 +232,17 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
 
   const drilldown = useCallback((tipo: 'status' | 'alert' | 'buyer', valor: string) => {
     const chave = tipo === 'status' ? 'status' : tipo === 'alert' ? 'alert' : 'buyer';
+    // "Outros" não é um grupo: Compras filtra pelos grupos que caíram nele.
+    if (tipo === 'buyer' && valor === COMPRADOR_OUTROS) {
+      const grupos = new Set(
+        filtrados.filter(r => resolveComprador(r, compradores) === COMPRADOR_OUTROS)
+          .map(r => r.grupo_comprador)
+          .filter((g): g is string => Boolean(g)),
+      );
+      valor = [...grupos].sort().join(',') || valor;
+    }
     onNavigate(`/suprimentos/compras?${chave}=${encodeURIComponent(valor)}`);
-  }, [onNavigate]);
+  }, [onNavigate, filtrados, compradores]);
 
   /** Abre o modal de composição a partir de um clique de gráfico, nas 4 abas
    *  que compartilham `EnrichedSAPRecord[]` como base (Análise de Compras usa

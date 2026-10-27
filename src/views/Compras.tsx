@@ -850,7 +850,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       const grupos = localDb.getCompradores()
         .filter(c => c.nome_comprador === comprador && c.grupo_compras)
         .map(c => String(c.grupo_compras));
-      setBuyerFilter(new Set(grupos.length > 0 ? grupos : [comprador]));
+      // "Outros" chega como a lista de grupos (`602,588`).
+      setBuyerFilter(new Set(grupos.length > 0 ? grupos : comprador.split(',').map(g => g.trim()).filter(Boolean)));
     }
 
     const promessaPreset = deepLinkParams.get('promessa');

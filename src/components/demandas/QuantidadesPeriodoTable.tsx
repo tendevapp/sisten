@@ -6,6 +6,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { EnrichedSAPRecord } from '../../types';
 import { bucketDate, resolveDataCorte, CompradorInfo, Granularidade, resolveComprador } from '../../lib/demandas';
+import { umRegistroPorItem } from '../../lib/suprimentos';
 
 interface QuantidadesPeriodoTableProps {
   records: EnrichedSAPRecord[];
@@ -33,8 +34,9 @@ export default function QuantidadesPeriodoTable({ records, compradores, granular
     // do pedido quando já há PO colocado, senão a data de solicitação — assim
     // uma RM antiga que só ganha PO no período filtrado conta nesse período,
     // não no da solicitação original. Aberto é a contagem de itens ainda sem
-    // pedido colocado naquele período.
-    records.forEach(r => {
+    // pedido colocado naquele período. Conta itens de RM: a RM com vários
+    // pedidos entra uma vez, no período do primeiro pedido.
+    umRegistroPorItem(records).forEach(r => {
       const nome = resolveComprador(r, compradores);
       if (!buyerMap.has(nome)) buyerMap.set(nome, new Map());
       const periods = buyerMap.get(nome)!;

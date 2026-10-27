@@ -205,7 +205,16 @@ export interface CompradorInfo {
   // E-mail do usuário SISTEN correspondente, usado para rotear notificações
   // (ex.: mensagens do Rastreio Compras) diretamente ao comprador do grupo.
   email?: string | null;
+  /** `false` = saiu do setor: o histórico dele vai para "Outros" nos painéis. */
+  ativo?: boolean | null;
 }
+
+/**
+ * Compradores que não lançam mais (inativos no cadastro, ou login/grupo que
+ * nunca foi cadastrado) somam numa linha só: compõem o histórico sem ocupar
+ * uma linha por pessoa.
+ */
+export const COMPRADOR_OUTROS = 'Outros';
 
 // Atribui o comprador responsável por um registro: prioriza quem de fato
 // lançou o PO no SAP (criado_por_pedido, via compradores.usuario_sistema) —
@@ -215,16 +224,23 @@ export interface CompradorInfo {
 // atribuído e o login de quem coloca o PO às vezes divergem (cobertura entre
 // compradores), então a atribuição por criador é a mais fiel ao trabalho
 // realizado.
+//
+// Comprador inativo, ou login/grupo fora do cadastro, devolve "Outros".
 export function resolveComprador(
   record: { grupo_comprador?: string | null; criado_por_pedido?: string | null },
   compradores: CompradorInfo[]
 ): string {
-  if (record.criado_por_pedido) {
-    const byUser = compradores.find(c => c.usuario_sistema && c.usuario_sistema === record.criado_por_pedido);
-    if (byUser) return byUser.nome_comprador;
+  const nomeDe = (c: CompradorInfo) => (c.ativo === false ? COMPRADOR_OUTROS : c.nome_comprador);
+  const criador = (record.criado_por_pedido || '').trim();
+  if (criador) {
+    // trim: o cadastro já guardou login com quebra de linha no fim.
+    const byUser = compradores.find(c => (c.usuario_sistema || '').trim() === criador);
+    if (byUser) return nomeDe(byUser);
+    // Quem lançou o PO não é comprador cadastrado: não lança mais por aqui.
+    return COMPRADOR_OUTROS;
   }
   const grupo = record.grupo_comprador || '';
   const byGroup = compradores.find(c => c.grupo_compras === grupo);
-  if (byGroup) return byGroup.nome_comprador;
-  return grupo ? `Grupo ${grupo}` : 'Não atribuído';
+  if (byGroup) return nomeDe(byGroup);
+  return grupo ? COMPRADOR_OUTROS : 'Não atribuído';
 }

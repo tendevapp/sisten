@@ -18,7 +18,7 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Users } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
-import { CompradorInfo } from '../../lib/demandas';
+import { COMPRADOR_OUTROS, CompradorInfo } from '../../lib/demandas';
 import { calcCarteiraPorComprador, LinhaComprador, DIAS_CRITICO } from '../../lib/suprimentos';
 import { formatInt, formatPctInt, formatBRLCompacto, EMPTY } from '../../lib/format';
 import ChartCard from '../charts/ChartCard';
@@ -32,9 +32,9 @@ interface CarteiraCompradorTableProps {
 type Coluna = keyof Pick<LinhaComprador, 'comprador' | 'abertos' | 'processados' | 'conversao' | 'agingMedio' | 'criticos' | 'spend' | 'otd'>;
 
 const COLUNAS: { chave: Coluna; rotulo: string; numerica: boolean; dica: string }[] = [
-  { chave: 'comprador', rotulo: 'Comprador', numerica: false, dica: 'Quem lançou o pedido; sem pedido, o grupo atribuído' },
-  { chave: 'abertos', rotulo: 'Abertos', numerica: true, dica: 'Itens ainda sem pedido' },
-  { chave: 'processados', rotulo: 'Pedidos', numerica: true, dica: 'Itens já convertidos em pedido' },
+  { chave: 'comprador', rotulo: 'Comprador', numerica: false, dica: 'Quem lançou o pedido; sem pedido, o grupo atribuído. Outros = quem não compra mais' },
+  { chave: 'abertos', rotulo: 'Abertos', numerica: true, dica: 'Itens de RM ainda sem pedido' },
+  { chave: 'processados', rotulo: 'Pedidos', numerica: true, dica: 'Itens de RM já convertidos em pedido (a RM com vários pedidos conta uma vez)' },
   { chave: 'conversao', rotulo: 'Conversão', numerica: true, dica: 'Pedidos sobre o total da carteira' },
   { chave: 'agingMedio', rotulo: 'Aging médio', numerica: true, dica: 'Idade média dos itens em aberto' },
   { chave: 'criticos', rotulo: `> ${DIAS_CRITICO}d`, numerica: true, dica: `Itens abertos há mais de ${DIAS_CRITICO} dias` },
@@ -63,6 +63,10 @@ export default function CarteiraCompradorTable({
   const ordenadas = useMemo(() => {
     const copia = [...linhas];
     copia.sort((a, b) => {
+      // "Outros" é histórico de quem saiu: fica sempre no fim.
+      if ((a.comprador === COMPRADOR_OUTROS) !== (b.comprador === COMPRADOR_OUTROS)) {
+        return a.comprador === COMPRADOR_OUTROS ? 1 : -1;
+      }
       const x = a[ordem];
       const y = b[ordem];
       // OTD null (comprador sem nada recebido) vai sempre para o fim, nas duas

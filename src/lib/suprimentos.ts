@@ -115,6 +115,34 @@ export function delta(atual: number, anterior: number, direcaoBoa: DirecaoBoa = 
 export const temPO = (r: EnrichedSAPRecord): boolean => r.status_requisicao === 'Processado';
 export const estaAberto = (r: EnrichedSAPRecord): boolean => !temPO(r);
 
+/**
+ * Um registro por item de RM (`ri`). Item comprado em vários pedidos (gás,
+ * frete: chamadas sobre a mesma RM) vira uma linha por PO; para contar itens,
+ * fica a linha do primeiro pedido — é ela que diz quem converteu o item e
+ * quando. Sem `ri`, a linha conta sozinha.
+ */
+export function umRegistroPorItem<T extends Pick<EnrichedSAPRecord, 'ri' | 'status_requisicao' | 'data_pedido'>>(records: T[]): T[] {
+  const porItem = new Map<string, T>();
+  const semRi: T[] = [];
+  for (const r of records) {
+    if (!r.ri) {
+      semRi.push(r);
+      continue;
+    }
+    const atual = porItem.get(r.ri);
+    if (!atual) {
+      porItem.set(r.ri, r);
+      continue;
+    }
+    const pedido = (x: T) => (x.status_requisicao === 'Processado' ? x.data_pedido || '9999' : '');
+    // Com PO vence sem PO; entre dois PO, o mais antigo.
+    const a = pedido(atual);
+    const b = pedido(r);
+    if ((b && !a) || (a && b && b < a)) porItem.set(r.ri, r);
+  }
+  return [...porItem.values(), ...semRi];
+}
+
 /** Item já recebido fisicamente — é o que habilita qualquer medição de prazo. */
 export const foiRecebido = (r: EnrichedSAPRecord): boolean => Boolean(toDate(r.data_migo));
 
@@ -331,6 +359,10 @@ export interface LinhaComprador {
  * A atribuição usa `resolveComprador`, que prioriza quem de fato lançou o PO
  * sobre o grupo nominalmente atribuído — sem isso, cobertura entre compradores
  * credita o trabalho a quem não o fez.
+ *
+ * Abertos, pedidos, aging e críticos contam ITENS de RM (`umRegistroPorItem`):
+ * a RM de gás com 17 pedidos é um item convertido, não 17. Spend e OTD somam
+ * todos os pedidos, cada um no comprador que o lançou.
  */
 export function calcCarteiraPorComprador(
   records: EnrichedSAPRecord[],
@@ -346,17 +378,30 @@ export function calcCarteiraPorComprador(
     otdNoPrazo: number;
   }
   const mapa = new Map<string, Acc>();
-
-  for (const r of records) {
-    const nome = resolveComprador(r, compradores);
+  const pegar = (nome: string): Acc => {
     let a = mapa.get(nome);
     if (!a) {
       a = { abertos: 0, processados: 0, somaAging: 0, criticos: 0, spend: 0, otdMedidos: 0, otdNoPrazo: 0 };
       mapa.set(nome, a);
     }
+    return a;
+  };
 
+  for (const r of umRegistroPorItem(records)) {
+    const a = pegar(resolveComprador(r, compradores));
     if (temPO(r)) {
       a.processados++;
+    } else {
+      a.abertos++;
+      const dias = r.dias_em_aberto || 0;
+      a.somaAging += dias;
+      if (dias > DIAS_CRITICO) a.criticos++;
+    }
+  }
+
+  for (const r of records) {
+    if (temPO(r)) {
+      const a = pegar(resolveComprador(r, compradores));
       if (typeof r.valor_total === 'number' && Number.isFinite(r.valor_total)) a.spend += r.valor_total;
       const real = toDate(r.data_migo);
       const prazo = toDate(r.data_entrega_sap);
@@ -364,11 +409,6 @@ export function calcCarteiraPorComprador(
         a.otdMedidos++;
         if (diasEntre(prazo, real) <= 0) a.otdNoPrazo++;
       }
-    } else {
-      a.abertos++;
-      const dias = r.dias_em_aberto || 0;
-      a.somaAging += dias;
-      if (dias > DIAS_CRITICO) a.criticos++;
     }
   }
 
