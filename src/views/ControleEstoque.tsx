@@ -82,7 +82,11 @@ export default function ControleEstoque({ user, abaInicial = 'geral' }: Props) {
   const [reposicao, setReposicao] = useState<EstoqueReposicao[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [filtros, setFiltros] = useState<FiltrosControleEstoque>({});
+  // `?material=` (Consumo Semanal › "Revisar mínimo") abre já buscando o item.
+  const [filtros, setFiltros] = useState<FiltrosControleEstoque>(() => {
+    const material = new URLSearchParams((window.location.hash || '').split('?')[1] || '').get('material')?.trim();
+    return material ? { palavrasChave: [material] } : {};
+  });
   const [recomendacaoFiltro, setRecomendacaoFiltro] = useState<'Todos' | Recomendacao>('Todos');
   const [detalhe, setDetalhe] = useState<ControleEstoqueAnalise | null>(null);
   const [edicao, setEdicao] = useState<{ linha: ControleEstoqueAnalise | null } | null>(null);

@@ -1245,7 +1245,7 @@ export default function App() {
 
       case '/almoxarifado/consumo-semanal':
         if (canAccessPage(user, 'almox_consumo_semanal')) {
-          return <ConsumoSemanal user={user} />;
+          return <ConsumoSemanal user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

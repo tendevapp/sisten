@@ -2,71 +2,74 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Perfil de Consumo Semanal — mestre-detalhe.
+ * Almoxarifado › Consumo Semanal.
  *
- * A lista da esquerda é o seletor visual: cada linha traz o sparkline do
- * material, então o usuário vê a FORMA da série antes de clicar. Isso importa
- * porque 54% dos materiais consomem numa única semana de 25 — sem a prévia, a
- * pessoa abriria dezenas de gráficos de uma barra só até achar um com história.
+ * Duas abas sobre a mesma base (MB51 agrupada por semana, `consumoSemanal.ts`):
+ *  - Alertas (padrão): itens cujo consumo mudou de ritmo — aumento, virada de
+ *    tendência, pico — e o efeito no estoque (ruptura antes da reposição,
+ *    mínimo defasado). É a pergunta do dia: o que revisar ou antecipar agora.
+ *    Regras em `lib/alertaConsumo.ts`; painel em `consumo/ConsumoAlertasPainel`.
+ *  - Histórico: o perfil semanal de qualquer material (a tela anterior).
  *
- * Os sparklines compartilham a mesma escala vertical (o maior consumo semanal
- * da lista filtrada). Normalizar cada linha pelo próprio máximo faria um item
- * de 3 peças e outro de 3 mil desenharem a mesma barra.
+ * `?aba=historico` abre direto no histórico.
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { CalendarDays, RefreshCw, AlertCircle, Filter, Search, TrendingUp, Package, Activity, Clock } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CalendarDays, Clock, History, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { localDb } from '../db/localDb';
 import { Profile, MB51Classificado, EstoqueGiro, SAPImportLog } from '../types';
-import {
-  construirBaseSemanal, serieDoMaterial, rotuloSemana, intervaloSemana, mediaPorSemanaAtiva, inicioDaSemana,
-} from '../lib/consumoSemanal';
-import { formatQtd, formatBRL, isProjetoItem } from '../lib/almoxarifado';
-import { extrairPalavrasChave, casarTokens } from '../lib/buscaKeywords';
-import { formatInt, formatDateBR, formatDateTimeBR } from '../lib/format';
-import MaterialSearchInput from '../components/almoxarifado/MaterialSearchInput';
-import Sparkline from '../components/almoxarifado/Sparkline';
-import ConsumoSemanalChart from '../components/almoxarifado/ConsumoSemanalChart';
-import KpiCard from '../components/charts/KpiCard';
-import { TableShell, TableHeadRow, Th, TableBody, Tr, Td, TableEmpty } from '../components/ui/DataTable';
+import { construirBaseSemanal } from '../lib/consumoSemanal';
+import { buscarSituacoesEstoque, type SituacaoEstoqueMaterial } from '../lib/estoqueSituacaoCompras';
+import { formatDateBR, formatDateTimeBR } from '../lib/format';
+import { TableEmpty } from '../components/ui/DataTable';
+import ConsumoAlertasPainel from '../components/almoxarifado/consumo/ConsumoAlertasPainel';
+import ConsumoHistoricoPainel from '../components/almoxarifado/consumo/ConsumoHistoricoPainel';
 
 interface ConsumoSemanalProps {
   user: Profile;
+  onNavigate: (path: string) => void;
 }
 
 /** Semana em que a produção começou (ver janela de produção nas views). */
 const INICIO_PRODUCAO = '2026-05-01';
+/** MB51 mais velha que isso: os alertas estão olhando para o passado. */
+const DIAS_BASE_DESATUALIZADA = 8;
 
-type OrdemLista = 'consumo' | 'regularidade' | 'recente';
+type Aba = 'alertas' | 'historico';
 
-export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
+function abaDaRota(): Aba {
+  const q = (window.location.hash || '').split('?')[1];
+  return new URLSearchParams(q || '').get('aba') === 'historico' ? 'historico' : 'alertas';
+}
+
+export default function ConsumoSemanal({ user, onNavigate }: ConsumoSemanalProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [movs, setMovs] = useState<MB51Classificado[]>([]);
   // Grupo de mercadorias não existe na MB51; vem da posição de estoque.
   const [giro, setGiro] = useState<EstoqueGiro[]>([]);
+  // Saldo, mínimo e lead time do Controle de Estoque. Complementar: sem ele os
+  // alertas de comportamento seguem, só os de estoque somem.
+  const [situacoes, setSituacoes] = useState<Map<string, SituacaoEstoqueMaterial>>(new Map());
   const [ultimoLog, setUltimoLog] = useState<SAPImportLog | null>(null);
-
-  const [busca, setBusca] = useState('');
-  const [materialSel, setMaterialSel] = useState<string | null>(null);
-  const [grupoFiltro, setGrupoFiltro] = useState('Todos');
-  const [tipoItem, setTipoItem] = useState<'Todos' | 'projeto' | 'consumo'>('Todos');
-  const [ordem, setOrdem] = useState<OrdemLista>('consumo');
-  const [somenteRegulares, setSomenteRegulares] = useState(false);
-  const [selecionado, setSelecionado] = useState<string | null>(null);
-  const [mostrarTabela, setMostrarTabela] = useState(false);
+  const [aba, setAba] = useState<Aba>(abaDaRota);
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
     setError(null);
     try {
-      const [m, g] = await Promise.all([
+      const [m, g, s] = await Promise.all([
         localDb.fetchMb51(force),
         localDb.fetchGiroEstoque(force).catch(() => [] as EstoqueGiro[]),
+        buscarSituacoesEstoque(force).catch(e => {
+          console.warn('Situação de estoque indisponível no Consumo Semanal:', e);
+          return new Map<string, SituacaoEstoqueMaterial>();
+        }),
       ]);
       setMovs(m);
       setGiro(g);
+      setSituacoes(s);
       const logs = localDb.getImportLogs();
       setUltimoLog(logs.find(l => l.type === 'MB51') || null);
     } catch (e: any) {
@@ -81,8 +84,6 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
   useEffect(() => { load(false); }, [load]);
 
   const hojeIso = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
-  const semanaAtualIso = useMemo(() => inicioDaSemana(hojeIso), [hojeIso]);
-
   // Sempre estende o período até a semana atual de hoje
   const base = useMemo(() => construirBaseSemanal(movs, hojeIso), [movs, hojeIso]);
 
@@ -103,69 +104,21 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
     return Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [base.materiais, grupoPorMaterial]);
 
-  const lista = useMemo(() => {
-    const tokens = extrairPalavrasChave(busca);
-    const filtrada = base.materiais.filter(m => {
-      // Material escolhido numa sugestão manda sobre o texto: o campo mostra a
-      // descrição, que é ambígua entre itens de nome parecido.
-      if (materialSel) return m.material === materialSel;
+  const baseDesatualizada = useMemo(() => {
+    if (!base.maxData) return false;
+    const dias = (new Date(`${hojeIso}T12:00:00`).getTime() - new Date(`${base.maxData}T12:00:00`).getTime()) / 86_400_000;
+    return dias > DIAS_BASE_DESATUALIZADA;
+  }, [base.maxData, hojeIso]);
 
-      if (tipoItem !== 'Todos') {
-        const projeto = isProjetoItem(m.material);
-        if (tipoItem === 'projeto' && !projeto) return false;
-        if (tipoItem === 'consumo' && projeto) return false;
-      }
-      if (grupoFiltro !== 'Todos' && grupoPorMaterial.get(m.material) !== grupoFiltro) return false;
-      // "Regulares" = série com o que ler. Abaixo de 5 semanas ativas o
-      // gráfico é um ou dois picos isolados, não um perfil.
-      if (somenteRegulares && m.semanasAtivas < 5) return false;
-      if (tokens.length > 0 && !casarTokens([m.material, m.descricao, grupoPorMaterial.get(m.material)], tokens)) return false;
-      return true;
-    });
+  const trocarAba = (nova: Aba) => {
+    setAba(nova);
+    try { window.history.replaceState(null, '', `#/almoxarifado/consumo-semanal${nova === 'historico' ? '?aba=historico' : ''}`); } catch { /* sem history: segue igual */ }
+  };
 
-    const ordenada = [...filtrada];
-    if (ordem === 'consumo') ordenada.sort((a, b) => b.consumoTotal - a.consumoTotal);
-    else if (ordem === 'regularidade') ordenada.sort((a, b) => b.semanasAtivas - a.semanasAtivas);
-    else ordenada.sort((a, b) => (b.ultimoConsumo || '').localeCompare(a.ultimoConsumo || ''));
-    return ordenada;
-  }, [base.materiais, busca, materialSel, tipoItem, grupoFiltro, grupoPorMaterial, ordem, somenteRegulares]);
-
-  // Escala compartilhada por todos os sparklines da lista visível.
-  const maximoSparkline = useMemo(() => {
-    let max = 0;
-    lista.forEach(m => m.serie.forEach(v => { if (v > max) max = v; }));
-    return max;
-  }, [lista]);
-
-  // Seleção automática do primeiro item: abrir a tela num painel vazio
-  // esconderia o que ela faz.
-  useEffect(() => {
-    if (!selecionado && lista.length > 0) setSelecionado(lista[0].material);
-    if (selecionado && lista.length > 0 && !lista.some(m => m.material === selecionado)) {
-      setSelecionado(lista[0].material);
-    }
-  }, [lista, selecionado]);
-
-  const detalhe = useMemo(
-    () => (selecionado ? serieDoMaterial(base, selecionado) : []),
-    [base, selecionado]
-  );
-  const resumoSel = useMemo(
-    () => lista.find(m => m.material === selecionado) ?? base.materiais.find(m => m.material === selecionado),
-    [lista, base.materiais, selecionado]
-  );
-
-  const picoSemanal = useMemo(
-    () => detalhe.reduce((max, p) => (p.consumo > max ? p.consumo : max), 0),
-    [detalhe]
-  );
-
-  const universoBusca = useMemo(
-    () => base.materiais.map(m => ({ material: m.material, descricao: m.descricao })),
-    [base.materiais]
-  );
-
-  const selectClass = 'rounded-lg border py-2 px-3 text-xs font-bold cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1 border-[var(--hairline)] bg-[var(--surface-raised)] text-[var(--ink-secondary)] focus:outline-[var(--brand)]';
+  const botaoAba = (ativa: boolean) =>
+    `inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition ${
+      ativa ? 'bg-white text-blue-700 shadow-2xs dark:bg-slate-700 dark:text-blue-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+    }`;
 
   return (
     <div className="space-y-5 select-text max-w-[1600px] mx-auto pb-12">
@@ -175,27 +128,21 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-2xl font-extrabold flex items-center gap-2.5" style={{ color: 'var(--ink-primary)' }}>
               <CalendarDays className="h-7 w-7" style={{ color: 'var(--brand)' }} />
-              Perfil de Consumo Semanal
+              Consumo Semanal
             </h2>
-
             {base.maxData && (
               <span
                 className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border shadow-xs"
-                style={{
-                  borderColor: 'var(--hairline)',
-                  background: 'var(--surface-raised)',
-                  color: 'var(--ink-secondary)',
-                }}
+                style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-secondary)' }}
                 title={base.minData ? `Intervalo de movimentações na base: ${formatDateBR(base.minData)} até ${formatDateBR(base.maxData)}` : undefined}
               >
-                <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                <span className={`h-2 w-2 rounded-full shrink-0 ${baseDesatualizada ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                 Base com dados até <strong className="font-bold ml-0.5" style={{ color: 'var(--ink-primary)' }}>{formatDateBR(base.maxData)}</strong>
               </span>
             )}
           </div>
-
           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm mt-1.5" style={{ color: 'var(--ink-secondary)' }}>
-            <span>Escolha um material pela forma da série e veja semana a semana quanto saiu e quanto entrou.</span>
+            <span>Itens com consumo acima do normal, para revisar o estoque mínimo ou antecipar a compra.</span>
             {ultimoLog && (
               <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs" style={{ color: 'var(--ink-muted)' }}>
                 <span className="hidden sm:inline">•</span>
@@ -224,6 +171,13 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
         </div>
       )}
 
+      {!loading && baseDesatualizada && (
+        <div className="flex items-center gap-2.5 p-3 border border-amber-300 dark:border-amber-900/50 rounded-xl bg-amber-50/70 dark:bg-amber-950/20 text-xs font-semibold text-amber-800 dark:text-amber-300">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          A MB51 vai só até {formatDateBR(base.maxData!)}. Os alertas não enxergam o consumo depois disso — reimporte a MB51 em Admin › Importar SAP.
+        </div>
+      )}
+
       {!loading && !error && base.materiais.length === 0 && (
         <TableEmpty
           icon={CalendarDays}
@@ -234,253 +188,37 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
 
       {(loading || (!error && base.materiais.length > 0)) && (
         <>
-          {/* Uma linha de filtros acima de tudo que ela recorta. No mobile
-              vira uma trilha com rolagem horizontal para não empurrar a
-              lista de materiais para muito longe do topo. */}
-          <div
-            className="rounded-xl border p-4"
-            style={{
-              borderColor: 'var(--hairline)',
-              background: 'var(--surface-card)',
-              boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.04)',
-            }}
-          >
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
-              <span className="shrink-0 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-                <Filter className="h-3 w-3" /> Filtros
-              </span>
-
-              <select value={tipoItem} onChange={e => setTipoItem(e.target.value as any)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
-                <option value="Todos">Item: Todos</option>
-                <option value="projeto">Projeto (100000…)</option>
-                <option value="consumo">Outros</option>
-              </select>
-
-              <select value={grupoFiltro} onChange={e => setGrupoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[180px] lg:w-auto truncate`}>
-                <option value="Todos">Grupo de mercadorias: Todos</option>
-                {gruposDisponiveis.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
-
-              <select value={ordem} onChange={e => setOrdem(e.target.value as OrdemLista)} className={`${selectClass} shrink-0 w-[190px] lg:w-auto truncate`}>
-                <option value="consumo">Ordenar: maior consumo</option>
-                <option value="regularidade">Ordenar: mais regular</option>
-                <option value="recente">Ordenar: consumo mais recente</option>
-              </select>
-
-              <label
-                className="shrink-0 flex items-center gap-2 text-xs font-bold cursor-pointer rounded-lg border py-2 px-3 whitespace-nowrap"
-                style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-secondary)' }}
-              >
-                <input
-                  type="checkbox"
-                  checked={somenteRegulares}
-                  onChange={e => setSomenteRegulares(e.target.checked)}
-                  className="cursor-pointer"
-                />
-                Só com série (5+ semanas)
-              </label>
-
-              <MaterialSearchInput
-                valor={busca}
-                onChange={setBusca}
-                materiais={universoBusca}
-                materialSelecionado={materialSel}
-                onSelecionarMaterial={setMaterialSel}
-                placeholder="Filtrar por palavras-chave (código, descrição)..."
-                className="shrink-0 w-[220px] lg:flex-1 lg:min-w-[220px] lg:max-w-sm lg:shrink"
-              />
-            </div>
+          <div className="flex min-w-0 overflow-x-auto no-scrollbar rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80 sm:inline-flex">
+            <button type="button" className={botaoAba(aba === 'alertas')} onClick={() => trocarAba('alertas')}>
+              <AlertTriangle className="h-3.5 w-3.5" /> Alertas
+            </button>
+            <button type="button" className={botaoAba(aba === 'historico')} onClick={() => trocarAba('historico')}>
+              <History className="h-3.5 w-3.5" /> Histórico
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4">
-            {/* Seletor visual */}
-            <aside
-              className="rounded-xl border overflow-hidden flex flex-col"
-              style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
-            >
-              <div className="px-3 py-2.5 border-b flex items-center justify-between gap-2"
-                   style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
-                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-                  Materiais
-                </span>
-                <span className="text-[10px] tabular" style={{ color: 'var(--ink-muted)' }}>
-                  {formatInt(lista.length)} de {formatInt(base.materiais.length)}
-                </span>
-              </div>
-
-              <ul className="overflow-y-auto" style={{ maxHeight: '62vh' }} role="listbox" aria-label="Materiais">
-                {lista.length === 0 && (
-                  <li className="p-6 text-center text-xs" style={{ color: 'var(--ink-muted)' }}>
-                    Nenhum material com os filtros atuais.
-                  </li>
-                )}
-                {lista.slice(0, 300).map(m => {
-                  const ativo = m.material === selecionado;
-                  return (
-                    <li key={m.material}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={ativo}
-                        onClick={() => setSelecionado(m.material)}
-                        className="w-full text-left px-3 py-2.5 border-b cursor-pointer transition-colors duration-150 hover:bg-[var(--surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
-                        style={{
-                          borderColor: 'var(--hairline)',
-                          background: ativo ? 'var(--surface-raised)' : undefined,
-                          boxShadow: ativo ? 'inset 3px 0 0 0 var(--brand)' : undefined,
-                          outlineColor: 'var(--brand)',
-                        }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-[11px] font-bold shrink-0" style={{ color: 'var(--ink-primary)' }}>
-                            {m.material}
-                          </span>
-                          <span className="text-[10px] tabular ml-auto shrink-0" style={{ color: 'var(--ink-muted)' }}>
-                            {m.semanasAtivas}/{m.totalSemanas} sem.
-                          </span>
-                        </div>
-                        <p className="text-[11px] truncate mt-0.5" style={{ color: 'var(--ink-secondary)' }} title={m.descricao}>
-                          {m.descricao || '—'}
-                        </p>
-                        <div className="flex items-end gap-2 mt-1.5">
-                          <Sparkline
-                            serie={m.serie}
-                            maximo={maximoSparkline}
-                            rotulo={`Consumo semanal de ${m.material}: ${m.semanasAtivas} de ${m.totalSemanas} semanas com saída`}
-                          />
-                          <span className="text-[10px] tabular ml-auto shrink-0 font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                            {formatQtd(m.consumoTotal)} {m.umb}
-                          </span>
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-                {lista.length > 300 && (
-                  <li className="px-3 py-2.5 text-[11px] text-center" style={{ color: 'var(--ink-muted)' }}>
-                    Mostrando os 300 primeiros. Refine a busca para alcançar os demais.
-                  </li>
-                )}
-              </ul>
-            </aside>
-
-            {/* Detalhe */}
-            <div className="space-y-4 min-w-0">
-              {resumoSel && (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 stagger">
-                  <KpiCard
-                    label="Consumo no período"
-                    value={resumoSel.consumoTotal}
-                    format={v => `${formatQtd(v)} ${resumoSel.umb}`}
-                    detail={`${formatInt(resumoSel.eventosConsumo)} saídas registradas`}
-                    icon={Package}
-                    accent="var(--series-1)"
-                    emphasize
-                  />
-                  <KpiCard
-                    label="Semanas com saída"
-                    value={resumoSel.semanasAtivas}
-                    format={formatInt}
-                    detail={`de ${formatInt(resumoSel.totalSemanas)} semanas do período`}
-                    icon={Activity}
-                    accent="var(--series-2)"
-                    share={resumoSel.totalSemanas > 0 ? resumoSel.semanasAtivas / resumoSel.totalSemanas : undefined}
-                  />
-                  <KpiCard
-                    label="Média por semana ativa"
-                    value={mediaPorSemanaAtiva(resumoSel)}
-                    format={v => `${formatQtd(v)} ${resumoSel.umb}`}
-                    detail="ignora as semanas sem saída"
-                    icon={TrendingUp}
-                    accent="var(--series-4)"
-                  />
-                  <KpiCard
-                    label="Pico semanal"
-                    value={picoSemanal}
-                    format={v => `${formatQtd(v)} ${resumoSel.umb}`}
-                    detail={resumoSel.ultimoConsumo ? `última saída em ${formatDateBR(resumoSel.ultimoConsumo)}` : '—'}
-                    icon={AlertCircle}
-                    accent="var(--status-warning)"
-                  />
-                </div>
-              )}
-
-              <ConsumoSemanalChart
-                dados={detalhe}
-                material={selecionado || '—'}
-                descricao={resumoSel?.descricao}
-                umb={resumoSel?.umb}
-                semanaProducao={INICIO_PRODUCAO}
-                semanaAtual={hojeIso}
-                dataMaxima={base.maxData}
-                loading={loading}
-              />
-
-              {/* Tabela-gêmea: todo valor do gráfico alcançável sem depender de
-                  passar o mouse. */}
-              {detalhe.length > 0 && (
-                <div className="space-y-2">
-                  <button
-                    onClick={() => setMostrarTabela(v => !v)}
-                    aria-expanded={mostrarTabela}
-                    className="text-xs font-bold underline cursor-pointer"
-                    style={{ color: 'var(--ink-secondary)' }}
-                  >
-                    {mostrarTabela ? 'Ocultar tabela de valores' : 'Ver tabela de valores'}
-                  </button>
-
-                  {mostrarTabela && (
-                    <TableShell maxHeight="46vh">
-                      <table className="w-full text-xs border-collapse">
-                        <TableHeadRow>
-                          <Th label="Semana" width="w-24" />
-                          <Th label="Período" width="w-32" />
-                          <Th label="Consumo" align="right" width="w-32" />
-                          <Th label="Entrada" align="right" width="w-32" />
-                          <Th label="Saídas" align="right" width="w-24" />
-                          <Th label="Saldo acumulado" align="right" width="w-36" />
-                        </TableHeadRow>
-                        <TableBody>
-                          {detalhe.map(p => {
-                            const ehAtual = p.semana === semanaAtualIso;
-                            return (
-                              <Tr
-                                key={p.semana}
-                                style={ehAtual ? { background: 'var(--surface-raised)' } : undefined}
-                              >
-                                <Td strong>
-                                  <span className="inline-flex items-center gap-1.5">
-                                    {rotuloSemana(p.semana)}
-                                    {ehAtual && (
-                                      <span
-                                        className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-[var(--brand)] text-white"
-                                        title="Semana atual em andamento"
-                                      >
-                                        Atual
-                                      </span>
-                                    )}
-                                  </span>
-                                </Td>
-                                <Td>{intervaloSemana(p.semana)}</Td>
-                                <Td align="right" numeric strong={p.consumo > 0}>
-                                  {p.consumo > 0 ? formatQtd(p.consumo) : '—'}
-                                </Td>
-                                <Td align="right" numeric>
-                                  {p.entrada > 0 ? formatQtd(p.entrada) : '—'}
-                                </Td>
-                                <Td align="right" numeric>{p.eventosConsumo || '—'}</Td>
-                                <Td align="right" numeric>{formatQtd(p.acumulado)}</Td>
-                              </Tr>
-                            );
-                          })}
-                        </TableBody>
-                      </table>
-                    </TableShell>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          {aba === 'alertas' ? (
+            <ConsumoAlertasPainel
+              user={user}
+              onNavigate={onNavigate}
+              base={base}
+              situacoes={situacoes}
+              grupoPorMaterial={grupoPorMaterial}
+              gruposDisponiveis={gruposDisponiveis}
+              hojeIso={hojeIso}
+              loading={loading}
+              inicioProducao={INICIO_PRODUCAO}
+            />
+          ) : (
+            <ConsumoHistoricoPainel
+              base={base}
+              grupoPorMaterial={grupoPorMaterial}
+              gruposDisponiveis={gruposDisponiveis}
+              hojeIso={hojeIso}
+              loading={loading}
+              inicioProducao={INICIO_PRODUCAO}
+            />
+          )}
         </>
       )}
     </div>

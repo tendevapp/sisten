@@ -37,6 +37,14 @@ interface ConsumoSemanalChartProps {
   /** Maior data de lançamento presente nos dados MB51. */
   dataMaxima?: string | null;
   loading?: boolean;
+  /**
+   * Médias semanais de referência do alerta de consumo (base e recente),
+   * desenhadas como linhas horizontais. A recente começa na semana
+   * `inicioRecente`, para mostrar de onde a comparação parte.
+   */
+  mediaBase?: number;
+  mediaRecente?: number;
+  inicioRecente?: string;
 }
 
 function TooltipConteudo({ active, payload, cores, umb }: any) {
@@ -66,6 +74,7 @@ function TooltipConteudo({ active, payload, cores, umb }: any) {
 
 export default function ConsumoSemanalChart({
   dados, material, descricao, umb, semanaProducao, semanaAtual, dataMaxima, loading,
+  mediaBase, mediaRecente, inicioRecente,
 }: ConsumoSemanalChartProps) {
   const c = useChartConfig();
   const cores = [c.tokens.series[0], c.tokens.series[2]];
@@ -148,6 +157,32 @@ export default function ConsumoSemanalChart({
                 fill: cores[0],
                 fontWeight: 600,
               }}
+            />
+          )}
+
+          {inicioRecente && formatados.some(d => d.semana === inicioRecente) && (
+            <ReferenceLine
+              x={rotuloSemana(inicioRecente)}
+              stroke={c.tokens.inkMuted}
+              strokeDasharray="2 4"
+              label={{ value: 'janela recente', position: 'insideTopRight', fontSize: 10, fill: c.tokens.inkMuted }}
+            />
+          )}
+          {mediaBase !== undefined && mediaBase > 0 && (
+            <ReferenceLine
+              y={mediaBase}
+              stroke={c.tokens.inkMuted}
+              strokeDasharray="6 3"
+              label={{ value: `média base ${formatQtd(mediaBase)}`, position: 'insideBottomLeft', fontSize: 10, fill: c.tokens.inkMuted }}
+            />
+          )}
+          {mediaRecente !== undefined && mediaRecente > 0 && (
+            <ReferenceLine
+              y={mediaRecente}
+              stroke="var(--status-warning, #d97706)"
+              strokeWidth={1.5}
+              strokeDasharray="6 3"
+              label={{ value: `média recente ${formatQtd(mediaRecente)}`, position: 'insideTopLeft', fontSize: 10, fill: 'var(--status-warning, #d97706)', fontWeight: 600 }}
             />
           )}
 

@@ -22,6 +22,9 @@ export interface SituacaoEstoqueMaterial {
   maximo: number | null;
   coberturaDias: number | null;
   umb: string | null;
+  /** Dias úteis, como no Controle de Estoque — usados pelo alerta de consumo. */
+  leadTimeDias: number | null;
+  intervaloCompraDias: number | null;
 }
 
 export const ROTULO_TAG_ESTOQUE: Record<TagEstoque, string> = {
@@ -52,6 +55,8 @@ export function calcularSituacaoEstoque(item: ItemEstoque): SituacaoEstoqueMater
     maximo: faixa.estoqueMaximo,
     coberturaDias: faixa.coberturaDias,
     umb: item.umb,
+    leadTimeDias: item.lead_time_dias,
+    intervaloCompraDias: item.intervalo_compra_dias,
   };
 }
 
