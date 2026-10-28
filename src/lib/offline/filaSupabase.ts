@@ -394,10 +394,24 @@ async function lerRest(url: URL, init: RequestInit, cabecalhos: Headers, usuario
   const contentType = resposta.headers.get('content-type') || '';
   if (!resposta.ok || !contentType.includes('json')) return resposta;
   const texto = await resposta.text();
-  void guardarLeitura(usuarioId, url.href, { corpo: texto, status: resposta.status, contentType, contentRange: resposta.headers.get('content-range'), salvoEm: new Date().toISOString() });
+  if (!semCopiaOffline(recursoRest(url.pathname) || '')) {
+    void guardarLeitura(usuarioId, url.href, { corpo: texto, status: resposta.status, contentType, contentRange: resposta.headers.get('content-range'), salvoEm: new Date().toISOString() });
+  }
   const aplicado = comEfeitos(texto, url, accept, efeitos);
   if (!aplicado) return new Response(texto, { status: resposta.status, statusText: resposta.statusText, headers: semTamanho(resposta.headers) });
   return new Response(aplicado.corpo, { status: aplicado.status, headers: semTamanho(resposta.headers) });
+}
+
+/**
+ * Leituras que não valem cópia no aparelho: bases SAP, notificações e
+ * observações já ficam no cache do `localDb`, e as páginas de 1.000 linhas
+ * das views (URL com offset) só enchiam o IndexedDB. Nunca inclui tabela de
+ * formulário (`configFormularios`): `linhasConhecidas` monta a resposta
+ * provisória de update/delete offline a partir dessas cópias.
+ */
+const TABELAS_SEM_COPIA = /^(sap_.*|vw_sap_.*|vw_historico_pedidos|ops_.*|core_notificacoes)$/;
+function semCopiaOffline(tabela: string): boolean {
+  return !configTabela(tabela) && TABELAS_SEM_COPIA.test(tabela);
 }
 
 /** RPC que só lê: guarda a resposta por (RPC + argumentos) e usa a cópia sem rede. */

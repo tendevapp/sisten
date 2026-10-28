@@ -170,9 +170,11 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   const [materialsCount, setMaterialsCount] = useState(0);
   useEffect(() => {
     if (!user.roles.includes('admin') || !supabase) return;
+    // Estimado: o count exato varria as ~446 mil linhas do catálogo (7 s por
+    // abertura do Início de admin); o número serve só de ordem de grandeza.
     supabase
       .from('sap_zl0169_162_catalogo')
-      .select('*', { count: 'exact', head: true })
+      .select('*', { count: 'estimated', head: true })
       .eq('is_active', true)
       .then(({ count }) => setMaterialsCount(count || 0));
   }, [user.roles]);

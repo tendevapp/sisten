@@ -135,11 +135,19 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
 
     // Reflete no cache local a cada 4s (barato).
     const interval = setInterval(sincronizarNotificacoes, 4000);
-    // Busca notificações novas do servidor periodicamente (mais espaçado, egress).
-    const netInterval = setInterval(() => {
+    // Busca notificações novas do servidor a cada 90 s, só com a aba visível —
+    // era a consulta mais chamada do banco (30 s, inclusive em abas escondidas).
+    const buscar = () => {
+      if (document.hidden) return;
       localDb.refreshNotificationsFromSupabase().then(sincronizarNotificacoes);
-    }, 30000);
-    return () => { clearInterval(interval); clearInterval(netInterval); };
+    };
+    const netInterval = setInterval(buscar, 90_000);
+    document.addEventListener('visibilitychange', buscar);
+    return () => {
+      clearInterval(interval);
+      clearInterval(netInterval);
+      document.removeEventListener('visibilitychange', buscar);
+    };
   }, [sincronizarNotificacoes]);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;

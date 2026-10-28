@@ -86,6 +86,15 @@ class LocalDatabase {
   // completos por minuto (cada um com ~14 requests). Ver plano de egress, P1.
   private lastSyncAt = 0;
   private readonly syncTTLMs = 60_000;
+  // Tabelas pequenas sem gate de versão (setores, perfis, solicitações...) só
+  // são rebaixadas a cada 15 min. O poll de 5 min e o retorno à aba passam a
+  // custar 1 request (os marcadores de versão) quando nada pesado mudou — em
+  // 28/10/2026 a sincronização geral sozinha fazia ~40 mil requests/dia.
+  private lastPequenasAt = 0;
+  private readonly pequenasTTLMs = 15 * 60_000;
+  // Notificações: Header e Início pedem juntos; uma busca serve aos dois.
+  private notificacoesEmCurso: Promise<void> | null = null;
+  private notificacoesAt = 0;
 
   // Resolvida assim que o cache em memória estiver populado (a partir do IndexedDB,
   // com migração de dados legados do localStorage se necessário). App.tsx aguarda
@@ -322,14 +331,26 @@ class LocalDatabase {
           this.commitDatasetMeta(dataset, markers);
         };
 
+        // Rodada das tabelas pequenas: no 1º sync da sessão, no forçado, ou a
+        // cada `pequenasTTLMs`.
+        const rodarPequenas = force || !this.hasSyncedThisSession || Date.now() - this.lastPequenasAt >= this.pequenasTTLMs;
+        if (rodarPequenas) this.lastPequenasAt = Date.now();
+        const pequena = (task: () => Promise<void>): (() => Promise<void>) => async () => {
+          if (rodarPequenas) await task();
+        };
+        // Bases SAP pesadas baixadas nesta rodada (versão mudou): decide se o
+        // status automático das compras precisa ser recalculado.
+        let baixouSap = false;
+        const gatedSap = (dataset: string, task: () => Promise<void>) => gated(dataset, async () => { baixouSap = true; await task(); });
+
         const tasks: Array<[string, () => Promise<void>]> = [
-          ['sectors', () => this.syncSectors()],
-          ['profiles', () => this.syncProfiles()],
-          ['buyer_groups', () => this.syncBuyerGroups()],
-          ['sup_compradores', () => this.syncSimpleTable('sup_compradores', this.compradoresKey, true, undefined, 'grupo_compras')],
-          ['sup_rastreio_prioridades', () => this.syncSimpleTable('sup_rastreio_prioridades', this.prioridadesKey, true, undefined, 'id')],
-          ['almoxarifado_chegadas', () => this.syncSimpleTable('almoxarifado_chegadas', this.chegadasAlmoxarifadoKey, true, undefined, 'ri_po')],
-          ['sup_fretes', () => this.syncSimpleTable('sup_fretes', this.tabelaFreteKey, true, undefined, 'id')],
+          ['sectors', pequena(() => this.syncSectors())],
+          ['profiles', pequena(() => this.syncProfiles())],
+          ['buyer_groups', pequena(() => this.syncBuyerGroups())],
+          ['sup_compradores', pequena(() => this.syncSimpleTable('sup_compradores', this.compradoresKey, true, undefined, 'grupo_compras'))],
+          ['sup_rastreio_prioridades', pequena(() => this.syncSimpleTable('sup_rastreio_prioridades', this.prioridadesKey, true, undefined, 'id'))],
+          ['almoxarifado_chegadas', pequena(() => this.syncSimpleTable('almoxarifado_chegadas', this.chegadasAlmoxarifadoKey, true, undefined, 'ri_po'))],
+          ['sup_fretes', pequena(() => this.syncSimpleTable('sup_fretes', this.tabelaFreteKey, true, undefined, 'id'))],
           // 'materials' saiu da sincronização geral: o catálogo tem ~172k linhas e é
           // consultado direto no Supabase por toda tela que precisa dele (busca,
           // autocomplete). Baixar o catálogo inteiro para o cache local a cada sessão
@@ -337,33 +358,36 @@ class LocalDatabase {
           // Ordena por `ri_po`, não por `ri`: um item de RM com dois pedidos tem duas
           // linhas com o mesmo `ri`, e ordenar por coluna não única pode pular ou
           // repetir linhas entre páginas de 1000.
-          ['vw_sap_requisicoes_enriquecidas', gated('requisicoes', () => this.syncSimpleTable('vw_sap_requisicoes_enriquecidas', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po'))],
-          ['vw_sap_pedidos_enriquecidos', gated('pedidos', () => this.syncSimpleTable('vw_sap_pedidos_enriquecidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01'), 'ri'))],
+          ['vw_sap_requisicoes_enriquecidas', gatedSap('requisicoes', () => this.syncSimpleTable('vw_sap_requisicoes_enriquecidas', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po'))],
+          ['vw_sap_pedidos_enriquecidos', gatedSap('pedidos', () => this.syncSimpleTable('vw_sap_pedidos_enriquecidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01'), 'ri'))],
           // Estas três fazem merge em vez de substituir: o motor de solicitações
           // ainda é local-first (só a criação sobe; status, atendente e
           // comentários seguem locais). Com `syncSimpleTable`, a primeira linha
           // inserida no servidor faria o download apagar tudo que existe só no
           // cache do usuário — inclusive as mutações que ainda não migraram.
-          ['requests', () => this.syncMergedTable('core_solicitacoes', this.requestsKey)],
-          ['request_items', () => this.syncMergedTable('core_solicitacoes_itens', this.requestItemsKey)],
-          ['request_attachments', () => this.syncMergedTable('core_solicitacoes_anexos', this.attachmentsKey)],
+          ['requests', pequena(() => this.syncMergedTable('core_solicitacoes', this.requestsKey))],
+          ['request_items', pequena(() => this.syncMergedTable('core_solicitacoes_itens', this.requestItemsKey))],
+          ['request_attachments', pequena(() => this.syncMergedTable('core_solicitacoes_anexos', this.attachmentsKey))],
           // Também por merge, pelo mesmo motivo das demais tabelas de
           // solicitação: substituir o array local apagaria comentários e
           // transições que ainda não conseguiram subir.
-          ['request_comments', () => this.syncMergedTable('core_solicitacoes_comentarios', this.commentsKey)],
-          ['request_status_history', () => this.syncMergedTable('core_solicitacoes_historico_status', this.historyKey)],
-          ['notifications', () => this.syncSimpleTable('core_notificacoes', this.notificationsKey, false, undefined, 'id')],
+          ['request_comments', pequena(() => this.syncMergedTable('core_solicitacoes_comentarios', this.commentsKey))],
+          ['request_status_history', pequena(() => this.syncMergedTable('core_solicitacoes_historico_status', this.historyKey))],
+          // Notificações saíram daqui: o Header busca as 100 mais recentes do
+          // usuário (`refreshNotificationsFromSupabase`) e este download, de
+          // todas, sobrescrevia aquele cache a cada sync.
           // import_logs tem uma coluna pesada (ignored_rows, jsonb) que sozinha já
           // passou de 12 MB no banco; baixá-la inteira em todo sync (a cada troca de
           // rota / foco / polling) é o maior consumidor de egress medido no projeto.
           // syncImportLogs baixa só colunas leves + contagens, e apenas os N logs
           // mais recentes — o detalhe completo é buscado sob demanda (ver
           // fetchImportLogDetail), quando o usuário expande um log no AdminPanel.
-          ['import_logs', () => this.syncImportLogs()],
-          ['obs_historico', () => this.syncObsHistory()],
-          ['activity_logs', () => this.syncSimpleTable('core_logs_atividade', this.logsKey, false, undefined, 'id')],
-          ['sequences', () => this.syncSequences()],
-          ['sap_zl0132_po', gated('pedidosforn', () => this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'), 'id'))],
+          ['import_logs', pequena(() => this.syncImportLogs())],
+          ['obs_historico', pequena(() => this.syncObsHistory())],
+          // core_logs_atividade saiu: está vazia no banco e custava 1 request
+          // por sync de cada usuário.
+          ['sequences', pequena(() => this.syncSequences())],
+          ['sap_zl0132_po', gatedSap('pedidosforn', () => this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'), 'id'))],
           // vw_historico_pedidos saiu da sincronização geral em 28/10/2026: é uma
           // view agregada (~63 mil linhas) paginada por OFFSET, então cada página
           // recalcula a view inteira (~10 s cada). Depois de uma importação, todo
@@ -379,7 +403,7 @@ class LocalDatabase {
           // Compras. Resolvido no cliente porque acrescentar a coluna em
           // `vw_sap_requisicoes_enriquecidas` significaria reescrever uma definição de
           // 15 KB com 81 dependências.
-          ['cadastro_grupo_mercadoria', () => this.syncSimpleTable('cadastro_grupo_mercadoria', this.gruposMercadoriaKey, true, undefined, 'codigo')],
+          ['cadastro_grupo_mercadoria', pequena(() => this.syncSimpleTable('cadastro_grupo_mercadoria', this.gruposMercadoriaKey, true, undefined, 'codigo'))],
         ];
 
 
@@ -395,8 +419,11 @@ class LocalDatabase {
         // Promise.allSettled, não dentro dele. Uma falha aqui (ex.: RLS barrando
         // a consulta de processos de cotação para este perfil) não deve derrubar
         // o resto da sincronização.
+        // Só quando algo que ele usa pode ter mudado (base SAP rebaixada ou
+        // solicitações relidas): cada execução consulta os processos de
+        // cotação de todas as RMs candidatas (sup_cotacao_processo_itens).
         try {
-          await this.aplicarStatusAutomaticoComprasSap();
+          if (baixouSap || rodarPequenas) await this.aplicarStatusAutomaticoComprasSap();
         } catch (e) {
           console.error('Falha ao aplicar status automático das compras via SAP.', e);
         }
@@ -2369,6 +2396,18 @@ class LocalDatabase {
   // Chamada periodicamente pelo Header para que mensagens novas apareçam sem
   // depender de um sync completo de dados.
   public async refreshNotificationsFromSupabase(): Promise<void> {
+    // Header e Início chamam ao mesmo tempo: uma busca em curso serve aos
+    // dois, e outra dentro de 20 s devolve o cache.
+    if (this.notificacoesEmCurso) return this.notificacoesEmCurso;
+    if (Date.now() - this.notificacoesAt < 20_000) return;
+    this.notificacoesEmCurso = this.buscarNotificacoes().finally(() => {
+      this.notificacoesAt = Date.now();
+      this.notificacoesEmCurso = null;
+    });
+    return this.notificacoesEmCurso;
+  }
+
+  private async buscarNotificacoes(): Promise<void> {
     try {
       if (!supabase) return;
       const user = this.getCurrentUser();

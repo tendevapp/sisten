@@ -17,6 +17,7 @@ import { TourRegistryProvider } from './components/help/TourRegistryContext';
 import FeedbackButton from './components/feedback/FeedbackButton';
 import FilaOfflineFormularios from './components/offline/FilaOfflineFormularios';
 import ReporterSincronizacao from './components/offline/ReporterSincronizacao';
+import NovaVersaoAviso from './components/NovaVersaoAviso';
 import ForcePasswordChangeModal from './components/auth/ForcePasswordChangeModal';
 import ResumoLoginGate from './components/solicitacoes/ResumoLoginGate';
 import EscolhaItemQrGate from './components/EscolhaItemQrGate';
@@ -27,6 +28,9 @@ import Signup from './views/Signup';
 import ResetPassword from './views/ResetPassword';
 import { ROTA_CURTA_QR, ROTA_REQUISICAO_BALCAO, guardarItemQrEscolha, guardarItemQrPendente, guardarPecaQrEscolha, haItemQrPendente, haPecaBomPendente, itemDaRota } from './lib/etiquetaMaterial';
 import { ROTA_CADASTRO_ITENS, ROTA_CURTA_QR_BOM, pecaDaRota } from './lib/etiquetaBom';
+/** Perfil relido no máximo a cada 10 min por eventos de sessão (ver onAuthStateChange). */
+const PERFIL_TTL_MS = 10 * 60 * 1000;
+
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const Materials = lazy(() => import('./views/Materials'));
 const NewRequest = lazy(() => import('./views/NewRequest'));
@@ -321,6 +325,10 @@ export default function App() {
           setUser(null);
         }
 
+        // Quem teve o perfil buscado por último e quando (ver onAuthStateChange).
+        let perfilUid: string | null = null;
+        let perfilBuscadoEm = 0;
+
         // Obter sessão inicial
         let { data: { session }, error: erroSessao } = await supabase.auth.getSession();
 
@@ -363,6 +371,8 @@ export default function App() {
               const mapped = { ...profile, roles: profile.roles || [], tours_seen: profile.tours_seen || {} };
               localDb.setCurrentUser(mapped);
               setUser(mapped);
+              perfilUid = mapped.id;
+              perfilBuscadoEm = Date.now();
               marcarDiaSessao();
               trackLogin(mapped);
               // Sincroniza logo de início se estiver com sessão ativa
@@ -421,24 +431,47 @@ export default function App() {
               console.log('Ignorando busca de profile durante recuperação de senha');
               return;
             }
-            const { data: profile } = await supabase
-              .from('core_perfis')
-              .select('*')
-              .eq('id', session.user.id)
-              .maybeSingle();
+            // O Supabase dispara SIGNED_IN ao voltar para a aba e TOKEN_REFRESHED
+            // a cada hora; refazer o perfil e o `setUser` em todos eles gerava
+            // milhares de leituras de core_perfis por dia e um objeto novo que
+            // re-disparava todo efeito com `[user]`. Só busca de novo quando o
+            // usuário mudou, depois de USER_UPDATED (troca de senha) ou a cada
+            // 10 min — permissão dada pelo admin chega nesse prazo (a RLS no
+            // servidor vale na hora).
+            const uid = session.user.id;
+            const trocouUsuario = uid !== perfilUid;
+            if (!trocouUsuario && event !== 'USER_UPDATED' && Date.now() - perfilBuscadoEm < PERFIL_TTL_MS) return;
+            perfilUid = uid;
+            perfilBuscadoEm = Date.now();
 
-            if (profile && profile.status === 'ativo') {
-              const mapped = { ...profile, roles: profile.roles || [], tours_seen: profile.tours_seen || {} };
-              localDb.setCurrentUser(mapped);
-              setUser(mapped);
-              marcarDiaSessao();
-              trackLogin(mapped);
-              // Sincroniza ao detectar login com sucesso
-              localDb.syncFromSupabase().catch(err => {
-                console.error("Falha ao sincronizar cache local com o Supabase:", err);
-              });
-            }
+            // Fora do callback: o supabase-js desaconselha chamar o cliente com
+            // await dentro de onAuthStateChange (pode travar a sessão).
+            setTimeout(async () => {
+              const { data: profile } = await supabase
+                .from('core_perfis')
+                .select('*')
+                .eq('id', uid)
+                .maybeSingle();
+              // Um SIGNED_OUT pode ter chegado enquanto a busca corria.
+              if (perfilUid !== uid) return;
+
+              if (profile && profile.status === 'ativo') {
+                const mapped = { ...profile, roles: profile.roles || [], tours_seen: profile.tours_seen || {} };
+                const anterior = localDb.getCurrentUser();
+                localDb.setCurrentUser(mapped);
+                if (!anterior || JSON.stringify(anterior) !== JSON.stringify(mapped)) setUser(mapped);
+                if (trocouUsuario) {
+                  marcarDiaSessao();
+                  trackLogin(mapped);
+                  // Sincroniza ao detectar login com sucesso
+                  localDb.syncFromSupabase().catch(err => {
+                    console.error("Falha ao sincronizar cache local com o Supabase:", err);
+                  });
+                }
+              }
+            }, 0);
           } else if (event === 'SIGNED_OUT') {
+            perfilUid = null;
             limparDiaSessao();
             limparCenaSessao();
             localDb.setCurrentUser(null);
@@ -1673,6 +1706,7 @@ export default function App() {
         </Suspense>
       )}
       {user && <ReporterSincronizacao usuarioId={user.id} usuarioNome={user.name} />}
+      {user && <NovaVersaoAviso />}
       {user && <FilaOfflineFormularios usuarioId={user.id} emFormulario={currentPath.startsWith('/formularios') || currentPath.startsWith('/qualidade')} />}
       {activeUser && <ResumoLoginGate user={activeUser} onNavigate={handleNavigate} />}
       {activeUser && <EscolhaItemQrGate user={activeUser} onNavigate={handleNavigate} />}

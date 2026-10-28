@@ -108,7 +108,10 @@ export async function buscarSituacoesEstoque(forcar = false): Promise<Map<string
     const { data, error } = await (supabase as any)
       .from('vw_almox_controle_estoque')
       .select(COLUNAS)
+      // A chave da view é material + centro: ordenar só por material deixava
+      // a fronteira entre páginas instável (linha pulada ou repetida).
       .order('material', { ascending: true })
+      .order('centro', { ascending: true })
       .range(inicio, inicio + tamanhoLote - 1);
     if (error) throw new Error(error.message || 'Falha ao carregar a situação de estoque.');
     const pagina = (data ?? []) as Record<string, unknown>[];

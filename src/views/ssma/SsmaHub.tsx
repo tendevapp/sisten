@@ -100,11 +100,16 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral', 
   const [metricas, setMetricas] = useState<SsmaRidMetricas | null>(null);
 
   useEffect(() => {
-    obterMetricasRid().then(setMetricas).catch(console.error);
-    const interval = setInterval(() => {
+    // A cada 60 s e só com a aba visível (eram 15 s baixando todos os desvios,
+    // inclusive com a aba escondida).
+    const carregar = () => {
+      if (document.hidden) return;
       obterMetricasRid().then(setMetricas).catch(console.error);
-    }, 15000);
-    return () => clearInterval(interval);
+    };
+    carregar();
+    const interval = setInterval(carregar, 60_000);
+    document.addEventListener('visibilitychange', carregar);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', carregar); };
   }, []);
 
   useEffect(() => {

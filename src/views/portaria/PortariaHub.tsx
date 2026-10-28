@@ -90,11 +90,16 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
   const [metricas, setMetricas] = useState<PortariaMetricas | null>(null);
 
   useEffect(() => {
-    api.obterMetricasPortaria().then(setMetricas).catch(console.error);
-    const interval = setInterval(() => {
+    // 7 contagens por rodada: a cada 60 s e só com a aba visível (eram 15 s,
+    // inclusive escondida — ~7 mil requests/dia de 3 aparelhos).
+    const carregar = () => {
+      if (document.hidden) return;
       api.obterMetricasPortaria().then(setMetricas).catch(console.error);
-    }, 15000);
-    return () => clearInterval(interval);
+    };
+    carregar();
+    const interval = setInterval(carregar, 60_000);
+    document.addEventListener('visibilitychange', carregar);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', carregar); };
   }, []);
 
   const FORMULARIOS_PORTARIA = [
