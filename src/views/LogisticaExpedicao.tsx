@@ -729,9 +729,6 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     | null
   >(null);
   const [excluindo, setExcluindo] = useState(false);
-  /** Posição do carregamento na sequência do seu tramo — vai no assunto do e-mail. */
-  const [sequencia, setSequencia] = useState<number | null>(null);
-
   const timerAutoSaveRef = useRef<NodeJS.Timeout | null>(null);
   const dadosRef = useRef<ExpedicaoCarregamentoCompleto | null>(dados);
 
@@ -760,12 +757,6 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         setAbertos(carregamento.tramos.length === 1 ? { [carregamento.tramos[0].id]: true } : {});
       })
       .catch(e => { if (ativo) setErro((e as Error).message); });
-
-    // Acessória ao formulário: só compõe o assunto do e-mail, então uma falha
-    // aqui não pode impedir a tela de abrir.
-    api.listarSequenciasTramo()
-      .then(seq => { if (ativo) setSequencia(seq[id] ?? null); })
-      .catch(() => { /* assunto sai sem a sequência */ });
 
     return () => { ativo = false; };
   }, [id]);
@@ -1028,6 +1019,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     if (!tramo) return;
 
     try {
+      const sequencia = await api.obterSequenciaTramoParaEmail(dados.id);
       const configChegada = await obterConfigEmail('expedicao_chegada');
       const corpo = montarCorpoEmailChegada({
         empresa: dados.empresa,
@@ -1087,6 +1079,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
 
     setSalvando(true);
     try {
+      const sequencia = await api.obterSequenciaTramoParaEmail(dados.id);
       const configTramos = await obterConfigEmail('expedicao_tramos');
       const corpo = montarCorpoEmail({
         empresa: dados.empresa,

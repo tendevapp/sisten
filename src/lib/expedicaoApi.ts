@@ -150,6 +150,20 @@ export async function listarSequenciasTramo(): Promise<Record<string, number>> {
   return sequencias;
 }
 
+/**
+ * Consulte após salvar o formulário e antes de montar cada e-mail: empresa,
+ * tramo e data podem ter mudado desde a abertura da tela. Uma consulta que
+ * falha deve interromper o envio, sem reaproveitar uma contagem antiga.
+ */
+export async function obterSequenciaTramoParaEmail(id: string): Promise<number> {
+  const sequencias = await listarSequenciasTramo();
+  const sequencia = sequencias[id];
+  if (!sequencia) {
+    throw new Error('Não foi possível obter a sequência atual do carregamento. Atualize o formulário e tente novamente.');
+  }
+  return sequencia;
+}
+
 export async function obterCarregamento(id: string, incluirExcluidos = false): Promise<ExpedicaoCarregamentoCompleto | null> {
   const { data, error } = await supabase
     .from('expedicao_carregamentos')
