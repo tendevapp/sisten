@@ -757,6 +757,9 @@ export async function atualizarRhPessoa(
     .update({ ...campos, atualizado_por: atualizadoPor || null })
     .eq('id', id);
   if (error) {
+    if (error.code === '23505' || /rh_pessoas_registro_key/.test(error.message || '')) {
+      throw new Error(`A matrícula/CPF ${campos.registro ?? ''} já pertence a outro colaborador.`);
+    }
     if (isErroRls(error)) {
       throw new Error('Permissão negada: seu usuário não possui autorização para atualizar colaboradores no RH.');
     }

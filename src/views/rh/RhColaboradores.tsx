@@ -473,11 +473,16 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
                     value={form.registro}
                     onChange={e => setForm(f => ({ ...f, registro: e.target.value }))}
                     placeholder={form.tipo_vinculo === 'PJ' ? '000.000.000-00' : 'Número da matrícula'}
-                    // A matrícula/CPF é a chave natural do cadastro: trocá-la criaria
-                    // outro colaborador em vez de corrigir este.
-                    disabled={Boolean(editando)}
-                    className={`${campo} disabled:cursor-not-allowed disabled:opacity-60 font-mono`}
+                    // Editável também na edição: a gravação é pelo `id`, e tudo que
+                    // aponta para o colaborador (ASE, EPI, treinamentos, produção)
+                    // usa o `id`, não a matrícula — corrigir aqui não cria outro.
+                    className={`${campo} font-mono`}
                   />
+                  {editando && form.registro.trim() !== editando.registro && (
+                    <p className="mt-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                      Era {editando.registro}. Os registros já feitos continuam ligados a este colaborador.
+                    </p>
+                  )}
                 </div>
                 <div className="sm:col-span-2">
                   <label htmlFor="f-nome" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Colaborador *</label>
