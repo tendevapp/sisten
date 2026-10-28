@@ -89,6 +89,26 @@ export function observacaoComCompraMl(obs: string | null | undefined, numero: st
   return atual ? `${atual}\n${rotuloCompraMl(numero)}` : rotuloCompraMl(numero);
 }
 
+export const STATUS_COMPRADO = 'Comprado';
+
+/**
+ * Status do comprador depois de gravar o número da compra do ML: vira
+ * "Comprado", a não ser que o item já esteja mais adiante (pedido, coleta,
+ * rota, entregue) — gravar a compra nunca faz o status andar para trás.
+ */
+const STATUS_ALEM_DA_COMPRA = new Set(['Pedido Enviado', 'Aguardando Coleta', 'Em rota de entrega', 'Entregue']);
+export function statusAposCompraMl<T extends string>(atual: T | '' | null | undefined): T | typeof STATUS_COMPRADO {
+  return atual && STATUS_ALEM_DA_COMPRA.has(atual) ? atual : STATUS_COMPRADO;
+}
+
+/**
+ * Filtro Comprado / Não comprado da Central: comprado é o item com PO emitido
+ * no SAP, com número de compra do ML ou com status "Comprado".
+ */
+export function itemFoiComprado(dados: { temPo: boolean; numeroCompraMl?: string | null; itemStatus?: string | null }): boolean {
+  return dados.temPo || !!dados.numeroCompraMl || dados.itemStatus === STATUS_COMPRADO;
+}
+
 export interface ResumoCompraMl {
   numero: string;
   itens: number;

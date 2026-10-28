@@ -372,7 +372,11 @@ export type ItemStatus =
   | 'Aguardando Cotação'
   | 'Cotação enviada'
   | 'Análise de Cotações'
+  // Chamado de validação técnica aberto ao gestor da área (sup_validacao_tecnica).
+  | 'Validação Técnica'
   | 'Aguardando Aprovação PO'
+  // Compra fechada fora do SAP (ex.: número da compra do Mercado Livre gravado).
+  | 'Comprado'
   | 'Pedido Enviado'
   | 'Aguardando Coleta'
   | 'Em rota de entrega'

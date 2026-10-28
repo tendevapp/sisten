@@ -177,8 +177,9 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
             <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">Número incompleto — o ML mostra 16 dígitos depois do #.</p>
           )}
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            O número fica gravado nos itens e entra na Observação de cada um
-            {numero ? <> como <b className="text-slate-700 dark:text-slate-200">{rotuloCompraMl(numero)}</b></> : ''}.
+            O número fica gravado nos itens, entra na Observação de cada um
+            {numero ? <> como <b className="text-slate-700 dark:text-slate-200">{rotuloCompraMl(numero)}</b></> : ''} e
+            o status passa para <b className="text-slate-700 dark:text-slate-200">Comprado</b>.
           </p>
           {foraDoMl > 0 && (
             <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">

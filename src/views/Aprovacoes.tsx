@@ -11,6 +11,10 @@
  * Quem aprova algum setor (ou o admin) ve tambem a aba "Retiradas sem saldo":
  * retiradas de material ainda sem saldo na ZL0024 registradas no
  * almoxarifado para o setor (ver components/aprovacoes/RetiradasSemSaldoPainel).
+ *
+ * A aba "Validação técnica" mostra os chamados que o comprador abriu na
+ * Central de Compras e que o usuário pode decidir (aprovador da área, admin
+ * ou marcado) — ver components/aprovacoes/ValidacaoTecnicaPainel.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -40,6 +44,9 @@ import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
 import RetiradasSemSaldoPainel, { setoresDeAprovacao } from '../components/aprovacoes/RetiradasSemSaldoPainel';
 import { listarRetiradasSemSaldo } from '../lib/solicitacaoExtraApi';
+import ValidacaoTecnicaPainel from '../components/aprovacoes/ValidacaoTecnicaPainel';
+import { podeDecidirValidacao } from '../lib/validacaoTecnica';
+import { listarValidacoesTecnicas } from '../lib/validacaoTecnicaApi';
 
 interface Props {
   user: Profile;
@@ -117,7 +124,7 @@ const SUGESTOES_PARECER = [
   'Orçamento não previsto para o setor no período.',
 ];
 
-type TipoAprovacao = 'compras' | 'sem-saldo';
+type TipoAprovacao = 'compras' | 'sem-saldo' | 'validacao';
 
 function parametrosDaRota(): URLSearchParams {
   return new URLSearchParams(window.location.hash.split('?')[1] || '');
@@ -125,23 +132,29 @@ function parametrosDaRota(): URLSearchParams {
 
 export default function Aprovacoes({ user, onNavigate }: Props) {
   const podeRetiradas = user.roles.includes('admin') || (user.aprovador_setores?.length ?? 0) > 0;
-  const [tipo, setTipo] = useState<TipoAprovacao>(() =>
-    podeRetiradas && parametrosDaRota().get('tipo') === 'sem-saldo' ? 'sem-saldo' : 'compras',
-  );
+  const [tipo, setTipo] = useState<TipoAprovacao>(() => {
+    const pedido = parametrosDaRota().get('tipo');
+    if (pedido === 'validacao') return 'validacao';
+    return podeRetiradas && pedido === 'sem-saldo' ? 'sem-saldo' : 'compras';
+  });
   const [idRetirada] = useState(() => (parametrosDaRota().get('tipo') === 'sem-saldo' ? parametrosDaRota().get('id') : null));
+  const [idValidacao] = useState(() => (parametrosDaRota().get('tipo') === 'validacao' ? parametrosDaRota().get('id') : null));
   const [pendentesRetirada, setPendentesRetirada] = useState(0);
+  const [pendentesValidacao, setPendentesValidacao] = useState(0);
 
-  // Contagem da aba mesmo com Compras aberta.
+  // Contagem das abas mesmo com Compras aberta.
   useEffect(() => {
-    if (!podeRetiradas) return;
     let ativo = true;
-    listarRetiradasSemSaldo({ aprovacao: 'PENDENTE', setores: setoresDeAprovacao(user) })
-      .then(l => { if (ativo) setPendentesRetirada(l.length); })
-      .catch(() => { /* sem a contagem a aba abre igual */ });
+    if (podeRetiradas) {
+      listarRetiradasSemSaldo({ aprovacao: 'PENDENTE', setores: setoresDeAprovacao(user) })
+        .then(l => { if (ativo) setPendentesRetirada(l.length); })
+        .catch(() => { /* sem a contagem a aba abre igual */ });
+    }
+    listarValidacoesTecnicas()
+      .then(l => { if (ativo) setPendentesValidacao(l.filter(v => v.status === 'PENDENTE' && podeDecidirValidacao(v, user)).length); })
+      .catch(() => { /* idem */ });
     return () => { ativo = false; };
   }, [podeRetiradas, user]);
-
-  if (!podeRetiradas) return <AprovacoesCompras user={user} onNavigate={onNavigate} />;
 
   const aba = (ativa: boolean) =>
     `inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition ${
@@ -155,17 +168,27 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
           <button type="button" className={aba(tipo === 'compras')} onClick={() => setTipo('compras')}>
             <ShoppingCart className="h-3.5 w-3.5" /> Compras
           </button>
-          <button type="button" className={aba(tipo === 'sem-saldo')} onClick={() => setTipo('sem-saldo')}>
-            <PackageOpen className="h-3.5 w-3.5" /> Retiradas sem saldo
-            {pendentesRetirada > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[10px] text-white">{pendentesRetirada}</span>}
+          {podeRetiradas && (
+            <button type="button" className={aba(tipo === 'sem-saldo')} onClick={() => setTipo('sem-saldo')}>
+              <PackageOpen className="h-3.5 w-3.5" /> Retiradas sem saldo
+              {pendentesRetirada > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[10px] text-white">{pendentesRetirada}</span>}
+            </button>
+          )}
+          <button type="button" className={aba(tipo === 'validacao')} onClick={() => setTipo('validacao')}>
+            <ShieldCheck className="h-3.5 w-3.5" /> Validação técnica
+            {pendentesValidacao > 0 && <span className="rounded-full bg-violet-600 px-1.5 text-[10px] text-white">{pendentesValidacao}</span>}
           </button>
         </div>
       </div>
       {tipo === 'compras' ? (
         <AprovacoesCompras user={user} onNavigate={onNavigate} />
-      ) : (
+      ) : tipo === 'sem-saldo' ? (
         <div className="mx-auto max-w-[1680px] p-3 sm:p-5">
           <RetiradasSemSaldoPainel user={user} idInicial={idRetirada} onPendentes={setPendentesRetirada} />
+        </div>
+      ) : (
+        <div className="mx-auto max-w-[1680px] p-3 sm:p-5">
+          <ValidacaoTecnicaPainel user={user} idInicial={idValidacao} onPendentes={setPendentesValidacao} />
         </div>
       )}
     </div>

@@ -8,7 +8,8 @@ import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
   LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send,
-  MessageCircle, Flag, MapPin, Boxes, Sparkles, PackageCheck, HelpCircle, Bug, Lightbulb, ExternalLink, Warehouse
+  MessageCircle, Flag, MapPin, Boxes, Sparkles, PackageCheck, HelpCircle, Bug, Lightbulb, ExternalLink, Warehouse,
+  ShieldCheck, ShoppingCart
 } from 'lucide-react';
 
 import * as XLSX from 'xlsx';
@@ -49,12 +50,15 @@ import {
 import MapaCotacaoModal from '../components/cotacoes/MapaCotacaoModal';
 import { MercadoLivreCompraModal, MercadoLivreLinkModal } from '../components/suprimentos/MercadoLivreModais';
 import {
-  FILTRO_ML_SEM_COMPRA, FILTRO_ML_TODOS, observacaoComCompraMl, passaFiltroCompraMl, resumirComprasMl,
-  rotuloCompraMl, type FiltroCompraMl, type ItemMercadoLivre,
+  FILTRO_ML_SEM_COMPRA, FILTRO_ML_TODOS, itemFoiComprado, observacaoComCompraMl, passaFiltroCompraMl,
+  resumirComprasMl, rotuloCompraMl, statusAposCompraMl, type FiltroCompraMl, type ItemMercadoLivre,
 } from '../lib/compraMercadoLivre';
 import {
   listarItensMercadoLivre, registrarCompraMercadoLivre, removerItemMercadoLivre, salvarLinkMercadoLivre,
 } from '../lib/compraMercadoLivreApi';
+import { AbrirValidacaoModal, ValidacaoTag } from '../components/suprimentos/ValidacaoTecnica';
+import { STATUS_ITEM_VALIDACAO, ultimaValidacaoPorRi, type ValidacaoTecnica } from '../lib/validacaoTecnica';
+import { listarValidacoesTecnicas } from '../lib/validacaoTecnicaApi';
 import type { CotacaoProcessoItemDraft } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
 import NovidadesModal from '../components/NovidadesModal';
@@ -355,6 +359,25 @@ const EstoqueTagBadge = ({ situacao }: { situacao: SituacaoEstoqueMaterial | nul
 
 const SEM_TAG_ESTOQUE = 'SEM';
 
+/*
+ * Botões da coluna Ações (tabela) e do rodapé do card: mesmo tamanho, mesma
+ * ordem (Salvar, Cotação, M. Livre, Validação), só a cor muda.
+ */
+const BOTAO_ACAO_BASE = 'inline-flex items-center justify-center whitespace-nowrap border font-bold transition-all cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed';
+// Na tabela ficam em grade 2×2 e baixos (h-6): a coluna Ações não pode deixar
+// a linha mais alta que os campos de status/promessa/observação.
+const BOTAO_ACAO_TABELA = `${BOTAO_ACAO_BASE} w-[66px] h-6 gap-0.5 px-1 rounded-md text-[9px]`;
+const BOTAO_ACAO_CARD = `${BOTAO_ACAO_BASE} min-w-[104px] h-8 gap-1.5 px-3 rounded-xl text-xs shadow-xs`;
+const COR_BOTAO_COTACAO = 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600';
+const COR_BOTAO_ML = 'bg-yellow-300 hover:bg-yellow-400 text-slate-900 border-yellow-400';
+const COR_BOTAO_VALIDACAO = 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600';
+const corBotaoSalvar = (estado: 'idle' | 'saving' | 'saved', alterado: boolean): string =>
+  estado === 'saved'
+    ? 'bg-emerald-100 text-emerald-800 border-emerald-250 dark:bg-emerald-950/40 dark:text-emerald-450 dark:border-emerald-900/30'
+    : alterado
+      ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500 animate-pulse-subtle'
+      : 'bg-[#0056c6] hover:bg-[#004bb0] text-white border-[#0056c6]';
+
 /** Subpáginas da Central (barra ao lado de Tabela/Cards). */
 type PoFilter = 'Todos' | 'Sem PO' | 'Sem MIGO' | 'Contrato' | 'M Livre';
 
@@ -589,6 +612,7 @@ const STATUS_ANTES_DO_PEDIDO = new Set<string>([
   'Aguardando Cotação',
   'Cotação enviada',
   'Análise de Cotações',
+  'Validação Técnica',
   'Aguardando Aprovação PO'
 ]);
 
@@ -795,6 +819,25 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const usuarioMl = useMemo(() => ({ id: user.id, nome: user.name }), [user.id, user.name]);
   const comprasMl = useMemo(() => resumirComprasMl(Array.from(mlItens.values())), [mlItens]);
 
+  // Chamados de validação técnica (sup_validacao_tecnica); o mais recente de
+  // cada item dá a tag Em validação / Aprovado / Reprovado.
+  const [validacoes, setValidacoes] = useState<ValidacaoTecnica[]>([]);
+  const carregarValidacoes = useCallback(() => {
+    listarValidacoesTecnicas()
+      .then(setValidacoes)
+      .catch(e => console.warn('Validações técnicas indisponíveis na Central de Compras:', e));
+  }, []);
+  useEffect(() => { carregarValidacoes(); }, [carregarValidacoes]);
+  const validacaoPorRi = useMemo(() => ultimaValidacaoPorRi(validacoes), [validacoes]);
+  const [validacaoModal, setValidacaoModal] = useState<{ record: EnrichedSAPRecord; rm: string; setorInicial: string | null } | null>(null);
+  // Área sugerida: o setor de quem abriu a solicitação do SISTEN que gerou a RM.
+  const abrirValidacao = (record: EnrichedSAPRecord, rm: string, vinculo: VinculoSistenRm | null | undefined) => {
+    const setorInicial = vinculo
+      ? localDb.getRequests().find(req => req.number === vinculo.requestNumber)?.solicitante_sector_id ?? null
+      : null;
+    setValidacaoModal({ record, rm, setorInicial });
+  };
+
   const obterCotacoesDoItem = useCallback((r: EnrichedSAPRecord): CotacaoItemVinculo[] => {
     const porRi = r.ri ? cotacoesPorItem.get(r.ri) : undefined;
     if (porRi && porRi.length > 0) return porRi;
@@ -836,7 +879,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const [rmFilter, setRmFilter] = useState<Set<string>>(new Set());
   const [numPoFilter, setNumPoFilter] = useState<Set<string>>(new Set());
   const [buyerFilter, setBuyerFilter] = useState<Set<string>>(new Set());
+  // "Situação" na tela: `status_atualizado` da ME5A (Crítico, Em dia...).
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+  // "Status" na tela: status do comprador (`item_status`, o select da linha).
+  const [itemStatusFilter, setItemStatusFilter] = useState<Set<string>>(new Set());
+  const [compradoFilter, setCompradoFilter] = useState<'todos' | 'comprado' | 'nao_comprado'>('todos');
   const [alertFilter, setAlertFilter] = useState<Set<string>>(new Set());
   const [grupoMercFilter, setGrupoMercFilter] = useState<Set<string>>(new Set());
   const [poFilter, setPoFilter] = useState<PoFilter>(poFilterInicial || 'Todos');
@@ -913,6 +960,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       setBuyerFilter(new Set(grupos.length > 0 ? grupos : comprador.split(',').map(g => g.trim()).filter(Boolean)));
     }
 
+    // Material vindo do Consumo Semanal ("Antecipar compra"): abre buscando por ele.
+    const material = deepLinkParams.get('material');
+    if (material) setSearchChips([material.trim()]);
+
     const promessaPreset = deepLinkParams.get('promessa');
     const promessaDe = deepLinkParams.get('promessa_de') || '';
     const promessaAte = deepLinkParams.get('promessa_ate') || '';
@@ -943,7 +994,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   useEffect(() => {
     setVisibleCount(40);
-  }, [searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, estoqueFilter, promessaFilter, poFilter, kpiFilter, viewMode, tipoItemFilter, mlFiltro]);
+  }, [searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, itemStatusFilter, compradoFilter, alertFilter, grupoMercFilter, prioridadeFilter, estoqueFilter, promessaFilter, poFilter, kpiFilter, viewMode, tipoItemFilter, mlFiltro]);
 
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
@@ -1755,24 +1806,42 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     return { ris: Array.from(ris), rms, foraDoMl };
   }, [rawRmGroups, selectedRis, mlItens]);
 
-  // Carrinho fechado: grava o número da compra nos itens e acrescenta
-  // "Compra ML #..." na Observação de cada um (mesmo caminho do "Salvar" da
-  // linha, então edições pendentes de status/promessa vão junto).
+  // Carrinho fechado: grava o número da compra nos itens, acrescenta
+  // "Compra ML #..." na Observação e passa o status para "Comprado" (sem
+  // voltar quem já está em pedido/coleta/rota/entregue). Mesmo caminho do
+  // "Salvar" da linha, então uma promessa de entrega pendente vai junto.
   const handleRegistrarCompraMl = async (numero: string) => {
     const { ris } = mlSelecionados;
     await registrarCompraMercadoLivre(ris, numero, usuarioMl);
     const results = await Promise.all(ris.map(ri => {
       const obs = observacaoComCompraMl(obsInputState[ri] ?? recordByRi.get(ri)?.obs_comprador, numero);
-      return localDb.updateBuyerFields(ri, obs, dateInputState[ri] || '', statusInputState[ri]);
+      const status = statusAposCompraMl<ItemStatus>(statusInputState[ri] || recordByRi.get(ri)?.item_status);
+      return localDb.updateBuyerFields(ri, obs, dateInputState[ri] || '', status);
     }));
     const falhas = results.filter(ok => !ok).length;
     if (falhas > 0) {
-      toast.error(`Compra gravada, mas a Observação de ${falhas} item(ns) não foi salva. Escreva ${rotuloCompraMl(numero)} à mão nesses itens.`);
+      toast.error(`Compra gravada, mas a Observação/status de ${falhas} item(ns) não foi salvo. Escreva ${rotuloCompraMl(numero)} e o status Comprado à mão nesses itens.`);
     } else {
       toast.success(`${rotuloCompraMl(numero)} gravada em ${ris.length} ${ris.length === 1 ? 'item' : 'itens'}.`);
     }
     clearSelection();
     carregarMlItens();
+    buildSuppliersData();
+  };
+
+  // Chamado aberto: o item vai para "Validação Técnica" (a decisão do gestor
+  // devolve para "Aguardando Cotação" pela RPC).
+  const handleValidacaoAberta = async (v: ValidacaoTecnica) => {
+    const ri = v.ri;
+    const ok = await localDb.updateBuyerFields(
+      ri,
+      obsInputState[ri] ?? recordByRi.get(ri)?.obs_comprador ?? '',
+      dateInputState[ri] || '',
+      STATUS_ITEM_VALIDACAO as ItemStatus,
+    );
+    if (ok) toast.success(`${v.codigo} enviado para validação técnica de ${v.setor_nome || 'a área'}.`);
+    else toast.error(`${v.codigo} aberto, mas o status do item não foi salvo. Ponha "Validação Técnica" à mão.`);
+    carregarValidacoes();
     buildSuppliersData();
   };
 
@@ -1938,6 +2007,17 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         }
         if (buyerFilter.size > 0 && !buyerFilter.has(r.grupo_comprador || '')) return false;
         if (statusFilter.size > 0 && !statusFilter.has(r.status_atualizado || '')) return false;
+        // Pelo status gravado (não o do select em edição), para a linha não
+        // sumir enquanto o comprador ainda está mexendo nela.
+        if (itemStatusFilter.size > 0 && !itemStatusFilter.has(r.item_status || 'Aguardando Cotação')) return false;
+        if (compradoFilter !== 'todos') {
+          const comprado = itemFoiComprado({
+            temPo: r.status_requisicao === 'Processado',
+            numeroCompraMl: mlItens.get(r.ri)?.numero_compra,
+            itemStatus: r.item_status,
+          });
+          if ((compradoFilter === 'comprado') !== comprado) return false;
+        }
         if (alertFilter.size > 0 && !alertFilter.has(r.alerta || '')) return false;
         if (grupoMercFilter.size > 0 && !grupoMercFilter.has(grupoMercDe(r))) return false;
         if (tipoItemFilter !== 'todos') {
@@ -1976,7 +2056,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, estoqueFilter, tagEstoqueDe, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem, mlItens]);
+  }, [rmGroups, searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, itemStatusFilter, compradoFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, estoqueFilter, tagEstoqueDe, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem, mlItens]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -2487,7 +2567,9 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     'Aguardando Cotação',
     'Cotação enviada',
     'Análise de Cotações',
+    'Validação Técnica',
     'Aguardando Aprovação PO',
+    'Comprado',
     'Pedido Enviado',
     'Aguardando Coleta',
     'Em rota de entrega',
@@ -2650,7 +2732,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             <Sparkles className="h-3.5 w-3.5" /> Novidades
           </button>
           <button
-            onClick={() => { buildSuppliersData(true); carregarSituacoesEstoque(true); }}
+            onClick={() => { buildSuppliersData(true); carregarSituacoesEstoque(true); carregarValidacoes(); carregarMlItens(); }}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all disabled:opacity-50 h-9 cursor-pointer active:scale-95 active:translate-y-[1px]"
           >
@@ -2875,13 +2957,37 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
             />
             <MultiSelectFilter
-              label="Status"
+              label="Situação"
               icon={Filter}
               options={statusOptions}
               selected={statusFilter}
               onChange={setStatusFilter}
               className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
             />
+            <MultiSelectFilter
+              label="Status"
+              icon={List}
+              options={itemStatusOptions}
+              selected={itemStatusFilter}
+              onChange={setItemStatusFilter}
+              searchable={false}
+              className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
+            />
+            {/* Comprado = PO emitido no SAP, número de compra do ML ou status "Comprado". */}
+            <div className="relative shrink-0 w-[170px] lg:w-auto lg:min-w-[170px]">
+              <PackageCheck className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={compradoFilter}
+                onChange={(e) => setCompradoFilter(e.target.value as typeof compradoFilter)}
+                aria-label="Filtrar por comprado ou não comprado"
+                title="Comprado: item com PO emitido no SAP, com número de compra do Mercado Livre ou com status Comprado"
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none truncate"
+              >
+                <option value="todos">Compra: Todos</option>
+                <option value="comprado">Comprado</option>
+                <option value="nao_comprado">Não comprado</option>
+              </select>
+            </div>
             <MultiSelectFilter
               label="Alertas"
               icon={AlertTriangle}
@@ -3142,6 +3248,9 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                               </span>
                             </>
                           )}
+                          {validacaoPorRi.get(r.ri) && (
+                            <ValidacaoTag v={validacaoPorRi.get(r.ri)!} onClick={() => abrirValidacao(r, rm, vinculoSisten)} />
+                          )}
                           {cotacoesVinculadas.length > 0 && (
                             <>
                               <span className="text-[10px] text-slate-350">•</span>
@@ -3341,13 +3450,26 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                           </span>
                         )}
 
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleSaveFields(r.ri)}
+                            disabled={itemSaveStatus === 'saving'}
+                            type="button"
+                            className={`${BOTAO_ACAO_CARD} ${corBotaoSalvar(itemSaveStatus, isModified(r.ri, r))}`}
+                          >
+                            {itemSaveStatus === 'saving' && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                            {itemSaveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
+                            {itemSaveStatus === 'idle' && <Save className="h-3.5 w-3.5" />}
+                            <span>
+                              {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
+                            </span>
+                          </button>
                           {encontrado && (
                             <button
                               onClick={() => handleSendItemQuoteToAllSuppliers(r, rm, fornecedores)}
                               type="button"
                               title="Enviar cotação por e-mail para todos os fornecedores deste item (em cópia oculta)"
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 active:translate-y-[1px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                              className={`${BOTAO_ACAO_CARD} ${COR_BOTAO_COTACAO}`}
                             >
                               <Send className="h-3.5 w-3.5" />
                               <span>Cotação</span>
@@ -3357,29 +3479,19 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             onClick={() => setMlLinkModal({ record: r, rm })}
                             type="button"
                             title={mlItens.has(r.ri) ? 'Item no Mercado Livre — ver ou trocar o link' : 'Comprar pelo Mercado Livre: gravar o link do anúncio'}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black transition-all shadow-xs cursor-pointer active:scale-95 active:translate-y-[1px] bg-yellow-300 hover:bg-yellow-400 text-slate-900 border border-yellow-400"
+                            className={`${BOTAO_ACAO_CARD} ${COR_BOTAO_ML}`}
                           >
-                            {mlItens.has(r.ri) && <Check className="h-3.5 w-3.5" />}
-                            <span>Mercado Livre</span>
+                            {mlItens.has(r.ri) ? <Check className="h-3.5 w-3.5" /> : <ShoppingCart className="h-3.5 w-3.5" />}
+                            <span>M. Livre</span>
                           </button>
                           <button
-                            onClick={() => handleSaveFields(r.ri)}
-                            disabled={itemSaveStatus === 'saving'}
+                            onClick={() => abrirValidacao(r, rm, vinculoSisten)}
                             type="button"
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 active:translate-y-[1px] ${
-                              itemSaveStatus === 'saved'
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-450 border border-emerald-250 dark:border-emerald-900/30'
-                                : isModified(r.ri, r)
-                                ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md border border-amber-500 animate-pulse-subtle'
-                                : 'bg-[#0056c6] hover:bg-[#004bb0] text-white'
-                            }`}
+                            title="Pedir validação técnica do item ao gestor da área (fotos, ficha técnica, links)"
+                            className={`${BOTAO_ACAO_CARD} ${COR_BOTAO_VALIDACAO}`}
                           >
-                            {itemSaveStatus === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
-                            {itemSaveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
-                            {itemSaveStatus === 'idle' && <Save className="h-3.5 w-3.5" />}
-                            <span>
-                              {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
-                            </span>
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            <span>Validação</span>
                           </button>
                         </div>
                       </div>
@@ -3554,6 +3666,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             >
                               SISTEN #{vinculoSisten.requestNumber}
                             </span>
+                          )}
+                          {validacaoPorRi.get(r.ri) && (
+                            <div className="mt-1">
+                              <ValidacaoTag v={validacaoPorRi.get(r.ri)!} onClick={() => abrirValidacao(r, rm, vinculoSisten)} />
+                            </div>
                           )}
                         </td>
 
@@ -3752,22 +3869,16 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         </td>
 
                         {/* Save Action */}
-                        <td className="py-2.5 px-3 text-center">
-                          <div className="flex flex-col items-center gap-1.5">
+                        <td className="py-2.5 px-2 text-center">
+                          <div className="grid grid-cols-2 gap-1 w-max mx-auto">
                             <button
                               onClick={() => handleSaveFields(r.ri)}
                               disabled={itemSaveStatus === 'saving'}
-                              className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 mx-auto min-w-[76px] cursor-pointer active:scale-95 active:translate-y-[1px] ${
-                                itemSaveStatus === 'saved'
-                                  ? 'bg-emerald-100 text-emerald-850 dark:bg-emerald-955/40 dark:text-emerald-450 border border-emerald-250'
-                                  : isModified(r.ri, r)
-                                  ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md border border-amber-500 animate-pulse-subtle'
-                                  : 'bg-[#0056c6] hover:bg-[#004bb0] text-white'
-                              }`}
+                              className={`${BOTAO_ACAO_TABELA} ${corBotaoSalvar(itemSaveStatus, isModified(r.ri, r))}`}
                             >
                               {itemSaveStatus === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
-                              {itemSaveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
-                              {itemSaveStatus === 'idle' && <Save className="h-3.5 w-3.5" />}
+                              {itemSaveStatus === 'saved' && <Check className="h-3 w-3" />}
+                              {itemSaveStatus === 'idle' && <Save className="h-3 w-3" />}
                               <span>
                                 {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
                               </span>
@@ -3775,30 +3886,38 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             {tableShowSupplierFirst && selectedSupplier && (
                               <button
                                 onClick={() => setQuoteChoicePending({ supplier: selectedSupplier, record: r, rm })}
-                                className="px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 mx-auto min-w-[76px] cursor-pointer active:scale-95 active:translate-y-[1px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_COTACAO}`}
                                 title="Enviar cotação para este fornecedor"
                               >
-                                <Send className="h-3.5 w-3.5" />
+                                <Send className="h-3 w-3" />
                                 <span>Cotação</span>
                               </button>
                             )}
                             {!tableShowSupplierFirst && encontrado && fornecedores.length > 0 && (
                               <button
                                 onClick={() => handleSendItemQuoteToAllSuppliers(r, rm, fornecedores)}
-                                className="px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 mx-auto min-w-[76px] cursor-pointer active:scale-95 active:translate-y-[1px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_COTACAO}`}
                                 title="Enviar cotação por e-mail para todos os fornecedores deste item (em cópia oculta)"
                               >
-                                <Send className="h-3.5 w-3.5" />
+                                <Send className="h-3 w-3" />
                                 <span>Cotação</span>
                               </button>
                             )}
                             <button
                               onClick={() => setMlLinkModal({ record: r, rm })}
-                              className="px-3 py-1.5 rounded-xl text-[10px] font-black transition-all shadow-xs flex items-center justify-center gap-1 mx-auto min-w-[76px] cursor-pointer active:scale-95 active:translate-y-[1px] bg-yellow-300 hover:bg-yellow-400 text-slate-900 border border-yellow-400"
+                              className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_ML}`}
                               title={mlItens.has(r.ri) ? 'Item no Mercado Livre — ver ou trocar o link' : 'Comprar pelo Mercado Livre: gravar o link do anúncio'}
                             >
-                              {mlItens.has(r.ri) && <Check className="h-3 w-3" />}
-                              <span>Mercado Livre</span>
+                              {mlItens.has(r.ri) ? <Check className="h-3 w-3" /> : <ShoppingCart className="h-3 w-3" />}
+                              <span>M. Livre</span>
+                            </button>
+                            <button
+                              onClick={() => abrirValidacao(r, rm, vinculoSisten)}
+                              className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_VALIDACAO}`}
+                              title="Pedir validação técnica do item ao gestor da área (fotos, ficha técnica, links)"
+                            >
+                              <ShieldCheck className="h-3 w-3" />
+                              <span>Validação</span>
                             </button>
                           </div>
                         </td>
@@ -3837,6 +3956,25 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           onSalvar={link => handleSalvarLinkMl(mlLinkModal.record, mlLinkModal.rm, link)}
           onRemover={() => handleRemoverMl(mlLinkModal.record.ri)}
           onClose={() => setMlLinkModal(null)}
+        />
+      )}
+
+      {validacaoModal && (
+        <AbrirValidacaoModal
+          user={user}
+          item={{
+            ri: validacaoModal.record.ri,
+            rm: validacaoModal.rm || null,
+            item_reqc: validacaoModal.record.item_reqc || null,
+            material_code: validacaoModal.record.material_code || null,
+            texto_breve: validacaoModal.record.texto_breve || null,
+            qtd: validacaoModal.record.qtd_requisicao ?? null,
+            unidade: validacaoModal.record.unidade_medida || null,
+          }}
+          setorInicial={validacaoModal.setorInicial}
+          historico={validacoes.filter(v => v.ri === validacaoModal.record.ri)}
+          onClose={() => setValidacaoModal(null)}
+          onAberta={handleValidacaoAberta}
         />
       )}
 
