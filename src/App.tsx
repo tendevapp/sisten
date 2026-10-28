@@ -56,6 +56,7 @@ const FinFornecedorItemAnalise = lazy(() => import('./views/financeiro/FinFornec
 const FinFaturamentoGwjaco = lazy(() => import('./views/financeiro/FinFaturamentoGwjaco'));
 const FinRealizadoPorRubrica = lazy(() => import('./views/financeiro/FinRealizadoPorRubrica'));
 const FinPepView = lazy(() => import('./views/financeiro/FinPepView'));
+const FinMercadoLivre = lazy(() => import('./views/financeiro/FinMercadoLivre'));
 const GestaoRubricasFinanceiro = lazy(() => import('./views/admin/GestaoRubricasFinanceiro'));
 const ExportarAdmin = lazy(() => import('./views/admin/ExportarAdmin'));
 const ReconciliacaoPedidos = lazy(() => import('./views/ReconciliacaoPedidos'));
@@ -1186,6 +1187,12 @@ export default function App() {
       case '/financeiro/pep':
         if (canAccessPage(user, 'fin_pep')) {
           return <FinPepView user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/financeiro/mercado-livre':
+        if (canAccessPage(user, 'fin_mercado_livre')) {
+          return <FinMercadoLivre user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

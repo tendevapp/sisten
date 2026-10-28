@@ -70,6 +70,7 @@ export default function MercadoLivrePropostaModal({ escopo, onClose, onAdicionar
     }])),
   );
 
+  // O comprovante da pesquisa fica no processo; a proposta recebe um novo print.
   const urlPrint = useObjectUrl(print);
 
   const receberPrint = async (arquivo: File | undefined) => {
@@ -150,7 +151,7 @@ export default function MercadoLivrePropostaModal({ escopo, onClose, onAdicionar
           Adicionar print do Mercado Livre
         </h3>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Sem leitura por IA: confira o print e digite os dados do anúncio. A proposta entra como rascunho para revisar e salvar.
+          Cole um novo print do anúncio específico do item e preencha os dados da compra. A proposta entra como rascunho para revisar e salvar.
         </p>
       </ModalHeader>
 

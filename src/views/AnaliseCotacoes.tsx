@@ -16,6 +16,7 @@ import { localDb } from '../db/localDb';
 import { useToast } from '../components/ui/Toast';
 import ProcessosList from '../components/cotacoes/ProcessosList';
 import NovoProcessoPanel from '../components/cotacoes/NovoProcessoPanel';
+import ComprovantesMercadoLivre from '../components/cotacoes/ComprovantesMercadoLivre';
 import ImportarPropostasPanel from '../components/cotacoes/ImportarPropostasPanel';
 import MercadoLivrePropostaModal from '../components/cotacoes/MercadoLivrePropostaModal';
 import PropostaCard from '../components/cotacoes/PropostaCard';
@@ -978,6 +979,8 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
                 </button>
               </div>
             </div>
+
+            <ComprovantesMercadoLivre itens={escopo} />
 
             <ImportarPropostasPanel
               user={user}

@@ -11,6 +11,8 @@
  * puras; o I/O está em `compraMercadoLivreApi.ts`.
  */
 
+import type { ArquivoOriginalCotacao } from '../types';
+
 export interface ItemMercadoLivre {
   ri: string;
   rm: string | null;
@@ -20,6 +22,7 @@ export interface ItemMercadoLivre {
   qtd: number | null;
   unidade: string | null;
   link: string;
+  comprovante?: ArquivoOriginalCotacao | null;
   numero_compra: string | null;
   compra_registrada_em: string | null;
   compra_registrada_por_nome: string | null;

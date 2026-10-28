@@ -159,6 +159,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       fin_reconciliacao_pedidos: 'Rastreamento de liquidação de pedidos (PO x MIRO x FBL1N).',
       fin_faturamento_gwjaco: 'Cadastro de torre/tramo e lançamento de faturamento do GW Jacobina, com log de alteração.',
       fin_pep: 'Estrutura analítica do projeto (WBS Element) para apropriação contábil e faturamento.',
+      fin_mercado_livre: 'Boleto de cada compra do Mercado Livre e baixa parcial do adiantamento conforme os itens chegam.',
     },
   },
   {

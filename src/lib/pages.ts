@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX, ShieldAlert, Warehouse, GraduationCap, ListTodo,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX, ShieldAlert, Warehouse, GraduationCap, ListTodo, ShoppingCart,
 } from 'lucide-react';
 import { Profile, Role, Sector } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
@@ -198,6 +198,10 @@ export const PAGES: PageDef[] = [
   { id: 'fin_realizado_rubricas', group: 'FINANCEIRO', label: 'Realizado por Rubrica', path: '/financeiro/realizado-rubricas', icon: BarChart3, defaultRoles: ['admin'] },
   { id: 'fin_faturamento_gwjaco', group: 'FINANCEIRO', label: 'Faturamento GW Jacobina', path: '/financeiro/faturamento-gwjaco', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'fin_pep', group: 'FINANCEIRO', label: 'Estrutura PEP', path: '/financeiro/pep', icon: FolderTree, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  // Adiantamento das compras do Mercado Livre e baixas parciais por item. Nasce
+  // só admin; o setor Financeiro/Contabilidade/Controladoria entra pela regra
+  // do grupo FINANCEIRO em canAccessPage.
+  { id: 'fin_mercado_livre', group: 'FINANCEIRO', label: 'Mercado Livre', path: '/financeiro/mercado-livre', icon: ShoppingCart, defaultRoles: ['admin'] },
 
   // O hub não pode usar `/helpdesk` (já é a tela de Atendimento), então navega
   // para `/helpdesk/inicio`.

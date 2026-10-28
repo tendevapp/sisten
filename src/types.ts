@@ -1455,6 +1455,9 @@ export interface CotacaoProcessoItem {
   unidade_medida: string | null;
   centro: string | null;
   deposito: string | null;
+  /** Comprovação do Mercado Livre preservada ao incluir o item no processo. */
+  comprovante_ml?: ArquivoOriginalCotacao | null;
+  link_ml?: string | null;
   created_at: string;
 }
 

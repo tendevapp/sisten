@@ -54,7 +54,8 @@ import {
   resumirComprasMl, rotuloCompraMl, statusAposCompraMl, type FiltroCompraMl, type ItemMercadoLivre,
 } from '../lib/compraMercadoLivre';
 import {
-  listarItensMercadoLivre, registrarCompraMercadoLivre, removerItemMercadoLivre, salvarLinkMercadoLivre,
+  listarItensMercadoLivre, registrarCompraMercadoLivre, registrarDetalheCompraMl, removerItemMercadoLivre, salvarLinkMercadoLivre,
+  type DadosCompraMlFinanceiro,
 } from '../lib/compraMercadoLivreApi';
 import { AbrirValidacaoModal, ValidacaoTag } from '../components/suprimentos/ValidacaoTecnica';
 import { STATUS_ITEM_VALIDACAO, ultimaValidacaoPorRi, type ValidacaoTecnica } from '../lib/validacaoTecnica';
@@ -400,6 +401,7 @@ const MercadoLivreLinkInfo = ({ item }: { item: ItemMercadoLivre }) => (
       </a>
       <ClipboardCopyButton text={item.link} label="link do Mercado Livre" size="xs" />
     </div>
+    {item.comprovante?.path && <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Print anexado</span>}
     {item.numero_compra ? (
       <span
         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 text-slate-900 dark:text-yellow-200 font-mono font-bold text-[10px]"
@@ -1772,7 +1774,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   /* Mercado Livre --------------------------------------------------------- */
 
-  const handleSalvarLinkMl = async (r: EnrichedSAPRecord, rm: string, link: string) => {
+  const handleSalvarLinkMl = async (r: EnrichedSAPRecord, rm: string, link: string, print?: File | null) => {
     await salvarLinkMercadoLivre({
       ri: r.ri,
       rm: rm || null,
@@ -1781,7 +1783,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       texto_breve: r.texto_breve || null,
       qtd: r.qtd_requisicao ?? null,
       unidade: r.unidade_medida || null,
-    }, link, usuarioMl, mlItens.has(r.ri));
+    }, link, usuarioMl, mlItens.has(r.ri), print);
     toast.success('Item destinado ao Mercado Livre — aparece na aba M Livre.');
     carregarMlItens();
   };
@@ -1810,9 +1812,16 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // "Compra ML #..." na Observação e passa o status para "Comprado" (sem
   // voltar quem já está em pedido/coleta/rota/entregue). Mesmo caminho do
   // "Salvar" da linha, então uma promessa de entrega pendente vai junto.
-  const handleRegistrarCompraMl = async (numero: string) => {
+  const handleRegistrarCompraMl = async (numero: string, financeiro: DadosCompraMlFinanceiro) => {
     const { ris } = mlSelecionados;
     await registrarCompraMercadoLivre(ris, numero, usuarioMl);
+    // Dados da compra e do boleto para o Financeiro › Mercado Livre. A compra
+    // já está gravada nos itens; se esta parte falhar, o comprador refaz só ela.
+    try {
+      await registrarDetalheCompraMl(numero, financeiro, usuarioMl);
+    } catch (e: any) {
+      toast.error(`Compra gravada nos itens, mas os dados do boleto não foram para o Financeiro: ${e?.message || 'erro desconhecido'}. Marque os itens e grave de novo.`);
+    }
     const results = await Promise.all(ris.map(ri => {
       const obs = observacaoComCompraMl(obsInputState[ri] ?? recordByRi.get(ri)?.obs_comprador, numero);
       const status = statusAposCompraMl<ItemStatus>(statusInputState[ri] || recordByRi.get(ri)?.item_status);
@@ -3953,7 +3962,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         <MercadoLivreLinkModal
           titulo={`RM ${mlLinkModal.rm} / Item ${mlLinkModal.record.item_reqc} — ${mlLinkModal.record.texto_breve || mlLinkModal.record.material_code || ''}`}
           existente={mlItens.get(mlLinkModal.record.ri)}
-          onSalvar={link => handleSalvarLinkMl(mlLinkModal.record, mlLinkModal.rm, link)}
+          onSalvar={(link, print) => handleSalvarLinkMl(mlLinkModal.record, mlLinkModal.rm, link, print)}
           onRemover={() => handleRemoverMl(mlLinkModal.record.ri)}
           onClose={() => setMlLinkModal(null)}
         />

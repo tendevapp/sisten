@@ -10,6 +10,8 @@
 
 import { supabase } from '../db/supabaseClient';
 import type { ItemMercadoLivre } from './compraMercadoLivre';
+import { comprimirImagemUpload } from './imageCompression';
+import type { DetalheCompraMl } from './detalheCompraMl';
 
 interface Usuario { id: string; nome: string }
 
@@ -38,7 +40,20 @@ export async function salvarLinkMercadoLivre(
   link: string,
   usuario: Usuario,
   jaExiste: boolean,
+  print?: File | null,
 ): Promise<void> {
+  // undefined preserva o anexo atual; null remove o vínculo na Central.
+  let comprovante: ItemMercadoLivre['comprovante'] | undefined = print === null ? null : undefined;
+  if (print) {
+    if (!print.type.startsWith('image/')) throw new Error('Envie uma imagem como comprovante.');
+    if (print.size > 10 * 1024 * 1024) throw new Error('O print deve ter até 10 MB.');
+    const blob = await comprimirImagemUpload(print, { maxDimensao: 2400, qualidade: 0.9 });
+    const nome = blob === print ? print.name : print.name.replace(/\.[^.]+$/, '') + '.jpg';
+    const path = `mercado-livre/${encodeURIComponent(item.ri)}/${crypto.randomUUID()}-${nome.replace(/[^\w.-]/g, '_').slice(-80)}`;
+    const { error } = await supabase.storage.from('cotacoes-arquivos').upload(path, blob, { contentType: blob.type || print.type });
+    if (error) throw new Error(`Falha ao enviar o print: ${error.message}`);
+    comprovante = { nome, path, mime_type: blob.type || print.type, tamanho_bytes: blob.size };
+  }
   const agora = new Date().toISOString();
   const autoria = jaExiste
     ? {}
@@ -48,12 +63,16 @@ export async function salvarLinkMercadoLivre(
     .upsert({
       ...item,
       link,
+      ...(comprovante !== undefined ? { comprovante } : {}),
       ...autoria,
       atualizado_por_id: usuario.id,
       atualizado_por_nome: usuario.nome,
       updated_at: agora,
     }, { onConflict: 'ri' });
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (print && comprovante) await supabase.storage.from('cotacoes-arquivos').remove([comprovante.path]);
+    throw new Error(error.message);
+  }
 }
 
 /** Tira o item do ML (volta a ser só um item da Central). */
@@ -84,5 +103,49 @@ export async function registrarCompraMercadoLivre(
       updated_at: agora,
     })
     .in('ri', ris);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Dados da compra colados do "Detalhe da compra" do ML e o boleto, para o
+ * Financeiro (fin_ml_compras). Vai pela RPC porque o comprador não tem a
+ * permissão de lançar baixa; campos do boleto só seguem quando preenchidos,
+ * para não apagar o que o Financeiro já gravou.
+ */
+export interface DadosCompraMlFinanceiro {
+  detalhe: DetalheCompraMl | null;
+  detalheTexto: string | null;
+  valorBoleto: number | null;
+  vencimento: string | null;
+  linhaDigitavel: string | null;
+}
+
+export async function registrarDetalheCompraMl(numero: string, dados: DadosCompraMlFinanceiro, usuario: Usuario): Promise<void> {
+  const d = dados.detalhe;
+  const p: Record<string, unknown> = {};
+  if (d) {
+    Object.assign(p, {
+      data_compra: d.dataCompra,
+      qtd_produtos: d.qtdProdutos,
+      valor_produtos: d.valorProdutos,
+      valor_frete: d.valorFrete,
+      valor_total: d.valorTotal,
+      forma_pagamento: d.formaPagamento,
+      numero_pagamento: d.numeroPagamento,
+      status_pagamento_ml: d.statusPagamento,
+      endereco_entrega: d.endereco,
+      pacotes: d.pacotes.length ? d.pacotes : null,
+    });
+  }
+  if (dados.detalheTexto) p.detalhe_texto = dados.detalheTexto;
+  if (dados.valorBoleto != null) p.valor_boleto = dados.valorBoleto;
+  if (dados.vencimento) p.vencimento = dados.vencimento;
+  if (dados.linhaDigitavel) p.linha_digitavel = dados.linhaDigitavel;
+  if (Object.keys(p).length === 0) return;
+  const { error } = await (supabase as any).rpc('sup_ml_registrar_detalhe_compra', {
+    p_numero: numero,
+    p_dados: p,
+    p_por_nome: usuario.nome,
+  });
   if (error) throw new Error(error.message);
 }
