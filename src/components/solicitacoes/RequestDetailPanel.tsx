@@ -20,7 +20,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, Ban, Calendar, Check, CheckCircle, Clock, Copy,
   ExternalLink, FileEdit, FileText, Info, Loader2, Mail, Paperclip, Pencil,
-  PlusCircle, RefreshCw, Send, Star, Trash2, Upload, XCircle,
+  PlusCircle, RefreshCw, RotateCcw, Send, Star, Trash2, Upload, XCircle,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { Profile, Request, RequestComment, RequestItem, RequestStatus, Sector } from '../../types';
@@ -43,6 +43,8 @@ import {
 } from '../../lib/solicitacoesCentral';
 import HelpdeskSatisfactionCard from '../helpdesk/HelpdeskSatisfactionCard';
 import ReenviarEmailModal from './ReenviarEmailModal';
+import { EditarChamadoSuprimentosModal, ReabrirChamadoSuprimentosModal } from './ChamadoSuprimentosModais';
+import { podeEditarChamadoSuprimentos, podeReabrirChamadoSuprimentos } from '../../lib/chamadosSuprimentosGrupo';
 import { ROTA_PENDENCIAS_PROCESSAMENTO } from '../../lib/supPendenciasProcessamento';
 
 interface Props {
@@ -146,6 +148,7 @@ export default function RequestDetailPanel({
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [itensCopiados, setItensCopiados] = useState(false);
   const [reenviandoEmail, setReenviandoEmail] = useState(false);
+  const [modalChamadoSup, setModalChamadoSup] = useState<'editar' | 'reabrir' | null>(null);
   const [sinais, setSinais] = useState<Record<string, SinalChip[]>>({});
   const [carregandoSinais, setCarregandoSinais] = useState(false);
 
@@ -176,6 +179,7 @@ export default function RequestDetailPanel({
     setModalDecisaoAberta(false);
     setModalCancelarAberta(false);
     setReenviandoEmail(false);
+    setModalChamadoSup(null);
     setNovaDecisaoJustificativa('');
     setMotivoCancelamento('');
     setErroModalDecisao('');
@@ -495,6 +499,25 @@ export default function RequestDetailPanel({
               title={avisoEdicao(request.type)}
             >
               <Pencil className="h-4 w-4" /> Editar
+            </BotaoSecundario>
+          )}
+
+          {/* Chamados ao Suprimentos: a área financeira edita e reabre os dos colegas. */}
+          {podeEditarChamadoSuprimentos(request, user, sectors) && (
+            <BotaoSecundario
+              onClick={() => setModalChamadoSup('editar')}
+              title="Alterar as linhas ainda não baixadas e a classificação do chamado"
+            >
+              <Pencil className="h-4 w-4" /> Editar
+            </BotaoSecundario>
+          )}
+
+          {podeReabrirChamadoSuprimentos(request, user, sectors) && (
+            <BotaoSecundario
+              onClick={() => setModalChamadoSup('reabrir')}
+              title="Devolver linhas baixadas para a fila do Suprimentos"
+            >
+              <RotateCcw className="h-4 w-4" /> Reabrir
             </BotaoSecundario>
           )}
 
@@ -1164,6 +1187,13 @@ export default function RequestDetailPanel({
             </ModalFooter>
           </form>
         </Modal>
+      )}
+
+      {modalChamadoSup === 'editar' && (
+        <EditarChamadoSuprimentosModal request={request} onClose={() => setModalChamadoSup(null)} onSalvo={onChanged} />
+      )}
+      {modalChamadoSup === 'reabrir' && (
+        <ReabrirChamadoSuprimentosModal request={request} onClose={() => setModalChamadoSup(null)} onReaberto={onChanged} />
       )}
 
       {reenviandoEmail && (

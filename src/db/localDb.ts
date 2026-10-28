@@ -9525,6 +9525,50 @@ class LocalDatabase {
     this.notifyListeners();
   }
 
+  /**
+   * Altera campos de uma solicitação sem mexer no status, deixando o que mudou
+   * no histórico. Usado na edição dos chamados ao Suprimentos pela área que os
+   * abriu (o editor pode ser um colega de setor, não o solicitante — que então
+   * é avisado). Sem `campos`, só registra o histórico.
+   */
+  public async registrarEdicaoSolicitacao(
+    reqId: string,
+    campos: Partial<Pick<Request, 'criticality' | 'justificativa'>>,
+    comentario: string,
+  ): Promise<boolean> {
+    const user = this.getCurrentUser();
+    if (!user) return false;
+    const requests = this.getRequests();
+    const idx = requests.findIndex(r => r.id === reqId);
+    if (idx === -1) return false;
+
+    const anterior = requests[idx];
+    if (Object.keys(campos).length > 0) {
+      requests[idx] = { ...anterior, ...campos, updated_at: new Date().toISOString() };
+      this.setStorageItem(this.requestsKey, requests);
+      if (!(await this.publishRequestRow(requests[idx]))) {
+        const revert = this.getRequests();
+        const i = revert.findIndex(r => r.id === reqId);
+        if (i !== -1) { revert[i] = anterior; this.setStorageItem(this.requestsKey, revert); }
+        return false;
+      }
+    }
+
+    await this.logStatusChange(reqId, anterior.status, anterior.status, user.id, user.name, comentario);
+    if (anterior.solicitante_id !== user.id) {
+      this.createNotification(
+        anterior.solicitante_id,
+        `Chamado alterado: #${anterior.number}`,
+        `${user.name} alterou o seu chamado. ${comentario}`,
+        'info',
+        anterior.id,
+        anterior.number,
+      );
+    }
+    this.notifyListeners();
+    return true;
+  }
+
   public async transferTicketSector(reqId: string, sectorId: string, userId: string): Promise<boolean> {
     const requests = this.getRequests();
     const idx = requests.findIndex(r => r.id === reqId);

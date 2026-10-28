@@ -11,6 +11,7 @@ vi.mock('../db/localDb', () => ({
     getRequestItems: () => [],
     getAttachments: () => [],
     getProfiles: () => [],
+    getSectors: () => [],
   },
 }));
 

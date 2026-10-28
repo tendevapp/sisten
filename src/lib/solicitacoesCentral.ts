@@ -23,6 +23,7 @@ import { Profile, Request, RequestComment, RequestStatusHistory } from '../types
 import { localDb } from '../db/localDb';
 import { canAccessPage } from './pages';
 import { estaEmAberto, solicitacoesVisiveis } from './solicitacoes';
+import { ehChamadoDoGrupoFiscal, ehSetorGrupoFiscal } from './chamadosSuprimentosGrupo';
 
 /* Escopos ----------------------------------------------------------------- */
 
@@ -92,7 +93,10 @@ export function setoresAcompanhados(user: Profile): string[] {
 export function escoposDisponiveis(user: Profile): EscopoDef[] {
   const lista: EscopoDef[] = [ESCOPOS.acao];
   if (canAccessPage(user, 'sol_minhas')) lista.push(ESCOPOS.minhas);
-  if (setoresAcompanhados(user).length > 0) lista.push(ESCOPOS.setor);
+  // A área financeira acompanha os chamados ao Suprimentos dos colegas aqui.
+  if (setoresAcompanhados(user).length > 0 || ehSetorGrupoFiscal(user.sector_id, localDb.getSectors())) {
+    lista.push(ESCOPOS.setor);
+  }
   if (canAccessPage(user, 'sol_todas')) lista.push(ESCOPOS.todas);
   return lista;
 }
@@ -196,6 +200,7 @@ export function podeVer(r: Request, user: Profile): boolean {
   if (user.roles.includes('admin')) return true;
   if (podeAprovar(r, user)) return true;
   if (setoresAcompanhados(user).includes(r.solicitante_sector_id)) return true;
+  if (ehChamadoDoGrupoFiscal(r, user, localDb.getSectors())) return true;
   return ehOperador(r, user);
 }
 
@@ -224,8 +229,10 @@ export function filtrarPorEscopo(
       return universo.filter(r => r.solicitante_id === user.id);
     case 'setor': {
       const setores = setoresAcompanhados(user);
+      const sectors = localDb.getSectors();
       return universo.filter(r =>
-        r.status !== 'rascunho' && setores.includes(r.solicitante_sector_id),
+        r.status !== 'rascunho' &&
+        (setores.includes(r.solicitante_sector_id) || ehChamadoDoGrupoFiscal(r, user, sectors)),
       );
     }
     case 'todas':

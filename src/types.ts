@@ -2385,12 +2385,14 @@ export type SupPendenciaStatus = 'pendente' | 'concluido';
 export type SupPendenciaModelo = 'nfse' | 'documento' | 'ajuste_pedido';
 
 export interface SupPendenciaAcaoLog {
-  tipo: 'concluido' | 'reaberto' | 'criado';
+  tipo: 'concluido' | 'reaberto' | 'criado' | 'editado';
   usuario_id?: string | null;
   usuario_nome?: string | null;
   data_hora: string;
   resolucao?: string | null;
   motivo?: string | null;
+  /** Só em 'editado': "Rótulo: antes → depois" de cada campo alterado. */
+  alteracoes?: string[] | null;
 }
 
 export interface SupPendenciaProcessamentoNF {

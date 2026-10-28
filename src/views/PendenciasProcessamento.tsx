@@ -41,6 +41,7 @@ import {
   Square,
   CheckCheck,
   FileText,
+  Pencil,
 } from 'lucide-react';
 import type { Profile, SupPendenciaAcaoLog, SupPendenciaProcessamentoNF } from '../types';
 import { formatBRL, formatDateTimeBR } from '../lib/format';
@@ -177,6 +178,13 @@ function obterHistoricoLinha(
   return [];
 }
 
+/** Rótulo, cor e ícone de cada tipo de ação do log. */
+function visualAcao(tipo: SupPendenciaAcaoLog['tipo']) {
+  if (tipo === 'concluido') return { rotulo: 'Baixado', cor: 'var(--status-good)', Icone: CheckCircle2 };
+  if (tipo === 'editado') return { rotulo: 'Editado', cor: 'var(--brand)', Icone: Pencil };
+  return { rotulo: 'Reaberto', cor: 'var(--status-serious)', Icone: RotateCcw };
+}
+
 /** Componente que renderiza o log de ações (fechamentos, reaberturas, resoluções) com timeline elegante. */
 function LogAcoesPendencia({
   acoes,
@@ -190,6 +198,7 @@ function LogAcoesPendencia({
   if (acoes.length === 1) {
     const ac = acoes[0];
     const isConclusao = ac.tipo === 'concluido';
+    const v = visualAcao(ac.tipo);
     return (
       <div
         className="rounded-lg px-2.5 py-1.5 text-[12px] flex flex-wrap items-center gap-x-2 gap-y-1 border"
@@ -201,14 +210,12 @@ function LogAcoesPendencia({
         <span
           className="inline-flex items-center gap-1 font-bold text-[11px] px-1.5 py-0.5 rounded"
           style={{
-            color: isConclusao ? 'var(--status-good)' : 'var(--status-serious)',
-            background: isConclusao
-              ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
-              : 'color-mix(in srgb, var(--status-serious) 14%, transparent)',
+            color: v.cor,
+            background: `color-mix(in srgb, ${v.cor} 14%, transparent)`,
           }}
         >
-          {isConclusao ? <CheckCircle2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
-          {isConclusao ? 'Baixado' : 'Reaberto'}
+          <v.Icone className="h-3 w-3" />
+          {v.rotulo}
         </span>
         <span style={{ color: 'var(--ink-secondary)' }}>
           por <strong className="font-semibold" style={{ color: 'var(--ink-primary)' }}>{ac.usuario_nome}</strong>
@@ -226,12 +233,17 @@ function LogAcoesPendencia({
             · Motivo: <span className="italic">{ac.motivo}</span>
           </span>
         )}
+        {ac.alteracoes && ac.alteracoes.length > 0 && (
+          <span className="text-[11px] font-medium" style={{ color: 'var(--ink-primary)' }}>
+            · {ac.alteracoes.join('; ')}
+          </span>
+        )}
       </div>
     );
   }
 
   const acaoMaisRecente = acoes[acoes.length - 1];
-  const isConclusaoRecente = acaoMaisRecente.tipo === 'concluido';
+  const vRecente = visualAcao(acaoMaisRecente.tipo);
 
   return (
     <div
@@ -250,13 +262,11 @@ function LogAcoesPendencia({
           <span
             className="inline-flex items-center gap-1 font-semibold text-[10px] px-1.5 py-0.5 rounded ml-1"
             style={{
-              color: isConclusaoRecente ? 'var(--status-good)' : 'var(--status-serious)',
-              background: isConclusaoRecente
-                ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
-                : 'color-mix(in srgb, var(--status-serious) 14%, transparent)',
+              color: vRecente.cor,
+              background: `color-mix(in srgb, ${vRecente.cor} 14%, transparent)`,
             }}
           >
-            Última ação: {isConclusaoRecente ? 'Baixado' : 'Reaberto'} por {acaoMaisRecente.usuario_nome?.split(' ')[0]}
+            Última ação: {vRecente.rotulo} por {acaoMaisRecente.usuario_nome?.split(' ')[0]}
           </span>
         </div>
         <button
@@ -273,6 +283,7 @@ function LogAcoesPendencia({
         <div className="space-y-1.5 pt-1 border-t" style={{ borderColor: 'var(--hairline)' }}>
           {acoes.map((ac, idx) => {
             const isConclusao = ac.tipo === 'concluido';
+            const v = visualAcao(ac.tipo);
             return (
               <div
                 key={idx}
@@ -285,14 +296,12 @@ function LogAcoesPendencia({
                 <span
                   className="inline-flex items-center gap-1 font-bold text-[11px] px-1.5 py-0.5 rounded"
                   style={{
-                    color: isConclusao ? 'var(--status-good)' : 'var(--status-serious)',
-                    background: isConclusao
-                      ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
-                      : 'color-mix(in srgb, var(--status-serious) 14%, transparent)',
+                    color: v.cor,
+                    background: `color-mix(in srgb, ${v.cor} 14%, transparent)`,
                   }}
                 >
-                  {isConclusao ? <CheckCircle2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
-                  {isConclusao ? 'Baixado' : 'Reaberto'}
+                  <v.Icone className="h-3 w-3" />
+                  {v.rotulo}
                 </span>
                 <span style={{ color: 'var(--ink-secondary)' }}>
                   por <strong className="font-semibold" style={{ color: 'var(--ink-primary)' }}>{ac.usuario_nome}</strong>
@@ -310,6 +319,11 @@ function LogAcoesPendencia({
                     · Motivo: <span className="italic">{ac.motivo}</span>
                   </span>
                 )}
+                {ac.alteracoes && ac.alteracoes.length > 0 && (
+                  <span className="text-[11px] font-medium" style={{ color: 'var(--ink-primary)' }}>
+                    · {ac.alteracoes.join('; ')}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -317,7 +331,7 @@ function LogAcoesPendencia({
       ) : (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
           <span>
-            {isConclusaoRecente ? 'Baixado' : 'Reaberto'} por <strong style={{ color: 'var(--ink-primary)' }}>{acaoMaisRecente.usuario_nome}</strong> em {formatDateTimeBR(acaoMaisRecente.data_hora)}
+            {vRecente.rotulo} por <strong style={{ color: 'var(--ink-primary)' }}>{acaoMaisRecente.usuario_nome}</strong> em {formatDateTimeBR(acaoMaisRecente.data_hora)}
           </span>
           {acaoMaisRecente.resolucao && (
             <span className="italic">· "{acaoMaisRecente.resolucao}"</span>

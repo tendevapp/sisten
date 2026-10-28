@@ -318,11 +318,15 @@ function extrairHistoricoExistente(
  * - Todas concluidas (total > 0): transiciona o chamado para 'resolvido'.
  * - Ao menos 1 concluida (mas com pendentes): transiciona para 'em_atendimento'.
  * - Nenhuma concluida: se estava 'resolvido', reverte para 'em_atendimento'.
+ *
+ * `comentario` substitui o texto padrão do histórico (que fala em nome do
+ * Suprimentos) — usado quando quem reabre é a área que abriu o chamado.
  */
 export async function sincronizarStatusChamado(
   requestId: string,
   protocolo?: string,
   actorId?: string,
+  comentarioHistorico?: string,
 ): Promise<void> {
   if (!supabase || !requestId) return;
 
@@ -357,6 +361,7 @@ export async function sincronizarStatusChamado(
   } else {
     comentario = `Nota fiscal do chamado ${prot} reaberta pelo Suprimentos.`;
   }
+  if (comentarioHistorico) comentario = comentarioHistorico;
 
   if (req) {
     if (statusEsperado !== 'resolvido' && req.resolved_at) {
@@ -509,6 +514,117 @@ export async function reabrirPendencia(
   }
 
   return true;
+}
+
+/**
+ * Edição do chamado pela área que o abriu (ver `chamadosSuprimentosGrupo.ts`):
+ * grava os campos das linhas ainda pendentes, com o "antes → depois" no
+ * histórico de ações de cada uma, e a classificação em todas as linhas do
+ * chamado. Devolve quantas linhas mudaram.
+ */
+export async function salvarEdicaoChamadoSuprimentos(
+  requestId: string,
+  linhas: { linha: SupPendenciaProcessamentoNF; campos: Record<string, string | number | null>; alteracoes: string[] }[],
+  meta: { valores: MetaPendencia; alteracoes: string[] } | null,
+): Promise<number> {
+  if (!supabase) throw new Error('Sem conexão com o banco.');
+  const user = localDb.getCurrentUser();
+  const agoraISO = new Date().toISOString();
+  const acao = (alteracoes: string[]): SupPendenciaAcaoLog => ({
+    tipo: 'editado',
+    usuario_id: user?.id || null,
+    usuario_nome: user?.name || null,
+    data_hora: agoraISO,
+    alteracoes,
+  });
+
+  let alteradas = 0;
+  for (const { linha, campos, alteracoes } of linhas) {
+    if (alteracoes.length === 0) continue;
+    const { error } = await (supabase as any)
+      .from(TABELA)
+      .update({ ...campos, historico_acoes: [...extrairHistoricoExistente(linha), acao(alteracoes)] })
+      .eq('id', linha.id)
+      .neq('status', 'concluido');
+    if (error) throw new Error(error.message);
+    alteradas++;
+  }
+
+  if (meta && meta.alteracoes.length > 0) {
+    const { error } = await (supabase as any)
+      .from(TABELA)
+      .update({
+        observacao_chamado: meta.valores.observacao?.trim() || null,
+        classif_causa: meta.valores.classif_causa || null,
+        classif_responsavel: meta.valores.classif_responsavel || null,
+        classif_impacto: meta.valores.classif_impacto || null,
+        classif_recorrencia: meta.valores.classif_recorrencia || null,
+      })
+      .eq('request_id', requestId);
+    if (error) throw new Error(error.message);
+  }
+
+  return alteradas;
+}
+
+/**
+ * Reabre o chamado pela área que o abriu: volta as linhas escolhidas para
+ * pendente (com o motivo no histórico de cada uma), avisa quem as baixou no
+ * Suprimentos e ressincroniza o status do chamado — sem designar quem reabriu
+ * como atendente. Devolve quantas linhas reabriram.
+ */
+export async function reabrirChamadoSuprimentos(
+  requestId: string,
+  linhas: SupPendenciaProcessamentoNF[],
+  motivo: string,
+): Promise<number> {
+  if (!supabase) throw new Error('Sem conexão com o banco.');
+  const user = localDb.getCurrentUser();
+  const agoraISO = new Date().toISOString();
+  const texto = motivo.trim();
+
+  let reabertas = 0;
+  for (const linha of linhas) {
+    if (linha.status !== 'concluido') continue;
+    const hist = [...extrairHistoricoExistente(linha), {
+      tipo: 'reaberto' as const,
+      usuario_id: user?.id || null,
+      usuario_nome: user?.name || null,
+      data_hora: agoraISO,
+      motivo: texto || null,
+    }];
+    const { error } = await (supabase as any)
+      .from(TABELA)
+      .update({ status: 'pendente', resolucao: null, resolvido_por: null, resolvido_em: null, historico_acoes: hist })
+      .eq('id', linha.id);
+    if (error) throw new Error(error.message);
+    reabertas++;
+  }
+  if (reabertas === 0) return 0;
+
+  const req = localDb.getRequests().find(r => r.id === requestId);
+  const prot = linhas[0]?.protocolo || 'SUP';
+  const rotulo = rotuloNumero(linhas[0]?.modelo || 'nfse');
+  const quem = user?.name || 'o solicitante';
+
+  // Quem deu a baixa é quem precisa olhar de novo.
+  const baixaramIds = new Set(linhas.map(l => l.resolvido_por).filter((id): id is string => !!id && id !== user?.id));
+  baixaramIds.forEach(id => localDb.createNotification(
+    id,
+    `Chamado reaberto — #${req?.number || prot}`,
+    `${prot}: ${reabertas} ${rotulo}(s) reaberta(s) por ${quem}. Motivo: ${texto}`,
+    'alert',
+    requestId,
+    req?.number,
+  ));
+
+  await sincronizarStatusChamado(
+    requestId,
+    prot,
+    undefined,
+    `Chamado reaberto por ${quem} (${reabertas} ${rotulo}(s) voltaram para o Suprimentos). Motivo: ${texto}`,
+  );
+  return reabertas;
 }
 
 /** Conclui múltiplas notas de pendência em lote e gera as notificações para os solicitantes. */

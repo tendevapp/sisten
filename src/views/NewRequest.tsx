@@ -63,6 +63,7 @@ import {
   CLASSIF_RECORRENCIA,
 } from '../lib/supPendenciasProcessamento';
 import { proximoIndiceProtocoloDia, criarPendencias, criarAjustePedido, salvarImagensAjuste } from '../lib/supPendenciasApi';
+import { justificativaAjustePedido } from '../lib/chamadosSuprimentosGrupo';
 import { listarNomesServicosFacilities, SERVICOS_FACILITIES_PADRAO } from '../lib/facilitiesApi';
 import ImagesPasteInput from '../components/ui/ImagesPasteInput';
 import {
@@ -1591,7 +1592,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           justificativa: isSupPendencia
             ? `${pendenciasParse.linhas.length} ${pendenciasParse.modelo === 'documento' ? 'lançamento(s)' : 'nota(s) fiscal(is)'} para processamento (protocolo ${protocoloSup}). Ver a relação no chamado.`
             : isAjustePedido
-              ? `Ajuste de pedido (protocolo ${protocoloSup}) — NF ${ajusteNf.trim()} / Pedido ${ajustePedido.trim()} / ${ajusteFornecedor.trim()}. Ver detalhes e imagem no chamado.`
+              ? justificativaAjustePedido(protocoloSup, ajusteNf, ajustePedido, ajusteFornecedor)
               : justificativa,
           local: isDestinoSuprimentos ? '' : helpdeskLocal,
           ...(isDestinoJuridico && {
