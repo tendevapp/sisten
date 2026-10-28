@@ -51,8 +51,9 @@ const item = (over: Partial<RequestItem>): RequestItem => ({
   quantity: 2, unit: 'UN', estimated_value: 10, ...over,
 });
 
-function exportar(): Record<string, unknown>[] {
-  exportarSolicitacoes([req], setores);
+// A exportação carrega o xlsx sob demanda (import dinâmico), então é assíncrona.
+async function exportar(): Promise<Record<string, unknown>[]> {
+  await exportarSolicitacoes([req], setores);
   return jsonToSheet.mock.calls.at(-1)![0] as Record<string, unknown>[];
 }
 
@@ -63,56 +64,56 @@ beforeEach(() => {
 });
 
 describe('exportarSolicitacoes', () => {
-  it('marca "Sim" no item genérico e deixa vazio quando não é', () => {
+  it('marca "Sim" no item genérico e deixa vazio quando não é', async () => {
     getRequestItems.mockReturnValue([item({ id: 'a', is_generic: true }), item({ id: 'b' })]);
-    const [g, comum] = exportar();
+    const [g, comum] = (await exportar());
     expect(g['Item genérico']).toBe('Sim');
     // Vazio, não "Não": numa planilha filtrável a célula vazia já diz não.
     expect(comum['Item genérico']).toBe('');
   });
 
-  it('leva a observação do item para a planilha', () => {
+  it('leva a observação do item para a planilha', async () => {
     getRequestItems.mockReturnValue([item({ observation: 'usar da marca X' })]);
-    expect(exportar()[0]['Observação']).toBe('usar da marca X');
+    expect((await exportar())[0]['Observação']).toBe('usar da marca X');
   });
 
-  it('marca anexo apenas na linha do item que o tem', () => {
+  it('marca anexo apenas na linha do item que o tem', async () => {
     getRequestItems.mockReturnValue([item({ id: 'i1' }), item({ id: 'i2' })]);
     getAttachments.mockReturnValue([
       { id: 'a1', request_id: 'r1', request_item_id: 'i1', name: 'f.jpg', url: '', size: 1, created_at: '' },
     ]);
-    const [com, sem] = exportar();
+    const [com, sem] = (await exportar());
     expect(com['Anexo']).toBe('Sim');
     expect(sem['Anexo']).toBe('');
   });
 
-  it('anexo preso à solicitação vale para todas as linhas', () => {
+  it('anexo preso à solicitação vale para todas as linhas', async () => {
     // Ele não pertence a um item; omiti-lo faria a planilha afirmar que a
     // solicitação não tem anexo nenhum.
     getRequestItems.mockReturnValue([item({ id: 'i1' }), item({ id: 'i2' })]);
     getAttachments.mockReturnValue([
       { id: 'a1', request_id: 'r1', name: 'nf.pdf', url: '', size: 1, created_at: '' },
     ]);
-    expect(exportar().map(l => l['Anexo'])).toEqual(['Sim', 'Sim']);
+    expect((await exportar()).map(l => l['Anexo'])).toEqual(['Sim', 'Sim']);
   });
 
-  it('solicitação sem itens sai em linha única, com anexo resolvido', () => {
+  it('solicitação sem itens sai em linha única, com anexo resolvido', async () => {
     getRequestItems.mockReturnValue([]);
     getAttachments.mockReturnValue([
       { id: 'a1', request_id: 'r1', name: 'doc.pdf', url: '', size: 1, created_at: '' },
     ]);
-    const linhas = exportar();
+    const linhas = (await exportar());
     expect(linhas).toHaveLength(1);
     expect(linhas[0]['Anexo']).toBe('Sim');
     expect(linhas[0]['Item']).toBe('');
   });
 
-  it('resolve o comprador pelo id, não despeja o uuid', () => {
-    expect(exportar()[0]['Comprador']).toBe('Itana Souza');
+  it('resolve o comprador pelo id, não despeja o uuid', async () => {
+    expect((await exportar())[0]['Comprador']).toBe('Itana Souza');
   });
 
-  it('deixa vazio o campo que não pertence ao tipo, sem quebrar a linha', () => {
-    const linha = exportar()[0];
+  it('deixa vazio o campo que não pertence ao tipo, sem quebrar a linha', async () => {
+    const linha = (await exportar())[0];
     expect(linha['Categoria']).toBe('');
     expect(linha['Local']).toBe('');
   });

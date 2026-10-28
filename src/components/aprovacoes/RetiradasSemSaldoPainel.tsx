@@ -17,7 +17,7 @@ import { useToast } from '../ui/Toast';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import { TableEmpty } from '../ui/DataTable';
 import { formatarDataBR } from '../../lib/fichaEpi';
-import { podeAprovarRetirada, type AprovacaoSolExtra } from '../../lib/solicitacaoExtra';
+import { podeAprovarRetirada, setoresDeAprovacao, type AprovacaoSolExtra } from '../../lib/solicitacaoExtra';
 import { aprovarRetiradasSemSaldo, listarRetiradasSemSaldo, type SolExtra } from '../../lib/solicitacaoExtraApi';
 import { AprovacaoChip, BotaoPdfRetirada, ResumoRetirada, resumoItensRetirada } from '../almoxarifado/RetiradaSemSaldo';
 
@@ -31,9 +31,7 @@ const FILTROS: { valor: Filtro; rotulo: string }[] = [
 ];
 
 /** Setores cujas retiradas o usuário vê aqui; `undefined` = todos (admin). */
-export function setoresDeAprovacao(user: Profile): string[] | undefined {
-  return user.roles.includes('admin') ? undefined : user.aprovador_setores ?? [];
-}
+export { setoresDeAprovacao };
 
 export default function RetiradasSemSaldoPainel({
   user, idInicial, onPendentes,

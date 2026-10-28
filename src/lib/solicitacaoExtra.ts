@@ -212,3 +212,12 @@ export function podeAprovarRetirada(
   if (user.roles.includes('admin')) return true;
   return !!r.setor_solicitante_id && !!user.aprovador_setores?.includes(r.setor_solicitante_id);
 }
+
+/**
+ * Setores cujas retiradas o usuário aprova; `undefined` = todos (admin).
+ * Fica aqui (e não no painel de Aprovações) porque o menu lateral também usa,
+ * e importar o painel puxava o PDF da retirada para o pacote inicial do app.
+ */
+export function setoresDeAprovacao(user: { roles: string[]; aprovador_setores?: string[] }): string[] | undefined {
+  return user.roles.includes('admin') ? undefined : user.aprovador_setores ?? [];
+}

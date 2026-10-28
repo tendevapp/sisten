@@ -11,7 +11,6 @@
  * Ver documentos/superpowers/specs/2026-07-28-pagina-solicitacoes-design.md
  */
 
-import * as XLSX from 'xlsx';
 import { Profile, Request, RequestAttachment, RequestItem, RequestStatus, RequestStatusHistory, RequestType, Sector } from '../types';
 import { localDb } from '../db/localDb';
 import { formatDateBR, formatDateTimeBR } from './format';
@@ -328,7 +327,7 @@ export const avisoEdicao = (tipo: RequestType): string =>
  * compra) ficam vazios nos demais, em vez de virarem abas separadas: uma
  * planilha só se filtra e se dinamiza; três não.
  */
-export function exportarSolicitacoes(selecionadas: Request[], sectors: Sector[]): void {
+export async function exportarSolicitacoes(selecionadas: Request[], sectors: Sector[]): Promise<void> {
   const nomeSetor = (id?: string) => (id ? sectors.find(s => s.id === id)?.name || id : '');
 
   const perfis = localDb.getProfiles();
@@ -418,6 +417,9 @@ export function exportarSolicitacoes(selecionadas: Request[], sectors: Sector[])
     }));
   });
 
+  // Import dinâmico: este arquivo entra no pacote inicial (rótulos de status
+  // usados no login), e o xlsx sozinho somava ~400 KB a toda abertura do app.
+  const XLSX = await import('xlsx');
   const ws = XLSX.utils.json_to_sheet(linhas);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Solicitações');

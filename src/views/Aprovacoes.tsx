@@ -669,8 +669,9 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
       return;
     }
 
-    exportarSolicitacoes(listaParaExportar, sectors);
-    toast.success(`Planilha exportada com ${listaParaExportar.length} solicitação(ões)!`);
+    exportarSolicitacoes(listaParaExportar, sectors)
+      .then(() => toast.success(`Planilha exportada com ${listaParaExportar.length} solicitação(ões)!`))
+      .catch(() => toast.error('Falha ao gerar a planilha. Tente novamente.'));
   };
 
   // Tempo relativo de espera

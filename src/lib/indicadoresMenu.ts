@@ -5,7 +5,11 @@
  * Indicadores (bolinha vermelha) do menu lateral: itens em aberto que esperam
  * o usuario em "Pendencias" e "Aprovacoes". Compras vem do localDb (reativo);
  * retiradas sem saldo e notas do Processamento de NF vem do banco e sao relidas
- * a cada minuto. A bolinha de Pendencias soma todas as abas que o usuario ve.
+ * a cada 3 minutos. A bolinha de Pendencias soma todas as abas que o usuario ve.
+ *
+ * So contagem (`count`, sem linhas) e so com a aba visivel: o menu roda em toda
+ * aba aberta do dia inteiro; em 28/10/2026 a leitura de linhas completas a cada
+ * minuto, inclusive em abas escondidas, ajudou a saturar o banco.
  */
 
 import { useEffect, useState } from 'react';
@@ -13,12 +17,12 @@ import { localDb } from '../db/localDb';
 import type { Profile } from '../types';
 import { canAccessPage } from './pages';
 import { podeAprovar } from './solicitacoesCentral';
-import { listarRetiradasSemSaldo } from './solicitacaoExtraApi';
+import { contarRetiradasSemSaldo } from './solicitacaoExtraApi';
 import { podeDarBaixaRetirada } from './retiradaSemSaldoBaixa';
-import { setoresDeAprovacao } from '../components/aprovacoes/RetiradasSemSaldoPainel';
+import { setoresDeAprovacao } from './solicitacaoExtra';
 import { contarNotasAguardando } from './supPendenciasApi';
 
-const INTERVALO_MS = 60_000;
+const INTERVALO_MS = 3 * 60_000;
 
 export interface IndicadoresMenu {
   /** Itens em aberto por id de pagina do menu (ex.: `sol_aprovacoes`). */
@@ -50,14 +54,15 @@ export function useIndicadoresMenu(user: Profile): IndicadoresMenu {
   useEffect(() => {
     let ativo = true;
     const carregar = () => {
+      if (document.hidden) return;
       if (ehAprovador) {
-        listarRetiradasSemSaldo({ aprovacao: 'PENDENTE', setores: setoresDeAprovacao(user) })
-          .then((l) => { if (ativo) setAprovacaoRetirada(l.length); })
+        contarRetiradasSemSaldo({ aprovacao: 'PENDENTE', setores: setoresDeAprovacao(user) })
+          .then((n) => { if (ativo) setAprovacaoRetirada(n); })
           .catch(() => { /* sem a contagem o menu segue sem a bolinha */ });
       }
       if (ehAlmox) {
-        listarRetiradasSemSaldo({ status: 'PENDENTE' })
-          .then((l) => { if (ativo) setBaixaRetirada(l.length); })
+        contarRetiradasSemSaldo({ status: 'PENDENTE' })
+          .then((n) => { if (ativo) setBaixaRetirada(n); })
           .catch(() => { /* idem */ });
       }
       if (veProcessamento) {
@@ -68,7 +73,10 @@ export function useIndicadoresMenu(user: Profile): IndicadoresMenu {
     };
     carregar();
     const timer = window.setInterval(carregar, INTERVALO_MS);
-    return () => { ativo = false; window.clearInterval(timer); };
+    // Volta ao primeiro plano: atualiza na hora em vez de esperar o próximo ciclo.
+    const aoVoltar = () => { if (!document.hidden) carregar(); };
+    document.addEventListener('visibilitychange', aoVoltar);
+    return () => { ativo = false; window.clearInterval(timer); document.removeEventListener('visibilitychange', aoVoltar); };
   }, [user, ehAprovador, ehAlmox, veProcessamento]);
 
   const aprovacoes = canAccessPage(user, 'sol_aprovacoes') ? compras + aprovacaoRetirada : 0;

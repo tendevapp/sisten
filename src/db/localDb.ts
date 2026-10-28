@@ -42,7 +42,6 @@ import { emailDominioPermitido, MSG_DOMINIO_NAO_PERMITIDO } from '../lib/authDom
 import { descreverAlteracoesCompra, resumoAlteracoes } from '../lib/solicitacoesDiff';
 import { reabrirSolicitacaoPorRequestId } from '../lib/almoxarifadoRmApi';
 import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
-import { limparCacheFotosPdf } from '../lib/pdfExport/fotosPdf';
 
 /** Bucket privado dos anexos de solicitação. Leitura só por URL assinada. */
 const ATTACHMENTS_BUCKET = 'request-attachments';
@@ -365,10 +364,14 @@ class LocalDatabase {
           ['activity_logs', () => this.syncSimpleTable('core_logs_atividade', this.logsKey, false, undefined, 'id')],
           ['sequences', () => this.syncSequences()],
           ['sap_zl0132_po', gated('pedidosforn', () => this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'), 'id'))],
-          // vw_historico_pedidos não tem coluna única (é uma view agregada); não dá
-          // para forçar um ORDER BY seguro aqui sem arriscar um nome de coluna
-          // inválido. Ver P5 no plano de egress.
-          ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true))],
+          // vw_historico_pedidos saiu da sincronização geral em 28/10/2026: é uma
+          // view agregada (~63 mil linhas) paginada por OFFSET, então cada página
+          // recalcula a view inteira (~10 s cada). Depois de uma importação, todo
+          // usuário logado — inclusive quem nunca abre as telas que a usam —
+          // rebaixava as 63 páginas ao mesmo tempo, e isso travou o banco. As
+          // telas que precisam dela (Histórico de Pedidos, Análise/Recorrência/
+          // Preço Médio de Suprimentos, Mapa Comparativo) já chamam
+          // `fetchHistoricoPedidos`, que baixa sob demanda com o mesmo gate.
           ['contatos', gated('contatos', () => this.syncSimpleTable('sup_fornecedores_contatos', this.contatosKey, true, undefined, 'id'))],
           ['cidadeforn', gated('cidadeforn', () => this.syncSimpleTable('sup_fornecedores_cidades', this.cidadeFornKey, true, undefined, 'id'))],
           // Cadastro de referência pequeno (~1,4 mil linhas) e estático: decodifica
@@ -1310,7 +1313,11 @@ class LocalDatabase {
       console.warn('Não foi possível remover o usuário atual do IndexedDB.', err);
     });
     // Fotos guardadas para os PDFs não ficam para o próximo usuário do aparelho.
-    await limparCacheFotosPdf();
+    // Import dinâmico: o módulo das fotos traz o pdf-lib, que não precisa
+    // entrar no pacote inicial só por causa do logout.
+    await import('../lib/pdfExport/fotosPdf')
+      .then(m => m.limparCacheFotosPdf())
+      .catch(err => console.warn('Não foi possível limpar as fotos guardadas para PDF.', err));
     if (supabase) {
       await supabase.auth.signOut().catch(err => {
         console.error('Erro no signOut do Supabase:', err);

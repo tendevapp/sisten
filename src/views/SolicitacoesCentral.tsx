@@ -758,7 +758,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
             <button
               type="button"
-              onClick={() => exportarSolicitacoes(selecionadasReq, sectors)}
+              onClick={() => { exportarSolicitacoes(selecionadasReq, sectors).catch(err => console.error('Falha ao gerar a planilha de solicitações:', err)); }}
               disabled={selecionadasReq.length === 0}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >

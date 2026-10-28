@@ -144,6 +144,25 @@ export async function listarRetiradasSemSaldo(filtro: {
 }
 
 /**
+ * Só a contagem, para a bolinha do menu: o menu relê a cada poucos minutos em
+ * toda aba aberta, e baixar as linhas inteiras (com itens) só para contar
+ * pesava no banco.
+ */
+export async function contarRetiradasSemSaldo(filtro: {
+  status?: StatusSolExtra;
+  aprovacao?: AprovacaoSolExtra;
+  setores?: string[];
+} = {}): Promise<number> {
+  let q = db().select('id', { count: 'exact', head: true }).eq('tipo', 'SEM_SALDO').is('excluido_em', null);
+  if (filtro.status) q = q.eq('status', filtro.status);
+  if (filtro.aprovacao) q = q.eq('aprovacao_status', filtro.aprovacao);
+  if (filtro.setores) q = q.in('setor_solicitante_id', filtro.setores.length ? filtro.setores : ['__nenhum__']);
+  const { count, error } = await q;
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+/**
  * `id` vem de fora quando há fotos: elas sobem antes, na pasta do registro,
  * e o insert já leva os caminhos (um insert só — cabe na fila offline).
  */
