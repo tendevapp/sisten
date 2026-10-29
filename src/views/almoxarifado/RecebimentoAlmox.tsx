@@ -41,6 +41,8 @@ import {
   EPSILON_QTD, PREFIXO_RECEB, juntarNotasFiscais, separarNotasFiscais, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarItensComPo, buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
   entregaParcialAnterior, listarFornecedoresDoCache, parcialPrecisaConfirmarNf, pendentePedido, podeExcluirNaoConformidade, posAbertosDoFornecedor,
   resumoConferencia, tipoNcSugerido, validarNovaNcAvulsa,
+  NF_SEM_PO, itensSemNf, nfDoItem, nfPorPedidoDosItens, nfsDoPedido, pedidosSemNf, resumoNfPorPedido,
+  type FotoNotaFiscal, type NfPorPedido,
   type AnexoRecebimento, type DestinoPrevisto, type FontePedido, type ItemPoEncontrado, type LinhaConferencia, type PoAberto,
   type LinhaCacheSAP, type TipoDivergencia, type TipoEmbalagem,
 } from '../../lib/recebimentoAlmox';
@@ -919,7 +921,7 @@ function VistaContagem({
       const pos = c.pedidos?.length ? c.pedidos : c.nro_pedido ? [c.nro_pedido] : [];
       return dentroDoPeriodo(c.data, de, ate)
         && casaBusca(busca, [
-          c.codigo, c.fornecedor, c.rm, c.tipo_item, ...pos,
+          c.codigo, c.fornecedor, c.rm, c.tipo_item, c.nota_fiscal, ...pos,
           ...c.itens.flatMap((it) => [it.material_code, it.descricao, it.nro_pedido]),
         ]);
     }),
@@ -1543,6 +1545,17 @@ function ModalDetalhe({
                 <DetLinha rotulo="Data" valor={formatDateBR(c.data)} />
                 {c.retorno_remessa && <DetLinha rotulo="Natureza" valor="Retorno de remessa (sem PO)" />}
                 <DetLinha rotulo="Pedidos (PO)" valor={pos.join(' · ')} />
+                <DetLinha
+                  rotulo="Notas fiscais"
+                  valor={(() => {
+                    const porNf = resumoNfPorPedido(c.itens);
+                    // Com mais de um PO, mostra qual nota cobriu quais pedidos.
+                    if (pos.length > 1 && porNf.length) {
+                      return porNf.map((g) => `NF ${g.nf}: PO ${g.pedidos.join(', ')}`).join(' · ');
+                    }
+                    return separarNotasFiscais(c.nota_fiscal).join(' · ');
+                  })()}
+                />
                 <DetLinha rotulo="Fornecedor" valor={c.fornecedor} />
                 <DetLinha rotulo="RM" valor={c.rm} />
                 <DetLinha rotulo="Depósito" valor={c.deposito} />
@@ -1615,7 +1628,7 @@ function ModalDetalhe({
                         </span>
                       </div>
                       <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                        cód. {it.material_code}{it.nro_pedido ? ` · PO ${it.nro_pedido}` : ''}
+                        cód. {it.material_code}{it.nro_pedido ? ` · PO ${it.nro_pedido}` : ''}{it.nota_fiscal ? ` · NF ${it.nota_fiscal}` : ''}
                       </p>
                       {(() => {
                         const tag = compraDiretaDe(c.rm, it.material_code);
@@ -1636,6 +1649,15 @@ function ModalDetalhe({
                 })}
               </div>
 
+              {separarNotasFiscais((c.fotos_nf ?? []).map((f) => f.nf).join(',')).map((nf) => (
+                <FotosAssinadas
+                  key={nf}
+                  paths={(c.fotos_nf ?? []).filter((f) => f.nf === nf).map((f) => f.path)}
+                  titulo={`Foto da NF ${nf}`}
+                  legenda={`NF ${nf} — ${c.codigo}`}
+                  onAbrir={lb.abrir}
+                />
+              ))}
               <FotosAssinadas paths={geralPaths} titulo="Foto geral do recebimento" legenda={c.codigo} onAbrir={lb.abrir} />
               <LogAlteracoes entidade="conferencia" entidadeId={c.id} />
             </div>
@@ -2101,6 +2123,8 @@ interface LinhaUI extends LinhaConferencia {
   estado: EstadoLinha;
   /** RM da linha no SAP — liga o item à solicitação para a tag de compra direta. */
   rm?: string | null;
+  /** NF escolhida no item — só conta quando o PO dele veio em mais de uma nota. */
+  notaFiscal?: string | null;
 }
 
 type EstadoLinha = null | 'conferido' | 'parcial' | 'avaria';
@@ -2170,6 +2194,9 @@ interface RascunhoConferencia {
   deposito: string;
   fonte: FontePedido;
   retornoRemessa?: boolean;
+  notasFiscais?: string[];
+  /** PO (ou `NF_SEM_PO`) → NFs, quando a conferência tem mais de uma NF. */
+  nfPorPedido?: NfPorPedido;
   observacao: string;
   ncResponsavel: string;
   ncSeveridade: 'baixa' | 'media' | 'alta';
@@ -2332,6 +2359,7 @@ function ModalConferencia({
           fotos: [],
           estado: est,
           parcialConformeNf: it.parcial_conforme_nf ?? false,
+          notaFiscal: it.nota_fiscal ?? null,
           ...flagsDoEstado(est),
         };
       });
@@ -2340,6 +2368,17 @@ function ModalConferencia({
     return [];
   });
   const [observacao, setObservacao] = useState(ed?.observacao ?? rascunho?.observacao ?? '');
+  /** NFs da conferência. Uma só vale para todos os POs; com várias, cada PO aponta
+   *  as suas — e o PO que veio em mais de uma nota tem a NF escolhida item a item. */
+  const [notasFiscais, setNotasFiscais] = useState<string[]>(
+    () => (ed ? separarNotasFiscais(ed.nota_fiscal) : rascunho?.notasFiscais ?? []),
+  );
+  const [nfPendente, setNfPendente] = useState('');
+  const [nfPorPedido, setNfPorPedido] = useState<NfPorPedido>(
+    () => (ed ? nfPorPedidoDosItens(ed.itens) : rascunho?.nfPorPedido ?? {}),
+  );
+  /** Fotos novas da NF, por número da nota (opcional). As já gravadas ficam em `ed.fotos_nf`. */
+  const [fotosNf, setFotosNf] = useState<Record<string, PreparedAttachment[]>>({});
   const [fotosCab, setFotosCab] = useState<PreparedAttachment[]>([]);
   const [ncResponsavel, setNcResponsavel] = useState(rascunho?.ncResponsavel ?? '');
   const [ncSeveridade, setNcSeveridade] = useState<'baixa' | 'media' | 'alta'>(rascunho?.ncSeveridade ?? 'media');
@@ -2352,6 +2391,26 @@ function ModalConferencia({
     for (const l of linhas) if (l.nroPedido && !vistos.includes(l.nroPedido)) vistos.push(l.nroPedido);
     return vistos;
   }, [linhas]);
+
+  /** Quem precisa de NF: cada PO e, se houver, o bloco de itens fora de pedido. */
+  const chavesNf = useMemo(
+    () => (linhas.some((l) => !l.nroPedido) ? [...pedidos, NF_SEM_PO] : pedidos),
+    [linhas, pedidos],
+  );
+
+  /** Ao ganhar a 2ª NF, os POs que já estavam implicitamente na 1ª continuam
+   *  nela — o usuário só troca os que vieram na nota nova. */
+  const setNotasConferencia = (novas: string[]) => {
+    if (notasFiscais.length === 1 && novas.length > 1) {
+      const primeira = notasFiscais[0];
+      setNfPorPedido((m) => {
+        const n = { ...m };
+        for (const k of chavesNf) if (!n[k]?.length) n[k] = [primeira];
+        return n;
+      });
+    }
+    setNotasFiscais(novas);
+  };
 
   /** Puxa um PO (do cache ou do servidor) e junta suas linhas à conferência. */
   const adicionarPedido = async (alvoRaw: string) => {
@@ -2494,17 +2553,17 @@ function ModalConferencia({
     if (ed) return;
     if (debounceRascunhoRef.current != null) window.clearTimeout(debounceRascunhoRef.current);
     debounceRascunhoRef.current = window.setTimeout(() => {
-      const temAlgo = linhas.length > 0 || retornoRemessa || fornecedor.trim() || rm.trim() || deposito.trim() || observacao.trim() || !!cargaId;
+      const temAlgo = linhas.length > 0 || retornoRemessa || fornecedor.trim() || rm.trim() || deposito.trim() || observacao.trim() || !!cargaId || notasFiscais.length > 0;
       if (!temAlgo) { removerRascunhoConferencia(rascId); return; }
       salvarRascunhoConferencia({
         id: rascId,
-        data, cargaId, fornecedor, rm, deposito, fonte, retornoRemessa, observacao, ncResponsavel, ncSeveridade,
+        data, cargaId, fornecedor, rm, deposito, fonte, retornoRemessa, notasFiscais, nfPorPedido, observacao, ncResponsavel, ncSeveridade,
         linhas: linhas.map(({ fotos, ...resto }) => resto),
         atualizadoEm: new Date().toISOString(),
       });
     }, 600);
     return () => { if (debounceRascunhoRef.current != null) window.clearTimeout(debounceRascunhoRef.current); };
-  }, [ed, rascId, data, cargaId, fornecedor, rm, deposito, fonte, retornoRemessa, observacao, ncResponsavel, ncSeveridade, linhas]);
+  }, [ed, rascId, data, cargaId, fornecedor, rm, deposito, fonte, retornoRemessa, notasFiscais, nfPorPedido, observacao, ncResponsavel, ncSeveridade, linhas]);
 
   /** Em segundo plano: a conferência já foi salva, o catálogo é consequência e nunca a derruba. */
   const levarFotosAoCatalogo = (itensFoto: ItemParaCatalogar[]) => {
@@ -2524,12 +2583,38 @@ function ModalConferencia({
   const salvar = async () => {
     if (!linhas.length) { toast.error('Carregue o pedido ou adicione ao menos um item.'); return; }
     if (linhas.some((l) => !l.materialCode.trim())) { toast.error('Todo item precisa de um código de material.'); return; }
+    // O número digitado e ainda não confirmado (sem Enter) também conta.
+    const notas = separarNotasFiscais([...notasFiscais, nfPendente].join(','));
+    if (!ed && !retornoRemessa && pedidos.length && !notas.length) {
+      toast.error('Informe o número da nota fiscal.');
+      return;
+    }
+    const semNf = pedidosSemNf(linhas.map((l) => l.nroPedido), notas, nfPorPedido);
+    if (semNf.length) {
+      toast.error(`Indique a NF de: ${semNf.map((k) => (k === NF_SEM_PO ? 'itens fora de pedido' : `PO ${k}`)).join(', ')}.`);
+      return;
+    }
+    const itensSem = itensSemNf(linhas, notas, nfPorPedido);
+    if (itensSem.length) {
+      const pos = [...new Set(itensSem.map((i) => linhas[i].nroPedido || 'fora de pedido'))];
+      toast.error(`${itensSem.length} item(ns) do PO ${pos.join(', ')} sem NF — o PO veio em mais de uma nota, escolha a NF em cada item.`);
+      return;
+    }
 
     setSalvando(true);
     try {
       const codigoTmp = ed ? ed.codigo : `${PREFIXO_RECEB.conferencia}-${data}`;
       const evidCabNovas = await subirTodas(fotosCab, codigoTmp);
       const evidCab = ed ? [...ed.evidencias, ...evidCabNovas] : evidCabNovas;
+      // Foto de NF que saiu da lista sai junto.
+      const fotosNfGravadas: FotoNotaFiscal[] = [
+        ...(ed?.fotos_nf ?? []),
+        ...(await Promise.all(
+          Object.entries(fotosNf)
+            .filter(([nf, arqs]) => notas.includes(nf) && arqs.length)
+            .map(async ([nf, arqs]) => (await subirTodas(arqs, codigoTmp)).map((a) => ({ ...a, nf }))),
+        )).flat(),
+      ].filter((f) => notas.includes(f.nf));
 
       const itens = [];
       for (const l of linhas) {
@@ -2550,6 +2635,7 @@ function ModalConferencia({
           item_manual: l.itemManual,
           parcial: l.parcial,
           parcial_conforme_nf: l.parcial && !!l.parcialConformeNf,
+          nota_fiscal: nfDoItem(l.nroPedido, l.notaFiscal, notas, nfPorPedido),
           observacao: l.observacao.trim() || null,
           evidencias: [...l.evidencias, ...evidNovas],
         });
@@ -2577,13 +2663,15 @@ function ModalConferencia({
             carga_id: cargaId || null,
             tipo_item: resumoConferencia(linhas, retornoRemessa).tipoItem,
             retorno_remessa: retornoRemessa,
+            nota_fiscal: juntarNotasFiscais(notas) || null,
+            fotos_nf: fotosNfGravadas,
             evidencias: evidCab,
           },
           itens,
           { id: user.id, nome: user.name },
         );
         levarFotosAoCatalogo(paraCatalogo);
-        [...fotosCab, ...linhas.flatMap((l) => l.fotos)].forEach((f) => URL.revokeObjectURL(f.previewUrl));
+        [...fotosCab, ...Object.values(fotosNf).flat(), ...linhas.flatMap((l) => l.fotos)].forEach((f) => URL.revokeObjectURL(f.previewUrl));
 
         let qtdChegadas = 0;
         try {
@@ -2639,6 +2727,8 @@ function ModalConferencia({
         deposito: deposito.trim() || null,
         fonte_pedido: fonte,
         retorno_remessa: retornoRemessa,
+        nota_fiscal: juntarNotasFiscais(notas) || null,
+        fotos_nf: fotosNfGravadas,
         evidencias: evidCab,
         observacao: observacao.trim() || null,
         criado_por_id: user.id,
@@ -2650,7 +2740,7 @@ function ModalConferencia({
       if (debounceRascunhoRef.current != null) window.clearTimeout(debounceRascunhoRef.current);
       removerRascunhoConferencia(rascId);
       levarFotosAoCatalogo(paraCatalogo);
-      [...fotosCab, ...linhas.flatMap((l) => l.fotos)].forEach((f) => URL.revokeObjectURL(f.previewUrl));
+      [...fotosCab, ...Object.values(fotosNf).flat(), ...linhas.flatMap((l) => l.fotos)].forEach((f) => URL.revokeObjectURL(f.previewUrl));
 
       let qtdChegadas = 0;
       try {
@@ -2703,6 +2793,8 @@ function ModalConferencia({
                 setCargaId(e.target.value);
                 const c = cargasVinculaveis.find((x) => x.id === e.target.value);
                 if (c?.nro_pedido && !poBusca && !pedidos.length) setPoBusca(c.nro_pedido);
+                // A NF já foi digitada na doca — não digita de novo.
+                if (c?.nota_fiscal && !notasFiscais.length) setNotasFiscais(separarNotasFiscais(c.nota_fiscal));
               }} className={inputCls}>
                 <option value="">—</option>
                 {cargasVinculaveis.map((c) => (
@@ -2968,6 +3060,93 @@ function ModalConferencia({
           </Campo>
           )}
 
+          <Campo rotulo={retornoRemessa ? 'Nota fiscal (opcional)' : 'Nota fiscal'}>
+            <CampoNotasFiscais notas={notasFiscais} setNotas={setNotasConferencia} pendente={nfPendente} setPendente={setNfPendente} />
+            {notasFiscais.length === 1 && pedidos.length > 1 && (
+              <span className="mt-1 block text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                NF {notasFiscais[0]} vale para os {pedidos.length} POs. Se veio outra nota, adicione — aí você escolhe a NF de cada PO.
+              </span>
+            )}
+            {notasFiscais.length > 1 && chavesNf.length > 0 && (
+              <div className="mt-2 space-y-2 rounded-lg border p-2.5" style={{ borderColor: 'var(--hairline)' }}>
+                <p className="text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>
+                  Quais NFs trouxeram cada PO? A mesma nota pode cobrir vários POs, e um PO pode vir em mais de uma nota.
+                </p>
+                {chavesNf.map((k) => {
+                  const semPo = k === NF_SEM_PO;
+                  const chave = semPo ? null : k;
+                  const atuais = nfsDoPedido(chave, notasFiscais, nfPorPedido);
+                  const cor = semPo ? 'var(--ink-muted)' : COR_PO[Math.max(0, pedidos.indexOf(k)) % COR_PO.length];
+                  return (
+                    <div key={k}>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="min-w-[7.5rem] text-[11px] font-bold" style={{ color: cor }}>
+                          {semPo ? 'Fora de pedido' : `PO ${k}`}
+                        </span>
+                        {notasFiscais.map((nf) => {
+                          const sel = atuais.includes(nf);
+                          return (
+                            <button
+                              key={nf}
+                              type="button"
+                              aria-pressed={sel}
+                              onClick={() => setNfPorPedido((m) => {
+                                const lista = nfsDoPedido(chave, notasFiscais, m);
+                                return { ...m, [k]: sel ? lista.filter((x) => x !== nf) : [...lista, nf] };
+                              })}
+                              className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold cursor-pointer"
+                              style={sel
+                                ? { background: 'var(--brand)', borderColor: 'var(--brand)', color: '#fff' }
+                                : { borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                            >
+                              {sel && <Check className="h-3 w-3" />}NF {nf}
+                            </button>
+                          );
+                        })}
+                        {!atuais.length && (
+                          <span className="text-[10px] font-extrabold uppercase" style={{ color: 'var(--status-critical)' }}>sem NF</span>
+                        )}
+                      </div>
+                      {atuais.length > 1 && (
+                        <p className="mt-0.5 text-[10px] font-bold" style={{ color: 'var(--status-serious)' }}>
+                          Veio em {atuais.length} notas — escolha a NF em cada item deste PO, lá embaixo.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Campo>
+
+          {notasFiscais.length > 0 && (
+            <Campo rotulo="Foto da NF (opcional)">
+              <div className="space-y-2">
+                {notasFiscais.map((nf) => {
+                  const jaGravadas = (ed?.fotos_nf ?? []).filter((f) => f.nf === nf).length;
+                  return (
+                    <div key={nf} className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-[5.5rem] text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>
+                        NF {nf}
+                        {jaGravadas > 0 && (
+                          <span className="block text-[10px] font-medium" style={{ color: 'var(--ink-muted)' }}>{jaGravadas} já anexada(s)</span>
+                        )}
+                      </span>
+                      <GaleriaFotos
+                        arquivos={fotosNf[nf] ?? []}
+                        setArquivos={(upd) => setFotosNf((m) => ({
+                          ...m,
+                          [nf]: typeof upd === 'function' ? upd(m[nf] ?? []) : upd,
+                        }))}
+                        max={4}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </Campo>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-3">
             <Campo rotulo={retornoRemessa ? 'Fornecedor (opcional)' : 'Fornecedor'}><input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} className={inputCls} /></Campo>
             <Campo rotulo="RM"><input value={rm} onChange={(e) => setRm(e.target.value)} className={inputCls} /></Campo>
@@ -3046,6 +3225,37 @@ function ModalConferencia({
                       </p>
                     </div>
                   )}
+
+                  {(() => {
+                    // PO faturado em mais de uma nota: o item diz em qual veio.
+                    const nfsLinha = nfsDoPedido(l.nroPedido, notasFiscais, nfPorPedido);
+                    if (nfsLinha.length < 2) return null;
+                    const escolhida = nfDoItem(l.nroPedido, l.notaFiscal, notasFiscais, nfPorPedido);
+                    return (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] font-bold" style={{ color: escolhida ? 'var(--ink-secondary)' : 'var(--status-critical)' }}>
+                          {escolhida ? 'Veio na' : 'Em qual NF veio?'}
+                        </span>
+                        {nfsLinha.map((nf) => {
+                          const sel = escolhida === nf;
+                          return (
+                            <button
+                              key={nf}
+                              type="button"
+                              aria-pressed={sel}
+                              onClick={() => setLinha(idx, { notaFiscal: nf })}
+                              className="rounded-full border px-2 py-0.5 text-[11px] font-bold cursor-pointer"
+                              style={sel
+                                ? { background: 'var(--brand)', borderColor: 'var(--brand)', color: '#fff' }
+                                : { borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                            >
+                              NF {nf}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
                   {(() => {
                     const tag = compraDiretaDe(l.rm ?? rm, l.materialCode);
@@ -3163,13 +3373,14 @@ function ModalConferencia({
                 const okG = g.itens.filter(({ l }) => l.conferido && !classificarDivergencia(l)).length;
                 const divG = g.itens.filter(({ l }) => classificarDivergencia(l)).length;
                 const cor = g.po ? COR_PO[Math.max(0, pedidos.indexOf(g.po)) % COR_PO.length] : 'var(--ink-muted)';
+                const nfsG = nfsDoPedido(g.po, notasFiscais, nfPorPedido);
                 return (
                   <Recolhivel
                     key={g.po ?? '__sem_po__'}
                     inicialAberto
                     tom={cor}
                     titulo={g.po ? `PO ${g.po}` : 'Itens fora de pedido'}
-                    resumo={`${g.itens.length} item(ns) · ${okG} ok${divG ? ` · ${divG} diverg.` : ''}`}
+                    resumo={`${nfsG.length ? `NF ${nfsG.join(' + ')} · ` : ''}${g.itens.length} item(ns) · ${okG} ok${divG ? ` · ${divG} diverg.` : ''}`}
                   >
                     {g.itens.map(({ l, idx }) => renderItem(l, idx))}
                   </Recolhivel>

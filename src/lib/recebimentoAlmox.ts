@@ -292,6 +292,108 @@ export function juntarNotasFiscais(notas: string[]): string {
   return separarNotasFiscais(notas.join(',')).join(', ');
 }
 
+/** Chave do mapa PO → NFs para os itens fora de pedido. */
+export const NF_SEM_PO = '__sem_po__';
+
+/** PO (ou `NF_SEM_PO`) → NFs que trouxeram aquele pedido. Aceita o formato
+ *  antigo do rascunho (uma NF solta por PO). */
+export type NfPorPedido = Record<string, string[] | string>;
+
+/**
+ * NFs que cobrem um PO da conferência. Uma NF só vale para todos os POs — é o
+ * caso de 2 pedidos do mesmo fornecedor faturados numa nota, e o usuário não
+ * digita de novo. Com várias NFs vale o que ele apontou para o PO, que pode
+ * ser mais de uma (fornecedor faturou o pedido em notas separadas); NF
+ * apontada que saiu da lista não conta. Sai na ordem da lista de NFs.
+ */
+export function nfsDoPedido(
+  po: string | null | undefined,
+  notas: string[],
+  nfPorPedido: NfPorPedido,
+): string[] {
+  if (notas.length === 1) return [notas[0]];
+  const v = nfPorPedido[po || NF_SEM_PO];
+  const apontadas = Array.isArray(v) ? v : v ? [v] : [];
+  return notas.filter((nf) => apontadas.includes(nf));
+}
+
+/**
+ * NF de um item: a única do PO dele ou, quando o PO veio em várias notas, a
+ * que foi escolhida no próprio item.
+ */
+export function nfDoItem(
+  po: string | null | undefined,
+  nfItem: string | null | undefined,
+  notas: string[],
+  nfPorPedido: NfPorPedido,
+): string | null {
+  const nfs = nfsDoPedido(po, notas, nfPorPedido);
+  if (nfs.length === 1) return nfs[0];
+  return nfItem && nfs.includes(nfItem) ? nfItem : null;
+}
+
+/** POs (ou `NF_SEM_PO`) ainda sem NF — só acontece com mais de uma NF. */
+export function pedidosSemNf(
+  pedidos: (string | null | undefined)[],
+  notas: string[],
+  nfPorPedido: NfPorPedido,
+): string[] {
+  if (notas.length < 2) return [];
+  const chaves = [...new Set(pedidos.map((po) => po || NF_SEM_PO))];
+  return chaves.filter((k) => !nfsDoPedido(k === NF_SEM_PO ? null : k, notas, nfPorPedido).length);
+}
+
+/** Índices dos itens de PO dividido em várias NFs que ainda não têm a sua. */
+export function itensSemNf(
+  linhas: { nroPedido?: string | null; notaFiscal?: string | null }[],
+  notas: string[],
+  nfPorPedido: NfPorPedido,
+): number[] {
+  const out: number[] = [];
+  linhas.forEach((l, i) => {
+    if (nfsDoPedido(l.nroPedido, notas, nfPorPedido).length > 1 && !nfDoItem(l.nroPedido, l.notaFiscal, notas, nfPorPedido)) {
+      out.push(i);
+    }
+  });
+  return out;
+}
+
+/** Reconstrói o mapa PO → NFs a partir dos itens gravados (edição). */
+export function nfPorPedidoDosItens(
+  itens: { nro_pedido?: string | null; nota_fiscal?: string | null }[],
+): Record<string, string[]> {
+  const mapa: Record<string, string[]> = {};
+  for (const it of itens) {
+    const nf = String(it.nota_fiscal ?? '').trim();
+    if (!nf) continue;
+    const chave = it.nro_pedido || NF_SEM_PO;
+    const lista = (mapa[chave] ??= []);
+    if (!lista.includes(nf)) lista.push(nf);
+  }
+  return mapa;
+}
+
+/** Foto da NF: anexo comum com o número da nota a que pertence. */
+export interface FotoNotaFiscal extends AnexoRecebimento {
+  nf: string;
+}
+
+/** "NF 123: PO 1, PO 2" — quais POs cada NF cobriu, na ordem dos itens. */
+export function resumoNfPorPedido(
+  itens: { nro_pedido?: string | null; nota_fiscal?: string | null }[],
+): { nf: string; pedidos: string[] }[] {
+  const porNf = new Map<string, string[]>();
+  for (const it of itens) {
+    const nf = String(it.nota_fiscal ?? '').trim();
+    if (!nf) continue;
+    if (!porNf.has(nf)) porNf.set(nf, []);
+    const pos = porNf.get(nf)!;
+    const po = it.nro_pedido || 'fora de pedido';
+    if (!pos.includes(po)) pos.push(po);
+  }
+  return [...porNf.entries()].map(([nf, pedidos]) => ({ nf, pedidos }));
+}
+
 /** Uma linha de PO achada pela busca por descrição do item. */
 export interface ItemPoEncontrado extends ItemPoAberto {
   /** PO da linha, sem zeros à esquerda. */

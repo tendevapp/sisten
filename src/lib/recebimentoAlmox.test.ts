@@ -17,7 +17,14 @@ import {
   podeExcluirNaoConformidade,
   posAbertosDoFornecedor,
   juntarNotasFiscais,
+  itensSemNf,
+  NF_SEM_PO,
+  nfDoItem,
+  nfPorPedidoDosItens,
+  nfsDoPedido,
+  pedidosSemNf,
   resumoConferencia,
+  resumoNfPorPedido,
   separarNotasFiscais,
   tipoItemDaLista,
   tipoNcSugerido,
@@ -285,6 +292,68 @@ describe('notas fiscais da ficha cega', () => {
     const texto = juntarNotasFiscais(['12a', ' 34 ', '12A']);
     expect(texto).toBe('12A, 34');
     expect(separarNotasFiscais(texto)).toEqual(['12A', '34']);
+  });
+});
+
+describe('NF por PO na conferência', () => {
+  it('uma NF só vale para todos os POs sem apontar nada', () => {
+    expect(nfsDoPedido('4500000001', ['123'], {})).toEqual(['123']);
+    expect(nfDoItem('4500000002', null, ['123'], {})).toBe('123');
+    expect(nfDoItem(null, null, ['123'], {})).toBe('123');
+    expect(pedidosSemNf(['4500000001', '4500000002'], ['123'], {})).toEqual([]);
+  });
+
+  it('com várias NFs cada PO usa a que foi apontada; a mesma NF cobre 2 POs', () => {
+    const mapa = { '4500000001': ['123'], '4500000002': ['123'], '4500000003': ['456'] };
+    const notas = ['123', '456'];
+    expect(nfDoItem('4500000001', null, notas, mapa)).toBe('123');
+    expect(nfDoItem('4500000002', null, notas, mapa)).toBe('123');
+    expect(nfDoItem('4500000003', '123', notas, mapa)).toBe('456');
+  });
+
+  it('PO faturado em 2 NFs: cada item usa a NF escolhida nele', () => {
+    const notas = ['123', '456'];
+    const mapa = { '4500000001': ['456', '123'] };
+    expect(nfsDoPedido('4500000001', notas, mapa)).toEqual(['123', '456']);
+    expect(nfDoItem('4500000001', '456', notas, mapa)).toBe('456');
+    expect(nfDoItem('4500000001', null, notas, mapa)).toBeNull();
+    // NF do item que não cobre o PO não vale
+    expect(nfDoItem('4500000001', '789', notas, mapa)).toBeNull();
+    const linhas = [
+      { nroPedido: '4500000001', notaFiscal: '123' },
+      { nroPedido: '4500000001', notaFiscal: null },
+      { nroPedido: '4500000002', notaFiscal: null },
+    ];
+    expect(itensSemNf(linhas, notas, { ...mapa, '4500000002': ['456'] })).toEqual([1]);
+  });
+
+  it('acusa PO sem NF, ignora NF que saiu da lista e aceita o rascunho antigo', () => {
+    const notas = ['123', '456'];
+    const mapa = { '4500000001': ['123'], '4500000002': ['999'] };
+    expect(nfsDoPedido('4500000002', notas, mapa)).toEqual([]);
+    expect(pedidosSemNf(['4500000001', '4500000002', null, '4500000001'], notas, mapa))
+      .toEqual(['4500000002', NF_SEM_PO]);
+    expect(pedidosSemNf([null], notas, { [NF_SEM_PO]: ['456'] })).toEqual([]);
+    expect(nfDoItem('4500000001', null, notas, { '4500000001': '456' })).toBe('456');
+  });
+
+  it('remonta o mapa dos itens gravados e resume NF → POs', () => {
+    const itens = [
+      { nro_pedido: '4500000001', nota_fiscal: '123' },
+      { nro_pedido: '4500000001', nota_fiscal: '789' },
+      { nro_pedido: '4500000002', nota_fiscal: '123' },
+      { nro_pedido: '4500000003', nota_fiscal: '456' },
+      { nro_pedido: null, nota_fiscal: '456' },
+      { nro_pedido: '4500000004', nota_fiscal: null },
+    ];
+    expect(nfPorPedidoDosItens(itens)).toEqual({
+      '4500000001': ['123', '789'], '4500000002': ['123'], '4500000003': ['456'], [NF_SEM_PO]: ['456'],
+    });
+    expect(resumoNfPorPedido(itens)).toEqual([
+      { nf: '123', pedidos: ['4500000001', '4500000002'] },
+      { nf: '789', pedidos: ['4500000001'] },
+      { nf: '456', pedidos: ['4500000003', 'fora de pedido'] },
+    ]);
   });
 });
 

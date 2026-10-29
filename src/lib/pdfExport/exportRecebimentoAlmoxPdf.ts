@@ -15,7 +15,7 @@ import { embutirFotoPdf, LADO_FOTO } from './fotosPdf';
 export type { PdfGerado };
 import { formatDateTimeBR, formatQtd } from '../format';
 import {
-  ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, separarNotasFiscais,
+  ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, resumoNfPorPedido, separarNotasFiscais,
   type AnexoRecebimento, type FontePedido, type TipoDivergencia,
 } from '../recebimentoAlmox';
 import {
@@ -27,6 +27,13 @@ export const FORM_CODIGO_RECEBIMENTO = 'FRM.ALM-0001';
 
 const dataBR = (iso?: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '');
 const vazio = (v: unknown) => (v === null || v === undefined || v === '' ? '-' : String(v));
+
+/** Com mais de um PO, diz qual NF cobriu quais pedidos. */
+function notasConferenciaPdf(c: ConferenciaRow, pos: string[]): string {
+  const porNf = resumoNfPorPedido(c.itens);
+  if (pos.length > 1 && porNf.length) return porNf.map((g) => `NF ${g.nf}: PO ${g.pedidos.join(', ')}`).join(' · ');
+  return vazio(separarNotasFiscais(c.nota_fiscal).join(' · '));
+}
 
 const ROTULO_FONTE: Record<FontePedido, string> = {
   cache_sap: 'Cache SAP (ZL0132)',
@@ -197,6 +204,7 @@ export async function gerarConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCodi
       highlight: divergente,
     },
     { label: 'Pedidos (PO)', value: pos.length ? pos.join(' · ') : c.retorno_remessa ? 'Retorno de remessa (sem PO)' : '-', fullWidth: true },
+    { label: 'Notas fiscais', value: notasConferenciaPdf(c, pos), fullWidth: true },
     { label: 'Criado por', value: vazio(c.criado_por_nome) },
     { label: 'Registrado em', value: vazio(formatDateTimeBR(c.created_at)) },
   ], 2);
@@ -256,6 +264,7 @@ export async function gerarConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCodi
   }
 
   const fotos: FotoPdf[] = [
+    ...(c.fotos_nf ?? []).flatMap((f) => fotosDe([f], `NF ${f.nf}`)),
     ...fotosDe(c.evidencias, `Geral — ${c.codigo}`),
     ...c.itens.flatMap((it) => fotosDe(it.evidencias, `${vazio(it.material_code)} ${it.descricao ?? ''}`.trim())),
   ];

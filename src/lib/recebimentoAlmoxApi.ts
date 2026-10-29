@@ -24,6 +24,7 @@ import {
   extrairRiPosConferidos,
   hojeISO,
   type AnexoRecebimento,
+  type FotoNotaFiscal,
   type DestinoPrevisto,
   type FontePedido,
   type TipoDivergencia,
@@ -243,6 +244,8 @@ export interface ConferenciaItemInput {
   parcial?: boolean;
   /** Parcial confirmado como de acordo com a NF — não abre pendência com Suprimentos. */
   parcial_conforme_nf?: boolean;
+  /** NF que trouxe o item — a do PO dele. */
+  nota_fiscal?: string | null;
   observacao?: string | null;
   evidencias?: AnexoRecebimento[];
 }
@@ -260,6 +263,10 @@ export interface ConferenciaInput {
   fonte_pedido: FontePedido;
   /** Material que volta de remessa: dispensa PO e fornecedor. */
   retorno_remessa?: boolean;
+  /** NFs da conferência, "123, 456" — uma NF pode cobrir vários POs. */
+  nota_fiscal?: string | null;
+  /** Fotos das NFs (opcional), cada uma com o número da nota. */
+  fotos_nf?: FotoNotaFiscal[];
   evidencias: AnexoRecebimento[];
   observacao?: string | null;
   criado_por_id?: string | null;
@@ -344,6 +351,8 @@ export interface ConferenciaRow {
   deposito: string | null;
   fonte_pedido: FontePedido;
   retorno_remessa?: boolean;
+  nota_fiscal?: string | null;
+  fotos_nf?: FotoNotaFiscal[];
   total_itens: number;
   itens_ok: number;
   itens_divergentes: number;
@@ -578,6 +587,8 @@ export interface ConferenciaCabPatch {
   carga_id?: string | null;
   tipo_item?: TipoItemConferencia;
   retorno_remessa?: boolean;
+  nota_fiscal?: string | null;
+  fotos_nf?: FotoNotaFiscal[];
   evidencias?: AnexoRecebimento[];
 }
 
