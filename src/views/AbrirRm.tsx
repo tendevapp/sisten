@@ -604,6 +604,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
           r.number,
           r.solicitante_name,
           r.justificativa,
+          r.linked_rm_number,
         ];
         const itens = itensPorRequest[r.id] || [];
         for (const it of itens) {
@@ -1322,6 +1323,17 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                           <Wrench className="h-3 w-3" />
                           Editar no SAP
                         </span>
+                        {/* A RM é o que se procura no SAP: em destaque, com copiar; sem vínculo, dá para informar aqui. */}
+                        <span className="inline-flex items-center gap-1.5 sm:ml-auto">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wide" style={{ color: 'var(--ink-muted)' }}>
+                            RM no SAP
+                          </span>
+                          <CampoRmVinculo
+                            key={`${r.id}-${r.linked_rm_number || ''}`}
+                            valor={r.linked_rm_number || ''}
+                            onSalvar={novo => vincularRm(r, novo)}
+                          />
+                        </span>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] mt-1" style={{ color: 'var(--ink-secondary)' }}>
@@ -1337,8 +1349,10 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                         <p className="text-[11px] mt-1" style={{ color: 'var(--status-serious)' }}>
                           Exportada {lote ? `em ${lote.arquivo} ` : ''}por {lote?.exportado_por_nome || 'usuário não identificado'} em{' '}
                           {formatDateTimeBR(ultima.created_at)}. Editada por {ultima.reaberto_por_nome || 'usuário não identificado'} em{' '}
-                          {ultima.reaberto_em ? formatDateTimeBR(ultima.reaberto_em) : '—'} — o RM já pode existir no SAP;
-                          ajuste manualmente com base nas mudanças abaixo.
+                          {ultima.reaberto_em ? formatDateTimeBR(ultima.reaberto_em) : '—'} —{' '}
+                          {r.linked_rm_number?.trim()
+                            ? <>edite a <strong className="font-mono">RM {r.linked_rm_number.trim()}</strong> no SAP com base nas mudanças abaixo.</>
+                            : <>a RM ainda não foi vinculada a esta solicitação; se ela já existe no SAP, informe o número ao lado e ajuste com base nas mudanças abaixo.</>}
                         </p>
                       )}
                     </div>
