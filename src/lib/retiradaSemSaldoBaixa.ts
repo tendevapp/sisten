@@ -40,12 +40,11 @@ export interface LinhaBaixa extends ItemSolExtra {
   cobre: boolean;
 }
 
-/** Onde cada item sai na baixa, com o saldo que a ZL0024 mostra hoje. */
-export function planejarBaixa(
-  itens: ItemSolExtra[],
+/** Material (código normalizado) → depósitos ativos com saída onde ele aparece na ZL0024. */
+function depositosPorMaterial(
   estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
-  depositoInativo: (dep: string) => boolean = isDepositoInativo,
-): LinhaBaixa[] {
+  depositoInativo: (dep: string) => boolean,
+): Map<string, { deposito: string; material: MaterialDisponivel }[]> {
   const ondeTem = new Map<string, { deposito: string; material: MaterialDisponivel }[]>();
   for (const [deposito, mapa] of semDepositosSemSaida(estoquePorDeposito)) {
     if (depositoInativo(deposito)) continue;
@@ -56,6 +55,16 @@ export function planejarBaixa(
       ondeTem.set(k, lista);
     }
   }
+  return ondeTem;
+}
+
+/** Onde cada item sai na baixa, com o saldo que a ZL0024 mostra hoje. */
+export function planejarBaixa(
+  itens: ItemSolExtra[],
+  estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
+  depositoInativo: (dep: string) => boolean = isDepositoInativo,
+): LinhaBaixa[] {
+  const ondeTem = depositosPorMaterial(estoquePorDeposito, depositoInativo);
 
   return itens.map(it => {
     const candidatos = [...(ondeTem.get(normalizeCode(it.material)) ?? [])]
@@ -72,6 +81,86 @@ export function planejarBaixa(
       cobre: saldoDeposito >= it.quantidade,
     };
   });
+}
+
+/**
+ * Situação de uma saída pendente frente à ZL0024 importada:
+ * - `pronta`: todo item já tem saldo — dá para regularizar / dar baixa;
+ * - `parcial`: só parte dos itens tem;
+ * - `aguardando`: nenhum item tem saldo ainda (NF não lançada).
+ */
+export type ProntidaoSaldo = 'pronta' | 'parcial' | 'aguardando';
+
+export const PRONTIDAO_SALDO_ROTULO: Record<ProntidaoSaldo, string> = {
+  pronta: 'Já pode regularizar',
+  parcial: 'Saldo parcial',
+  aguardando: 'Aguardando saldo',
+};
+
+export interface SaldoParaRegularizar {
+  prontidao: ProntidaoSaldo;
+  /** Itens que o saldo de hoje cobre, cada um num depósito só (como a baixa exige). */
+  itensComSaldo: number;
+  totalItens: number;
+}
+
+/**
+ * Quais saídas sem saldo pendentes a ZL0024 de hoje já deixa regularizar.
+ *
+ * O saldo é repartido entre as pendentes da mais antiga para a mais nova: duas
+ * saídas do mesmo material não contam com a mesma quantidade. Cada item precisa
+ * caber inteiro num depósito (a baixa no balcão sai de um depósito por item);
+ * item que não cabe não consome saldo, para não tirar de quem vem depois.
+ * Registro que não está pendente fica de fora do mapa.
+ */
+export function prontidaoRegularizacao(
+  registros: Pick<SolExtra, 'id' | 'status' | 'data' | 'created_at' | 'itens'>[],
+  estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
+  depositoInativo: (dep: string) => boolean = isDepositoInativo,
+): Map<string, SaldoParaRegularizar> {
+  // Saldo que ainda resta por material e depósito, consumido conforme as saídas são cobertas.
+  const restante = new Map<string, Map<string, number>>();
+  for (const [mat, lista] of depositosPorMaterial(estoquePorDeposito, depositoInativo)) {
+    const porDep = new Map<string, number>();
+    for (const { deposito, material } of lista) porDep.set(deposito, (porDep.get(deposito) ?? 0) + Math.max(0, material.saldo));
+    restante.set(mat, porDep);
+  }
+
+  const pendentes = registros
+    .filter(r => r.status === 'PENDENTE')
+    .sort((a, b) => a.data.localeCompare(b.data) || (a.created_at || '').localeCompare(b.created_at || ''));
+
+  const out = new Map<string, SaldoParaRegularizar>();
+  for (const r of pendentes) {
+    let itensComSaldo = 0;
+    for (const it of r.itens) {
+      const qtd = Number(it.quantidade) || 0;
+      const porDep = restante.get(normalizeCode(it.material));
+      let escolhido: string | null = null;
+      let maior = -1;
+      for (const [dep, saldo] of porDep ?? []) {
+        if (saldo >= qtd && saldo > maior) { escolhido = dep; maior = saldo; }
+      }
+      if (escolhido && porDep) {
+        porDep.set(escolhido, maior - qtd);
+        itensComSaldo++;
+      }
+    }
+    const totalItens = r.itens.length;
+    out.set(r.id, {
+      prontidao: totalItens > 0 && itensComSaldo === totalItens ? 'pronta' : itensComSaldo > 0 ? 'parcial' : 'aguardando',
+      itensComSaldo,
+      totalItens,
+    });
+  }
+  return out;
+}
+
+/** Data da importação da ZL0024 lida (a mais recente das linhas). */
+export function dataImportacaoEstoque(estoque: { imported_at?: string | null }[]): string | null {
+  let maior: string | null = null;
+  for (const e of estoque) if (e.imported_at && (!maior || e.imported_at > maior)) maior = e.imported_at;
+  return maior;
 }
 
 /**

@@ -35,6 +35,10 @@ import { podeAprovarRetirada } from '../lib/solicitacaoExtra';
 import { canAccessPage } from '../lib/pages';
 import { contarNotasAguardando } from '../lib/supPendenciasApi';
 import PendenciasProcessamento from './PendenciasProcessamento';
+import {
+  FiltroSaldo, LegendaZl0024, SaldoChip, contarProntidao, useProntidaoSaldo, type FiltroProntidao,
+} from '../components/almoxarifado/SaldoRegularizacao';
+import type { SaldoParaRegularizar } from '../lib/retiradaSemSaldoBaixa';
 
 interface Props {
   user: Profile;
@@ -137,9 +141,14 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
   const [aberto, setAberto] = useState<SolExtra | null>(null);
   const [baixando, setBaixando] = useState<SolExtra | null>(null);
   const [decidindo, setDecidindo] = useState<{ registro: SolExtra; aprovar: boolean } | null>(null);
+  // Saldo da ZL0024 relido junto com a lista: quais retiradas já dá para baixar.
+  const [versaoSaldo, setVersaoSaldo] = useState(0);
+  const saldo = useProntidaoSaldo(ehAlmox ? versaoSaldo : 0);
+  const [filtroSaldo, setFiltroSaldo] = useState<FiltroProntidao>('todas');
 
   const carregar = useCallback(async () => {
     setCarregando(true);
+    setVersaoSaldo(v => v + 1);
     try {
       const [baixa, aprovacao] = await Promise.all([
         ehAlmox ? listarRetiradasSemSaldo({ status: 'PENDENTE' }) : Promise.resolve([]),
@@ -160,6 +169,11 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
   }, [carregar]);
 
   const nada = !carregando && aguardandoBaixa.length === 0 && aguardandoAprovacao.length === 0;
+  const contagemSaldo = useMemo(() => contarProntidao(aguardandoBaixa.map(r => r.id), saldo.porId), [aguardandoBaixa, saldo.porId]);
+  const baixaVisivel = useMemo(
+    () => (filtroSaldo === 'todas' ? aguardandoBaixa : aguardandoBaixa.filter(r => saldo.porId?.get(r.id)?.prontidao === filtroSaldo)),
+    [aguardandoBaixa, filtroSaldo, saldo.porId],
+  );
 
   return (
     <div className="space-y-5">
@@ -187,9 +201,20 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
           titulo="Almoxarifado — retiradas sem saldo aguardando baixa"
           descricao="Quando a NF for lançada e o item tiver saldo na ZL0024, dê baixa: a Requisição no Balcão sai preenchida e a retirada deixa a lista."
           total={aguardandoBaixa.length}
+          filtro={
+            <div className="space-y-1">
+              <FiltroSaldo valor={filtroSaldo} onChange={setFiltroSaldo} contagem={contagemSaldo} />
+              <LegendaZl0024 importadoEm={saldo.importadoEm} carregando={saldo.carregando} erro={saldo.erro} />
+            </div>
+          }
         >
-          {aguardandoBaixa.map(r => (
-            <CartaoRetirada key={r.id} registro={r} onAbrir={() => setAberto(r)}>
+          {baixaVisivel.length === 0 && (
+            <li className="rounded-xl border border-dashed border-slate-300 px-3 py-6 text-center text-xs text-slate-500 dark:border-slate-700 lg:col-span-2">
+              Nenhuma retirada nesta situação.
+            </li>
+          )}
+          {baixaVisivel.map(r => (
+            <CartaoRetirada key={r.id} registro={r} saldo={saldo.porId?.get(r.id)} onAbrir={() => setAberto(r)}>
               <BotaoPdfRetirada
                 registro={r}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-blue-400 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -301,13 +326,15 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
 }
 
 function Bloco({
-  icone: Icone, titulo, descricao, total, acao, children,
+  icone: Icone, titulo, descricao, total, acao, filtro, children,
 }: {
   icone: typeof ListTodo;
   titulo: string;
   descricao: string;
   total: number;
   acao?: ReactNode;
+  /** Entre o cabeçalho e a lista. */
+  filtro?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -324,12 +351,21 @@ function Bloco({
         </div>
         {acao}
       </header>
+      {filtro}
       <ul className="grid gap-2 lg:grid-cols-2">{children}</ul>
     </section>
   );
 }
 
-function CartaoRetirada({ registro: r, onAbrir, children }: { registro: SolExtra; onAbrir: () => void; children?: ReactNode }) {
+function CartaoRetirada({
+  registro: r, saldo, onAbrir, children,
+}: {
+  registro: SolExtra;
+  /** Situação frente à ZL0024 — só no bloco de baixa do almoxarifado. */
+  saldo?: SaldoParaRegularizar;
+  onAbrir: () => void;
+  children?: ReactNode;
+}) {
   return (
     <li className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 transition hover:border-blue-300 dark:border-slate-800">
       <button type="button" onClick={onAbrir} className="block min-w-0 space-y-1 text-left">
@@ -341,6 +377,7 @@ function CartaoRetirada({ registro: r, onAbrir, children }: { registro: SolExtra
           {r.retirante_nome}
           {r.retirante_matricula && <span className="font-normal text-slate-500"> · {r.retirante_matricula}</span>}
         </p>
+        <SaldoChip saldo={saldo} />
         <p className="line-clamp-2 text-sm text-slate-700 dark:text-slate-200">{resumoItensRetirada(r)}</p>
         <p className="truncate text-xs text-slate-500">
           {r.setor_solicitante_nome} · {formatarDataBR(r.data)} {r.hora?.slice(0, 5)}

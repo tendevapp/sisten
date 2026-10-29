@@ -123,6 +123,22 @@ export async function listarSolicitacoesExtra(): Promise<SolExtra[]> {
 }
 
 /**
+ * Todas as saídas pendentes, de Projeto e Sem Saldo: o saldo da ZL0024 é
+ * repartido entre elas para dizer quais já dá para regularizar. São poucas.
+ */
+export async function listarSolicitacoesExtraPendentes(): Promise<SolExtra[]> {
+  const { data, error } = await db()
+    .select('*')
+    .eq('status', 'PENDENTE')
+    .is('excluido_em', null)
+    .order('data', { ascending: true })
+    .order('created_at', { ascending: true })
+    .limit(1000);
+  if (error) throw new Error(error.message);
+  return comTipo(data || []);
+}
+
+/**
  * Retiradas sem saldo de um recorte — sem o teto de 1.000 do PostgREST
  * importar aqui: as pendentes são poucas; o histórico da Aprovação vem limitado.
  */

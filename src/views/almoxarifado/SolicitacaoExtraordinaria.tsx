@@ -49,6 +49,9 @@ import {
 } from '../../lib/solicitacaoExtraApi';
 import { exportarPlanilhaSolExtra } from '../../lib/solicitacaoExtraPlanilha';
 import { EVENTO_ITEM_QR_SOL_EXTRA, consumirItemSolExtraPendente } from '../../lib/etiquetaMaterial';
+import {
+  FiltroSaldo, LegendaZl0024, SaldoChip, contarProntidao, useProntidaoSaldo, type FiltroProntidao,
+} from '../../components/almoxarifado/SaldoRegularizacao';
 
 interface Props {
   user: Profile;
@@ -99,9 +102,14 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
   const [tipoNova, setTipoNova] = useState<TipoSolExtra | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<TipoSolExtra | 'todos'>('todos');
   const [baixando, setBaixando] = useState<SolExtra | null>(null);
+  // Saldo da ZL0024 relido junto com a lista: diz quais pendentes já dá para regularizar.
+  const [versaoSaldo, setVersaoSaldo] = useState(0);
+  const saldo = useProntidaoSaldo(versaoSaldo);
+  const [filtroSaldo, setFiltroSaldo] = useState<FiltroProntidao>('todas');
 
   const carregar = useCallback(async () => {
     setCarregando(true);
+    setVersaoSaldo(v => v + 1);
     try {
       setLista(await listarSolicitacoesExtra());
     } catch (err) {
@@ -131,7 +139,8 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
     return () => window.removeEventListener(EVENTO_ITEM_QR_SOL_EXTRA, ler);
   }, []);
 
-  const filtrados = useMemo(() => {
+  // Tudo menos o filtro de saldo — base da contagem por situação.
+  const semFiltroSaldo = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return lista.filter(s => {
       if (filtroStatus !== 'todos' && s.status !== filtroStatus) return false;
@@ -144,6 +153,13 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
       ].some(v => (v || '').toLowerCase().includes(termo));
     });
   }, [lista, busca, filtroStatus, filtroTipo]);
+
+  const pendentesNaTela = useMemo(() => semFiltroSaldo.filter(s => s.status === 'PENDENTE'), [semFiltroSaldo]);
+  const contagemSaldo = useMemo(() => contarProntidao(pendentesNaTela.map(s => s.id), saldo.porId), [pendentesNaTela, saldo.porId]);
+  const filtrados = useMemo(
+    () => (filtroSaldo === 'todas' ? semFiltroSaldo : pendentesNaTela.filter(s => saldo.porId?.get(s.id)?.prontidao === filtroSaldo)),
+    [semFiltroSaldo, pendentesNaTela, filtroSaldo, saldo.porId],
+  );
 
   const projetosSugeridos = useMemo(
     () => [...new Set(lista.map(s => s.projeto).filter((p): p is string => !!p))].sort(),
@@ -283,6 +299,7 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
               value={filtroStatus}
               onChange={e => {
                 setFiltroStatus(e.target.value as StatusSolExtra | 'todos');
+                if (e.target.value === 'REGULARIZADA') setFiltroSaldo('todas');
                 setSelecionados(new Set());
               }}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
@@ -309,6 +326,17 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
               <FileSpreadsheet className="h-3.5 w-3.5" /> Exportar Excel
             </button>
           </div>
+
+          {filtroStatus !== 'REGULARIZADA' && pendentesNaTela.length > 0 && (
+            <div className="space-y-1">
+              <FiltroSaldo
+                valor={filtroSaldo}
+                onChange={v => { setFiltroSaldo(v); setSelecionados(new Set()); }}
+                contagem={contagemSaldo}
+              />
+              <LegendaZl0024 importadoEm={saldo.importadoEm} carregando={saldo.carregando} erro={saldo.erro} />
+            </div>
+          )}
 
           {pendentesVisiveis.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs dark:border-amber-900 dark:bg-amber-950/30">
@@ -348,6 +376,7 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
                           </span>
                           <Status status={s.status} tipo={s.tipo} />
                         </div>
+                        <SaldoChip saldo={saldo.porId?.get(s.id)} />
                         <p className="line-clamp-2 text-sm text-slate-800 dark:text-slate-100">{resumoItens(s)}</p>
                         <p className="truncate text-xs text-slate-500">
                           {formatarDataBR(s.data)}{s.tramo && ` · ${s.tramo}`} · {motivoOuRetirante(s)}
@@ -389,7 +418,12 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
                           <Td><span className="line-clamp-1 max-w-xs">{resumoItens(s)}</span></Td>
                           <Td><span className="line-clamp-1 max-w-[14rem]">{motivoOuRetirante(s)}</span></Td>
                           <Td><span className="font-mono">{s.doc_sap || s.requisicao_balcao_codigo || '—'}</span></Td>
-                          <Td><Status status={s.status} tipo={s.tipo} /></Td>
+                          <Td>
+                            <div className="flex flex-col items-start gap-1">
+                              <Status status={s.status} tipo={s.tipo} />
+                              <SaldoChip saldo={saldo.porId?.get(s.id)} />
+                            </div>
+                          </Td>
                         </Tr>
                       ))}
                     </TableBody>
