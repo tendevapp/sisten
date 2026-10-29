@@ -560,7 +560,8 @@ function DetalheModal({
           <Info rotulo="Data" valor={formatarDataBR(registro.data)} />
           <Info rotulo="Hora · turno" valor={[registro.hora?.slice(0, 5), registro.turno && `${registro.turno}º turno`].filter(Boolean).join(' · ')} />
           <Info rotulo="Registrado por" valor={registro.criado_por_nome} />
-          <div className="col-span-1 sm:col-span-3">
+          <Info rotulo="PEP" valor={registro.aplicacao_pep ? `${registro.aplicacao || ''} — ${registro.aplicacao_pep}` : null} />
+          <div className="col-span-2 sm:col-span-2">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Situação</p>
             <Status status={registro.status} />
           </div>

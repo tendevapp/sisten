@@ -40,7 +40,8 @@ import type { PreparedAttachment } from '../../lib/imageCompression';
 import { CampoAssinaturaRetirante, SeletorFotosSolExtra } from './FotosSolicitacaoExtra';
 import { hojeISO } from '../../lib/fichaEpi';
 import { horaAgora } from '../../lib/portariaApi';
-import { buscarMateriais, type MaterialDisponivel } from '../../lib/requisicaoBalcao';
+import { buscarMateriais, type MaterialDisponivel, type PepAplicacao } from '../../lib/requisicaoBalcao';
+import { listarAplicacoesBalcao } from '../../lib/requisicaoBalcaoApi';
 import { normalizeCode } from '../../lib/almoxarifado';
 import {
   MOTIVOS_SOL_EXTRA, lerNumero, normalizarPorMotivo, turnoDaHora, validarSolExtra,
@@ -133,6 +134,11 @@ export default function SolicitacaoExtraForm({
   const [fotosGravadas, setFotosGravadas] = useState<FotoSolExtra[]>(registro?.fotos ?? []);
   const [fotosNovas, setFotosNovas] = useState<PreparedAttachment[]>([]);
   const [assinatura, setAssinatura] = useState<string | null>(registro?.assinatura_retirante ?? null);
+  /** PEP opcional: na Sem Saldo vai pronto para a Requisição no Balcão da baixa. */
+  const [pep, setPep] = useState<PepAplicacao | null>(
+    registro?.aplicacao_pep ? { wbs: registro.aplicacao_pep, nome: registro.aplicacao || registro.aplicacao_pep } : null,
+  );
+  const [peps, setPeps] = useState<PepAplicacao[]>([]);
   const [pessoas, setPessoas] = useState<RhPessoa[]>([]);
   const setores = useMemo<Sector[]>(
     () => (semSaldo ? [...localDb.getSectors()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) : []),
@@ -154,6 +160,14 @@ export default function SolicitacaoExtraForm({
       .finally(() => { if (ativo) setCatalogoPronto(true); });
     return () => { ativo = false; };
   }, [toast]);
+
+  useEffect(() => {
+    let ativo = true;
+    listarAplicacoesBalcao()
+      .then(lista => { if (ativo) setPeps(lista); })
+      .catch(err => console.warn('Lista de PEPs do Balcão indisponível na Solicitação Extraordinária:', err));
+    return () => { ativo = false; };
+  }, []);
 
   useEffect(() => {
     if (!semSaldo) return;
@@ -200,7 +214,7 @@ export default function SolicitacaoExtraForm({
     setMotivo(null); setMotivoDetalhe(''); setArea(''); setRugosidade(''); setObservacao(''); setTramo('');
     setRetirante({ id: null, nome: '', registro: null });
     fotosNovas.forEach(f => URL.revokeObjectURL(f.previewUrl));
-    setFotosNovas([]); setFotosGravadas([]); setAssinatura(null);
+    setFotosNovas([]); setFotosGravadas([]); setAssinatura(null); setPep(null);
     const h = horaAgora();
     setData(hojeISO()); setHora(h); setTurno(turnoDaHora(h));
   };
@@ -235,6 +249,8 @@ export default function SolicitacaoExtraForm({
       setor_solicitante_nome: setores.find(st => st.id === setorId)?.name ?? registro?.setor_solicitante_nome ?? null,
       fotos: fotosGravadas,
       assinatura_retirante: assinatura,
+      aplicacao_pep: pep?.wbs ?? null,
+      aplicacao: pep?.nome ?? null,
       assinatura_retirante_em: assinatura === (registro?.assinatura_retirante ?? null)
         ? registro?.assinatura_retirante_em ?? null
         : assinatura ? new Date().toISOString() : null,
@@ -292,6 +308,9 @@ export default function SolicitacaoExtraForm({
               {setores.map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
             </select>
           </div>
+          <div className="col-span-2">
+            <CampoPep valor={pep} peps={peps} onChange={setPep} dica="Já vai preenchido na Requisição no Balcão da baixa." />
+          </div>
           <div>
             <label className={rotulo}>
               Data <span className="text-red-500">*</span>
@@ -304,7 +323,7 @@ export default function SolicitacaoExtraForm({
             </label>
             <input type="time" value={hora} onChange={e => setHora(e.target.value)} className={campo} />
           </div>
-          <p className="col-span-2 self-end text-[11px] text-slate-400">
+          <p className="col-span-2 self-end text-[11px] text-slate-400 sm:col-span-4">
             Vai para a aprovação do gestor do setor solicitante e fica pendente de baixa no almoxarifado até o item ter saldo na ZL0024.
           </p>
         </section>
@@ -350,6 +369,9 @@ export default function SolicitacaoExtraForm({
             Data <span className="text-red-500">*</span>
           </label>
           <input type="date" value={data} required max={hojeISO()} onChange={e => setData(e.target.value)} className={campo} />
+        </div>
+        <div className="col-span-2">
+          <CampoPep valor={pep} peps={peps} onChange={setPep} dica="Fica registrado para a regularização no SAP." />
         </div>
       </section>
       )}
@@ -615,5 +637,33 @@ function LinhaMaterial({
         {sugestoes('descricao')}
       </div>
     </div>
+  );
+}
+
+/** PEP opcional da saída — a mesma lista do Balcão. Vazio = definir na baixa. */
+function CampoPep({
+  valor, peps, onChange, dica,
+}: {
+  valor: PepAplicacao | null;
+  peps: PepAplicacao[];
+  onChange: (pep: PepAplicacao | null) => void;
+  dica: string;
+}) {
+  return (
+    <>
+      <label className={rotulo}>PEP / aplicação <span className="font-normal text-slate-400">(opcional)</span></label>
+      <select
+        value={valor?.wbs ?? ''}
+        onChange={e => onChange(peps.find(p => p.wbs === e.target.value) ?? null)}
+        className={campo}
+      >
+        <option value="">A definir na baixa</option>
+        {valor && !peps.some(p => p.wbs === valor.wbs) && (
+          <option value={valor.wbs}>{valor.nome} — {valor.wbs}</option>
+        )}
+        {peps.map(p => <option key={p.wbs} value={p.wbs}>{p.nome} — {p.wbs}</option>)}
+      </select>
+      <p className="mt-1 text-[11px] text-slate-400">{dica}</p>
+    </>
   );
 }

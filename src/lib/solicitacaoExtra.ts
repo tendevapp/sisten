@@ -115,6 +115,12 @@ export interface DadosSolExtra {
   /** Sem Saldo: assinatura desenhada por quem retira (data URL PNG). */
   assinatura_retirante: string | null;
   assinatura_retirante_em: string | null;
+  /** PEP da saída (lista do Balcão). Na Sem Saldo já vai para a Requisição no Balcão da baixa. */
+  aplicacao_pep?: string | null;
+  aplicacao?: string | null;
+  /** Aberta por outro formulário (ex.: 'ficha_epi' + código da ficha); ausente = lançada à mão. */
+  origem?: string | null;
+  origem_ref?: string | null;
 }
 
 /** Número digitado com vírgula ou ponto; vazio vira null, inválido vira NaN. */

@@ -75,6 +75,7 @@ export function ResumoRetirada({ registro: r }: { registro: SolExtra }) {
         <Info rotulo="Quem retirou" valor={r.retirante_nome} />
         <Info rotulo="Matrícula" valor={r.retirante_matricula || (r.retirante_nome && !r.retirante_id ? 'Não cadastrado no RH' : null)} />
         <Info rotulo="Setor solicitante" valor={r.setor_solicitante_nome} />
+        <Info rotulo="PEP / aplicação" valor={r.aplicacao_pep ? `${r.aplicacao || ''} — ${r.aplicacao_pep}` : 'A definir na baixa'} />
         <Info rotulo="Data · hora" valor={[formatarDataBR(r.data), r.hora?.slice(0, 5)].filter(Boolean).join(' · ')} />
         <Info rotulo="Registrado por" valor={r.criado_por_nome} />
         <div className="min-w-0">

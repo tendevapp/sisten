@@ -70,6 +70,11 @@ export interface SolExtra {
   fotos: FotoSolExtra[];
   assinatura_retirante: string | null;
   assinatura_retirante_em: string | null;
+  /** PEP escolhido no registro (null = a definir na baixa). */
+  aplicacao_pep?: string | null;
+  aplicacao?: string | null;
+  origem?: string | null;
+  origem_ref?: string | null;
   criado_por: string | null;
   criado_por_nome: string | null;
   created_at: string;
@@ -189,6 +194,19 @@ export async function criarSolicitacaoExtra(dados: DadosSolExtra, autorNome: str
     .single();
   if (error) throw new Error(error.message);
   return { ...(data as SolExtra), tipo: (data as SolExtra)?.tipo ?? dados.tipo };
+}
+
+/** A solicitação que outro formulário já abriu (para não abrir duas). */
+export async function solicitacaoExtraPorOrigem(origem: string, origemRef: string): Promise<SolExtra | null> {
+  const { data, error } = await db()
+    .select('*')
+    .eq('origem', origem)
+    .eq('origem_ref', origemRef)
+    .is('excluido_em', null)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  const [row] = comTipo(data || []);
+  return row ?? null;
 }
 
 /** Edição pelo autor ou admin (a RLS recusa os demais; o trigger trava a já regularizada). */

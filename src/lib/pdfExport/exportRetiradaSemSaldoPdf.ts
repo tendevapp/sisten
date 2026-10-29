@@ -99,6 +99,7 @@ export async function gerarRetiradaSemSaldoPdf(r: SolExtra, opcoes: { incluirFot
       { label: 'Data', value: formatarDataBR(r.data) },
       { label: 'Hora', value: r.hora?.slice(0, 5) || '-' },
       { label: 'Registrado por', value: r.criado_por_nome || '-' },
+      { label: 'PEP / aplicação', value: r.aplicacao_pep ? `${r.aplicacao || ''} — ${r.aplicacao_pep}` : 'A definir na baixa', fullWidth: true },
     ],
     3,
   );

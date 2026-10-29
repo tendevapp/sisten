@@ -185,7 +185,9 @@ export async function requisicaoDaRetirada(registro: SolExtra, linhas: LinhaBaix
     colaborador_id: registro.retirante_id,
     colaborador_nome: registro.retirante_nome || '',
     colaborador_registro: registro.retirante_matricula,
-    pep: { wbs: '', nome: 'A definir na confirmação' },
+    pep: registro.aplicacao_pep
+      ? { wbs: registro.aplicacao_pep, nome: registro.aplicacao || registro.aplicacao_pep }
+      : { wbs: '', nome: 'A definir na confirmação' },
     observacao: `Retirada sem saldo ${registro.codigo} (${formatarDataBR(registro.data)}${registro.setor_solicitante_nome ? `, setor ${registro.setor_solicitante_nome}` : ''}). Confirme quando a NF for lançada e o item tiver saldo na ZL0024.`,
     origemRef: registro.codigo,
     criadoPorNome: usuarioNome,
