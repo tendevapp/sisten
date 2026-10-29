@@ -4,7 +4,7 @@ import {
   alertaDaLinha, atualizarQtdItemDoGrupo, buscarMateriais, buscarMateriaisEmDepositos, criarGrupoPep,
   definirDepositoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
   removerItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao, type LinhaBalcao, localizarMaterialParaSaida,
-  DEPOSITO_PADRAO_BALCAO, DEPOSITO_EPI, semDepositosSemSaida, somenteComSaldo, PEP_EPI_DEMAIS_SETORES, PEP_EPI_PRODUCAO, itensRequisicaoDaFicha, sugerirPepEpi,
+  DEPOSITO_PADRAO_BALCAO, DEPOSITO_EPI, semDepositosSemSaida, somenteComSaldo, PEP_EPI_DEMAIS_SETORES, PEP_EPI_PRODUCAO, itensRequisicaoDaFicha, separarItensSemSaldo, sugerirPepEpi,
 } from './requisicaoBalcao';
 import type { EstoqueItem } from '../types';
 
@@ -329,6 +329,24 @@ describe('requisição gerada pela ficha de EPI', () => {
     ], estoqueEpi);
     expect(r.itens).toEqual([{ material: '999', quantidade: 3, descricao: 'LUVA X', unidade: 'UN', deposito: '0002' }]);
     expect(r.semCodigo).toEqual(['PROTETOR AURICULAR']);
+  });
+
+  it('separa o que o depósito 002 não cobre — saldo em outro depósito não conta', () => {
+    const { itens } = itensRequisicaoDaFicha([
+      { codigo_sap: '1352000', descricao: 'CAPACETE', quantidade: 3 },
+      { codigo_sap: '1352000', descricao: 'CAPACETE', quantidade: 1 },
+      { codigo_sap: '1386655', descricao: 'TIRANTE', quantidade: 1 },
+      { codigo_sap: '999', descricao: 'LUVA X', quantidade: 2 },
+    ], estoqueEpi);
+    const r = separarItensSemSaldo(itens, estoqueEpi);
+    // capacete: 4 pedidos, 3 no 002 (os 10 do 005 não contam) → inteiro para a retirada
+    expect(r.semSaldo.map(i => [i.material, i.quantidade, i.saldo])).toEqual([
+      ['1352000', 4, 3], ['0001386655', 1, 0], ['999', 2, 0],
+    ]);
+    expect(r.comSaldo).toEqual([]);
+    const ok = separarItensSemSaldo(itensRequisicaoDaFicha([{ codigo_sap: '01352000', descricao: 'CAPACETE', quantidade: 3 }], estoqueEpi).itens, estoqueEpi);
+    expect(ok.comSaldo).toHaveLength(1);
+    expect(ok.semSaldo).toEqual([]);
   });
 });
 

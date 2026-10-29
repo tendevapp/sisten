@@ -62,7 +62,9 @@ import {
   type ColaboradorFichaEpi,
   type SsmaFichaEpi,
 } from '../../../lib/ssmaFichaEpiApi';
-import { gerarRequisicaoPendenteDaFicha, type EntradaRequisicaoDaFicha, type ResultadoRequisicaoDaFicha } from '../../../lib/fichaEpiRequisicao';
+import {
+  gerarRequisicaoPendenteDaFicha, type EntradaRequisicaoDaFicha, type ExtraordinariaDaFicha, type ResultadoRequisicaoDaFicha,
+} from '../../../lib/fichaEpiRequisicao';
 import { buscarMateriais, type MaterialResultado } from '../../../lib/materiais';
 import FichaEpiPdfPreview from './FichaEpiPdfPreview';
 
@@ -229,6 +231,17 @@ function RequisicaoGerada({ requisicao, onTentarNovamente, onAbrir }: {
   const aviso = r.semCodigo.length > 0 && (
     <p className="mt-1 opacity-80">Sem código SAP na ficha (lançar à mão): {r.semCodigo.join('; ')}.</p>
   );
+  const extra = r.situacao !== 'sem_itens' && r.extraordinaria ? <RetiradaSemSaldoDaFicha extra={r.extraordinaria} /> : null;
+
+  if (r.situacao === 'so_extraordinaria') {
+    return (
+      <div className={`${caixa} border-violet-200 bg-violet-50 text-violet-900 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-200`}>
+        <p className="font-bold">Nenhum item da ficha tem saldo no depósito 002 da ZL0024 — não houve requisição no balcão.</p>
+        {extra}
+        {aviso}
+      </div>
+    );
+  }
 
   if (r.situacao === 'sem_itens') {
     return (
@@ -243,6 +256,7 @@ function RequisicaoGerada({ requisicao, onTentarNovamente, onAbrir }: {
     return (
       <div className={`${caixa} border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200`}>
         Sem rede: a saída de estoque (PEP sugerido: {r.pepSugerido}) fica na fila e será criada, pendente de confirmação, quando a conexão voltar.
+        {extra}
         {aviso}
       </div>
     );
@@ -256,6 +270,7 @@ function RequisicaoGerada({ requisicao, onTentarNovamente, onAbrir }: {
       <p className="mt-0.5">
         PEP sugerido pelo setor: <strong>{r.pepSugerido}</strong>. O almoxarifado abre a requisição, confirma o PEP e libera para exportar ao SAP.
       </p>
+      {extra}
       {aviso}
       {onAbrir && (
         <button type="button" onClick={() => onAbrir(r.codigo)} className="mt-1.5 rounded-md border border-emerald-400 px-2 py-1 font-bold hover:bg-emerald-100 dark:border-emerald-700 dark:hover:bg-emerald-900/40">
@@ -263,6 +278,29 @@ function RequisicaoGerada({ requisicao, onTentarNovamente, onAbrir }: {
         </button>
       )}
     </div>
+  );
+}
+
+/** Itens sem saldo da ficha: a Retirada sem Saldo aberta sozinha (ou por que não abriu). */
+function RetiradaSemSaldoDaFicha({ extra }: { extra: ExtraordinariaDaFicha }) {
+  const itens = <span className="opacity-80"> Itens: {extra.itens.join('; ')}.</span>;
+  if (extra.situacao === 'erro') {
+    return (
+      <p className="mt-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+        <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />
+        Item sem saldo na ZL0024, mas a solicitação extraordinária não abriu ({extra.mensagem}) — ficou na requisição da ficha.{itens}
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1.5 rounded-md border border-violet-300 bg-violet-50 px-2 py-1.5 text-violet-900 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200">
+      <strong>
+        {extra.situacao === 'criada'
+          ? `Retirada sem saldo ${extra.codigo} ${extra.reaproveitada ? 'já estava aberta' : 'aberta'}`
+          : 'Retirada sem saldo na fila (sem rede)'}
+      </strong>{' '}
+      para o que não tem saldo no depósito 002 da ZL0024: vai para a aprovação da Segurança e a baixa sai quando a NF for lançada.{itens}
+    </p>
   );
 }
 
@@ -520,6 +558,14 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
     try {
       const resultado = await gerarRequisicaoPendenteDaFicha(entrada);
       setRequisicao({ estado: 'pronta', resultado });
+      const extra = resultado.situacao !== 'sem_itens' ? resultado.extraordinaria : undefined;
+      if (extra?.situacao === 'criada' && !extra.reaproveitada) {
+        toast.info(`Retirada sem saldo ${extra.codigo} aberta para ${extra.itens.length} item(ns) sem saldo na ZL0024 — vai para a aprovação da Segurança.`);
+      } else if (extra?.situacao === 'offline') {
+        toast.info('Item sem saldo na ZL0024: a retirada sem saldo ficou na fila e abre quando a conexão voltar.');
+      } else if (extra?.situacao === 'erro') {
+        toast.warning(`Item sem saldo, mas a solicitação extraordinária não abriu: ${extra.mensagem}`);
+      }
       if (resultado.situacao === 'criada') {
         if (!resultado.pendente) {
           toast.warning('A requisição foi criada, mas sem o status "pendente de confirmação". Não exporte antes de conferir.');
@@ -592,6 +638,7 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
         dataEntrega,
         itens: itensPayload,
         usuarioNome: user.name,
+        assinatura,
       };
       setEntradaRequisicao(entrada);
       await gerarRequisicao(entrada);

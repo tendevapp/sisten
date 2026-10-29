@@ -445,6 +445,29 @@ export function itensRequisicaoDaFicha(
   return { itens: [...linhas.values()], semCodigo };
 }
 
+/**
+ * Itens da requisição da ficha que o depósito de saída não cobre hoje na
+ * ZL0024 (saldo menor que a quantidade). Esses saem por Retirada sem Saldo —
+ * a requisição da ficha não confirmaria. O item vai inteiro: com saldo para
+ * parte da quantidade, a retirada cobre tudo quando a NF for lançada.
+ */
+export function separarItensSemSaldo(
+  itens: ItemRequisicaoEpi[],
+  estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
+): { comSaldo: ItemRequisicaoEpi[]; semSaldo: (ItemRequisicaoEpi & { saldo: number })[] } {
+  const comSaldo: ItemRequisicaoEpi[] = [];
+  const semSaldo: (ItemRequisicaoEpi & { saldo: number })[] = [];
+  for (const it of itens) {
+    let saldo = 0;
+    for (const m of estoquePorDeposito.get(chaveDeposito(it.deposito))?.values() ?? []) {
+      if (semZeros(m.material) === semZeros(it.material)) saldo += m.saldo;
+    }
+    if (saldo >= it.quantidade) comSaldo.push(it);
+    else semSaldo.push({ ...it, saldo: Math.max(0, saldo) });
+  }
+  return { comSaldo, semSaldo };
+}
+
 // ===========================================================================
 // Gerenciamento de Grupos (PEP em Saída / Destino em Transferência)
 // ===========================================================================
