@@ -9,11 +9,12 @@
  * criticidade e período.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ClipboardList, Clock, Download, FileEdit, FileSpreadsheet, Loader2, PlusCircle, Search,
   HelpCircle, Bug, Lightbulb, ShoppingCart, Database, LifeBuoy, List, LayoutGrid,
   Calendar as CalendarIcon, MoreVertical, ChevronLeft, ChevronRight, CheckSquare,
+  ArrowDown, ArrowUp, ArrowUpDown,
 } from 'lucide-react';
 import {
   addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameDay, isSameMonth,
@@ -42,6 +43,12 @@ import {
 } from '../lib/solicitacoesCentral';
 import {
   calcularPrazoSolicitacao,
+  chaveOrdenacaoBasica,
+  classePrazo,
+  ordenarSolicitacoes,
+  proximaOrdenacao,
+  type ColunaOrdenacao,
+  type Ordenacao,
   formatarTempoRelativoAbertura,
   obterEstilosCriticidade,
   obterEstilosStatus,
@@ -165,6 +172,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
     statusFiltro: 'todas',
     dataFiltro: 'todas',
     visao: visaoPadrao(),
+    ordenacao: null as Ordenacao | null,
   });
 
   const [escopo, setEscopo] = useState<Escopo>(
@@ -182,6 +190,8 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   );
   const [dataFiltro, setDataFiltro] = useState<string>(cache.dataFiltro || 'todas');
   const [visao, setVisao] = useState<ModoVisao>((cache.visao as ModoVisao) || visaoPadrao());
+  // null = ordem da fila (pendências primeiro); clique no cabeçalho troca.
+  const [ordenacao, setOrdenacao] = useState<Ordenacao | null>(cache.ordenacao ?? null);
 
   const [todas, setTodas] = useState<Request[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -197,9 +207,9 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
   useEffect(() => {
     localDb.setPageCache('solicitacoes_central', {
-      escopo, busca, tipo, criticidade, setor, statusFiltro, dataFiltro, visao,
+      escopo, busca, tipo, criticidade, setor, statusFiltro, dataFiltro, visao, ordenacao,
     });
-  }, [escopo, busca, tipo, criticidade, setor, statusFiltro, dataFiltro, visao]);
+  }, [escopo, busca, tipo, criticidade, setor, statusFiltro, dataFiltro, visao, ordenacao]);
 
   const carregar = () => {
     setTodas(localDb.getRequests());
@@ -377,12 +387,41 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   const linhas: Linha[] = useMemo(() => {
     const lista = tipo === 'todos' ? antesDoTipo : antesDoTipo.filter(r => r.type === tipo);
 
-    return lista.map(r => {
+    const mapeadas = lista.map(r => {
       const p = pendencias.get(r.id) || null;
       const n = novidade(r, user, leituraDaSessao, eventos, rotuloStatus);
       return { request: r, pendencia: p, novidade: n, faixa: faixaDe(r, !!p, !!n) };
     });
-  }, [antesDoTipo, tipo, pendencias, user, eventos, leituraDaSessao]);
+    if (!ordenacao) return mapeadas;
+
+    const nomeDoSetor = (id: string) => sectors.find(s => s.id === id)?.name || id;
+    return ordenarSolicitacoes(mapeadas, ordenacao, (l, coluna) => {
+      const r = l.request;
+      if (coluna === 'titulo') return obterTituloEJustificativa(r, itensPorRequestId.get(r.id) || [], nomeDoSetor).titulo;
+      if (coluna === 'setor') return nomeDoSetor(r.solicitante_sector_id);
+      if (coluna === 'status') return obterEstilosStatus(r.status, r.type, !!r.linked_rm_number, r.tipo_compra).rotulo;
+      return chaveOrdenacaoBasica(r, coluna);
+    });
+  }, [antesDoTipo, tipo, pendencias, user, eventos, leituraDaSessao, ordenacao, sectors, itensPorRequestId]);
+
+  /* Rolagem horizontal espelhada no topo da tabela: com a lista longa, a barra
+     de baixo fica fora da tela. */
+  const rolagemTopo = useRef<HTMLDivElement>(null);
+  const rolagemTabela = useRef<HTMLDivElement>(null);
+  const [larguraTabela, setLarguraTabela] = useState(0);
+  useLayoutEffect(() => {
+    const el = rolagemTabela.current;
+    if (!el) return;
+    const medir = () => setLarguraTabela(el.scrollWidth > el.clientWidth + 1 ? el.scrollWidth : 0);
+    medir();
+    const obs = new ResizeObserver(medir);
+    obs.observe(el);
+    if (el.firstElementChild) obs.observe(el.firstElementChild);
+    return () => obs.disconnect();
+  }, [visao, linhas.length]);
+  const espelharRolagem = (origem: HTMLDivElement, destino: HTMLDivElement | null) => {
+    if (destino && Math.abs(destino.scrollLeft - origem.scrollLeft) > 1) destino.scrollLeft = origem.scrollLeft;
+  };
 
   const aberta = universo.find(r => r.id === abertaId) || todas.find(r => r.id === abertaId) || null;
 
@@ -438,6 +477,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   const nomeSetor = (id: string) => sectors.find(s => s.id === id)?.name || id;
   const abaAtiva = abas.find(a => a.id === escopo) || abas[0];
   const modoFila = escopo === 'todas' || escopo === 'setor';
+  const ordenarPor = (coluna: ColunaOrdenacao) => setOrdenacao(o => proximaOrdenacao(o, coluna));
 
   /* Calendario -------------------------------------------------------------- */
 
@@ -788,7 +828,21 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           data-tour="solicitacoes-lista"
           className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden"
         >
-          <div className="overflow-x-auto">
+          {larguraTabela > 0 && (
+            <div
+              ref={rolagemTopo}
+              onScroll={e => espelharRolagem(e.currentTarget, rolagemTabela.current)}
+              className="overflow-x-auto overflow-y-hidden border-b border-slate-100 dark:border-slate-800"
+              aria-hidden
+            >
+              <div style={{ width: larguraTabela, height: 1 }} />
+            </div>
+          )}
+          <div
+            ref={rolagemTabela}
+            onScroll={e => espelharRolagem(e.currentTarget, rolagemTopo.current)}
+            className="overflow-x-auto"
+          >
             <table className="w-full text-left border-collapse min-w-[1050px]">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -804,15 +858,15 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
                       />
                     </th>
                   )}
-                  <th scope="col" className="w-24 px-4 py-3">#</th>
-                  <th scope="col" className="w-28 px-3 py-3">Tipo</th>
-                  <th scope="col" className="min-w-[240px] px-3 py-3">Título / Justificativa</th>
-                  <th scope="col" className="w-44 px-3 py-3">Solicitante</th>
-                  <th scope="col" className="w-32 px-3 py-3">Setor</th>
-                  <th scope="col" className="w-36 px-3 py-3">Data de abertura</th>
-                  <th scope="col" className="w-32 px-3 py-3">Prazo</th>
-                  <th scope="col" className="w-36 px-3 py-3">Criticidade</th>
-                  <th scope="col" className="w-28 px-3 py-3">Status</th>
+                  <CabecalhoOrdenavel className="w-24 px-4" coluna="numero" ordenacao={ordenacao} onOrdenar={ordenarPor}>#</CabecalhoOrdenavel>
+                  <CabecalhoOrdenavel className="w-28 px-3" coluna="tipo" ordenacao={ordenacao} onOrdenar={ordenarPor}>Tipo</CabecalhoOrdenavel>
+                  <CabecalhoOrdenavel className="min-w-[240px] px-3" coluna="titulo" ordenacao={ordenacao} onOrdenar={ordenarPor}>Título / Justificativa</CabecalhoOrdenavel>
+                  <CabecalhoOrdenavel className="w-44 px-3" coluna="solicitante" ordenacao={ordenacao} onOrdenar={ordenarPor}>Solicitante</CabecalhoOrdenavel>
+                  <CabecalhoOrdenavel className="w-32 px-3" coluna="setor" ordenacao={ordenacao} onOrdenar={ordenarPor}>Setor</CabecalhoOrdenavel>
+                  <CabecalhoOrdenavel className="w-36 px-3" coluna="abertura" ordenacao={ordenacao} onOrdenar={ordenarPor}>Data de abertura</CabecalhoOrdenavel>
+                  <CabecalhoOrdenavel className="w-32 px-3" coluna="prazo" ordenacao={ordenacao} onOrdenar={ordenarPor}>Prazo</CabecalhoOrdenavel>
+                  <CabecalhoOrdenavel className="w-36 px-3" coluna="criticidade" ordenacao={ordenacao} onOrdenar={ordenarPor}>Criticidade</CabecalhoOrdenavel>
+                  <CabecalhoOrdenavel className="w-28 px-3" coluna="status" ordenacao={ordenacao} onOrdenar={ordenarPor}>Status</CabecalhoOrdenavel>
                   <th scope="col" className="w-16 px-3 py-3 text-center">Ações</th>
                 </tr>
               </thead>
@@ -932,13 +986,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
                           <div className="text-sm font-medium text-slate-800 dark:text-slate-200">
                             {prazoInfo.dataPrazoFormatada}
                           </div>
-                          <div
-                            className={`text-xs font-semibold mt-0.5 ${
-                              prazoInfo.urgente || prazoInfo.estaVencido
-                                ? 'text-red-500 dark:text-red-400'
-                                : 'text-slate-400 dark:text-slate-500'
-                            }`}
-                          >
+                          <div className={`text-xs font-semibold mt-0.5 ${classePrazo(prazoInfo)}`}>
                             {prazoInfo.textoRelativo}
                           </div>
                         </td>
@@ -1039,7 +1087,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
                           <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
                             <span className="text-slate-500 truncate max-w-[130px]">{req.solicitante_name}</span>
-                            <span className={`font-semibold ${prazoInfo.urgente ? 'text-red-500' : 'text-slate-400'}`}>
+                            <span className={`font-semibold ${classePrazo(prazoInfo)}`}>
                               {prazoInfo.textoRelativo}
                             </span>
                           </div>
@@ -1218,5 +1266,36 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
         />
       )}
     </div>
+  );
+}
+
+/** Cabeçalho clicável: crescente → decrescente → ordem da fila. */
+function CabecalhoOrdenavel({ children, className, coluna, ordenacao, onOrdenar }: {
+  children: React.ReactNode;
+  className: string;
+  coluna: ColunaOrdenacao;
+  ordenacao: Ordenacao | null;
+  onOrdenar: (coluna: ColunaOrdenacao) => void;
+}) {
+  const ativa = ordenacao?.coluna === coluna ? ordenacao.direcao : null;
+  const Icone = ativa === 'asc' ? ArrowUp : ativa === 'desc' ? ArrowDown : ArrowUpDown;
+  return (
+    <th
+      scope="col"
+      className={className}
+      aria-sort={ativa === 'asc' ? 'ascending' : ativa === 'desc' ? 'descending' : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onOrdenar(coluna)}
+        className={`group/ord inline-flex items-center gap-1 py-3 uppercase tracking-wider cursor-pointer hover:text-slate-600 dark:hover:text-slate-300 ${
+          ativa ? 'text-slate-700 dark:text-slate-200' : ''
+        }`}
+        title="Ordenar por esta coluna"
+      >
+        {children}
+        <Icone className={`h-3 w-3 shrink-0 ${ativa ? '' : 'opacity-0 group-hover/ord:opacity-60'}`} />
+      </button>
+    </th>
   );
 }

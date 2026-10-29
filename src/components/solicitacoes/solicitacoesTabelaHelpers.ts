@@ -46,16 +46,30 @@ export function formatarTempoRelativoAbertura(dataCriacao?: string | null, dataB
  * - 3 (Alta): +7 dias
  * - 2 (Media): +10 dias
  * - 1 (Baixa): +15 dias
+ *
+ * Encerrada não vence: o prazo passa a ser comparado com a data em que foi
+ * resolvida ("No prazo" / "Com atraso"); cancelada ou rejeitada só mostra a
+ * data, sem contagem.
  */
-export function calcularPrazoSolicitacao(
-  r: Request,
-  dataBase: Date = new Date(),
-): {
+export interface PrazoSolicitacao {
+  dataPrazo: Date | null;
   dataPrazoFormatada: string;
   textoRelativo: string;
   estaVencido: boolean;
   urgente: boolean;
-} {
+  /** Já resolvida/fechada/concluída, cancelada ou rejeitada. */
+  encerrada: boolean;
+  /** Encerrada depois do prazo. */
+  concluidaComAtraso: boolean;
+}
+
+const STATUS_CONCLUIDOS: RequestStatus[] = ['resolvido', 'fechado', 'concluida'];
+const STATUS_INTERROMPIDOS: RequestStatus[] = ['cancelada', 'rejeitada'];
+
+export function calcularPrazoSolicitacao(
+  r: Request,
+  dataBase: Date = new Date(),
+): PrazoSolicitacao {
   let dtPrazo: Date | null = null;
 
   if (r.prazo_conclusao) {
@@ -77,8 +91,12 @@ export function calcularPrazoSolicitacao(
     }
   }
 
+  const base = { encerrada: false, concluidaComAtraso: false };
+
   if (!dtPrazo) {
     return {
+      ...base,
+      dataPrazo: null,
       dataPrazoFormatada: '—',
       textoRelativo: '',
       estaVencido: false,
@@ -87,45 +105,110 @@ export function calcularPrazoSolicitacao(
   }
 
   const msPorDia = 24 * 60 * 60 * 1000;
-  const prazoZero = new Date(dtPrazo.getFullYear(), dtPrazo.getMonth(), dtPrazo.getDate()).getTime();
-  const baseZero = new Date(dataBase.getFullYear(), dataBase.getMonth(), dataBase.getDate()).getTime();
-  const diffDias = Math.round((prazoZero - baseZero) / msPorDia);
-
+  const zerar = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const prazoZero = zerar(dtPrazo);
   const dataPrazoFormatada = formatDateBR(dtPrazo);
+  const comum = { dataPrazo: dtPrazo, dataPrazoFormatada, estaVencido: false, urgente: false };
+
+  if (STATUS_INTERROMPIDOS.includes(r.status)) {
+    return { ...comum, textoRelativo: '', encerrada: true, concluidaComAtraso: false };
+  }
+
+  if (STATUS_CONCLUIDOS.includes(r.status)) {
+    const conclusao = toDate(r.resolved_at) || toDate(r.updated_at);
+    const atraso = !!conclusao && zerar(conclusao) > prazoZero;
+    return {
+      ...comum,
+      textoRelativo: conclusao ? (atraso ? 'Concluída com atraso' : 'Concluída no prazo') : 'Concluída',
+      encerrada: true,
+      concluidaComAtraso: atraso,
+    };
+  }
+
+  const diffDias = Math.round((prazoZero - zerar(dataBase)) / msPorDia);
 
   if (diffDias < 0) {
-    return {
-      dataPrazoFormatada,
-      textoRelativo: 'Vencido',
-      estaVencido: true,
-      urgente: true,
-    };
+    return { ...base, ...comum, textoRelativo: 'Vencido', estaVencido: true, urgente: true };
   }
 
   if (diffDias === 0) {
-    return {
-      dataPrazoFormatada,
-      textoRelativo: 'Vence hoje',
-      estaVencido: false,
-      urgente: true,
-    };
+    return { ...base, ...comum, textoRelativo: 'Vence hoje', urgente: true };
   }
 
   if (diffDias === 1) {
-    return {
-      dataPrazoFormatada,
-      textoRelativo: 'em 1 dia',
-      estaVencido: false,
-      urgente: true,
-    };
+    return { ...base, ...comum, textoRelativo: 'em 1 dia', urgente: true };
   }
 
-  return {
-    dataPrazoFormatada,
-    textoRelativo: `em ${diffDias} dias`,
-    estaVencido: false,
-    urgente: diffDias <= 3,
-  };
+  return { ...base, ...comum, textoRelativo: `em ${diffDias} dias`, urgente: diffDias <= 3 };
+}
+
+/** Classe do texto relativo do prazo: vermelho vencendo, verde/âmbar encerrada. */
+export function classePrazo(p: PrazoSolicitacao): string {
+  if (p.encerrada) {
+    return p.concluidaComAtraso
+      ? 'text-amber-600 dark:text-amber-400'
+      : 'text-emerald-600 dark:text-emerald-400';
+  }
+  return p.urgente || p.estaVencido
+    ? 'text-red-500 dark:text-red-400'
+    : 'text-slate-400 dark:text-slate-500';
+}
+
+/* Ordenação da tabela ----------------------------------------------------- */
+
+export type ColunaOrdenacao =
+  | 'numero' | 'tipo' | 'titulo' | 'solicitante' | 'setor'
+  | 'abertura' | 'prazo' | 'criticidade' | 'status';
+
+export interface Ordenacao {
+  coluna: ColunaOrdenacao;
+  direcao: 'asc' | 'desc';
+}
+
+/**
+ * Próximo estado ao clicar num cabeçalho: crescente → decrescente → volta à
+ * ordem da fila (null). Coluna nova começa crescente.
+ */
+export function proximaOrdenacao(atual: Ordenacao | null, coluna: ColunaOrdenacao): Ordenacao | null {
+  if (!atual || atual.coluna !== coluna) return { coluna, direcao: 'asc' };
+  return atual.direcao === 'asc' ? { coluna, direcao: 'desc' } : null;
+}
+
+/**
+ * Ordena pela coluna. `chave` devolve o valor comparável de cada linha para as
+ * colunas de texto que dependem da tela (título, setor, status). Vazios vão
+ * para o fim nos dois sentidos; empate mantém a ordem de entrada.
+ */
+export function ordenarSolicitacoes<T>(
+  lista: T[],
+  ordem: Ordenacao,
+  chave: (x: T, coluna: ColunaOrdenacao) => string | number | null,
+): T[] {
+  const sinal = ordem.direcao === 'asc' ? 1 : -1;
+  const valores = lista.map((x, i) => ({ x, i, v: chave(x, ordem.coluna) }));
+  valores.sort((a, b) => {
+    const va = a.v, vb = b.v;
+    const vazioA = va === null || va === '', vazioB = vb === null || vb === '';
+    if (vazioA || vazioB) return vazioA === vazioB ? a.i - b.i : vazioA ? 1 : -1;
+    const c = typeof va === 'number' && typeof vb === 'number'
+      ? va - vb
+      : String(va).localeCompare(String(vb), 'pt-BR', { numeric: true, sensitivity: 'base' });
+    return c !== 0 ? c * sinal : a.i - b.i;
+  });
+  return valores.map(v => v.x);
+}
+
+/** Valor comparável das colunas que só dependem da solicitação. */
+export function chaveOrdenacaoBasica(r: Request, coluna: ColunaOrdenacao): string | number | null {
+  switch (coluna) {
+    case 'numero': return r.number || null;
+    case 'tipo': return r.type;
+    case 'solicitante': return r.solicitante_name || null;
+    case 'abertura': return toDate(r.created_at)?.getTime() ?? null;
+    case 'prazo': return calcularPrazoSolicitacao(r).dataPrazo?.getTime() ?? null;
+    case 'criticidade': return r.criticality ?? null;
+    default: return null;
+  }
 }
 
 /**

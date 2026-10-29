@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   calcularPrazoSolicitacao,
+  chaveOrdenacaoBasica,
   formatarTempoRelativoAbertura,
+  ordenarSolicitacoes,
+  proximaOrdenacao,
   obterEstilosCriticidade,
   obterEstilosStatus,
   obterIniciaisNome,
@@ -51,6 +54,53 @@ describe('solicitacoesTabelaHelpers', () => {
     const resLonge = calcularPrazoSolicitacao(reqLonge, dataBase);
     expect(resLonge.textoRelativo).toBe('em 7 dias');
     expect(resLonge.urgente).toBe(false);
+  });
+
+  it('calcularPrazoSolicitacao: encerrada não vence, compara com a data de conclusão', () => {
+    const dataBase = new Date(2026, 9, 28); // 28/10/2026
+    const prazo = { prazo_conclusao: '2026-10-16', criticality: 3 };
+
+    const noPrazo = calcularPrazoSolicitacao({ ...prazo, status: 'resolvido', resolved_at: '2026-10-15T14:00:00Z' } as Request, dataBase);
+    expect(noPrazo.textoRelativo).toBe('Concluída no prazo');
+    expect(noPrazo.estaVencido).toBe(false);
+    expect(noPrazo.urgente).toBe(false);
+    expect(noPrazo.encerrada).toBe(true);
+
+    const atrasada = calcularPrazoSolicitacao({ ...prazo, status: 'fechado', resolved_at: '2026-10-20T14:00:00Z' } as Request, dataBase);
+    expect(atrasada.textoRelativo).toBe('Concluída com atraso');
+    expect(atrasada.concluidaComAtraso).toBe(true);
+    expect(atrasada.estaVencido).toBe(false);
+
+    const cancelada = calcularPrazoSolicitacao({ ...prazo, status: 'cancelada' } as Request, dataBase);
+    expect(cancelada.textoRelativo).toBe('');
+    expect(cancelada.estaVencido).toBe(false);
+
+    const aberta = calcularPrazoSolicitacao({ ...prazo, status: 'aberto' } as Request, dataBase);
+    expect(aberta.textoRelativo).toBe('Vencido');
+  });
+
+  it('ordenarSolicitacoes: crescente, decrescente, vazios no fim e empate estável', () => {
+    const reqs = [
+      { id: 'a', number: '3001113', criticality: 3, created_at: '2026-10-26T10:00:00Z' },
+      { id: 'b', number: '3000981', criticality: 5, created_at: '2026-10-27T10:00:00Z' },
+      { id: 'c', number: '3001200', criticality: 3, created_at: '' },
+    ] as Request[];
+    const ids = (l: Request[]) => l.map(r => r.id);
+    const chave = (r: Request, c: Parameters<typeof chaveOrdenacaoBasica>[1]) => chaveOrdenacaoBasica(r, c);
+
+    expect(ids(ordenarSolicitacoes(reqs, { coluna: 'numero', direcao: 'asc' }, chave))).toEqual(['b', 'a', 'c']);
+    expect(ids(ordenarSolicitacoes(reqs, { coluna: 'criticidade', direcao: 'desc' }, chave))).toEqual(['b', 'a', 'c']);
+    expect(ids(ordenarSolicitacoes(reqs, { coluna: 'abertura', direcao: 'desc' }, chave))).toEqual(['b', 'a', 'c']);
+    expect(ids(ordenarSolicitacoes(reqs, { coluna: 'abertura', direcao: 'asc' }, chave))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('proximaOrdenacao: crescente → decrescente → ordem da fila', () => {
+    const a = proximaOrdenacao(null, 'prazo');
+    expect(a).toEqual({ coluna: 'prazo', direcao: 'asc' });
+    const b = proximaOrdenacao(a, 'prazo');
+    expect(b).toEqual({ coluna: 'prazo', direcao: 'desc' });
+    expect(proximaOrdenacao(b, 'prazo')).toBeNull();
+    expect(proximaOrdenacao(b, 'status')).toEqual({ coluna: 'status', direcao: 'asc' });
   });
 
   it('obterTituloEJustificativa retorna titulo e subtitulo adequados', () => {
