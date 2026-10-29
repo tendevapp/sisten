@@ -112,6 +112,15 @@ export function itemFoiComprado(dados: { temPo: boolean; numeroCompraMl?: string
   return dados.temPo || !!dados.numeroCompraMl || dados.itemStatus === STATUS_COMPRADO;
 }
 
+/**
+ * O item entra na lista "Sem PO" da Central de Compras?
+ * Sai da lista quando já tem PO no SAP ou quando já possui número de compra do
+ * Mercado Livre registrado.
+ */
+export function itemEntraEmSemPo(dados: { statusRequisicao?: string | null; numeroCompraMl?: string | null }): boolean {
+  return dados.statusRequisicao === 'Sem PO' && !dados.numeroCompraMl;
+}
+
 export interface ResumoCompraMl {
   numero: string;
   itens: number;
@@ -146,4 +155,24 @@ export function passaFiltroCompraMl(item: ItemMercadoLivre | undefined, filtro: 
   if (filtro === FILTRO_ML_TODOS) return true;
   if (filtro === FILTRO_ML_SEM_COMPRA) return !item.numero_compra;
   return item.numero_compra === filtro;
+}
+
+/**
+ * Tooltip da tag "Mercado Livre" exibida na coluna PO da Central de Compras
+ * quando o item foi selecionado para envio ao ML (ou possui cotação ML),
+ * alertando o comprador para não comprá-lo novamente. Devolve `null` quando
+ * o item não está vinculado ao ML.
+ */
+export function tituloTagMercadoLivrePo(
+  itemMl?: Pick<ItemMercadoLivre, 'numero_compra' | 'criado_por_nome'> | null,
+  numerosCotacoesMl?: string[],
+): string | null {
+  if (itemMl) {
+    if (itemMl.numero_compra) return `Item no Mercado Livre — ${rotuloCompraMl(itemMl.numero_compra)}`;
+    return `Item enviado para o Mercado Livre${itemMl.criado_por_nome ? ` por ${itemMl.criado_por_nome}` : ''}`;
+  }
+  if (numerosCotacoesMl && numerosCotacoesMl.length > 0) {
+    return `Item com compra pelo Mercado Livre — ${numerosCotacoesMl.join(', ')}`;
+  }
+  return null;
 }

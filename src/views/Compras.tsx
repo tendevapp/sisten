@@ -50,8 +50,8 @@ import {
 import MapaCotacaoModal from '../components/cotacoes/MapaCotacaoModal';
 import { MercadoLivreCompraModal, MercadoLivreLinkModal } from '../components/suprimentos/MercadoLivreModais';
 import {
-  FILTRO_ML_SEM_COMPRA, FILTRO_ML_TODOS, itemFoiComprado, observacaoComCompraMl, passaFiltroCompraMl,
-  resumirComprasMl, rotuloCompraMl, statusAposCompraMl, type FiltroCompraMl, type ItemMercadoLivre,
+  FILTRO_ML_SEM_COMPRA, FILTRO_ML_TODOS, itemEntraEmSemPo, itemFoiComprado, observacaoComCompraMl, passaFiltroCompraMl,
+  resumirComprasMl, rotuloCompraMl, statusAposCompraMl, tituloTagMercadoLivrePo, type FiltroCompraMl, type ItemMercadoLivre,
 } from '../lib/compraMercadoLivre';
 import {
   listarItensMercadoLivre, registrarCompraMercadoLivre, registrarDetalheCompraMl, removerItemMercadoLivre, salvarLinkMercadoLivre,
@@ -1001,7 +1001,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
       return rawRmGroups.map(g => {
-        const items = g.items.filter(it => it.record.status_requisicao === 'Sem PO');
+        const items = g.items.filter(it => itemEntraEmSemPo({
+          statusRequisicao: it.record.status_requisicao,
+          numeroCompraMl: mlItens.get(it.record.ri)?.numero_compra,
+        }));
         return { rm: g.rm, items };
       }).filter(g => g.items.length > 0);
     }
@@ -2376,6 +2379,18 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   const renderPOBadge = (r: EnrichedSAPRecord) => {
     const hasPO = r.status_requisicao === 'Processado';
+    const tituloMl = tituloTagMercadoLivrePo(
+      mlItens.get(r.ri),
+      obterCotacoesDoItem(r).filter(c => c.mercadoLivre).map(c => c.numero),
+    );
+    const mlBadge = tituloMl ? (
+      <span
+        className="inline-flex items-center px-2 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[9px] font-black tracking-wide uppercase whitespace-nowrap"
+        title={tituloMl}
+      >
+        Mercado Livre
+      </span>
+    ) : null;
     if (hasPO) {
       const dataMigo = r.data_migo;
       // Item de contrato: o fornecimento vem de um contrato guarda-chuva, não
@@ -2450,13 +2465,17 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               Chegou no almoxarifado {formatDateBR(chegadasMap.get(r.ri_po)!.data_chegada)}
             </span>
           )}
+          {mlBadge}
         </div>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50">
-        Sem PO
-      </span>
+      <div className="inline-flex flex-wrap items-center gap-1.5">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50">
+          Sem PO
+        </span>
+        {mlBadge}
+      </div>
     );
   };
 
@@ -2554,7 +2573,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     let itens = 0;
     let com = 0, sem = 0, criticos = 0, parciais = 0;
     filteredGroupsWithoutKpi.forEach(g => g.items.forEach(it => {
-      if (poFilter === 'Sem PO' && it.record.status_requisicao !== 'Sem PO') return;
+      if (poFilter === 'Sem PO' && !itemEntraEmSemPo({
+        statusRequisicao: it.record.status_requisicao,
+        numeroCompraMl: mlItens.get(it.record.ri)?.numero_compra,
+      })) return;
       if (poFilter === 'Sem MIGO') {
         const hasPO = it.record.status_requisicao === 'Processado';
         const hasMigo = !!it.record.data_migo || foraDeSemMigo(it.record);
@@ -2569,7 +2591,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       if (temDivergenciaDeEntrega(it.record)) parciais++;
     }));
     return { rms: rmsSet.size, itens, com, sem, criticos, parciais };
-  }, [filteredGroupsWithoutKpi, poFilter]);
+  }, [filteredGroupsWithoutKpi, poFilter, mlItens]);
 
   // Lista com as opções de status
   const itemStatusOptions: ItemStatus[] = [

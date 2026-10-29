@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ehLinkMercadoLivre, itemFoiComprado, normalizarLinkMl, statusAposCompraMl, normalizarNumeroCompraMl, observacaoComCompraMl,
-  passaFiltroCompraMl, resumirComprasMl, type ItemMercadoLivre,
+  ehLinkMercadoLivre, itemEntraEmSemPo, itemFoiComprado, normalizarLinkMl, statusAposCompraMl, normalizarNumeroCompraMl, observacaoComCompraMl,
+  passaFiltroCompraMl, resumirComprasMl, tituloTagMercadoLivrePo, type ItemMercadoLivre,
 } from './compraMercadoLivre';
 
 const item = (over: Partial<ItemMercadoLivre>): ItemMercadoLivre => ({
@@ -84,6 +84,18 @@ describe('itemFoiComprado', () => {
   });
 });
 
+describe('itemEntraEmSemPo', () => {
+  it('mantém item Sem PO sem número de compra do ML (mesmo que já tenha link do anúncio)', () => {
+    expect(itemEntraEmSemPo({ statusRequisicao: 'Sem PO', numeroCompraMl: null })).toBe(true);
+    expect(itemEntraEmSemPo({ statusRequisicao: 'Sem PO', numeroCompraMl: undefined })).toBe(true);
+  });
+
+  it('retira da lista de Sem PO o item que já tem número de compra do ML ou PO emitido', () => {
+    expect(itemEntraEmSemPo({ statusRequisicao: 'Sem PO', numeroCompraMl: '2000015616071149' })).toBe(false);
+    expect(itemEntraEmSemPo({ statusRequisicao: 'Processado', numeroCompraMl: null })).toBe(false);
+  });
+});
+
 describe('passaFiltroCompraMl', () => {
   it('separa os que faltam comprar e os de uma compra', () => {
     const semCompra = item({});
@@ -92,5 +104,33 @@ describe('passaFiltroCompraMl', () => {
     expect(passaFiltroCompraMl(comprado, 'sem_compra')).toBe(false);
     expect(passaFiltroCompraMl(comprado, '2000015616071149')).toBe(true);
     expect(passaFiltroCompraMl(undefined, 'todos')).toBe(false);
+  });
+});
+
+describe('tituloTagMercadoLivrePo', () => {
+  it('retorna null quando o item não está no Mercado Livre', () => {
+    expect(tituloTagMercadoLivrePo(undefined, [])).toBeNull();
+    expect(tituloTagMercadoLivrePo(null)).toBeNull();
+  });
+
+  it('indica item enviado para o ML ainda sem número de compra', () => {
+    expect(tituloTagMercadoLivrePo(item({ criado_por_nome: 'João' }))).toBe(
+      'Item enviado para o Mercado Livre por João',
+    );
+    expect(tituloTagMercadoLivrePo(item({ criado_por_nome: null }))).toBe(
+      'Item enviado para o Mercado Livre',
+    );
+  });
+
+  it('mostra o número da compra quando já registrada no ML', () => {
+    expect(tituloTagMercadoLivrePo(item({ numero_compra: '2000015616071149' }))).toBe(
+      'Item no Mercado Livre — Compra ML #2000015616071149',
+    );
+  });
+
+  it('usa processos de cotação ML quando não há registro direto em sup_ml_itens', () => {
+    expect(tituloTagMercadoLivrePo(undefined, ['COT-010226-01'])).toBe(
+      'Item com compra pelo Mercado Livre — COT-010226-01',
+    );
   });
 });
