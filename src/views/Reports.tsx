@@ -6,12 +6,16 @@
  *
  * Exibe o painel consolidado de Faturamento GW Jacobina (Wallboard de parede/TV),
  * com acesso liberado universalmente para visualização de faturamento e avanço de torres.
+ * A edição de lançamento é só do Financeiro: o botão "Editar Lançamento" aparece
+ * apenas para quem acessa `fin_faturamento_gwjaco` (o banco confere o mesmo critério
+ * em `private.fin_fat_pode_editar`).
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { BarChart3, Loader2 } from 'lucide-react';
 import type { FinFatGwjaco } from '../types';
 import * as api from '../lib/finFaturamentoGwjacoApi';
+import { canAccessPage } from '../lib/pages';
 import FinFaturamentoWallboard from './financeiro/FinFaturamentoWallboard';
 import RelatorioPrazoEtapas from '../components/relatorios/RelatorioPrazoEtapas';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
@@ -25,6 +29,7 @@ const TRAMOS = ['T1', 'T2', 'T3', 'T4', 'T5'] as const;
 
 export default function Reports({ user }: ReportsProps) {
   const toast = useToast();
+  const podeEditarFaturamento = canAccessPage(user, 'fin_faturamento_gwjaco');
   const [linhas, setLinhas] = useState<FinFatGwjaco[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -149,7 +154,7 @@ export default function Reports({ user }: ReportsProps) {
             onAtualizar={carregar}
             carregando={loading}
             modoInicial="sequencial"
-            onEditarLinha={abrirEdicao}
+            onEditarLinha={podeEditarFaturamento ? abrirEdicao : undefined}
           />
         )}
         <p className="text-xs text-slate-500 dark:text-slate-400">

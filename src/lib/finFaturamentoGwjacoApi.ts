@@ -8,9 +8,11 @@
  * Supabase direto, `.from()` com `as any` porque a tabela ainda não está em
  * `database.types.ts`. Cadastro de torre/tramo novo é INSERT direto; edição
  * de um lançamento existente passa pela RPC `fin_fat_editar`, que grava o
- * diff em `fin_fat_alteracoes`. Qualquer usuário com acesso à página edita
- * qualquer linha — a RLS não trava por autor aqui (ver
- * `20260911180000_fin_fat_edicao_livre.sql`).
+ * diff em `fin_fat_alteracoes`. Quem tem acesso à página edita qualquer linha
+ * (não há trava por autor), mas só quem passa em `private.fin_fat_pode_editar`
+ * — mesmo critério de `canAccessPage('fin_faturamento_gwjaco')`, ver
+ * `20261030131828_fin_fat_restringir_edicao.sql`. A página de Relatórios é
+ * aberta a todos e embute o painel, então a RLS é a barreira real.
  */
 
 import { supabase } from '../db/supabaseClient';
