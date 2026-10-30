@@ -112,6 +112,10 @@ export interface SaldoParaRegularizar {
  * caber inteiro num depósito (a baixa no balcão sai de um depósito por item);
  * item que não cabe não consome saldo, para não tirar de quem vem depois.
  * Registro que não está pendente fica de fora do mapa.
+ *
+ * A mesma regra roda no banco (`alm_req_balcao_atualizar_saldos`, a cada
+ * importação da ZL0024) para a tag "Sem saldo" da Requisição no Balcão — mudou
+ * aqui, mude lá também.
  */
 export function prontidaoRegularizacao(
   registros: Pick<SolExtra, 'id' | 'status' | 'data' | 'created_at' | 'itens'>[],

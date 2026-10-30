@@ -912,7 +912,7 @@ function ModalRequisicao({
   const [data, setData] = useState(registro?.data ?? hojeISO());
   const [turno, setTurno] = useState(registro?.turno ?? pref.turno ?? '');
   const [tipo, setTipo] = useState<TipoMovimentoBalcao>(registro?.tipo_movimento ?? pref.tipo ?? 'saida');
-  const [depositoSaida, setDepositoSaida] = useState(() => (registro && registro.tipo_movimento === 'saida' ? chaveDeposito(registro.deposito_origem) : ''));
+  const [depositoSaida, setDepositoSaida] = useState(() => (registro ? chaveDeposito(registro.deposito_origem) : ''));
   const [colaborador, setColaborador] = useState<{ id: string | null; nome: string; registro: string | null }>(
     registro
       ? { id: registro.colaborador_id, nome: registro.colaborador_nome, registro: registro.colaborador_registro }
@@ -925,10 +925,14 @@ function ModalRequisicao({
     [],
   );
 
-  // Estados completamente separados para Saída e Transferência (evita contaminação e campos travados)
+  // Estados separados para Saída e Transferência (evita contaminação e campos travados).
+  // Na edição, os dois nascem com os itens gravados: trocar o tipo de uma
+  // requisição existente (ex.: a baixa de uma retirada sem saldo que na verdade
+  // é transferência) mantém os itens e o vínculo com a origem.
   const [gruposSaida, setGruposSaida] = useState<GrupoPepBalcao[]>(() => {
-    if (registro && registro.tipo_movimento === 'saida' && registro.itens && registro.itens.length > 0) {
-      const pepPadrao = registro.aplicacao_pep ? { wbs: registro.aplicacao_pep, nome: registro.aplicacao } : null;
+    if (registro && registro.itens && registro.itens.length > 0) {
+      const ehSaida = registro.tipo_movimento === 'saida';
+      const pepPadrao = ehSaida && registro.aplicacao_pep ? { wbs: registro.aplicacao_pep, nome: registro.aplicacao } : null;
       return agruparLinhasPorPep(
         registro.itens.map((i) => ({
           material: i.material,
@@ -936,8 +940,8 @@ function ModalRequisicao({
           unidade: i.unidade ?? '',
           quantidade: Number(i.quantidade),
           saldo: estoquePorDeposito.get(chaveDeposito(i.deposito || registro.deposito_origem))?.get(i.material)?.saldo ?? 0,
-          aplicacao_pep: i.aplicacao_pep || registro.aplicacao_pep,
-          aplicacao: i.aplicacao || registro.aplicacao,
+          aplicacao_pep: ehSaida ? (i.aplicacao_pep || registro.aplicacao_pep) : null,
+          aplicacao: ehSaida ? (i.aplicacao || registro.aplicacao) : null,
           deposito: i.deposito || registro.deposito_origem,
           deposito_destino: null,
         })),
@@ -949,7 +953,8 @@ function ModalRequisicao({
   });
 
   const [gruposTransferencia, setGruposTransferencia] = useState<GrupoPepBalcao[]>(() => {
-    if (registro && registro.tipo_movimento === 'transferencia' && registro.itens && registro.itens.length > 0) {
+    if (registro && registro.itens && registro.itens.length > 0) {
+      const destinoPadrao = registro.deposito_destino || DESTINO_PADRAO_TRANSFERENCIA;
       return agruparLinhasPorDestino(
         registro.itens.map((i) => ({
           material: i.material,
@@ -960,9 +965,9 @@ function ModalRequisicao({
           aplicacao_pep: null,
           aplicacao: null,
           deposito: i.deposito || registro.deposito_origem,
-          deposito_destino: i.deposito_destino || registro.deposito_destino,
+          deposito_destino: i.deposito_destino || destinoPadrao,
         })),
-        registro.deposito_destino,
+        destinoPadrao,
       );
     }
     // Destino padrão da transferência: 0105 (Transferência Produção), o mais usado no balcão.
@@ -1187,6 +1192,7 @@ function ModalRequisicao({
               aplicacao: 'Transferência entre depósitos',
               observacao: observacao || null,
               criado_por_nome: user.name,
+              confirmar: pendenteConfirmacao && confirmar ? true : undefined,
             },
             todasLinhas.map((l) => ({
               material: l.material,
@@ -1200,7 +1206,7 @@ function ModalRequisicao({
             })),
           );
           gravarPreferencias({ tipo, turno, destino: depDestinoEfetivo });
-          toast.success(`${codigo} atualizada.`);
+          toast.success(pendenteConfirmacao && confirmar ? `${codigo} confirmada — liberada para exportação.` : `${codigo} atualizada.`);
         } else {
           // Criação: envios individuais por grupo de destino e por depósito de origem
           const codigosCriados: string[] = [];
@@ -1316,8 +1322,9 @@ function ModalRequisicao({
               </p>
               {daRetiradaSemSaldo ? (
                 <p className="mt-0.5">
-                  O material saiu antes da NF ser lançada. Quando o item tiver saldo na ZL0024, escolha o depósito e o <strong>PEP</strong> e
-                  <strong> confirme</strong> — a retirada fica baixada e a requisição entra na exportação para o SAP.
+                  O material saiu antes da NF ser lançada. Quando o item tiver saldo na ZL0024, escolha o depósito e o <strong>PEP</strong>
+                  (ou troque para <strong>Transferência</strong> e escolha o destino) e <strong>confirme</strong> — a retirada fica baixada e a
+                  requisição entra na exportação para o SAP.
                 </p>
               ) : (
                 <p className="mt-0.5">
