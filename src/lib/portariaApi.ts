@@ -11,6 +11,7 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import { buscarTudo } from './buscarTudo';
 import type {
   PortAlcoolemiaResultado,
   PortAlcoolemiaTeste,
@@ -1720,6 +1721,11 @@ export async function listarTestesAlcoolemia(filtros?: {
   busca?: string;
   incluirExcluidos?: boolean;
 }): Promise<PortAlcoolemiaTeste[]> {
+  // Mês ou período longo passa de 1.000 linhas: pagina (o PostgREST corta em silêncio).
+  return buscarTudo<PortAlcoolemiaTeste>((de, ate) => montarConsultaTestesAlcoolemia(filtros).order('id').range(de, ate));
+}
+
+function montarConsultaTestesAlcoolemia(filtros?: Parameters<typeof listarTestesAlcoolemia>[0]): any {
   let query: any = (supabase as any)
     .from('port_alcoolemia_testes')
     .select('*');
@@ -1756,14 +1762,7 @@ export async function listarTestesAlcoolemia(filtros?: {
     );
   }
 
-  query = query.order('data', { ascending: false }).order('horario', { ascending: false });
-
-  const { data, error } = await query;
-  if (error) {
-    console.error('Erro ao listar testes de alcoolemia:', error);
-    throw new Error(error.message);
-  }
-  return (data || []) as PortAlcoolemiaTeste[];
+  return query.order('data', { ascending: false }).order('horario', { ascending: false });
 }
 
 export async function obterTesteAlcoolemia(id: string): Promise<PortAlcoolemiaTeste | null> {
@@ -1818,17 +1817,24 @@ export async function criarTesteAlcoolemia(
     criado_por_nome: dados.criado_por_nome || null,
   };
 
-  const { data, error } = await (supabase as any)
-    .from('port_alcoolemia_testes')
-    .insert(payload as any)
-    .select('*')
-    .single();
+  // O código tem unique: se outro aparelho gravou o mesmo índice entre a
+  // leitura e a gravação, tenta o próximo (código informado pela tela não muda).
+  for (let tentativa = 0; ; tentativa += 1) {
+    const { data, error } = await (supabase as any)
+      .from('port_alcoolemia_testes')
+      .insert(payload as any)
+      .select('*')
+      .single();
 
-  if (error) {
+    if (!error) return data as unknown as PortAlcoolemiaTeste;
+    const codigoRepetido = error.code === '23505' && String(error.message).includes('codigo_formulario');
+    if (codigoRepetido && !dados.codigo_formulario && tentativa < 3) {
+      payload.codigo_formulario = await gerarProximoCodigoAlcoolemia(dataTeste);
+      continue;
+    }
     console.error('Erro ao criar teste de alcoolemia:', error);
     throw new Error(error.message);
   }
-  return data as unknown as PortAlcoolemiaTeste;
 }
 
 export async function atualizarTesteAlcoolemia(

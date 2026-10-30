@@ -17,8 +17,9 @@ import {
   ShieldAlert, FileText, Printer, Search, Plus, Calendar, Clock,
   CheckCircle2, AlertTriangle, XCircle, Clock3, Building2, Briefcase,
   User, Gauge, FileCheck, ArrowLeft, HelpCircle, RefreshCw,
-  Check, X, FileDown, Activity, AlertCircle, Loader2, FileSignature
+  Check, X, FileDown, Activity, AlertCircle, Loader2, FileSignature, UserPlus, RotateCcw, Trash2
 } from 'lucide-react';
+import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import type {
   Profile,
   PortAlcoolemiaTeste,
@@ -32,7 +33,15 @@ import { listarRhPessoas } from '../../lib/rhApi';
 import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
 import type { PdfGerado } from '../../lib/pdfExport/core';
 import { exportTermoAlcoolemiaPdf, gerarTermoAlcoolemiaPdf } from '../../lib/pdfExport/exportSsmaAlcoolemiaPdf';
-import { exportAlcoolemiaDiaPdf, gerarAlcoolemiaDiaPdf } from '../../lib/pdfExport/exportPortariaPdf';
+import { gerarAlcoolemiaPeriodoPdf } from '../../lib/pdfExport/exportPortariaPdf';
+import {
+  agruparPorData, intervaloDoPeriodo, navegarPeriodo, rotuloDia, rotuloPeriodo, somarDias, testeCombinaBusca,
+  type Intervalo, type ModoPeriodo,
+} from '../../lib/alcoolemiaPeriodo';
+import {
+  BotaoCartao, BuscaColaborador, CartaoTeste, ExportarLivroModal, FiltrosResultado, ListaVazia, SeletorPeriodo,
+  SeloExcluido, SeloQuemAferiu, SeloRazao, SeloResultado, SeloTermo, type FiltroResultado,
+} from '../../components/ssma/AlcoolemiaPainel';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -55,16 +64,16 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: 'ssma-alc-date-nav',
     icon: Calendar,
-    title: 'Navegação por Data do Livro',
+    title: 'Dia, semana, mês ou período',
     description:
-      'Alterne entre os dias para carregar os sorteados pela portaria e os testes adicionados diretamente pelo SSMA.',
+      'Escolha o que a lista mostra: o dia (com as setas), a semana, o mês ou um período com data inicial e final.',
   },
   {
     target: 'ssma-alc-kpis',
     icon: Activity,
-    title: 'Indicadores Diários em Tempo Real',
+    title: 'Busca e resultado',
     description:
-      'Visualize o total de testes, pendências de aferição, aptos e ocorrências positivas/recusas.',
+      'Digite o nome ou a matrícula de quem chegou para achar o teste na hora. Os botões mostram quantos estão aguardando, aptos, positivos e recusas — toque para filtrar.',
   },
   {
     target: 'ssma-alc-novo-btn',
@@ -92,9 +101,20 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
   const tour = usePageTour('ssma-alcoolemia', TOUR_STEPS.length);
   const toast = useToast();
 
-  // Filtros e Navegação
-  const [dataSelecionada, setDataSelecionada] = useState<string>(api.hojeISO());
-  const [filtroResultado, setFiltroResultado] = useState<string>('TODOS');
+  // Filtros e Navegação. `dataSelecionada` é a referência do Dia/Semana/Mês;
+  // Período usa as duas datas próprias.
+  const hoje = api.hojeISO();
+  const [modoPeriodo, setModoPeriodo] = useState<ModoPeriodo>('dia');
+  const [dataSelecionada, setDataSelecionada] = useState<string>(hoje);
+  const [periodoInicio, setPeriodoInicio] = useState<string>(() => somarDias(hoje, -6));
+  const [periodoFim, setPeriodoFim] = useState<string>(hoje);
+  const intervalo = useMemo(
+    () => intervaloDoPeriodo(modoPeriodo, dataSelecionada, periodoInicio, periodoFim),
+    [modoPeriodo, dataSelecionada, periodoInicio, periodoFim],
+  );
+  const umDia = intervalo.inicio === intervalo.fim;
+  const rotuloIntervalo = rotuloPeriodo(modoPeriodo, intervalo, hoje);
+  const [filtroResultado, setFiltroResultado] = useState<FiltroResultado>('TODOS');
   const [filtroRazao, setFiltroRazao] = useState<string>('TODOS');
   const [buscaTexto, setBuscaTexto] = useState<string>('');
 
@@ -110,6 +130,10 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
   const [salvando, setSalvando] = useState<boolean>(false);
   const [imprimindo, setImprimindo] = useState<boolean>(false);
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
+  const [exportarAberto, setExportarAberto] = useState<boolean>(false);
+  const [exportando, setExportando] = useState<boolean>(false);
+  const [testeParaExcluir, setTesteParaExcluir] = useState<PortAlcoolemiaTeste | null>(null);
+  const [excluindo, setExcluindo] = useState<boolean>(false);
 
   // Campos do Termo FRM.SOC-0042
   const [termoRazao, setTermoRazao] = useState<PortAlcoolemiaRazao>('ALEATORIO');
@@ -144,19 +168,47 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
       .catch((err) => console.error('Erro ao listar RH Pessoas:', err));
   }, []);
 
-  // Carregar registros do dia selecionado
+  // Carregar registros do período exibido
   const carregarTestes = useCallback(async () => {
     setCarregando(true);
     try {
-      const lista = await api.listarTestesAlcoolemia({ data: dataSelecionada });
+      // Traz os excluídos também: ficam fora da lista e do livro, visíveis só no filtro Excluídos.
+      const lista = await api.listarTestesAlcoolemia({
+        ...(intervalo.inicio === intervalo.fim ? { data: intervalo.inicio } : { dataInicio: intervalo.inicio, dataFim: intervalo.fim }),
+        incluirExcluidos: true,
+      });
       setTestes(lista);
     } catch (err: any) {
       console.error('Erro ao listar testes de alcoolemia:', err);
-      toast.error('Erro ao carregar lista de testes do dia.');
+      toast.error('Não foi possível carregar os testes. Confira a conexão e toque em atualizar.');
     } finally {
       setCarregando(false);
     }
-  }, [dataSelecionada, toast]);
+  }, [intervalo.inicio, intervalo.fim, toast]);
+
+  // Livro em PDF do período escolhido na exportação. Se for o que já está na
+  // tela, usa a lista carregada.
+  const gerarLivro = async (iv: Intervalo) => {
+    setExportando(true);
+    try {
+      const lista = iv.inicio === intervalo.inicio && iv.fim === intervalo.fim
+        ? vigentes
+        : await api.listarTestesAlcoolemia({ dataInicio: iv.inicio, dataFim: iv.fim });
+      if (lista.length === 0) {
+        toast.warning('Nenhum teste nesse período para exportar.');
+        return;
+      }
+      setExportarAberto(false);
+      setPdfPreview({
+        gerar: () => gerarAlcoolemiaPeriodoPdf(lista, iv.inicio, iv.fim, user.name),
+        titulo: `Livro de Alcoolemia - ${rotuloPeriodo('periodo', iv, hoje)}`,
+      });
+    } catch (err: any) {
+      toast.error('Não foi possível ler os testes do período: ' + (err?.message || err));
+    } finally {
+      setExportando(false);
+    }
+  };
 
   useEffect(() => {
     carregarTestes();
@@ -196,42 +248,37 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
     setNovoBuscaRh('');
   };
 
-  // Navegação de Datas
-  const mudarData = (dias: number) => {
-    const d = new Date(dataSelecionada + 'T12:00:00');
-    d.setDate(d.getDate() + dias);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    setDataSelecionada(`${yyyy}-${mm}-${dd}`);
+  // Navegação de período
+  const trocarModo = (m: ModoPeriodo) => {
+    if (m === 'periodo' && modoPeriodo !== 'periodo') {
+      // Período começa com o que estava na tela, para só ajustar as pontas.
+      setPeriodoInicio(intervalo.inicio === intervalo.fim ? somarDias(intervalo.fim, -6) : intervalo.inicio);
+      setPeriodoFim(intervalo.fim);
+    }
+    setModoPeriodo(m);
   };
 
-  // Métricas do Dia
-  const metricas = useMemo(() => {
-    return api.calcularMetricasAlcoolemia(testes);
-  }, [testes]);
+  // Excluídos (lançados errado) ficam guardados, fora da lista, das contagens e do livro.
+  const vigentes = useMemo(() => testes.filter((t) => !t.excluido_em), [testes]);
+  const daRazao = useMemo(
+    () => (filtroRazao === 'TODOS' ? testes : testes.filter((t) => (t.razao_teste || 'ALEATORIO') === filtroRazao)),
+    [testes, filtroRazao],
+  );
+  const excluidosDaRazao = useMemo(() => daRazao.filter((t) => !!t.excluido_em), [daRazao]);
+
+  // Métricas do período (antes da busca e do filtro, para os números não mudarem ao digitar)
+  const metricas = useMemo(() => api.calcularMetricasAlcoolemia(daRazao.filter((t) => !t.excluido_em)), [daRazao]);
 
   // Filtros aplicados na lista
   const testesFiltrados = useMemo(() => {
-    return testes.filter((t) => {
+    if (filtroResultado === 'EXCLUIDOS') return excluidosDaRazao.filter((t) => testeCombinaBusca(t, buscaTexto));
+    return daRazao.filter((t) => {
+      if (t.excluido_em) return false;
       if (filtroResultado !== 'TODOS' && t.resultado !== filtroResultado) return false;
-      if (filtroRazao !== 'TODOS') {
-        const r = t.razao_teste || 'ALEATORIO';
-        if (r !== filtroRazao) return false;
-      }
-      if (buscaTexto.trim()) {
-        const b = buscaTexto.trim().toUpperCase();
-        const match =
-          t.nome.toUpperCase().includes(b) ||
-          (t.matricula && t.matricula.toUpperCase().includes(b)) ||
-          t.empresa.toUpperCase().includes(b) ||
-          t.codigo_formulario.toUpperCase().includes(b) ||
-          (t.cargo_funcao && t.cargo_funcao.toUpperCase().includes(b));
-        if (!match) return false;
-      }
-      return true;
+      return testeCombinaBusca(t, buscaTexto);
     });
-  }, [testes, filtroResultado, filtroRazao, buscaTexto]);
+  }, [daRazao, excluidosDaRazao, filtroResultado, buscaTexto]);
+  const gruposPorDia = useMemo(() => agruparPorData(testesFiltrados), [testesFiltrados]);
 
   // Abertura do Modal de Execução do Termo
   const abrirModalTermo = (teste: PortAlcoolemiaTeste) => {
@@ -281,6 +328,32 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
     }
   };
 
+  // Exclusão de teste lançado errado: só marca como excluído (vai para o filtro Excluídos)
+  const confirmarExclusao = async () => {
+    if (!testeParaExcluir) return;
+    setExcluindo(true);
+    try {
+      await api.excluirTesteAlcoolemia(testeParaExcluir.id, user.id);
+      toast.success(`${testeParaExcluir.codigo_formulario} excluído. Fica no filtro Excluídos.`);
+      setTesteParaExcluir(null);
+      await carregarTestes();
+    } catch (err: any) {
+      toast.error('Não foi possível excluir: ' + (err?.message || err));
+    } finally {
+      setExcluindo(false);
+    }
+  };
+
+  const restaurarTeste = async (teste: PortAlcoolemiaTeste) => {
+    try {
+      await api.restaurarTesteAlcoolemia(teste.id);
+      toast.success(`${teste.codigo_formulario} voltou para a lista.`);
+      await carregarTestes();
+    } catch (err: any) {
+      toast.error('Não foi possível restaurar: ' + (err?.message || err));
+    }
+  };
+
   // Impressão oficial do termo FRM.SOC-0042
   const imprimirTermoOficial = (teste: PortAlcoolemiaTeste) => {
     setPdfPreview({
@@ -296,11 +369,11 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
     });
   };
 
-  // Abrir Modal de Novo Teste Extra
-  const abrirModalNovoExtra = () => {
+  // Abrir Modal de Novo Teste Extra. Vindo da busca sem resultado, já procura o nome digitado no RH.
+  const abrirModalNovoExtra = (buscaInicial = '') => {
     setNovoTipoVinculo('TEN');
     setNovoRhSelecionado(null);
-    setNovoBuscaRh('');
+    setNovoBuscaRh(buscaInicial);
     setNovoNome('');
     setNovoMatricula('');
     setNovoEmpresa('TEN');
@@ -327,7 +400,8 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
     setSalvando(true);
     try {
       const payload: Partial<PortAlcoolemiaTeste> = {
-        data: dataSelecionada,
+        // Dia exibido (permite lançar em data passada); vendo semana/mês/período, o teste é de hoje.
+        data: modoPeriodo === 'dia' ? dataSelecionada : hoje,
         horario: novoHorario,
         turno: novoTurno,
         tipo_vinculo: novoTipoVinculo,
@@ -364,435 +438,293 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-16">
-      {/* Header com Navegação e Ações */}
+    <div className="mx-auto max-w-7xl space-y-4 pb-16 sm:space-y-5">
+      {/* Cabeçalho */}
       <div>
         <button
           type="button"
           onClick={() => onNavigate('/formularios/ssma')}
-          className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-emerald-400 hover:bg-emerald-50/50 hover:text-emerald-700 active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-emerald-500 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300"
+          className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-colors hover:border-emerald-400 hover:text-emerald-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-emerald-500 dark:hover:text-emerald-300"
         >
           <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
-          <span>Voltar para Módulo SSMA</span>
+          <span>SSMA</span>
         </button>
 
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-sm shadow-emerald-500/20">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white sm:flex">
               <FileSignature className="h-6 w-6" />
             </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-display text-xl font-bold text-slate-900 dark:text-slate-50 sm:text-2xl">
-                  Termo de Teste de Alcoolemia
-                </h1>
-                <span className="rounded-md bg-emerald-100 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                  FRM.SOC-0042
-                </span>
-              </div>
+            <div className="min-w-0">
+              <h1 className="font-display text-xl font-bold text-slate-900 dark:text-slate-50 sm:text-2xl">
+                Teste de alcoolemia
+              </h1>
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Execução de teste e orientação preventiva sobre uso de substâncias psicoativas • Integrado à Portaria
+                <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">FRM.SOC-0042</span>
+                <span className="ml-2 hidden sm:inline">Sorteados da portaria e testes avulsos do SSMA</span>
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid w-full grid-cols-[1fr_auto] gap-2 sm:flex sm:w-auto">
             <button
               type="button"
               id="ssma-alc-novo-btn"
-              onClick={abrirModalNovoExtra}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm shadow-emerald-600/30 transition-all hover:bg-emerald-700 active:scale-95"
+              onClick={() => abrirModalNovoExtra()}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white transition-colors hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
             >
-              <Plus className="h-4 w-4" />
-              <span>Adicionar Colaborador / Teste Extra</span>
+              <UserPlus className="h-4 w-4" />
+              <span>Adicionar teste</span>
             </button>
-
             <button
               type="button"
-              onClick={() => setPdfPreview({
-                gerar: () => gerarAlcoolemiaDiaPdf(testes, dataSelecionada, user.name),
-                titulo: `Livro de Alcoolemia - ${dataSelecionada}`,
-              })}
-              disabled={testes.length === 0}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              onClick={() => setExportarAberto(true)}
+              aria-label="Exportar livro em PDF"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               <FileDown className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Visualizar / Exportar Diário</span>
+              <span className="hidden sm:inline">Exportar livro</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Barra de Navegação de Data e Filtros */}
-      <div
+      {/* Período */}
+      <section
         id="ssma-alc-date-nav"
-        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xs dark:border-slate-800 dark:bg-slate-900"
+        aria-label="Período exibido"
+        className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 lg:max-w-xl"
       >
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => mudarData(-1)}
-            className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            title="Dia anterior"
-          >
-            Anterior
-          </button>
-          <button
-            type="button"
-            onClick={() => setDataSelecionada(api.hojeISO())}
-            className={`rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors ${
-              dataSelecionada === api.hojeISO()
-                ? 'bg-emerald-600 text-white'
-                : 'border border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
-            }`}
-          >
-            Hoje
-          </button>
-          <button
-            type="button"
-            onClick={() => mudarData(1)}
-            className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            title="Próximo dia"
-          >
-            Próximo
-          </button>
+        <SeletorPeriodo
+          modo={modoPeriodo}
+          onModo={trocarModo}
+          intervalo={intervalo}
+          hoje={hoje}
+          onPasso={(p) => setDataSelecionada((d) => navegarPeriodo(modoPeriodo, d, p))}
+          onHoje={() => setDataSelecionada(hoje)}
+          inicio={periodoInicio}
+          fim={periodoFim}
+          onInicio={setPeriodoInicio}
+          onFim={setPeriodoFim}
+        />
+      </section>
 
-          <div className="ml-1 flex items-center gap-1.5 border-l border-slate-200 pl-3 dark:border-slate-700">
-            <Calendar className="h-4 w-4 text-slate-400" />
-            <input
-              type="date"
-              value={dataSelecionada}
-              onChange={(e) => setDataSelecionada(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-bold text-slate-800 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+      {/* Busca e resultado: presos no topo enquanto a lista rola */}
+      <div className="sticky top-0 z-20 -mx-3 space-y-2.5 bg-[var(--surface-page)] px-3 pb-3 pt-2 sm:-mx-6 sm:px-6">
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <BuscaColaborador
+              valor={buscaTexto}
+              onChange={setBuscaTexto}
+              encontrados={testesFiltrados.length}
+              total={testes.length}
             />
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Buscar colaborador, matrícula..."
-              value={buscaTexto}
-              onChange={(e) => setBuscaTexto(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-3 text-xs text-slate-800 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-            />
-          </div>
-
-          <select
-            value={filtroRazao}
-            onChange={(e) => setFiltroRazao(e.target.value)}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-          >
-            <option value="TODOS">Todas Razões</option>
-            <option value="ALEATORIO">Aleatório (Sorteio)</option>
-            <option value="MOTIVADO">Motivado / Suspeita</option>
-            <option value="POS_ACIDENTE">Pós-Acidente</option>
-          </select>
-
           <button
             type="button"
             onClick={carregarTestes}
-            title="Atualizar lista"
-            className="rounded-xl border border-slate-200 p-2 text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            aria-label="Atualizar lista"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-5 w-5 ${carregando ? 'animate-spin' : ''}`} />
           </button>
         </div>
-      </div>
 
-      {/* Cards de Métricas Operacionais */}
-      <div id="ssma-alc-kpis" className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        {/* Total */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-            <span>Total na Lista</span>
-            <Activity className="h-4 w-4 text-emerald-500" />
+        <div id="ssma-alc-kpis" className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <FiltrosResultado valor={filtroResultado} onChange={setFiltroResultado} metricas={metricas} excluidos={excluidosDaRazao.length} />
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-slate-100">
-            {metricas.total}
-          </div>
-          <div className="mt-1 text-[10px] font-medium text-slate-500">
-            {metricas.colaboradoresTen} TEN • {metricas.terceirosPj} terceiros
-          </div>
-        </div>
-
-        {/* Pendentes */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-            <span>Aguardando Aferição</span>
-            <Clock3 className="h-4 w-4 text-amber-500" />
-          </div>
-          <div className="mt-2 text-2xl font-extrabold text-amber-600 dark:text-amber-400">
-            {metricas.pendentes}
-          </div>
-          <div className="mt-1 text-[10px] font-medium text-amber-600/80">
-            Abrir termo para testar
-          </div>
-        </div>
-
-        {/* Aptos (Negativos) */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-            <span>Aptos (Negativo)</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          </div>
-          <div className="mt-2 text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
-            {metricas.negativos}
-          </div>
-          <div className="mt-1 text-[10px] font-medium text-emerald-600/80">
-            0,00 mg/L de ar alveolar
-          </div>
-        </div>
-
-        {/* Positivos */}
-        <div className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4 shadow-xs dark:border-rose-900/40 dark:bg-rose-950/20">
-          <div className="flex items-center justify-between text-xs font-bold text-rose-700 dark:text-rose-400">
-            <span>Positivos</span>
-            <AlertTriangle className="h-4 w-4 text-rose-600" />
-          </div>
-          <div className="mt-2 text-2xl font-extrabold text-rose-600 dark:text-rose-400">
-            {metricas.positivos}
-          </div>
-          <div className="mt-1 text-[10px] font-bold text-rose-700 dark:text-rose-400">
-            Exige Termo Físico Assinado
-          </div>
-        </div>
-
-        {/* Recusas */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-            <span>Recusas</span>
-            <XCircle className="h-4 w-4 text-amber-600" />
-          </div>
-          <div className="mt-2 text-2xl font-extrabold text-amber-600 dark:text-amber-400">
-            {metricas.recusas}
-          </div>
-          <div className="mt-1 text-[10px] font-medium text-slate-500">
-            Comunicação ao SESMT
-          </div>
+          <select
+            value={filtroRazao}
+            onChange={(e) => setFiltroRazao(e.target.value)}
+            aria-label="Razão do teste"
+            className="hidden h-10 rounded-full border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 focus:border-emerald-500 focus:outline-none sm:block dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <option value="TODOS">Todas as razões</option>
+            <option value="ALEATORIO">Aleatório (sorteio)</option>
+            <option value="MOTIVADO">Motivado / suspeita</option>
+            <option value="POS_ACIDENTE">Pós-acidente</option>
+          </select>
         </div>
       </div>
 
-      {/* Tabela de Testes do Dia */}
-      <div id="ssma-alc-table" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-wrap items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-          <div>
-            <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
-              Relação de Testes de Alcoolemia — {formatarDataBR(dataSelecionada)}
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Sorteados recebidos da Portaria e testes adicionais do SSMA para emissão e assinatura do termo
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-slate-500">Filtrar resultado:</span>
-            <select
-              value={filtroResultado}
-              onChange={(e) => setFiltroResultado(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-            >
-              <option value="TODOS">Todos os Resultados</option>
-              <option value="PENDENTE">Aguardando Aferição</option>
-              <option value="NEGATIVO">Aptos (Negativos)</option>
-              <option value="POSITIVO">Positivos</option>
-              <option value="RECUSA">Recusas</option>
-            </select>
-          </div>
-        </div>
-
-        {carregando ? (
+      {/* Lista */}
+      <div id="ssma-alc-table">
+        {carregando && testes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-400">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-            <span className="mt-3 text-xs font-medium">Carregando lista de testes...</span>
+            <span className="mt-3 text-sm font-medium">Carregando testes…</span>
           </div>
         ) : testesFiltrados.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
-              <FileSignature className="h-6 w-6" />
-            </span>
-            <h3 className="mt-3 font-display text-sm font-bold text-slate-800 dark:text-slate-200">
-              Nenhum teste encontrado para {formatarDataBR(dataSelecionada)}
-            </h3>
-            <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
-              A portaria ainda não cadastrou sorteados para este dia, ou você pode adicionar um teste avulso diretamente.
-            </p>
-            <button
-              type="button"
-              onClick={abrirModalNovoExtra}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Adicionar Colaborador / Teste Extra</span>
-            </button>
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <ListaVazia busca={buscaTexto} rotulo={umDia ? rotuloIntervalo.replace(/^Hoje, /, 'hoje, ') : rotuloIntervalo} onAdicionar={() => abrirModalNovoExtra(buscaTexto.trim())} />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-400">
-                  <th className="px-4 py-3">Código</th>
-                  <th className="px-4 py-3">Horário</th>
-                  <th className="px-4 py-3">Colaborador / Matrícula</th>
-                  <th className="px-4 py-3">Empresa / Função</th>
-                  <th className="px-4 py-3">Razão do Teste</th>
-                  <th className="px-4 py-3 text-center">Resultado / Aferição</th>
-                  <th className="px-4 py-3 text-center">Termo Físico</th>
-                  <th className="px-4 py-3 text-right">Ações do SSMA</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {testesFiltrados.map((item) => {
-                  const isPendente = item.resultado === 'PENDENTE';
-                  const isPositivo = item.resultado === 'POSITIVO';
-                  const isNegativo = item.resultado === 'NEGATIVO';
-                  const isRecusa = item.resultado === 'RECUSA';
-                  const razao = item.razao_teste || 'ALEATORIO';
-
-                  return (
-                    <tr
-                      key={item.id}
-                      className={`transition-colors hover:bg-slate-50/60 dark:hover:bg-slate-800/40 ${
-                        isPositivo ? 'bg-rose-50/30 dark:bg-rose-950/10' : ''
-                      }`}
-                    >
-                      {/* Código */}
-                      <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-emerald-700 dark:text-emerald-400">
-                        {item.codigo_formulario}
-                      </td>
-
-                      {/* Horário */}
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-300">
-                        <div className="font-semibold">{item.horario}</div>
-                        <div className="text-[10px] text-slate-400">Turno {item.turno}</div>
-                      </td>
-
-                      {/* Colaborador */}
-                      <td className="px-4 py-3">
-                        <div className="font-bold text-slate-900 dark:text-slate-100">
-                          {item.nome}
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          {item.matricula && <span className="font-mono mr-1.5">Matr.: {item.matricula}</span>}
-                          {item.documento && <span className="mr-1.5">Doc: {item.documento}</span>}
-                        </div>
-                      </td>
-
-                      {/* Empresa / Função */}
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-slate-800 dark:text-slate-200">
-                          {item.empresa || 'TEN'}
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          {item.cargo_funcao || '-'}
-                        </div>
-                      </td>
-
-                      {/* Razão do Teste */}
-                      <td className="whitespace-nowrap px-4 py-3">
-                        {razao === 'ALEATORIO' && (
-                          <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                            Aleatório (Sorteio)
-                          </span>
+          <>
+            {/* Celular e tablet: cartões, agrupados por dia quando o período tem mais de um */}
+            <div className="space-y-5 lg:hidden">
+              {gruposPorDia.map((g) => (
+                <section key={g.data} aria-label={rotuloDia(g.data, hoje)}>
+                  {!umDia && (
+                    <h2 className="mb-2 flex items-baseline justify-between px-1 text-sm font-bold text-slate-700 first-letter:uppercase dark:text-slate-200">
+                      <span>{rotuloDia(g.data, hoje)}</span>
+                      <span className="text-xs font-medium text-slate-500">{g.itens.length} {g.itens.length === 1 ? 'teste' : 'testes'}</span>
+                    </h2>
+                  )}
+                  <div className="space-y-3">
+                    {g.itens.map((item) => (
+                      <CartaoTeste
+                        key={item.id}
+                        teste={item}
+                        principal={
+                          item.excluido_em
+                            ? (podeEditarFormulario(user, item)
+                                ? { rotulo: 'Restaurar', icone: RotateCcw, onClick: () => void restaurarTeste(item), destaque: false }
+                                : null)
+                            : {
+                                rotulo: item.resultado === 'PENDENTE' ? 'Registrar resultado' : 'Ver termo',
+                                icone: FileSignature,
+                                onClick: () => abrirModalTermo(item),
+                                destaque: item.resultado === 'PENDENTE',
+                              }
+                        }
+                        acoes={!item.excluido_em && (
+                          <>
+                            <BotaoCartao
+                              rotulo={`Imprimir termo de ${item.nome}`}
+                              icone={Printer}
+                              onClick={() => imprimirTermoOficial(item)}
+                              tom={item.resultado === 'POSITIVO' ? 'alerta' : 'neutro'}
+                            />
+                            {podeEditarFormulario(user, item) && (
+                              <BotaoCartao rotulo={`Excluir teste de ${item.nome}`} icone={Trash2} tom="perigo" onClick={() => setTesteParaExcluir(item)} />
+                            )}
+                          </>
                         )}
-                        {razao === 'MOTIVADO' && (
-                          <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-                            Motivado / Suspeita
-                          </span>
-                        )}
-                        {razao === 'POS_ACIDENTE' && (
-                          <span className="inline-flex items-center rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-                            Pós-Acidente
-                          </span>
-                        )}
-                      </td>
+                        rodape={<><SeloTermo teste={item} />{item.vigilante && <SeloQuemAferiu teste={item} />}</>}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
 
-                      {/* Resultado */}
-                      <td className="whitespace-nowrap px-4 py-3 text-center">
-                        {isPendente && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                            <Clock3 className="h-3 w-3 text-amber-500" />
-                            Aguardando Teste
-                          </span>
-                        )}
-                        {isNegativo && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Apto (0,00 mg/L)
-                          </span>
-                        )}
-                        {isPositivo && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 text-[10px] font-bold text-rose-800 dark:bg-rose-950/50 dark:text-rose-300">
-                            <AlertTriangle className="h-3 w-3" />
-                            Positivo ({Number(item.valor_medido || 0).toFixed(2)} mg/L)
-                          </span>
-                        )}
-                        {isRecusa && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-                            <XCircle className="h-3 w-3" />
-                            Recusa
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Termo Físico */}
-                      <td className="whitespace-nowrap px-4 py-3 text-center">
-                        {item.termo_assinado_fisicamente ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                            <Check className="h-3 w-3" />
-                            Assinado e Arquivado
-                          </span>
-                        ) : isPositivo ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-2 py-0.5 text-[10px] font-extrabold text-rose-800 animate-pulse dark:bg-rose-950/60 dark:text-rose-200">
-                            <AlertCircle className="h-3 w-3" />
-                            Requer Assinatura Física
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-400">
-                            {item.termo_impresso_em ? 'Impresso' : 'Não impresso'}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Ações */}
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {/* Botão de abrir Termo / Registrar Resultado */}
-                          <button
-                            type="button"
-                            onClick={() => abrirModalTermo(item)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800 shadow-2xs transition-all hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200 dark:hover:bg-emerald-900/60"
-                            title="Abrir Termo FRM.SOC-0042 e registrar resultado"
-                          >
-                            <FileSignature className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
-                            <span>{isPendente ? 'Registrar Resultado' : 'Ver / Editar Termo'}</span>
-                          </button>
-
-                          {/* Botão de Imprimir Termo PDF */}
-                          <button
-                            type="button"
-                            onClick={() => imprimirTermoOficial(item)}
-                            title="Imprimir Termo Oficial FRM.SOC-0042 para assinatura física"
-                            className={`rounded-lg border p-1.5 transition-colors ${
-                              isPositivo
-                                ? 'border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
-                                : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
-                            }`}
-                          >
-                            <Printer className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+            {/* Computador: tabela */}
+            <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:block">
+              <table data-no-cards className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-400">
+                    <th className="px-4 py-3">{umDia ? 'Horário' : 'Data e horário'}</th>
+                    <th className="px-4 py-3">Colaborador</th>
+                    <th className="px-4 py-3">Empresa e função</th>
+                    <th className="px-4 py-3">Razão</th>
+                    <th className="px-4 py-3">Resultado</th>
+                    <th className="px-4 py-3">Termo</th>
+                    <th className="px-4 py-3 text-right"><span className="sr-only">Ações</span></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {testesFiltrados.map((item) => {
+                    const isPendente = item.resultado === 'PENDENTE';
+                    const isPositivo = item.resultado === 'POSITIVO';
+                    return (
+                      <tr
+                        key={item.id}
+                        className={`transition-colors hover:bg-slate-50/60 dark:hover:bg-slate-800/40 ${isPositivo ? 'bg-rose-50/40 dark:bg-rose-950/10' : ''}`}
+                      >
+                        <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-700 dark:text-slate-300">
+                          {!umDia && <div className="text-xs font-semibold text-slate-500">{item.data.slice(8, 10)}/{item.data.slice(5, 7)}</div>}
+                          <div className="font-bold">{item.horario}</div>
+                          <div className="text-xs text-slate-400">{(item.turno || '').toLowerCase()}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-bold text-slate-900 dark:text-slate-100">{item.nome}</div>
+                          <div className="text-xs text-slate-500">
+                            {item.matricula ? `Matr. ${item.matricula}` : item.documento ? `Doc. ${item.documento}` : ''}
+                            <span className="ml-2 font-mono text-slate-400">{item.codigo_formulario}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-slate-800 dark:text-slate-200">{item.empresa || 'TEN'}</div>
+                          <div className="text-xs text-slate-500">{item.cargo_funcao || '-'}</div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3"><SeloRazao razao={item.razao_teste || 'ALEATORIO'} /></td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <div className="flex flex-col items-start gap-1"><SeloResultado teste={item} /><SeloExcluido teste={item} /></div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3"><SeloTermo teste={item} /></td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                          {item.excluido_em ? (
+                            podeEditarFormulario(user, item) && (
+                              <button
+                                type="button"
+                                onClick={() => void restaurarTeste(item)}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                <RotateCcw className="h-4 w-4" /> Restaurar
+                              </button>
+                            )
+                          ) : (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => abrirModalTermo(item)}
+                              className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-bold transition-colors ${
+                                isPendente
+                                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                  : 'border border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              <FileSignature className="h-4 w-4" />
+                              {isPendente ? 'Registrar resultado' : 'Ver termo'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => imprimirTermoOficial(item)}
+                              aria-label={`Imprimir termo de ${item.nome}`}
+                              title="Imprimir termo para assinatura"
+                              className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
+                                isPositivo
+                                  ? 'border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                                  : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              <Printer className="h-4 w-4" />
+                            </button>
+                            {podeEditarFormulario(user, item) && (
+                              <button
+                                type="button"
+                                onClick={() => setTesteParaExcluir(item)}
+                                aria-label={`Excluir teste de ${item.nome}`}
+                                title="Excluir teste lançado errado"
+                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-rose-600 hover:bg-rose-50 dark:border-slate-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
+
+      {exportarAberto && (
+        <ExportarLivroModal
+          modoAtual={modoPeriodo}
+          intervaloAtual={intervalo}
+          hoje={hoje}
+          gerando={exportando}
+          onCancelar={() => setExportarAberto(false)}
+          onGerar={(iv) => void gerarLivro(iv)}
+        />
+      )}
 
       {/* MODAL DO TERMO OFICIAL DE ALCOOLEMIA (FRM.SOC-0042) */}
       {modalTermoAberto && testeAtivo && (
@@ -1428,6 +1360,17 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
           onNext={tour.next}
           onBack={tour.back}
           onClose={tour.close}
+        />
+      )}
+      {testeParaExcluir && (
+        <ConfirmDialog
+          titulo="Excluir teste de alcoolemia"
+          mensagem={`Excluir ${testeParaExcluir.codigo_formulario} (${testeParaExcluir.nome})? Ele sai da lista, das contagens e do livro, mas fica guardado no filtro Excluídos e pode ser restaurado.`}
+          confirmarLabel="Excluir teste"
+          variante="perigo"
+          confirmando={excluindo}
+          onConfirmar={confirmarExclusao}
+          onCancelar={() => setTesteParaExcluir(null)}
         />
       )}
       {pdfPreview && (

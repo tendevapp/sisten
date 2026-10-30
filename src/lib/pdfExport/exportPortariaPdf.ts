@@ -512,13 +512,31 @@ export async function gerarAlcoolemiaDiaPdf(
   dataISO: string,
   vigilanteNome?: string
 ): Promise<PdfGerado> {
+  return gerarAlcoolemiaPeriodoPdf(testes, dataISO, dataISO, vigilanteNome);
+}
+
+/**
+ * Livro de alcoolemia de um intervalo. Um dia só sai como o livro diário de
+ * sempre; mais de um dia ganha a coluna DATA e vem em ordem cronológica.
+ */
+export async function gerarAlcoolemiaPeriodoPdf(
+  testesEntrada: PortAlcoolemiaTeste[],
+  inicioISO: string,
+  fimISO: string,
+  vigilanteNome?: string
+): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
+  const umDia = inicioISO === fimISO;
+  const testes = umDia
+    ? testesEntrada
+    : [...testesEntrada].sort((a, b) => a.data.localeCompare(b.data) || (a.horario || '').localeCompare(b.horario || ''));
+  const periodoBR = umDia ? formatDataBR(inicioISO) : `${formatDataBR(inicioISO)} a ${formatDataBR(fimISO)}`;
 
   writer.drawDocumentHeader({
-    title: 'Livro Diário de Testes de Alcoolemia',
+    title: umDia ? 'Livro Diário de Testes de Alcoolemia' : 'Livro de Testes de Alcoolemia — Período',
     formCode: 'FRM.SGP-0015',
-    protocol: `ALC-${dataISO.replace(/-/g, '')}`,
+    protocol: umDia ? `ALC-${inicioISO.replace(/-/g, '')}` : `ALC-${inicioISO.replace(/-/g, '')}-${fimISO.replace(/-/g, '')}`,
     statusBadge: `${testes.length} REGISTRO(S)`,
     statusColor: 'blue',
   });
@@ -530,7 +548,7 @@ export async function gerarAlcoolemiaDiaPdf(
 
   writer.drawInfoGrid(
     [
-      { label: 'Data de Aferição', value: formatDataBR(dataISO) },
+      { label: umDia ? 'Data de Aferição' : 'Período', value: periodoBR },
       { label: 'Total de Sorteados', value: `${testes.length} pessoas` },
       { label: 'Aptos / Negativos', value: `${negativos}` },
       { label: 'Positivos / Recusas / Pendentes', value: `${positivos} / ${recusas} / ${pendentes}` },
@@ -539,23 +557,34 @@ export async function gerarAlcoolemiaDiaPdf(
   );
 
   if (testes.length > 0) {
-    const headers = [
-      { label: 'CÓDIGO', width: 90, align: 'left' as const },
-      { label: 'HORA', width: 45, align: 'center' as const },
-      { label: 'VÍNCULO', width: 55, align: 'center' as const },
-      { label: 'NOME / COLABORADOR', width: 160, align: 'left' as const },
-      { label: 'EMPRESA', width: 85, align: 'left' as const },
-      { label: 'RESULTADO', width: 80, align: 'center' as const },
-    ];
-    const rows = testes.map((t) => [
-      t.codigo_formulario,
-      t.horario,
-      t.tipo_vinculo,
-      t.matricula ? `${t.nome} (${t.matricula})` : t.nome,
-      t.empresa || 'TEN',
-      t.resultado + (t.valor_medido > 0 ? ` (${t.valor_medido.toFixed(2)})` : ''),
-    ]);
-    writer.drawTable(headers, rows);
+    const resultado = (t: PortAlcoolemiaTeste) => t.resultado + (t.valor_medido > 0 ? ` (${t.valor_medido.toFixed(2)})` : '');
+    const nome = (t: PortAlcoolemiaTeste) => (t.matricula ? `${t.nome} (${t.matricula})` : t.nome);
+    if (umDia) {
+      const headers = [
+        { label: 'CÓDIGO', width: 90, align: 'left' as const },
+        { label: 'HORA', width: 45, align: 'center' as const },
+        { label: 'VÍNCULO', width: 55, align: 'center' as const },
+        { label: 'NOME / COLABORADOR', width: 160, align: 'left' as const },
+        { label: 'EMPRESA', width: 85, align: 'left' as const },
+        { label: 'RESULTADO', width: 80, align: 'center' as const },
+      ];
+      writer.drawTable(headers, testes.map((t) => [
+        t.codigo_formulario, t.horario, t.tipo_vinculo, nome(t), t.empresa || 'TEN', resultado(t),
+      ]));
+    } else {
+      const headers = [
+        { label: 'DATA', width: 50, align: 'center' as const },
+        { label: 'CÓDIGO', width: 80, align: 'left' as const },
+        { label: 'HORA', width: 35, align: 'center' as const },
+        { label: 'VÍNCULO', width: 45, align: 'center' as const },
+        { label: 'NOME / COLABORADOR', width: 150, align: 'left' as const },
+        { label: 'EMPRESA', width: 75, align: 'left' as const },
+        { label: 'RESULTADO', width: 80, align: 'center' as const },
+      ];
+      writer.drawTable(headers, testes.map((t) => [
+        formatDataBR(t.data).slice(0, 5), t.codigo_formulario, t.horario, t.tipo_vinculo, nome(t), t.empresa || 'TEN', resultado(t),
+      ]));
+    }
   }
 
   writer.drawSignatures([
@@ -564,7 +593,9 @@ export async function gerarAlcoolemiaDiaPdf(
   ]);
 
   writer.finalizeDoc('FRM.SGP-0015');
-  return docToPdfGerado(doc, `livro-alcoolemia-${dataISO}.pdf`, `Livro de Alcoolemia - ${formatDataBR(dataISO)}`);
+  return umDia
+    ? docToPdfGerado(doc, `livro-alcoolemia-${inicioISO}.pdf`, `Livro de Alcoolemia - ${periodoBR}`)
+    : docToPdfGerado(doc, `livro-alcoolemia-${inicioISO}-a-${fimISO}.pdf`, `Livro de Alcoolemia - ${periodoBR}`);
 }
 
 export async function exportAlcoolemiaDiaPdf(

@@ -99,6 +99,19 @@ const protocoloAse: RegraCodigo = {
   }),
 };
 
+/**
+ * ALC-DDMMYY-NN do teste de alcoolemia: o código calculado offline sai da
+ * cópia guardada do dia e pode já ter dono no servidor (30/10: dois
+ * ALC-301026-01). No envio, pega o próximo índice do dia, como online.
+ */
+const codigoAlcoolemia: RegraCodigo = {
+  coluna: 'codigo_formulario',
+  regenerar: dados => porLinha(dados, async linha => {
+    const { gerarProximoCodigoAlcoolemia } = await import('../portariaApi');
+    return { ...linha, codigo_formulario: await gerarProximoCodigoAlcoolemia(String(linha.data)) };
+  }),
+};
+
 // ---------------------------------------------------------------------
 // Tabelas
 // ---------------------------------------------------------------------
@@ -128,7 +141,7 @@ const TABELAS: Record<string, ConfigTabela> = {
   port_briefing_sessoes: { rotulo: 'Briefing de segurança', resumo: campos('numero_protocolo', 'tema_treinamento', 'data'), codigo: protocoloPortaria },
   port_briefing_participantes: { rotulo: 'Briefing de segurança — participante', resumo: campos('nome', 'empresa') },
   port_passagem_plantao: { rotulo: 'Passagem de plantão', resumo: campos('numero_protocolo', 'data', 'turno'), codigo: protocoloPortaria },
-  port_alcoolemia_testes: { rotulo: 'Teste de alcoolemia', resumo: campos('nome', 'empresa', 'resultado') },
+  port_alcoolemia_testes: { rotulo: 'Teste de alcoolemia', resumo: campos('codigo_formulario', 'nome', 'resultado'), codigo: codigoAlcoolemia },
 
   // RH
   rh_ase_solicitacoes: { rotulo: 'ASE — horas extras', resumo: campos('numero_protocolo', 'data_execucao'), codigo: protocoloAse },

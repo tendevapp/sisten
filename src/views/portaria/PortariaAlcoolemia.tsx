@@ -17,7 +17,7 @@ import {
   FileDown, RefreshCw, CheckCircle2, AlertTriangle, XCircle,
   Clock3, Shield, User, Building2, Briefcase, Trash2, Edit2,
   Check, X, ChevronLeft, ChevronRight, AlertCircle, Loader2,
-  HelpCircle, Bug, Lightbulb, UserCheck, UserPlus, Gauge
+  HelpCircle, Bug, Lightbulb, UserCheck, UserPlus, Gauge, RotateCcw
 } from 'lucide-react';
 import type { Profile, PortAlcoolemiaTeste, PortAlcoolemiaResultado, PortAlcoolemiaVinculo, RhPessoa } from '../../types';
 import * as api from '../../lib/portariaApi';
@@ -25,7 +25,15 @@ import { listarRhPessoas } from '../../lib/rhApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
 import type { PdfGerado } from '../../lib/pdfExport/core';
-import { exportAlcoolemiaDiaPdf, gerarAlcoolemiaDiaPdf } from '../../lib/pdfExport/exportPortariaPdf';
+import { gerarAlcoolemiaPeriodoPdf } from '../../lib/pdfExport/exportPortariaPdf';
+import {
+  agruparPorData, intervaloDoPeriodo, navegarPeriodo, rotuloDia, rotuloPeriodo, somarDias, testeCombinaBusca,
+  type Intervalo, type ModoPeriodo,
+} from '../../lib/alcoolemiaPeriodo';
+import {
+  BotaoCartao, BuscaColaborador, CartaoTeste, ExportarLivroModal, FiltrosResultado, ListaVazia, SeletorPeriodo,
+  SeloExcluido, SeloQuemAferiu, SeloResultado, type FiltroResultado,
+} from '../../components/ssma/AlcoolemiaPainel';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
@@ -49,16 +57,16 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: 'alc-date-nav',
     icon: Calendar,
-    title: 'Navegação por Data e Livro do Dia',
+    title: 'Dia, semana, mês ou período',
     description:
-      'Navegue entre os dias ou selecione uma data específica para visualizar ou preencher o livro diário de sorteados.',
+      'Escolha o que o livro mostra: o dia (com as setas), a semana, o mês ou um período com data inicial e final.',
   },
   {
     target: 'alc-kpis',
     icon: CheckCircle2,
-    title: 'Indicadores Diários em Tempo Real',
+    title: 'Busca e resultado',
     description:
-      'Acompanhe o total de sorteados, aptos (negativos), ocorrências (positivos/recusas) e pendências do dia.',
+      'Digite o nome ou a matrícula de quem chegou para achar o sorteado na hora. Os botões mostram quantos estão aguardando, aptos, positivos e recusas — toque para filtrar. O resultado pode ser registrado aqui ou no SSMA.',
   },
   {
     target: 'alc-novo-btn',
@@ -70,9 +78,9 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: 'alc-export-btn',
     icon: FileDown,
-    title: 'Exportar Livro Diário em PDF',
+    title: 'Exportar livro em PDF',
     description:
-      'Gere a folha oficial com a relação completa dos sorteados e espaços para assinatura do vigilante e segurança patrimonial.',
+      'Escolha o dia, a semana, o mês ou um período e gere a folha oficial com os sorteados e espaços para assinatura do vigilante e da segurança.',
   },
   {
     target: 'help-button',
@@ -93,10 +101,25 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   const tour = usePageTour('portaria-alcoolemia', TOUR_STEPS.length);
   const toast = useToast();
 
-  // Estados de data e filtros
-  const [dataSelecionada, setDataSelecionada] = useState<string>(api.hojeISO());
+  // Período e filtros. `dataSelecionada` é a referência do Dia/Semana/Mês;
+  // Período usa as duas datas próprias.
+  const hoje = api.hojeISO();
+  const [modoPeriodo, setModoPeriodo] = useState<ModoPeriodo>('dia');
+  const [dataSelecionada, setDataSelecionada] = useState<string>(hoje);
+  const [periodoInicio, setPeriodoInicio] = useState<string>(() => somarDias(hoje, -6));
+  const [periodoFim, setPeriodoFim] = useState<string>(hoje);
+  const intervalo = useMemo(
+    () => intervaloDoPeriodo(modoPeriodo, dataSelecionada, periodoInicio, periodoFim),
+    [modoPeriodo, dataSelecionada, periodoInicio, periodoFim],
+  );
+  const umDia = intervalo.inicio === intervalo.fim;
+  const rotuloIntervalo = rotuloPeriodo(modoPeriodo, intervalo, hoje);
+  // Sorteado novo entra no dia exibido; vendo semana/mês/período, entra hoje.
+  const dataNovoRegistro = modoPeriodo === 'dia' ? dataSelecionada : hoje;
   const [filtroTurno, setFiltroTurno] = useState<string>('TODOS');
-  const [filtroResultado, setFiltroResultado] = useState<string>('TODOS');
+  const [filtroResultado, setFiltroResultado] = useState<FiltroResultado>('TODOS');
+  const [exportarAberto, setExportarAberto] = useState<boolean>(false);
+  const [exportando, setExportando] = useState<boolean>(false);
   const [buscaTexto, setBuscaTexto] = useState<string>('');
 
   // Dados
@@ -166,19 +189,23 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
       .catch((err) => console.error('Erro ao carregar RH Pessoas:', err));
   }, []);
 
-  // Carregar testes da data selecionada
+  // Carregar testes do período exibido
   const carregarTestes = useCallback(async () => {
     setCarregando(true);
     try {
-      const lista = await api.listarTestesAlcoolemia({ data: dataSelecionada });
+      // Traz os excluídos também: ficam fora da lista e do livro, visíveis só no filtro Excluídos.
+      const lista = await api.listarTestesAlcoolemia({
+        ...(intervalo.inicio === intervalo.fim ? { data: intervalo.inicio } : { dataInicio: intervalo.inicio, dataFim: intervalo.fim }),
+        incluirExcluidos: true,
+      });
       setTestes(lista);
     } catch (err: any) {
       console.error('Erro ao listar testes:', err);
-      toast.error('Erro ao carregar livro de alcoolemia do dia.');
+      toast.error('Não foi possível carregar o livro. Confira a conexão e toque em atualizar.');
     } finally {
       setCarregando(false);
     }
-  }, [dataSelecionada, toast]);
+  }, [intervalo.inicio, intervalo.fim, toast]);
 
   useEffect(() => {
     carregarTestes();
@@ -218,50 +245,44 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setBuscaRh('');
   };
 
-  // Navegação de datas
-  const mudarData = (dias: number) => {
-    const d = new Date(dataSelecionada + 'T12:00:00');
-    d.setDate(d.getDate() + dias);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    setDataSelecionada(`${yyyy}-${mm}-${dd}`);
+  // Navegação de período
+  const trocarModo = (m: ModoPeriodo) => {
+    if (m === 'periodo' && modoPeriodo !== 'periodo') {
+      // Período começa com o que estava na tela, para só ajustar as pontas.
+      setPeriodoInicio(intervalo.inicio === intervalo.fim ? somarDias(intervalo.fim, -6) : intervalo.inicio);
+      setPeriodoFim(intervalo.fim);
+    }
+    setModoPeriodo(m);
   };
 
-  const irParaHoje = () => {
-    setDataSelecionada(api.hojeISO());
-  };
+  // Contagens do período no turno escolhido (antes da busca e do filtro de
+  // resultado, para os números não mudarem ao digitar)
+  const vigentes = useMemo(() => testes.filter((t) => !t.excluido_em), [testes]);
+  const doTurnoTodos = useMemo(
+    () => (filtroTurno === 'TODOS' ? testes : testes.filter((t) => t.turno === filtroTurno)),
+    [testes, filtroTurno],
+  );
+  const doTurno = useMemo(() => doTurnoTodos.filter((t) => !t.excluido_em), [doTurnoTodos]);
+  const excluidosDoTurno = useMemo(() => doTurnoTodos.filter((t) => !!t.excluido_em), [doTurnoTodos]);
+  const metricas = useMemo(() => api.calcularMetricasAlcoolemia(doTurno), [doTurno]);
 
-  // Métricas do dia calculadas
-  const metricas = useMemo(() => {
-    return api.calcularMetricasAlcoolemia(testes);
-  }, [testes]);
-
-  // Filtros aplicados na tabela
+  // Filtros aplicados na lista
   const testesFiltrados = useMemo(() => {
-    return testes.filter((t) => {
-      if (filtroTurno !== 'TODOS' && t.turno !== filtroTurno) return false;
+    if (filtroResultado === 'EXCLUIDOS') return excluidosDoTurno.filter((t) => testeCombinaBusca(t, buscaTexto));
+    return doTurno.filter((t) => {
       if (filtroResultado !== 'TODOS' && t.resultado !== filtroResultado) return false;
-      if (buscaTexto.trim()) {
-        const b = buscaTexto.trim().toUpperCase();
-        const match =
-          t.nome.toUpperCase().includes(b) ||
-          (t.matricula && t.matricula.toUpperCase().includes(b)) ||
-          t.empresa.toUpperCase().includes(b) ||
-          t.codigo_formulario.toUpperCase().includes(b) ||
-          (t.cargo_funcao && t.cargo_funcao.toUpperCase().includes(b));
-        if (!match) return false;
-      }
-      return true;
+      return testeCombinaBusca(t, buscaTexto);
     });
-  }, [testes, filtroTurno, filtroResultado, buscaTexto]);
+  }, [doTurno, excluidosDoTurno, filtroResultado, buscaTexto]);
+  const gruposPorDia = useMemo(() => agruparPorData(testesFiltrados), [testesFiltrados]);
 
-  // Abertura do Modal de Cadastro Inicial (Apenas Sorteado por padrão)
-  const abrirModalNovo = () => {
+  // Abertura do Modal de Cadastro Inicial (Apenas Sorteado por padrão).
+  // Vindo da busca sem resultado, já procura o nome digitado no RH.
+  const abrirModalNovo = (buscaInicial = '') => {
     setEditandoTeste(null);
     setTipoVinculo('TEN');
     setRhSelecionado(null);
-    setBuscaRh('');
+    setBuscaRh(buscaInicial);
     setFormHorario(api.horaAgora());
     setFormTurno(api.sugerirTurno());
     setFormNome('');
@@ -365,7 +386,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
         : (editandoTeste ? editandoTeste.resultado : 'PENDENTE');
 
       const payload: Partial<PortAlcoolemiaTeste> = {
-        data: dataSelecionada,
+        data: editandoTeste ? editandoTeste.data : dataNovoRegistro,
         horario: formHorario,
         turno: formTurno,
         tipo_vinculo: tipoVinculo,
@@ -442,13 +463,24 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     }
   };
 
+  // Volta um teste excluído para o livro
+  const restaurarTeste = async (teste: PortAlcoolemiaTeste) => {
+    try {
+      await api.restaurarTesteAlcoolemia(teste.id);
+      toast.success(`${teste.codigo_formulario} voltou para o livro.`);
+      await carregarTestes();
+    } catch (err: any) {
+      toast.error('Não foi possível restaurar: ' + (err?.message || err));
+    }
+  };
+
   // Exclusão com confirmação
   const confirmarExclusao = async () => {
     if (!testeParaExcluir) return;
     setExcluindo(true);
     try {
       await api.excluirTesteAlcoolemia(testeParaExcluir.id, user.id);
-      toast.success(`Registro ${testeParaExcluir.codigo_formulario} excluído.`);
+      toast.success(`${testeParaExcluir.codigo_formulario} excluído. Fica no filtro Excluídos.`);
       setTesteParaExcluir(null);
       await carregarTestes();
     } catch (err: any) {
@@ -459,20 +491,32 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     }
   };
 
-  // Exportar PDF oficial
-  const exportarPdfDoDia = () => {
-    if (testes.length === 0) {
-      toast.warning('Nenhum sorteado registrado para exportar nesta data.');
-      return;
+  // Livro em PDF do período escolhido na exportação. Se for o que já está na
+  // tela, usa a lista carregada.
+  const gerarLivro = async (iv: Intervalo) => {
+    setExportando(true);
+    try {
+      const lista = iv.inicio === intervalo.inicio && iv.fim === intervalo.fim
+        ? vigentes
+        : await api.listarTestesAlcoolemia({ dataInicio: iv.inicio, dataFim: iv.fim });
+      if (lista.length === 0) {
+        toast.warning('Nenhum sorteado nesse período para exportar.');
+        return;
+      }
+      setExportarAberto(false);
+      setPdfPreview({
+        gerar: () => gerarAlcoolemiaPeriodoPdf(lista, iv.inicio, iv.fim, user.name),
+        titulo: `Livro de Alcoolemia - ${rotuloPeriodo('periodo', iv, hoje)}`,
+      });
+    } catch (err: any) {
+      toast.error('Não foi possível ler os testes do período: ' + (err?.message || err));
+    } finally {
+      setExportando(false);
     }
-    setPdfPreview({
-      gerar: () => gerarAlcoolemiaDiaPdf(testes, dataSelecionada, user.name),
-      titulo: `Livro de Alcoolemia - ${formatarDataBR(dataSelecionada)}`,
-    });
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-4 pb-16 sm:space-y-5">
       {tour.isOpen && (
         <TourSpotlight
           steps={TOUR_STEPS}
@@ -483,485 +527,309 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
         />
       )}
 
-      {/* Header Superior */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <button
-            type="button"
-            onClick={() => onNavigate('/formularios/portaria')}
-            className="group mb-2.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-blue-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800"
-          >
-            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
-            <span>Voltar para Portaria</span>
-          </button>
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-600 text-white shadow-sm shadow-rose-500/20">
+      {/* Cabeçalho */}
+      <div>
+        <button
+          type="button"
+          onClick={() => onNavigate('/formularios/portaria')}
+          className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-colors hover:border-rose-300 hover:text-rose-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-rose-700 dark:hover:text-rose-300"
+        >
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
+          <span>Portaria</span>
+        </button>
+
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-600 text-white sm:flex">
               <Shield className="h-6 w-6" />
             </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  Teste de Alcoolemia
-                </h1>
-                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                  FRM.SGP-0015
-                </span>
-              </div>
+            <div className="min-w-0">
+              <h1 className="font-display text-xl font-bold text-slate-900 dark:text-slate-50 sm:text-2xl">
+                Teste de alcoolemia
+              </h1>
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Livro Diário de Sorteados e Aferição com Etilômetro / Bafômetro
+                <span className="font-mono font-bold text-rose-700 dark:text-rose-400">FRM.SGP-0015</span>
+                <span className="ml-2 hidden sm:inline">Livro de sorteados e aferição com etilômetro</span>
               </p>
             </div>
           </div>
-        </div>
 
-        {/* Ações do Header */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            type="button"
-            data-tour="alc-export-btn"
-            onClick={exportarPdfDoDia}
-            disabled={testes.length === 0}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs transition-all hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <FileDown className="h-4 w-4 text-rose-600 dark:text-rose-400" />
-            <span>Visualizar / Exportar Livro (PDF)</span>
-          </button>
-
-          <button
-            type="button"
-            data-tour="alc-novo-btn"
-            onClick={abrirModalNovo}
-            className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-rose-600/30 transition-all hover:bg-rose-700 active:scale-95"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Registrar Sorteado</span>
-          </button>
+          <div className="grid w-full grid-cols-[1fr_auto] gap-2 sm:flex sm:w-auto">
+            <button
+              type="button"
+              data-tour="alc-novo-btn"
+              onClick={() => abrirModalNovo()}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-bold text-white transition-colors hover:bg-rose-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span>Registrar sorteado</span>
+            </button>
+            <button
+              type="button"
+              data-tour="alc-export-btn"
+              onClick={() => setExportarAberto(true)}
+              aria-label="Exportar livro em PDF"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <FileDown className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+              <span className="hidden sm:inline">Exportar livro</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Navegador de Datas & Filtros */}
-      <div
+      {/* Período */}
+      <section
         data-tour="alc-date-nav"
-        className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between"
+        aria-label="Período exibido"
+        className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 lg:max-w-xl"
       >
-        {/* Controles de Data */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-800/60">
-            <button
-              type="button"
-              onClick={() => mudarData(-1)}
-              title="Dia Anterior"
-              className="rounded-lg p-1.5 text-slate-600 transition-colors hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={irParaHoje}
-              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
-                dataSelecionada === api.hojeISO()
-                  ? 'bg-rose-600 text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-700'
-              }`}
-            >
-              Hoje
-            </button>
-            <button
-              type="button"
-              onClick={() => mudarData(1)}
-              title="Próximo Dia"
-              className="rounded-lg p-1.5 text-slate-600 transition-colors hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+        <SeletorPeriodo
+          tom="portaria"
+          modo={modoPeriodo}
+          onModo={trocarModo}
+          intervalo={intervalo}
+          hoje={hoje}
+          onPasso={(p) => setDataSelecionada((d) => navegarPeriodo(modoPeriodo, d, p))}
+          onHoje={() => setDataSelecionada(hoje)}
+          inicio={periodoInicio}
+          fim={periodoFim}
+          onInicio={setPeriodoInicio}
+          onFim={setPeriodoFim}
+        />
+      </section>
 
-          <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-2xs dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-            <Calendar className="h-3.5 w-3.5 text-rose-500" />
-            <input
-              type="date"
-              value={dataSelecionada}
-              onChange={(e) => e.target.value && setDataSelecionada(e.target.value)}
-              className="bg-transparent text-xs font-semibold text-slate-900 focus:outline-none dark:text-slate-100"
+      {/* Busca e resultado: presos no topo enquanto a lista rola */}
+      <div className="sticky top-0 z-20 -mx-3 space-y-2.5 bg-[var(--surface-page)] px-3 pb-3 pt-2 sm:-mx-6 sm:px-6">
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <BuscaColaborador
+              tom="portaria"
+              valor={buscaTexto}
+              onChange={setBuscaTexto}
+              encontrados={testesFiltrados.length}
+              total={doTurno.length}
             />
           </div>
-
           <button
             type="button"
             onClick={carregarTestes}
-            title="Atualizar dados"
-            className="rounded-xl border border-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800"
+            aria-label="Atualizar livro"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'animate-spin text-rose-600' : ''}`} />
+            <RefreshCw className={`h-5 w-5 ${carregando ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
-        {/* Filtro Turno & Busca */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Turno */}
-          <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 p-0.5 text-xs font-semibold dark:border-slate-800 dark:bg-slate-800/60">
-            {(['TODOS', 'MANHA', 'TARDE', 'NOITE'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setFiltroTurno(t)}
-                className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition-all ${
-                  filtroTurno === t
-                    ? 'bg-white text-rose-700 shadow-2xs dark:bg-slate-700 dark:text-rose-400'
-                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
-                }`}
-              >
-                {t === 'TODOS' ? 'Todos Turnos' : t}
-              </button>
-            ))}
+        <div data-tour="alc-kpis" className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <FiltrosResultado valor={filtroResultado} onChange={setFiltroResultado} metricas={metricas} excluidos={excluidosDoTurno.length} />
           </div>
-
-          {/* Busca rápida */}
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Buscar nome, matrícula, empresa..."
-              value={buscaTexto}
-              onChange={(e) => setBuscaTexto(e.target.value)}
-              className="w-48 rounded-xl border border-slate-200 bg-white py-1.5 pl-9 pr-3 text-xs text-slate-800 placeholder-slate-400 transition-all focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 sm:w-60"
-            />
-          </div>
+          <select
+            value={filtroTurno}
+            onChange={(e) => setFiltroTurno(e.target.value)}
+            aria-label="Turno"
+            className="h-10 shrink-0 rounded-full border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 focus:border-rose-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <option value="TODOS">Turnos</option>
+            <option value="MANHA">Manhã</option>
+            <option value="TARDE">Tarde</option>
+            <option value="NOITE">Noite</option>
+          </select>
         </div>
       </div>
 
-      {/* Cards de Métricas Diárias */}
-      <div data-tour="alc-kpis" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {/* Total Sorteados */}
-        <div className="flex flex-col rounded-2xl border border-slate-200 bg-white p-3.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Sorteados</span>
-            <UserCheck className="h-4 w-4 text-blue-500" />
-          </div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-slate-100">
-            {metricas.total}
-          </div>
-          <div className="mt-1 flex items-center gap-1.5 text-[10px] font-medium text-slate-500">
-            <span>{metricas.colaboradoresTen} TEN</span>
-            <span>•</span>
-            <span>{metricas.terceirosPj} PJ</span>
-          </div>
-        </div>
-
-        {/* Aptos / Negativos */}
-        <div className="flex flex-col rounded-2xl border border-emerald-200/70 bg-emerald-50/50 p-3.5 shadow-2xs dark:border-emerald-900/40 dark:bg-emerald-950/20">
-          <div className="flex items-center justify-between text-emerald-700 dark:text-emerald-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Aptos (Negativo)</span>
-            <CheckCircle2 className="h-4 w-4" />
-          </div>
-          <div className="mt-2 text-2xl font-extrabold text-emerald-700 dark:text-emerald-300">
-            {metricas.negativos}
-          </div>
-          <div className="mt-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-            0,00 mg/L aferido
-          </div>
-        </div>
-
-        {/* Positivos (Alerta) */}
-        <div className="flex flex-col rounded-2xl border border-rose-200/70 bg-rose-50/50 p-3.5 shadow-2xs dark:border-rose-900/40 dark:bg-rose-950/20">
-          <div className="flex items-center justify-between text-rose-700 dark:text-rose-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Positivos</span>
-            <AlertTriangle className="h-4 w-4" />
-          </div>
-          <div className="mt-2 text-2xl font-extrabold text-rose-700 dark:text-rose-300">
-            {metricas.positivos}
-          </div>
-          <div className="mt-1 text-[10px] font-medium text-rose-600 dark:text-rose-400">
-            Acima do limite legal
-          </div>
-        </div>
-
-        {/* Recusas */}
-        <div className="flex flex-col rounded-2xl border border-amber-200/70 bg-amber-50/50 p-3.5 shadow-2xs dark:border-amber-900/40 dark:bg-amber-950/20">
-          <div className="flex items-center justify-between text-amber-700 dark:text-amber-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Recusas</span>
-            <XCircle className="h-4 w-4" />
-          </div>
-          <div className="mt-2 text-2xl font-extrabold text-amber-700 dark:text-amber-300">
-            {metricas.recusas}
-          </div>
-          <div className="mt-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
-            Recusa com testemunha
-          </div>
-        </div>
-
-        {/* Pendentes */}
-        <div className="flex flex-col rounded-2xl border border-slate-200 bg-slate-50/60 p-3.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Aguardando Aferição</span>
-            <Clock3 className="h-4 w-4 text-slate-500" />
-          </div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-800 dark:text-slate-200">
-            {metricas.pendentes}
-          </div>
-          <div className="mt-1 text-[10px] font-medium text-slate-500">
-            Sorteados pendentes
-          </div>
-        </div>
-
-        {/* Vínculo TEN vs PJ */}
-        <div className="flex flex-col rounded-2xl border border-slate-200 bg-white p-3.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Proporção</span>
-            <Building2 className="h-4 w-4 text-indigo-500" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-1 text-2xl font-extrabold text-slate-900 dark:text-slate-100">
-            <span>{metricas.total > 0 ? Math.round((metricas.colaboradoresTen / metricas.total) * 100) : 0}%</span>
-            <span className="text-xs font-semibold text-slate-500">TEN</span>
-          </div>
-          <div className="mt-1 text-[10px] font-medium text-slate-500">
-            {metricas.terceirosPj} terceiros no dia
-          </div>
-        </div>
-      </div>
-
-      {/* Tabela do Livro Diário de Sorteados */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-wrap items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-          <div>
-            <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
-              Livro de Sorteados do Dia — {formatarDataBR(dataSelecionada)}
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Registro sequencial dos sorteados e aferições de etilômetro na portaria
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-slate-500">Filtrar resultado:</span>
-            <select
-              value={filtroResultado}
-              onChange={(e) => setFiltroResultado(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-none dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200"
-            >
-              <option value="TODOS">Todos os Registros</option>
-              <option value="PENDENTE">Aguardando Aferição</option>
-              <option value="NEGATIVO">Aptos (Negativos)</option>
-              <option value="POSITIVO">Positivos</option>
-              <option value="RECUSA">Recusas</option>
-            </select>
-          </div>
-        </div>
-
-        {carregando ? (
+      {/* Livro */}
+      <div>
+        {carregando && testes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-400">
             <Loader2 className="h-8 w-8 animate-spin text-rose-600" />
-            <span className="mt-3 text-xs font-medium">Carregando livro de alcoolemia...</span>
+            <span className="mt-3 text-sm font-medium">Carregando livro…</span>
           </div>
         ) : testesFiltrados.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400">
-              <Shield className="h-6 w-6" />
-            </span>
-            <h3 className="mt-3 font-display text-sm font-bold text-slate-800 dark:text-slate-200">
-              Nenhum sorteado registrado para {formatarDataBR(dataSelecionada)}
-            </h3>
-            <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
-              Inicie os testes do dia inserindo os colaboradores e terceiros sorteados. Se houver motoristas no posto, registre a aferição imediata.
-            </p>
-            <button
-              type="button"
-              onClick={abrirModalNovo}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Registrar Sorteado</span>
-            </button>
+          <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <ListaVazia
+              tom="portaria"
+              busca={buscaTexto}
+              rotulo={umDia ? rotuloIntervalo.replace(/^Hoje, /, 'hoje, ') : rotuloIntervalo}
+              onAdicionar={() => abrirModalNovo(buscaTexto.trim())}
+              rotuloAdicionar="Registrar sorteado"
+              dicaVazia="Comece o livro registrando os colaboradores e terceiros sorteados. Motorista no posto pode ter a aferição registrada na hora."
+              dicaBusca="Se a pessoa foi sorteada e ainda não está no livro, registre por aqui."
+            />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-400">
-                  <th className="px-4 py-3">Código</th>
-                  <th className="px-4 py-3">Horário / Turno</th>
-                  <th className="px-4 py-3">Vínculo</th>
-                  <th className="px-4 py-3">Sorteado / Função</th>
-                  <th className="px-4 py-3">Empresa / Setor</th>
-                  <th className="px-4 py-3 text-center">Status / Aferição</th>
-                  <th className="px-4 py-3 text-center">Valor Medido</th>
-                  <th className="px-4 py-3">Vigilante / Etilômetro</th>
-                  <th className="px-4 py-3 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {testesFiltrados.map((item) => {
-                  const podeEditar = podeEditarFormulario(user, item);
-                  const isPendente = item.resultado === 'PENDENTE';
+          <>
+            {/* Celular e tablet: cartões, agrupados por dia quando o período tem mais de um */}
+            <div className="space-y-5 lg:hidden">
+              {gruposPorDia.map((g) => (
+                <section key={g.data} aria-label={rotuloDia(g.data, hoje)}>
+                  {!umDia && (
+                    <h2 className="mb-2 flex items-baseline justify-between px-1 text-sm font-bold text-slate-700 first-letter:uppercase dark:text-slate-200">
+                      <span>{rotuloDia(g.data, hoje)}</span>
+                      <span className="text-xs font-medium text-slate-500">{g.itens.length} {g.itens.length === 1 ? 'sorteado' : 'sorteados'}</span>
+                    </h2>
+                  )}
+                  <div className="space-y-3">
+                    {g.itens.map((item) => {
+                      const podeEditar = podeEditarFormulario(user, item);
+                      const isPendente = item.resultado === 'PENDENTE';
+                      return (
+                        <CartaoTeste
+                          key={item.id}
+                          tom="portaria"
+                          teste={item}
+                          principal={
+                            !podeEditar
+                              ? null
+                              : item.excluido_em
+                                ? { rotulo: 'Restaurar', icone: RotateCcw, onClick: () => void restaurarTeste(item), destaque: false }
+                              : isPendente
+                                ? { rotulo: 'Registrar aferição', icone: Gauge, onClick: () => abrirModalAfericao(item), destaque: true }
+                                : { rotulo: 'Editar', icone: Edit2, onClick: () => abrirModalEdicao(item), destaque: false }
+                          }
+                          acoes={podeEditar && !item.excluido_em && (
+                            <>
+                              {isPendente && (
+                                <>
+                                  <BotaoCartao rotulo="Marcar apto (0,00 mg/L)" icone={Check} tom="sucesso" onClick={() => atualizarResultadoRapido(item, 'NEGATIVO')} />
+                                  <BotaoCartao rotulo="Editar dados" icone={Edit2} onClick={() => abrirModalEdicao(item)} />
+                                </>
+                              )}
+                              <BotaoCartao rotulo="Excluir registro" icone={Trash2} tom="perigo" onClick={() => setTesteParaExcluir(item)} />
+                            </>
+                          )}
+                          rodape={<SeloQuemAferiu teste={item} />}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
 
-                  return (
-                    <tr
-                      key={item.id}
-                      className="transition-colors hover:bg-slate-50/60 dark:hover:bg-slate-800/40"
-                    >
-                      {/* Código */}
-                      <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-rose-600 dark:text-rose-400">
-                        {item.codigo_formulario}
-                      </td>
-
-                      {/* Horário & Turno */}
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">
-                          {item.horario}
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          Turno {item.turno}
-                        </div>
-                      </td>
-
-                      {/* Vínculo TEN vs PJ */}
-                      <td className="whitespace-nowrap px-4 py-3">
-                        {item.tipo_vinculo === 'TEN' ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                            <Building2 className="h-3 w-3" />
-                            TEN
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-                            <Briefcase className="h-3 w-3" />
-                            PJ / Terceiro
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Sorteado / Função */}
-                      <td className="px-4 py-3">
-                        <div className="font-bold text-slate-900 dark:text-slate-100">
-                          {item.nome}
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          {item.matricula && <span className="font-mono mr-1.5">Matr.: {item.matricula}</span>}
-                          {item.documento && <span className="mr-1.5">Doc.: {item.documento}</span>}
-                          {item.cargo_funcao && <span>• {item.cargo_funcao}</span>}
-                        </div>
-                      </td>
-
-                      {/* Empresa / Setor */}
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-slate-800 dark:text-slate-200">
-                          {item.empresa || 'TEN'}
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          {item.setor_area || '-'}
-                        </div>
-                      </td>
-
-                      {/* Resultado / Botão de Aferição */}
-                      <td className="whitespace-nowrap px-4 py-3 text-center">
-                        {isPendente ? (
-                          <div className="inline-flex flex-col items-center gap-1.5">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                              <Clock3 className="h-3 w-3" />
-                              Aguardando Teste
-                            </span>
-                            {podeEditar && (
-                              <button
-                                type="button"
-                                onClick={() => abrirModalAfericao(item)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-rose-50/90 px-2.5 py-1 text-xs font-bold text-rose-700 shadow-2xs transition-all hover:bg-rose-100 hover:border-rose-400 active:scale-95 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-900/60"
-                              >
-                                <Gauge className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
-                                <span>Registrar Aferição</span>
-                              </button>
-                            )}
+            {/* Computador: tabela */}
+            <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:block">
+              <table data-no-cards className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-400">
+                    <th className="px-4 py-3">{umDia ? 'Horário' : 'Data e horário'}</th>
+                    <th className="px-4 py-3">Sorteado</th>
+                    <th className="px-4 py-3">Empresa e setor</th>
+                    <th className="px-4 py-3">Resultado</th>
+                    <th className="px-4 py-3">Aferição</th>
+                    <th className="px-4 py-3 text-right"><span className="sr-only">Ações</span></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {testesFiltrados.map((item) => {
+                    const podeEditar = podeEditarFormulario(user, item);
+                    const isPendente = item.resultado === 'PENDENTE';
+                    const isPositivo = item.resultado === 'POSITIVO';
+                    return (
+                      <tr
+                        key={item.id}
+                        className={`transition-colors hover:bg-slate-50/60 dark:hover:bg-slate-800/40 ${isPositivo ? 'bg-rose-50/40 dark:bg-rose-950/10' : ''}`}
+                      >
+                        <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-700 dark:text-slate-300">
+                          {!umDia && <div className="text-xs font-semibold text-slate-500">{item.data.slice(8, 10)}/{item.data.slice(5, 7)}</div>}
+                          <div className="font-bold">{item.horario}</div>
+                          <div className="text-xs text-slate-400">{(item.turno || '').toLowerCase()}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-bold text-slate-900 dark:text-slate-100">{item.nome}</div>
+                          <div className="text-xs text-slate-500">
+                            {item.matricula ? `Matr. ${item.matricula}` : item.documento ? `Doc. ${item.documento}` : ''}
+                            {item.cargo_funcao && <span className="ml-2">{item.cargo_funcao.toLowerCase()}</span>}
+                            <span className="ml-2 font-mono text-slate-400">{item.codigo_formulario}</span>
                           </div>
-                        ) : (
-                          <>
-                            {item.resultado === 'NEGATIVO' && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                                Apto (Negativo)
-                              </span>
-                            )}
-                            {item.resultado === 'POSITIVO' && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 text-[11px] font-bold text-rose-800 dark:bg-rose-950/50 dark:text-rose-300">
-                                <AlertTriangle className="h-3.5 w-3.5" />
-                                Positivo
-                              </span>
-                            )}
-                            {item.resultado === 'RECUSA' && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-                                <XCircle className="h-3.5 w-3.5" />
-                                Recusa
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </td>
-
-                      {/* Valor Medido */}
-                      <td className="whitespace-nowrap px-4 py-3 text-center font-mono font-bold text-slate-700 dark:text-slate-300">
-                        {item.resultado === 'NEGATIVO' ? (
-                          <span className="text-emerald-600 dark:text-emerald-400">0,00 mg/L</span>
-                        ) : item.resultado === 'POSITIVO' ? (
-                          <span className="text-rose-600 dark:text-rose-400">
-                            {Number(item.valor_medido || 0).toFixed(2)} mg/L
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
-
-                      {/* Vigilante & Etilômetro */}
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <div className="text-slate-700 dark:text-slate-300">
-                          {item.vigilante || '-'}
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          {item.etilometro_codigo ? `Aparelho: ${item.etilometro_codigo}` : ''}
-                        </div>
-                      </td>
-
-                      {/* Ações */}
-                      <td className="whitespace-nowrap px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {/* Botão de aferir rápido se pendente */}
-                          {isPendente && podeEditar && (
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-200">
+                            {item.tipo_vinculo === 'TEN'
+                              ? <Building2 className="h-3.5 w-3.5 text-blue-500" />
+                              : <Briefcase className="h-3.5 w-3.5 text-amber-500" />}
+                            {item.empresa || 'TEN'}
+                          </div>
+                          <div className="text-xs text-slate-500">{item.setor_area || '-'}</div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <div className="flex flex-col items-start gap-1"><SeloResultado teste={item} /><SeloExcluido teste={item} /></div>
+                        </td>
+                        <td className="px-4 py-3"><SeloQuemAferiu teste={item} /></td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right">
+                          {podeEditar && item.excluido_em ? (
                             <button
                               type="button"
-                              onClick={() => atualizarResultadoRapido(item, 'NEGATIVO')}
-                              title="Marcar rapidamente como Apto / 0,00 mg/L"
-                              className="rounded-lg bg-emerald-50 p-1.5 text-emerald-600 transition-colors hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60"
+                              onClick={() => void restaurarTeste(item)}
+                              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                             >
-                              <Check className="h-3.5 w-3.5" />
+                              <RotateCcw className="h-4 w-4" /> Restaurar
                             </button>
-                          )}
-
-                          {podeEditar && (
-                            <>
+                          ) : podeEditar && (
+                            <div className="flex items-center justify-end gap-1.5">
+                              {isPendente && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => abrirModalAfericao(item)}
+                                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-rose-600 px-3 text-sm font-bold text-white hover:bg-rose-700"
+                                  >
+                                    <Gauge className="h-4 w-4" /> Registrar aferição
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => atualizarResultadoRapido(item, 'NEGATIVO')}
+                                    title="Marcar apto (0,00 mg/L)"
+                                    aria-label={`Marcar ${item.nome} como apto`}
+                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
+                                  >
+                                    <Check className="h-4 w-4" />
+                                  </button>
+                                </>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => abrirModalEdicao(item)}
                                 title="Editar dados"
-                                className="rounded-lg border border-slate-200 p-1.5 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                                aria-label={`Editar ${item.nome}`}
+                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                               >
-                                <Edit2 className="h-3.5 w-3.5" />
+                                <Edit2 className="h-4 w-4" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setTesteParaExcluir(item)}
                                 title="Excluir registro"
-                                className="rounded-lg border border-slate-200 p-1.5 text-rose-600 transition-colors hover:bg-rose-50 dark:border-slate-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                                aria-label={`Excluir ${item.nome}`}
+                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-rose-600 hover:bg-rose-50 dark:border-slate-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
-                            </>
+                            </div>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
+
+      {exportarAberto && (
+        <ExportarLivroModal
+          tom="portaria"
+          modoAtual={modoPeriodo}
+          intervaloAtual={intervalo}
+          hoje={hoje}
+          gerando={exportando}
+          onCancelar={() => setExportarAberto(false)}
+          onGerar={(iv) => void gerarLivro(iv)}
+        />
+      )}
 
       {/* MODAL 1: REGISTRAR SORTEADO NO LIVRO DO DIA */}
       {modalAberto && (
@@ -976,7 +844,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                 {editandoTeste ? `Editar Registro — ${editandoTeste.codigo_formulario}` : 'Registrar Sorteado no Livro do Dia'}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Formulário FRM.SGP-0015 • Data do livro: {formatarDataBR(dataSelecionada)}
+                Formulário FRM.SGP-0015 • Data do livro: {formatarDataBR(editandoTeste ? editandoTeste.data : dataNovoRegistro)}
               </p>
             </div>
           </ModalHeader>
