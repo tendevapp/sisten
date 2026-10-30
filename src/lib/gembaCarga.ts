@@ -13,7 +13,7 @@
 
 import type { ItemGemba, IndiceGemba } from './gembaIndice';
 import {
-  ESTANTES, ZONAS, acharBloco, caixaDoAndar, caixaDoApartamento, estanteAoLongoDeX, faixaDoAndar, pxParaM,
+  ZONAS, acharBloco, caixaDoAndar, caixaDoApartamento, estanteAoLongoDeX, faixaDoAndar, pxParaM,
   quantidadeVaos, type Caixa, type EstanteGemba, type Vec3,
 } from './gembaLayout';
 
@@ -63,8 +63,6 @@ export interface CargaNoAndar {
   apartamento: number | null;
   tipo: TipoCarga;
   codigo: string;
-  /** Sem endereço: o material está no depósito, mas o lugar no vão é ilustrativo. */
-  semEndereco: boolean;
 }
 
 function temSaldo(item: ItemGemba, saldoLocal: number | null, origem: string): boolean {
@@ -72,15 +70,10 @@ function temSaldo(item: ItemGemba, saldoLocal: number | null, origem: string): b
   return (origem === 'cadastro' || origem === 'bom') && item.saldoTotal > 0;
 }
 
-/**
- * Cargas a desenhar: uma por material com saldo em cada posição endereçada; os
- * materiais sem endereço das Ruas 03 e 05 ocupam em sequência os vãos sem
- * número dessas ruas, só para mostrar quanto material há nelas.
- */
+/** Cargas a desenhar: uma por material com saldo em cada posição endereçada. */
 export function montarCargas(indice: IndiceGemba): { cargas: CargaNoAndar[]; porZona: Record<string, number> } {
   const cargas: CargaNoAndar[] = [];
   const porZona: Record<string, number> = {};
-  const semEnderecoPorDeposito = new Map<string, ItemGemba[]>();
 
   for (const item of indice.itens) {
     const tipo = tipoDeCarga(item.descricao, item.umb);
@@ -89,35 +82,15 @@ export function montarCargas(indice: IndiceGemba): { cargas: CargaNoAndar[]; por
       if (!e || !temSaldo(item, local.saldo, local.origem)) continue;
       if (e.tipo === 'zona') {
         porZona[e.zona] = (porZona[e.zona] ?? 0) + 1;
-      } else if (e.tipo === 'deposito') {
-        const lista = semEnderecoPorDeposito.get(e.deposito) ?? [];
-        lista.push(item);
-        semEnderecoPorDeposito.set(e.deposito, lista);
       } else if (e.tipo === 'prateleira') {
         const achado = acharBloco(e.deposito, e.bloco);
         if (!achado || !faixaDoAndar(achado.estante, e.andar)) continue;
         cargas.push({
           estanteId: achado.estante.id, indiceVao: achado.indice, andar: e.andar, apartamento: e.apartamento,
-          tipo, codigo: item.codigo, semEndereco: false,
+          tipo, codigo: item.codigo,
         });
       }
     }
-  }
-
-  for (const [deposito, itens] of semEnderecoPorDeposito) {
-    const estante = ESTANTES.find(e => e.deposito === deposito && e.semEnderecoNosVaosLivres);
-    if (!estante) continue;
-    const primeiroLivre = estante.blocos.length;
-    const vaos = quantidadeVaos(estante) - primeiroLivre;
-    if (vaos <= 0) continue;
-    const andares = estante.alturasAndarM.length + 1;
-    itens.slice(0, vaos * andares * 2).forEach((item, n) => {
-      const slot = Math.floor(n / 2);
-      cargas.push({
-        estanteId: estante.id, indiceVao: primeiroLivre + (slot % vaos), andar: Math.floor(slot / vaos) % andares, apartamento: null,
-        tipo: tipoDeCarga(item.descricao, item.umb), codigo: item.codigo, semEndereco: true,
-      });
-    });
   }
   return { cargas, porZona };
 }

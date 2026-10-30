@@ -291,9 +291,7 @@ export default function Gemba({ user, onNavigate }: Props) {
     if (!estante) return null;
     if (estante.blocos.length === 0) return { estante, bloco: null, itens: semEnderecoDoDeposito(estante.deposito) };
     const bloco = estante.blocos[selecao.indice];
-    if (bloco == null) {
-      return estante.semEnderecoNosVaosLivres ? { estante, bloco: null, itens: semEnderecoDoDeposito(estante.deposito) } : null;
-    }
+    if (bloco == null) return null;
     return { estante, bloco, itens: indice?.porBloco.get(chaveBloco(estante.deposito, bloco)) ?? [] };
   }, [selecao, indice, semEnderecoDoDeposito]);
 
@@ -311,11 +309,7 @@ export default function Gemba({ user, onNavigate }: Props) {
       return `${estante.trilha.join(' · ')} sem endereçamento: ${n} ${n === 1 ? 'item' : 'itens'}`;
     }
     const bloco = estante.blocos[i];
-    if (bloco == null) {
-      if (!estante.semEnderecoNosVaosLivres) return null;
-      const n = semEnderecoDoDeposito(estante.deposito).length;
-      return `${estante.trilha.join(' · ')} sem endereço: ${n} ${n === 1 ? 'item' : 'itens'}`;
-    }
+    if (bloco == null) return null;
     const lista = (indice.porBloco.get(chaveBloco(estante.deposito, bloco)) ?? []).filter(x => (x.local.saldo ?? 0) > 0);
     const titulo = `${estante.trilha.join(' · ')} · Bloco ${doisDigitos(bloco)}`;
     if (lista.length === 0) return `${titulo}: vazio`;

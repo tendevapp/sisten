@@ -56,10 +56,22 @@ describe('gembaLayout - estrutura', () => {
     }
   });
 
-  it('cada bloco endereçado existe em uma só estante e cabe no comprimento desenhado', () => {
+  it('quantidade real de blocos: 0001 com 14, Ruas 02 a 05 com 12', () => {
+    const porId = (id: string) => quantidadeVaos(ESTANTES.find(e => e.id === id)!);
+    expect(porId('dep_0001')).toBe(14);
+    for (const id of ['rua_02', 'rua_03', 'rua_04', 'rua_05']) expect(porId(id), id).toBe(12);
+  });
+
+  it('os blocos preenchem a linha da estante na planta', () => {
+    for (const e of ESTANTES) {
+      const comprimentoM = Math.hypot(e.fim[0] - e.inicio[0], e.fim[1] - e.inicio[1]) * METROS_POR_PX;
+      expect(quantidadeVaos(e) * e.larguraBlocoM, e.id).toBeCloseTo(comprimentoM, 6);
+    }
+  });
+
+  it('cada bloco endereçado existe em uma só estante', () => {
     const vistos = new Set<string>();
     for (const e of ESTANTES) {
-      expect(quantidadeVaos(e)).toBeGreaterThanOrEqual(e.blocos.length);
       for (const b of e.blocos) {
         const chave = `${e.deposito}.${b}`;
         expect(vistos.has(chave), chave).toBe(false);
@@ -78,18 +90,16 @@ describe('gembaLayout - numeração confirmada no galpão', () => {
     }
   });
 
-  it('Rua 04: depois do bloco 12 vem o 33 (13–32 estão no Anexo)', () => {
+  it('Rua 04 termina no bloco 12', () => {
     const b12 = acharBloco('0004', 12)!;
-    const b33 = acharBloco('0004', 33)!;
     expect(b12.estante.id).toBe('rua_04');
-    expect(b33.estante.id).toBe('rua_04');
-    expect(b33.indice).toBe(b12.indice + 1);
+    expect(b12.indice).toBe(quantidadeVaos(b12.estante) - 1);
   });
 
-  it('Blocos 13 a 32 do 0004 caem no Anexo, 5 por estante', () => {
-    for (let b = 13; b <= 32; b++) {
+  it('Blocos 13 a 44 do 0004 caem no Anexo, 8 por estante', () => {
+    for (let b = 13; b <= 44; b++) {
       const achado = acharBloco('0004', b)!;
-      expect(achado.estante.id).toBe(`anexo_${Math.floor((b - 13) / 5) + 1}`);
+      expect(achado.estante.id).toBe(`anexo_${Math.floor((b - 13) / 8) + 1}`);
     }
   });
 });
@@ -133,7 +143,7 @@ describe('gembaLayout - localizar', () => {
   });
 
   it('no anexo a câmera fica no corredor, sem passar para trás da estante vizinha', () => {
-    for (let b = 13; b <= 32; b++) {
+    for (let b = 13; b <= 44; b++) {
       const loc = localizar(interpretarPosicao(`104.${String(b).padStart(2, '0')}0201`)!)!;
       const { estante } = acharBloco('0004', b)!;
       const n = Number(estante.id.slice(-1));

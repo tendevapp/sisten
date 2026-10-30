@@ -7,10 +7,13 @@
  * metros por `METROS_POR_PX`; alturas e profundidades já estão em metros.
  *
  * O que foi confirmado no galpão: Bloco 01 na ponta da Entrada (direita) e a
- * numeração cresce rumo ao Pórtico; Anexo 0004 = blocos 13 a 32 do depósito 0004;
- * andar 00 = chão do bloco; 102.ANEXO no Material de Apoio Manutenção.
- * O resto (larguras, alturas, ordem das estantes do anexo, grade de 30 apartamentos)
- * é valor padrão a CALIBRAR andando no galpão — todos os números ficam aqui.
+ * numeração cresce rumo ao Pórtico; Depósito 0001 com 14 blocos e Ruas 02 a 05
+ * com 12 cada; Anexo 0004 = blocos 13 a 44 do depósito 0004; andar 00 = chão do
+ * bloco; 102.ANEXO no Material de Apoio Manutenção.
+ * Os blocos de cada estante preenchem a linha desenhada na planta (a largura do
+ * vão sai do comprimento ÷ quantidade). O resto (alturas, ordem das estantes do
+ * anexo, grade de 30 apartamentos) é valor padrão a CALIBRAR andando no galpão —
+ * todos os números ficam aqui.
  *
  * Eixos do mundo 3D: x = x da planta, z = y da planta (para baixo = sul), y = altura.
  */
@@ -47,6 +50,7 @@ export interface EstanteGemba {
   face: Face;
   /** Números dos blocos na ordem a partir de `inicio`; vazio = estante sem endereçamento. */
   blocos: number[];
+  /** Comprimento da linha ÷ quantidade de blocos (ver `blocosNaLinha`). */
   larguraBlocoM: number;
   profundidadeM: number;
   /** Altura do andar 00 (chão do bloco). */
@@ -54,11 +58,6 @@ export interface EstanteGemba {
   /** Altura de cada andar a partir do 01. */
   alturasAndarM: number[];
   apartamentos?: GradeApartamentos;
-  /**
-   * Os vãos depois dos blocos numerados recebem, ilustrativo, o material do
-   * depósito que não tem endereço (Ruas 03 e 05: projeto e kits).
-   */
-  semEnderecoNosVaosLivres?: boolean;
 }
 
 export interface ZonaGemba {
@@ -70,15 +69,21 @@ export interface ZonaGemba {
 
 export const PLANTA_LARGURA = 1024;
 export const PLANTA_ALTURA = 764;
-/** Escala tirada do vão de ~2,7 m: os 24 blocos da Rua 04 ocupam o comprimento da rua na planta. */
+/** Escala da planta (galpão de ~109 × 67 m); a CALIBRAR com uma medida do galpão. */
 export const METROS_POR_PX = 0.115;
 
 /** Paredes do galpão [x1, y1, x2, y2] em px. */
 export const GALPAO: Retangulo = [42, 75, 990, 655];
 
-const PORTA_PALETE = { larguraBlocoM: 2.7, profundidadeM: 1.2, alturaChaoM: 0.4 } as const;
+const PORTA_PALETE = { profundidadeM: 1.2, alturaChaoM: 0.4 } as const;
 const tresAndares = [1.6, 1.6, 1.6];
 const intervalo = (de: number, ate: number) => Array.from({ length: ate - de + 1 }, (_, i) => de + i);
+
+/** Linha da estante na planta com os blocos repartindo o comprimento todo. */
+function blocosNaLinha(inicio: Vec2, fim: Vec2, blocos: number[]) {
+  const comprimentoM = Math.hypot(fim[0] - inicio[0], fim[1] - inicio[1]) * METROS_POR_PX;
+  return { inicio, fim, blocos, larguraBlocoM: comprimentoM / blocos.length };
+}
 
 /** Ponta da Entrada e ponta do Pórtico das ruas centrais. */
 const RUA_X_ENTRADA = 725;
@@ -93,45 +98,38 @@ const ANEXO_Y_FIM = 598;
 
 export const ESTANTES: EstanteGemba[] = [
   {
-    // Blocos 01–12 vêm do cadastro das peças da BOM (105.BBAAPP); quantos são de fato, a calibrar.
-    id: 'rua_05', deposito: '0005', trilha: ['Rua 05'], face: 'norte', blocos: intervalo(1, 12),
-    semEnderecoNosVaosLivres: true,
-    inicio: [RUA_X_ENTRADA, COSTAS_05_04], fim: [RUA_X_PORTICO, COSTAS_05_04],
+    id: 'rua_05', deposito: '0005', trilha: ['Rua 05'], face: 'norte',
+    ...blocosNaLinha([RUA_X_ENTRADA, COSTAS_05_04], [RUA_X_PORTICO, COSTAS_05_04], intervalo(1, 12)),
     ...PORTA_PALETE, alturasAndarM: tresAndares,
   },
   {
+    // Os blocos 13 a 44 do 0004 ficam no Anexo.
     id: 'rua_04', deposito: '0004', trilha: ['Rua 04'], face: 'sul',
-    // Os blocos 13 a 32 do 0004 ficam no Anexo.
-    blocos: [...intervalo(1, 12), ...intervalo(33, 44)],
-    inicio: [RUA_X_ENTRADA, COSTAS_05_04], fim: [RUA_X_PORTICO, COSTAS_05_04],
+    ...blocosNaLinha([RUA_X_ENTRADA, COSTAS_05_04], [RUA_X_PORTICO, COSTAS_05_04], intervalo(1, 12)),
     ...PORTA_PALETE, alturasAndarM: tresAndares,
   },
   {
-    // Blocos 01–12 vêm do cadastro das peças da BOM (103.BBAAPP); quantos são de fato, a calibrar.
-    id: 'rua_03', deposito: '0003', trilha: ['Rua 03'], face: 'norte', blocos: intervalo(1, 12),
-    semEnderecoNosVaosLivres: true,
-    inicio: [RUA_X_ENTRADA, COSTAS_03_02], fim: [RUA_X_PORTICO, COSTAS_03_02],
+    id: 'rua_03', deposito: '0003', trilha: ['Rua 03'], face: 'norte',
+    ...blocosNaLinha([RUA_X_ENTRADA, COSTAS_03_02], [RUA_X_PORTICO, COSTAS_03_02], intervalo(1, 12)),
     ...PORTA_PALETE, alturasAndarM: tresAndares,
   },
   {
-    id: 'rua_02', deposito: '0002', trilha: ['Rua 02'], face: 'sul', blocos: intervalo(1, 12),
-    inicio: [RUA_X_ENTRADA, COSTAS_03_02], fim: [RUA_X_PORTICO, COSTAS_03_02],
+    id: 'rua_02', deposito: '0002', trilha: ['Rua 02'], face: 'sul',
+    ...blocosNaLinha([RUA_X_ENTRADA, COSTAS_03_02], [RUA_X_PORTICO, COSTAS_03_02], intervalo(1, 12)),
     ...PORTA_PALETE, alturaChaoM: 0.3, alturasAndarM: [0.9, 0.9, 0.9, 0.9, 0.9, 0.9],
   },
   {
-    id: 'dep_0001', deposito: '0001', trilha: ['Depósito 0001'], face: 'norte', blocos: intervalo(1, 14),
-    inicio: [808, 652], fim: [118, 652],
+    id: 'dep_0001', deposito: '0001', trilha: ['Depósito 0001'], face: 'norte',
+    ...blocosNaLinha([808, 652], [118, 652], intervalo(1, 14)),
     ...PORTA_PALETE, alturasAndarM: tresAndares,
   },
+  // Anexo: blocos 13 a 44 do 0004, 8 por estante (ordem das estantes a calibrar).
   ...ANEXO_COSTAS_X.map((x, i): EstanteGemba => ({
     id: `anexo_${i + 1}`,
     deposito: '0004',
     trilha: ['Anexo 0004', `Estante ${i + 1}`],
     face: 'oeste',
-    blocos: intervalo(13 + i * 5, 17 + i * 5),
-    inicio: [x, ANEXO_Y_INICIO],
-    fim: [x, ANEXO_Y_FIM],
-    larguraBlocoM: 1.0,
+    ...blocosNaLinha([x, ANEXO_Y_INICIO], [x, ANEXO_Y_FIM], intervalo(13 + i * 8, 20 + i * 8)),
     profundidadeM: 0.6,
     alturaChaoM: 0.15,
     alturasAndarM: [0.5, 0.45, 0.45],
@@ -220,10 +218,9 @@ export function alturaDaEstante(e: EstanteGemba): number {
   return e.alturaChaoM + e.alturasAndarM.reduce((s, h) => s + h, 0);
 }
 
-/** Vãos desenhados: os blocos endereçados e, depois deles, vãos sem número até o fim da linha. */
+/** Vãos desenhados: um por bloco endereçado. */
 export function quantidadeVaos(e: EstanteGemba): number {
-  const { comprimentoM } = eixoDaEstante(e);
-  return Math.max(e.blocos.length, Math.floor(comprimentoM / e.larguraBlocoM + 1e-6));
+  return e.blocos.length;
 }
 
 /** Faixa de altura [de, ate] do andar; 0 = chão do bloco. */

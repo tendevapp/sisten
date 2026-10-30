@@ -47,7 +47,7 @@ describe('gembaCarga - montarCargas', () => {
 
   it('só põe carga onde há saldo', () => {
     expect(cargas.find(c => c.codigo === '2')).toBeUndefined();
-    expect(cargas.find(c => c.codigo === '1')).toMatchObject({ estanteId: 'rua_04', andar: 1, tipo: 'bobina', semEndereco: false });
+    expect(cargas.find(c => c.codigo === '1')).toMatchObject({ estanteId: 'rua_04', andar: 1, tipo: 'bobina' });
   });
 
   it('apartamento do anexo e zonas com nome', () => {
@@ -55,18 +55,15 @@ describe('gembaCarga - montarCargas', () => {
     expect(porZona.apoio_manutencao).toBe(1);
   });
 
-  it('material sem endereço de rua sem endereçamento ocupa a rua, marcado como ilustrativo', () => {
-    const carga = cargas.find(c => c.codigo === '5');
-    expect(carga).toMatchObject({ estanteId: 'rua_03', semEndereco: true, tipo: 'perfil' });
-    // Os blocos numerados ficam para o endereçado; o ilustrativo vai para os vãos sem número.
-    expect(carga!.indiceVao).toBeGreaterThanOrEqual(12);
+  it('material sem endereço não ganha carga (todo vão é um bloco numerado)', () => {
+    expect(cargas.find(c => c.codigo === '5')).toBeUndefined();
   });
 
   it('peça da BOM com posição na Rua 03 ganha carga no bloco', () => {
     const indice = montarIndiceGemba([], new Map(), [], [
       { partNumber: '60.10.92715', codSap: null, descricao: 'Placa de conexão', umb: 'each', posicao: '103.010200', saldo: 46, imagemPath: null },
     ]);
-    expect(montarCargas(indice).cargas.find(c => c.codigo === '60.10.92715')).toMatchObject({ estanteId: 'rua_03', indiceVao: 0, andar: 2, semEndereco: false });
+    expect(montarCargas(indice).cargas.find(c => c.codigo === '60.10.92715')).toMatchObject({ estanteId: 'rua_03', indiceVao: 0, andar: 2 });
   });
 });
 
@@ -78,7 +75,7 @@ describe('gembaCarga - pecasDaEstante', () => {
     const { indice } = acharBloco('0004', 2)!;
     const slot = caixaDoAndar(rua04, indice, 1)!;
     for (const tipo of ['caixa', 'epi', 'saco', 'fardo', 'bobina', 'balde', 'perfil', 'miudeza'] as const) {
-      const pecas = pecasDaEstante(rua04, [{ estanteId: 'rua_04', indiceVao: indice, andar: 1, apartamento: null, tipo, codigo: 'X', semEndereco: false }]);
+      const pecas = pecasDaEstante(rua04, [{ estanteId: 'rua_04', indiceVao: indice, andar: 1, apartamento: null, tipo, codigo: 'X' }]);
       expect(pecas.length, tipo).toBeGreaterThan(0);
       for (const p of pecas) {
         expect(p.centro[1], tipo).toBeGreaterThanOrEqual(slot.centro[1] - slot.tamanho[1] / 2 - 1e-6);
@@ -90,14 +87,14 @@ describe('gembaCarga - pecasDaEstante', () => {
   });
 
   it('é determinístico', () => {
-    const c = [{ estanteId: 'rua_04', indiceVao: 3, andar: 2, apartamento: null, tipo: 'caixa' as const, codigo: 'ABC', semEndereco: false }];
+    const c = [{ estanteId: 'rua_04', indiceVao: 3, andar: 2, apartamento: null, tipo: 'caixa' as const, codigo: 'ABC' }];
     expect(pecasDaEstante(rua04, c)).toEqual(pecasDaEstante(rua04, c));
   });
 
   it('anexo desenha todos os bins e pinta só os ocupados', () => {
-    const pecas = pecasDaEstante(anexo1, [{ estanteId: 'anexo_1', indiceVao: 0, andar: 2, apartamento: 18, tipo: 'miudeza', codigo: '3', semEndereco: false }]);
+    const pecas = pecasDaEstante(anexo1, [{ estanteId: 'anexo_1', indiceVao: 0, andar: 2, apartamento: 18, tipo: 'miudeza', codigo: '3' }]);
     const bins = pecas.filter(p => p.forma === 'bin');
-    expect(bins).toHaveLength(5 * 2 * 30);
+    expect(bins).toHaveLength(8 * 2 * 30);
     expect(bins.filter(b => b.cor !== COR_BIN_VAZIO)).toHaveLength(1);
   });
 });
