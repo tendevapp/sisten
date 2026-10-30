@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { interpretarLinks, podeDecidirValidacao, ultimaValidacaoPorRi, type ValidacaoTecnica } from './validacaoTecnica';
+import { interpretarLinks, podeDecidirValidacao, podeVerValidacao, ultimaValidacaoPorRi, type ValidacaoTecnica } from './validacaoTecnica';
 
 describe('interpretarLinks', () => {
   it('um por linha, com ou sem protocolo, sem repetir', () => {
@@ -22,6 +22,17 @@ describe('podeDecidirValidacao', () => {
   });
   it('aprovador de outro setor não decide', () => {
     expect(podeDecidirValidacao(v, { id: 'x', roles: ['gestor'], aprovador_setores: ['almox'] })).toBe(false);
+  });
+});
+
+describe('podeVerValidacao', () => {
+  const v = { setor_id: 'qualidade', marcados_ids: ['u-qual'], redirecionado_por_ids: ['u-eng'] };
+  it('quem redirecionou continua vendo, mas não decide mais', () => {
+    expect(podeVerValidacao(v, { id: 'u-eng', roles: [] })).toBe(true);
+    expect(podeDecidirValidacao(v, { id: 'u-eng', roles: [] })).toBe(false);
+  });
+  it('quem nunca participou não vê', () => {
+    expect(podeVerValidacao(v, { id: 'x', roles: [] })).toBe(false);
   });
 });
 

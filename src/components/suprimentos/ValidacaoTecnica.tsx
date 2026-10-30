@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, FileText, ImagePlus, Link2, RefreshCw, Send, ShieldCheck, Trash2, X } from 'lucide-react';
+import { ExternalLink, FileText, Forward, ImagePlus, Link2, RefreshCw, Send, ShieldCheck, Trash2, X } from 'lucide-react';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import { useLightbox } from '../ui/Lightbox';
 import { useToast } from '../ui/Toast';
@@ -123,6 +123,15 @@ export function DetalheValidacao({ v }: { v: ValidacaoTecnica }) {
       <div className="text-xs text-slate-500 dark:text-slate-400 space-y-0.5">
         <p>Aberto por <b>{v.criado_por_nome || '—'}</b> em {formatDateTimeBR(v.created_at)} · Área: <b>{v.setor_nome || '—'}</b></p>
         {v.marcados.length > 0 && <p>Marcados: {v.marcados.map(m => m.nome).join(', ')}</p>}
+        {(v.redirecionamentos ?? []).map((r, i) => (
+          <p key={i} className="flex items-start gap-1 text-violet-700 dark:text-violet-300">
+            <Forward className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>
+              Redirecionado por <b>{r.por_nome || '—'}</b> em {formatDateTimeBR(r.em)}: {r.de_setor_nome || '—'} → <b>{r.para_setor_nome || '—'}</b>
+              {' '}({r.para.map(m => m.nome).join(', ')}){r.motivo ? ` — ${r.motivo}` : ''}
+            </span>
+          </p>
+        ))}
         {v.decidido_em && (
           <p className={v.status === 'APROVADA' ? 'text-emerald-700 dark:text-emerald-400 font-bold' : 'text-rose-700 dark:text-rose-400 font-bold'}>
             {ROTULO_STATUS_VALIDACAO[v.status]} por {v.decidido_por_nome} em {formatDateTimeBR(v.decidido_em)}{v.parecer ? ` — ${v.parecer}` : ''}
@@ -148,38 +157,171 @@ interface AbrirProps {
 const campo = 'w-full text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-2 px-3 focus:border-[#0056c6] focus:outline-none';
 const rotulo = 'block text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1';
 
+/** Setores, perfis ativos e quem dá para marcar (só quem abre Solicitações › Aprovações). */
+function useAreasEUsuarios(userId: string) {
+  const setores = useMemo(() => localDb.getSectors().slice().sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), []);
+  const perfis = useMemo(() => localDb.getProfiles().filter(p => p.status === 'ativo'), []);
+  const marcaveis = useMemo(
+    () => perfis.filter(p => p.id !== userId && canAccessPage(p, 'sol_aprovacoes')).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [perfis, userId],
+  );
+  return { setores, perfis, marcaveis };
+}
+
+/** Aviso de quem aprova pela área escolhida. */
+function AprovadoresDaArea({ perfis, setorId }: { perfis: Profile[]; setorId: string }) {
+  if (!setorId) return null;
+  const nomes = perfis.filter(p => p.aprovador_setores?.includes(setorId)).map(p => p.name);
+  return (
+    <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+      {nomes.length > 0
+        ? <>Aprovadores da área: <b>{nomes.join(', ')}</b></>
+        : 'A área não tem aprovador cadastrado — o chamado vai para os administradores.'}
+    </p>
+  );
+}
+
+/** Marcar usuários do SISTEN por nome (chips + sugestões). */
+function MarcarUsuarios({
+  marcaveis, marcados, onChange, titulo, ajuda,
+}: {
+  marcaveis: Profile[];
+  marcados: UsuarioMarcado[];
+  onChange: (l: UsuarioMarcado[]) => void;
+  titulo: string;
+  ajuda: string;
+}) {
+  const [busca, setBusca] = useState('');
+  const termo = busca.trim().toLowerCase();
+  const sugestoes = termo
+    ? marcaveis.filter(p => !marcados.some(m => m.id === p.id) && p.name.toLowerCase().includes(termo)).slice(0, 6)
+    : [];
+  return (
+    <div>
+      <label className={rotulo}>{titulo}</label>
+      {marcados.length > 0 && (
+        <div className="mb-1.5 flex flex-wrap gap-1.5">
+          {marcados.map(m => (
+            <span key={m.id} className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-800 dark:bg-violet-950/40 dark:text-violet-300">
+              @{m.nome}
+              <button type="button" onClick={() => onChange(marcados.filter(x => x.id !== m.id))} aria-label={`Desmarcar ${m.nome}`}>
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        type="text"
+        value={busca}
+        onChange={e => setBusca(e.target.value)}
+        placeholder="Digite o nome..."
+        className={campo}
+      />
+      {sugestoes.length > 0 && (
+        <ul className="mt-1 rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
+          {sugestoes.map(p => (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => { onChange([...marcados, { id: p.id, nome: p.name }]); setBusca(''); }}
+                className="w-full px-3 py-1.5 text-left text-xs hover:bg-violet-50 dark:hover:bg-violet-950/30"
+              >
+                {p.name} <span className="text-slate-400">{p.cargo}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{ajuda}</p>
+    </div>
+  );
+}
+
+/**
+ * Redirecionar (Aprovações): a área passa o chamado para outra, marcando quem
+ * recebe. Continua pendente; quem redirecionou passa a só acompanhar.
+ */
+export function RedirecionarValidacao({
+  user, v, onCancelar, onRedirecionar, enviando,
+}: {
+  user: Profile;
+  v: ValidacaoTecnica;
+  onCancelar: () => void;
+  onRedirecionar: (setor: { id: string; nome: string | null }, marcados: UsuarioMarcado[], motivo: string) => void;
+  enviando: boolean;
+}) {
+  const { setores, perfis, marcaveis } = useAreasEUsuarios(user.id);
+  const [setorId, setSetorId] = useState('');
+  const [marcados, setMarcados] = useState<UsuarioMarcado[]>([]);
+  const [motivo, setMotivo] = useState('');
+  const pode = !!setorId && marcados.length > 0 && !enviando;
+
+  return (
+    <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/50 p-3 dark:border-violet-900/50 dark:bg-violet-950/20">
+      <p className="flex items-center gap-1.5 text-sm font-bold text-violet-800 dark:text-violet-300">
+        <Forward className="h-4 w-4" /> Redirecionar {v.codigo} para outra área
+      </p>
+      <div>
+        <label className={rotulo}>Nova área *</label>
+        <select value={setorId} onChange={e => setSetorId(e.target.value)} className={campo}>
+          <option value="">Selecione o setor...</option>
+          {setores.map(s => <option key={s.id} value={s.id}>{s.name}{s.id === v.setor_id ? ' (atual)' : ''}</option>)}
+        </select>
+        <AprovadoresDaArea perfis={perfis} setorId={setorId} />
+      </div>
+      <MarcarUsuarios
+        marcaveis={marcaveis}
+        marcados={marcados}
+        onChange={setMarcados}
+        titulo="Para quem vai *"
+        ajuda="Marque ao menos um usuário. Ele recebe o aviso e passa a poder aprovar; você continua vendo o chamado, sem decidir."
+      />
+      <div>
+        <label className={rotulo}>Motivo (opcional)</label>
+        <textarea
+          value={motivo}
+          onChange={e => setMotivo(e.target.value)}
+          rows={2}
+          placeholder="Ex.: item elétrico, quem valida é a Manutenção."
+          className={`${campo} resize-y`}
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancelar} disabled={enviando} className="rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
+          Cancelar
+        </button>
+        <button
+          type="button"
+          disabled={!pode}
+          onClick={() => onRedirecionar({ id: setorId, nome: setores.find(s => s.id === setorId)?.name ?? null }, marcados, motivo.trim())}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-black text-white hover:bg-violet-700 disabled:opacity-50"
+        >
+          {enviando ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Forward className="h-3.5 w-3.5" />} Redirecionar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Janela "Validação" da coluna Ações: abre o chamado para o gestor da área. */
 export function AbrirValidacaoModal({ user, item, setorInicial, historico, onClose, onAberta }: AbrirProps) {
   const toast = useToast();
-  const setores = useMemo(() => localDb.getSectors().slice().sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), []);
-  const perfis = useMemo(() => localDb.getProfiles().filter(p => p.status === 'ativo'), []);
-  // Só dá para marcar quem consegue abrir Solicitações › Aprovações.
-  const marcaveis = useMemo(
-    () => perfis.filter(p => p.id !== user.id && canAccessPage(p, 'sol_aprovacoes')).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-    [perfis, user.id],
-  );
+  const { setores, perfis, marcaveis } = useAreasEUsuarios(user.id);
 
   const [setorId, setSetorId] = useState(setorInicial && setores.some(s => s.id === setorInicial) ? setorInicial : '');
   const [descricao, setDescricao] = useState('');
   const [textoLinks, setTextoLinks] = useState('');
   const [arquivos, setArquivos] = useState<PreparedAttachment[]>([]);
   const [marcados, setMarcados] = useState<UsuarioMarcado[]>([]);
-  const [buscaUsuario, setBuscaUsuario] = useState('');
   const [preparando, setPreparando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [historicoAberto, setHistoricoAberto] = useState<ValidacaoTecnica | null>(null);
 
   useEffect(() => () => arquivos.forEach(a => URL.revokeObjectURL(a.previewUrl)), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const aprovadoresDoSetor = useMemo(
-    () => perfis.filter(p => setorId && p.aprovador_setores?.includes(setorId)).map(p => p.name),
-    [perfis, setorId],
-  );
   const pendente = historico.find(h => h.status === 'PENDENTE');
   const links = interpretarLinks(textoLinks);
-  const sugestoes = buscaUsuario.trim()
-    ? marcaveis.filter(p => !marcados.some(m => m.id === p.id) && p.name.toLowerCase().includes(buscaUsuario.trim().toLowerCase())).slice(0, 6)
-    : [];
   const podeEnviar = !!setorId && descricao.trim().length > 0 && !enviando && !preparando && !pendente;
 
   const anexar = async (lista: FileList | null) => {
@@ -271,13 +413,7 @@ export function AbrirValidacaoModal({ user, item, setorInicial, historico, onClo
                   <option value="">Selecione o setor...</option>
                   {setores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
-                {setorId && (
-                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                    {aprovadoresDoSetor.length > 0
-                      ? <>Aprovadores da área: <b>{aprovadoresDoSetor.join(', ')}</b></>
-                      : 'A área não tem aprovador cadastrado — o chamado vai para os administradores.'}
-                  </p>
-                )}
+                <AprovadoresDaArea perfis={perfis} setorId={setorId} />
               </div>
 
               <div>
@@ -331,46 +467,13 @@ export function AbrirValidacaoModal({ user, item, setorInicial, historico, onClo
                 </div>
               </div>
 
-              <div>
-                <label className={rotulo}>Marcar usuários do SISTEN (opcional)</label>
-                {marcados.length > 0 && (
-                  <div className="mb-1.5 flex flex-wrap gap-1.5">
-                    {marcados.map(m => (
-                      <span key={m.id} className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-800 dark:bg-violet-950/40 dark:text-violet-300">
-                        @{m.nome}
-                        <button type="button" onClick={() => setMarcados(l => l.filter(x => x.id !== m.id))} aria-label={`Desmarcar ${m.nome}`}>
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <input
-                  type="text"
-                  value={buscaUsuario}
-                  onChange={e => setBuscaUsuario(e.target.value)}
-                  placeholder="Digite o nome..."
-                  className={campo}
-                />
-                {sugestoes.length > 0 && (
-                  <ul className="mt-1 rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800">
-                    {sugestoes.map(p => (
-                      <li key={p.id}>
-                        <button
-                          type="button"
-                          onClick={() => { setMarcados(l => [...l, { id: p.id, nome: p.name }]); setBuscaUsuario(''); }}
-                          className="w-full px-3 py-1.5 text-left text-xs hover:bg-violet-50 dark:hover:bg-violet-950/30"
-                        >
-                          {p.name} <span className="text-slate-400">{p.cargo}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                  Quem for marcado recebe o aviso e também pode aprovar. Só aparecem usuários com acesso a Aprovações.
-                </p>
-              </div>
+              <MarcarUsuarios
+                marcaveis={marcaveis}
+                marcados={marcados}
+                onChange={setMarcados}
+                titulo="Marcar usuários do SISTEN (opcional)"
+                ajuda="Quem for marcado recebe o aviso e também pode aprovar. Só aparecem usuários com acesso a Aprovações."
+              />
             </>
           )}
         </ModalBody>

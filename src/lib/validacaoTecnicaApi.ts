@@ -87,6 +87,23 @@ export async function decidirValidacaoTecnica(id: string, aprovar: boolean, pare
   if (error) throw new Error(error.message);
 }
 
+/** Passa o chamado pendente para outra área, marcando quem recebe (ao menos um). */
+export async function redirecionarValidacaoTecnica(
+  id: string,
+  setor: { id: string; nome: string | null },
+  marcados: UsuarioMarcado[],
+  motivo: string,
+): Promise<void> {
+  const { error } = await (supabase as any).rpc('sup_validacao_tecnica_redirecionar', {
+    p_id: id,
+    p_setor_id: setor.id,
+    p_setor_nome: setor.nome,
+    p_marcados: marcados,
+    p_motivo: motivo || null,
+  });
+  if (error) throw new Error(error.message);
+}
+
 /** URLs assinadas (24 h) dos anexos, por caminho. */
 export async function assinarAnexosValidacao(paths: string[]): Promise<Record<string, string>> {
   if (paths.length === 0) return {};

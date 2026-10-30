@@ -27,6 +27,19 @@ export interface UsuarioMarcado {
   nome: string;
 }
 
+/** Passagem do chamado de uma área para outra (RPC `sup_validacao_tecnica_redirecionar`). */
+export interface RedirecionamentoValidacao {
+  de_setor_id: string;
+  de_setor_nome: string | null;
+  para_setor_id: string;
+  para_setor_nome: string | null;
+  para: UsuarioMarcado[];
+  motivo: string | null;
+  por: string;
+  por_nome: string | null;
+  em: string;
+}
+
 export interface ValidacaoTecnica {
   id: string;
   codigo: string | null;
@@ -45,6 +58,9 @@ export interface ValidacaoTecnica {
   anexos: AnexoValidacao[];
   marcados: UsuarioMarcado[];
   marcados_ids: string[];
+  redirecionamentos: RedirecionamentoValidacao[];
+  /** Quem já redirecionou o chamado: continua vendo, sem decidir. */
+  redirecionado_por_ids: string[];
   status: StatusValidacao;
   parecer: string | null;
   decidido_por: string | null;
@@ -96,6 +112,14 @@ export function podeDecidirValidacao(
   if (user.roles.includes('admin')) return true;
   if (user.aprovador_setores?.includes(v.setor_id)) return true;
   return v.marcados_ids.includes(user.id);
+}
+
+/** Aparece em Aprovações: quem decide e quem já redirecionou (só leitura). */
+export function podeVerValidacao(
+  v: Pick<ValidacaoTecnica, 'setor_id' | 'marcados_ids' | 'redirecionado_por_ids'>,
+  user: { id: string; roles: string[]; aprovador_setores?: string[] },
+): boolean {
+  return podeDecidirValidacao(v, user) || (v.redirecionado_por_ids ?? []).includes(user.id);
 }
 
 /** Chamado mais recente de cada item (ri) — é ele que dá a tag na Central. */
