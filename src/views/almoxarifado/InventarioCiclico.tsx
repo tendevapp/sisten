@@ -55,8 +55,7 @@ import {
 import { comprimirImagemUpload } from '../../lib/imageCompression';
 import { EVENTO_ITEM_QR_INVENTARIO, consumirItemInventarioPendente } from '../../lib/etiquetaMaterial';
 import ImportarInventarioModal from '../../components/almoxarifado/ImportarInventarioModal';
-import PreparacaoInventario from '../../components/almoxarifado/PreparacaoInventario';
-import { CAUSAS_INVENTARIO, rotuloCausa, sugerirEscopoRapido, type CausaInventario, type ContextoAuditoriaInventario, type PendenciaContagem } from '../../lib/inventarioAuditoria';
+import { CAUSAS_INVENTARIO, rotuloCausa, sugerirEscopoRapido, type CausaInventario, type PendenciaContagem } from '../../lib/inventarioAuditoria';
 import { contextoAuditoriaInventario } from '../../lib/inventarioCiclicoApi';
 import { useReservasInventario } from '../../lib/useReservasInventario';
 import { gravarPreferenciasInventario, lerPreferenciasInventario, prepararContagemDoMaterial } from '../../lib/inventarioAtalho';
@@ -1032,7 +1031,6 @@ function VistaInventario({
         <Indicador rotulo="Acuracidade" valor={r.acuracidade == null ? '—' : `${r.acuracidade.toFixed(0)}%`} />
       </div>
       <BarraProgresso inv={inv} />
-      {inv.status === 'aberto' && <PreparacaoInventario inventarioId={inv.id} gestor={!!(user.roles?.includes('admin') || user.page_access?.almox_importar_planilhas)} />}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex min-w-0 overflow-x-auto no-scrollbar rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)' }}>
@@ -1251,6 +1249,19 @@ function faseInicial(item: ItemInventario): Fase {
   return 'contar';
 }
 
+/**
+ * Divergência: a contagem não espera a gestão atualizar a ZL0024, mas quem
+ * contou precisa saber de quando é o saldo comparado e avisar a gestão.
+ */
+function AvisoGestaoDivergencia({ importadaEm }: { importadaEm: string | null }) {
+  return (
+    <p className="rounded-lg px-3 py-2 text-xs" style={{ background: 'color-mix(in srgb, var(--status-serious) 12%, transparent)', color: 'var(--ink-primary)' }}>
+      Comparado com a ZL0024 importada em <strong>{importadaEm ? formatDateTimeBR(importadaEm) : 'data não identificada'}</strong>.
+      Avise a gestão do almoxarifado para conferir a divergência — pode ser movimentação depois dessa importação.
+    </p>
+  );
+}
+
 export function ModalContagem({
   user, item, inventarioId, numero, fotoItem, onFotoSalva, onVerZoom, onRecarregar, onProximo, temProximo, onClose,
 }: {
@@ -1277,17 +1288,20 @@ export function ModalContagem({
   const [fotoAtual, setFotoAtual] = useState<CatalogoItem | null>(fotoItem ?? null);
   const [modalFotoAberto, setModalFotoAberto] = useState(false);
   const qtdRef = useRef<HTMLInputElement>(null);
-  const [contexto, setContexto] = useState<ContextoAuditoriaInventario | null>(null);
   const [causa, setCausa] = useState<CausaInventario | ''>('');
   const [causaDetalhe, setCausaDetalhe] = useState('');
-  const [semMovimento, setSemMovimento] = useState(false);
-  const preparacaoRef = useRef<string | null>(null);
-  const iniciadaRef = useRef<string | null>(null);
-  const receberContexto = useCallback((ctx: ContextoAuditoriaInventario | null) => {
-    setContexto(ctx);
-    if (!ctx?.pronta) { preparacaoRef.current = null; iniciadaRef.current = null; setSemMovimento(false); }
-    else if (preparacaoRef.current !== ctx.preparacao?.id) { preparacaoRef.current = ctx.preparacao!.id; iniciadaRef.current = new Date().toISOString(); setSemMovimento(false); }
-  }, []);
+  const [validadeNaoSeAplica, setValidadeNaoSeAplica] = useState(false);
+  // Início da contagem (vai para a duração gravada); renova a cada nova contagem.
+  const iniciadaRef = useRef<string>(new Date().toISOString());
+  // Hora da última importação da ZL0024 — mostrada só quando a contagem diverge.
+  const [zl0024ImportadaEm, setZl0024ImportadaEm] = useState<string | null>(null);
+  useEffect(() => {
+    let ativo = true;
+    contextoAuditoriaInventario(inventarioId)
+      .then((ctx) => { if (ativo) setZl0024ImportadaEm(ctx.base?.updated_at ?? null); })
+      .catch(() => { /* o aviso sai sem a hora */ });
+    return () => { ativo = false; };
+  }, [inventarioId]);
 
   useEffect(() => {
     setFotoAtual(fotoItem ?? null);
@@ -1306,25 +1320,24 @@ export function ModalContagem({
   const qtdNum = qtd.trim() === '' ? NaN : Number(qtd.replace(',', '.'));
   const qtdValida = Number.isFinite(qtdNum) && qtdNum >= 0;
   const causaValida = !!causa && causaDetalhe.trim().length >= 5;
-  const podeContarAgora = !!contexto?.pronta && !contexto.pendencias.some(p => p.item_id === item.id) && semMovimento;
 
   const enviar = async () => {
     if (!qtdValida) { toast.error('Informe a quantidade contada (zero ou mais).'); return; }
-    if (!podeContarAgora || !preparacaoRef.current || !iniciadaRef.current) { toast.error('Atualize/libere a rodada e confirme o controle das movimentações antes de contar.'); return; }
     if ((proxima ?? 1) >= 2 && !causaValida) { toast.error('Informe a causa provável e o detalhe da recontagem.'); return; }
     setEnviando(true);
     try {
       const r = await registrarContagem(item.id, {
         quantidade: qtdNum,
         endereco: endereco.trim() || null,
-        validade: validade || null,
+        validade: validadeNaoSeAplica ? null : validade || null,
         observacao: obs.trim() || null,
         por: user.name,
         causa: causa || null, causaDetalhe: causaDetalhe.trim() || null,
-        preparacao: preparacaoRef.current, iniciadaEm: iniciadaRef.current,
+        iniciadaEm: iniciadaRef.current,
       });
       setUltimo(r);
-      setQtd(''); setObs(''); setCausa(''); setCausaDetalhe(''); setSemMovimento(false);
+      if (r.zl0024_importada_em) setZl0024ImportadaEm(r.zl0024_importada_em);
+      setQtd(''); setObs(''); setCausa(''); setCausaDetalhe('');
       await onRecarregar();
       if (!r.divergente) {
         toast.success(`${r.numero}ª contagem confere com a ZL0024.`);
@@ -1369,7 +1382,6 @@ export function ModalContagem({
         <h2 className="text-sm font-extrabold" style={{ color: 'var(--ink-primary)' }}>{item.descricao || '—'}</h2>
       </ModalHeader>
       <ModalBody className="space-y-4">
-        {!itemEncerrado(item) && <PreparacaoInventario inventarioId={inventarioId} itemId={item.id} gestor={!!(user.roles?.includes('admin') || user.page_access?.almox_importar_planilhas)} onContexto={receberContexto} />}
         {/* Card de Foto de Cadastro do Material */}
         <div
           className="rounded-xl border p-3 flex flex-col sm:flex-row items-center gap-3 transition-all"
@@ -1503,13 +1515,27 @@ export function ModalContagem({
                 <input value={endereco} onChange={(e) => setEndereco(e.target.value.toUpperCase())} placeholder="Ex.: 101.ARAMES" className={inputCls} />
               </Campo>
               <Campo rotulo="Data de validade">
-                <input type="date" value={validade} onChange={(e) => setValidade(e.target.value)} className={inputCls} />
+                <input
+                  type="date"
+                  value={validadeNaoSeAplica ? '' : validade}
+                  onChange={(e) => setValidade(e.target.value)}
+                  disabled={validadeNaoSeAplica}
+                  className={`${inputCls} disabled:opacity-50`}
+                />
+                <span className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--ink-secondary)' }}>
+                  <input
+                    type="checkbox"
+                    checked={validadeNaoSeAplica}
+                    onChange={(e) => { setValidadeNaoSeAplica(e.target.checked); if (e.target.checked) setValidade(''); }}
+                    className="h-4 w-4 accent-[var(--brand)]"
+                  />
+                  Não se aplica
+                </span>
               </Campo>
             </div>
             <Campo rotulo="Observação">
               <input value={obs} onChange={(e) => setObs(e.target.value)} className={inputCls} />
             </Campo>
-            <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={semMovimento} onChange={e => setSemMovimento(e.target.checked)} />Contei após a liberação e não houve movimentação do material durante a contagem. Se houve, vou interromper e solicitar nova atualização.</label>
             {proxima >= 2 && <p className="text-xs">Prefira outro conferente para a recontagem. O saldo e as quantidades anteriores ficam ocultos nesta tela até o encerramento.</p>}
             <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
               Ao enviar, a contagem fica gravada e não pode ser alterada.
@@ -1537,18 +1563,22 @@ export function ModalContagem({
               ({nContagens} de {MAX_CONTAGENS}). Se não, o saldo da ZL0024 é exibido, o alerta é gravado e o item
               não aceita mais contagem.
             </p>
+            <AvisoGestaoDivergencia importadaEm={zl0024ImportadaEm} />
           </div>
         )}
 
         {fase === 'final' && (
-          <ResultadoFinal item={item} />
+          <>
+            <ResultadoFinal item={item} />
+            {item.status === 'divergente' && <AvisoGestaoDivergencia importadaEm={zl0024ImportadaEm} />}
+          </>
         )}
       </ModalBody>
       <ModalFooter>
         {fase === 'contar' && (
           <>
             <button onClick={onClose} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Cancelar</button>
-            <button onClick={() => void enviar()} disabled={enviando || !qtdValida || !podeContarAgora || ((proxima ?? 1) >= 2 && !causaValida)} className={btnPri} style={{ background: 'var(--brand)' }}>
+            <button onClick={() => void enviar()} disabled={enviando || !qtdValida || ((proxima ?? 1) >= 2 && !causaValida)} className={btnPri} style={{ background: 'var(--brand)' }}>
               {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Enviar contagem
             </button>
           </>
@@ -1558,7 +1588,7 @@ export function ModalContagem({
             <button onClick={() => void encerrar()} disabled={enviando || !causaValida} className={btnSec} style={{ borderColor: 'var(--status-critical)', color: 'var(--status-critical)' }}>
               {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />} Não, mostrar saldo
             </button>
-            <button onClick={() => { setFase('contar'); iniciadaRef.current = new Date().toISOString(); setSemMovimento(false); }} disabled={enviando || proxima == null} className={btnPri} style={{ background: 'var(--brand)' }}>
+            <button onClick={() => { setFase('contar'); iniciadaRef.current = new Date().toISOString(); }} disabled={enviando || proxima == null} className={btnPri} style={{ background: 'var(--brand)' }}>
               <RotateCcw className="h-4 w-4" /> Sim, nova contagem
             </button>
           </>

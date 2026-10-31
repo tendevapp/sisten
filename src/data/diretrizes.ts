@@ -37,6 +37,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { data: '2026-10-31', resumo: 'Inventário Cíclico: contar não depende mais de rodada liberada pela gestão nem da confirmação de "sem movimentação"; sem rodada, compara com a ZL0024 atual. Em divergência, a tela mostra a hora da importação da ZL0024 e pede para avisar a gestão. Data de validade com opção "Não se aplica".' },
   { data: '2026-10-31', resumo: 'Cadastro de Itens no celular: sem indicadores e descrição, título curto; Adicionar Item abre só pelo botão (tela cheia, resultados abaixo do campo); busca filtra enquanto digita e filtros recolhidos em "Filtros"; itens em cartões, um por linha, com detalhe ao tocar (Editar, Contar, Etiqueta). Atalho Contar põe o item no inventário cíclico avulso do dia e abre a mesma contagem auditada. Leitura do QR da etiqueta mostra a última contagem do inventário (data, resultado e quem contou).' },
   { data: '2026-10-31', resumo: 'Recebimento de itens: botão por item abre subjanela opcional para múltiplos lotes com validades distintas. Dados preservados em rascunhos, consulta e edição, com histórico de alterações e inclusão nos relatórios Excel/PDF.' },
   { data: '2026-10-31', resumo: 'Cadastro de Itens: lista opcional de múltiplos lotes, cada um com validade própria, antes da observação. Permite adicionar/remover linhas e preserva os pares antigos e os demais lotes em atualizações parciais. Não altera a etiqueta.' },

@@ -152,13 +152,18 @@ export interface ResultadoContagem {
   /** Só vem quando o item encerrou. */
   saldo_sistema: number | null;
   diferenca: number | null;
+  /** Hora da importação da ZL0024 usada na comparação — para o aviso de divergência. */
+  zl0024_importada_em?: string | null;
 }
 
-/** Grava uma contagem (imutável). O banco compara com a ZL0024. */
+/**
+ * Grava uma contagem (imutável). O banco compara com o saldo da rodada
+ * liberada, se houver, ou com a ZL0024 atual — não depende de liberação.
+ */
 export async function registrarContagem(
   itemId: string,
   c: { quantidade: number; endereco: string | null; validade: string | null; observacao: string | null; por: string;
-    causa: CausaInventario | null; causaDetalhe: string | null; preparacao: string; iniciadaEm: string },
+    causa: CausaInventario | null; causaDetalhe: string | null; iniciadaEm: string },
 ): Promise<ResultadoContagem> {
   const { data, error } = await supabase.rpc('alm_inv_registrar_contagem_auditada' as any, {
     p_item_id: itemId,
@@ -167,7 +172,8 @@ export async function registrarContagem(
     p_validade: c.validade,
     p_observacao: c.observacao,
     p_por: c.por,
-    p_causa: c.causa, p_causa_detalhe: c.causaDetalhe, p_preparacao: c.preparacao, p_iniciada_em: c.iniciadaEm, p_sem_movimentacao: true,
+    // A rodada (se liberada) é achada pelo banco; "sem movimentação" não é mais confirmado na tela.
+    p_causa: c.causa, p_causa_detalhe: c.causaDetalhe, p_preparacao: null, p_iniciada_em: c.iniciadaEm, p_sem_movimentacao: false,
   } as any);
   if (error) throw new Error(error.message);
   return data as ResultadoContagem;

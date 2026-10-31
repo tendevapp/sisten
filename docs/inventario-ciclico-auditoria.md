@@ -16,6 +16,8 @@ O tempo por item começa em 2 minutos, editável. Acrescenta 1 minuto sem locali
 
 ## Antes de contar
 
+> **Mudança de 31/10/2026 (tarde):** a preparação deixou de ser obrigatória. A contagem é aceita sempre: se houver rodada liberada e válida com o item na foto, compara com o saldo da foto; senão, com a ZL0024 atual (`alm_inv_saldo_zl0024`), e a contagem fica sem `preparacao_id`. A confirmação "não houve movimentação" e as pendências de saída extraordinária não bloqueiam mais; o painel "Antes de contar" saiu da tela. Quando a contagem diverge, a tela mostra a hora da importação da ZL0024 usada e pede para avisar a gestão. Recontagem continua exigindo causa. Migration `20261031170000_alm_inv_contagem_sem_rodada`. O fluxo abaixo fica como referência do que o banco ainda aceita, se uma rodada for liberada.
+
 1. Abra o inventário e use **Solicitar atualização à gestão**. O sistema registra a solicitação e notifica, dentro do SISTEN, administradores e usuários ativos com liberação explícita `almox_importar_planilhas`. Pedidos ainda abertos são reutilizados para evitar duplicação de avisos.
 2. A gestão regulariza os documentos do escopo, extrai novamente a ZL0024 no SAP e importa a nova base. Uma importação anterior à solicitação não libera a rodada.
 3. A gestão informa a **hora real da extração**, confirma o controle das movimentações e registra a evidência do corte/responsável/documentos. A hora da importação não é aceita como prova automática da hora da extração.
