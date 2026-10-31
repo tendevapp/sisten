@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Cartão compacto do Cadastro de Itens: foto quadrada, código, descrição,
- * posição e a última contagem do inventário. Duas colunas no celular.
+ * posição e a última contagem do inventário. Um por linha no celular, com
+ * foto baixa para caberem dois por tela.
  *
  * Tocar no cartão abre o detalhe (com Editar); o rodapé tem os atalhos que
  * a rotina do mutirão de cadastro pede sem abrir nada: editar e contar.
@@ -55,7 +56,7 @@ function CatalogoItemTile({
         className="flex flex-1 flex-col text-left cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--brand)]"
         aria-label={`Ver detalhes de ${item.codigo_sap} ${item.descricao}`}
       >
-        <div className="relative aspect-square w-full border-b" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+        <div className="relative h-32 sm:h-auto sm:aspect-square w-full border-b" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
           {item.url_foto ? (
             <img
               src={item.url_foto}
@@ -83,9 +84,9 @@ function CatalogoItemTile({
           )}
         </div>
 
-        <div className="flex flex-1 flex-col gap-1 p-2">
-          <span className="font-mono text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>{item.codigo_sap}</span>
-          <h4 className="line-clamp-2 text-xs font-bold leading-snug" style={{ color: 'var(--ink-primary)' }}>
+        <div className="flex flex-1 flex-col gap-1 px-3 py-2 sm:p-2">
+          <span className="font-mono text-xs sm:text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>{item.codigo_sap}</span>
+          <h4 className="line-clamp-2 text-sm sm:text-xs font-bold leading-snug" style={{ color: 'var(--ink-primary)' }}>
             {item.descricao || '—'}
           </h4>
           <div className="mt-auto space-y-0.5 pt-0.5">

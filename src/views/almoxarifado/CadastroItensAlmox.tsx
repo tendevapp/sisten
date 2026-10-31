@@ -1149,14 +1149,14 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h1 className="text-lg sm:text-2xl font-black tracking-tight flex items-center gap-2" style={{ color: 'var(--ink-primary)' }}>
               <Layers className="hidden sm:block h-6 w-6 text-amber-600 dark:text-amber-500" />
-              Cadastro de Itens<span className="hidden sm:inline"> — Catálogo de Consumíveis</span>
+              Cadastro de Itens<span className="hidden sm:inline"> — Catálogo do Almoxarifado</span>
             </h1>
             <span className="hidden sm:inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
               FRM.ALM-0016
             </span>
           </div>
           <p className="hidden sm:block mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
-            Catálogo de itens consumíveis do almoxarifado. Vincule fotos aos cadastros para visualização automática na Solicitação de Compras e no Inventário Cíclico.
+            Todo item que já teve saldo na ZL0024 ou foi cadastrado aqui. Vincule fotos aos cadastros para visualização automática na Solicitação de Compras e no Inventário Cíclico.
           </p>
         </div>
 
@@ -1731,8 +1731,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           </p>
         </div>
       ) : modoVis === 'cards' ? (
-        /* Cartões compactos: 2 colunas no celular; tocar abre o detalhe */
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-2 sm:gap-3">
+        /* Cartões: um por linha no celular; tocar abre o detalhe */
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3">
           {itensVisiveis.map((item) => (
             <CatalogoItemTile
               key={item.codigo_sap}
