@@ -190,6 +190,7 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
   const abrirContagemDoQr = useCallback(async (codigo: string) => {
     try {
       const r = await prepararContagemDoMaterial(codigo, user, estoque, giro);
+      if (r.tipo === 'cancelado') return;
       if (r.tipo === 'fora_zl0024') {
         toast.error(`Item ${codigo} não está na ZL0024 — não há saldo para inventariar.`);
         return;

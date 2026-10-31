@@ -16,7 +16,10 @@ import type { EstoqueGiro, EstoqueItem, Profile } from '../types';
 import { localDb } from '../db/localDb';
 import { normalizeCode } from './almoxarifado';
 import { chaveItem, itemEncerrado, montarCandidatos, type CriterioCurva, type ItemInventario } from './inventarioCiclico';
-import { adicionarItensInventario, criarInventario, listarInventarios, type InventarioRow } from './inventarioCiclicoApi';
+import {
+  adicionarItensInventario, criarInventario, excluirInventario, listarInventarios, removerItemInventario, type InventarioRow,
+} from './inventarioCiclicoApi';
+import { ehDepositoExcluidoSaldo } from './almoxCatalogoApi';
 import { podeEditarFormulario } from './permissoesFormularios';
 import { hojeISO } from './recebimentoAlmox';
 
@@ -47,30 +50,46 @@ export function gravarPreferenciasInventario(p: PreferenciasInventario): void {
   try { localStorage.setItem(CHAVE_PREFERENCIAS, JSON.stringify(p)); } catch { /* sem storage: só não lembra */ }
 }
 
+/** O que esta chamada gravou — para desfazer se a pessoa fechar sem contar. */
+export interface CriadoPeloAtalho {
+  inventarioId: string;
+  /** O inventário foi aberto agora (exclui junto se ficar vazio). */
+  inventarioCriado: boolean;
+  itemIds: string[];
+}
+
 export type ResultadoPreparoContagem =
-  | { tipo: 'pronto'; inventario: InventarioRow; item: ItemInventario; inventarios: InventarioRow[] }
+  | { tipo: 'pronto'; inventario: InventarioRow; item: ItemInventario; inventarios: InventarioRow[]; criado: CriadoPeloAtalho | null }
   /** O item está em contagem aberta no inventário de outra pessoa. */
   | { tipo: 'de_outro'; inventario: InventarioRow; inventarios: InventarioRow[] }
   /** Material sem linha na ZL0024 — não há saldo para comparar. */
   | { tipo: 'fora_zl0024' }
   /** Gravação ficou na fila do aparelho (sem rede). */
-  | { tipo: 'offline'; inventarios: InventarioRow[] };
+  | { tipo: 'offline'; inventarios: InventarioRow[] }
+  /** A pessoa saiu da tela antes de gravar: nada foi criado. */
+  | { tipo: 'cancelado' };
 
 /**
  * Deixa o material pronto para contar e diz em qual item de qual inventário.
  * Depósitos: os da última seleção do aparelho; se o material não está em
- * nenhum deles, todos em que tem saldo.
+ * nenhum deles, todos em que tem saldo — fora o 0105 (transferência para a
+ * Produção), que não é estoque do almoxarifado.
+ *
+ * `continuar` é conferido logo antes de gravar: na rede do pátio a busca dos
+ * inventários pode levar mais de um minuto, e quem já saiu da tela não deve
+ * ver o item aparecer no inventário depois.
  */
 export async function prepararContagemDoMaterial(
   codigo: string,
   user: Profile,
   estoque: EstoqueItem[],
   giro: EstoqueGiro[],
+  continuar: () => boolean = () => true,
 ): Promise<ResultadoPreparoContagem> {
   const pref = lerPreferenciasInventario();
   const alvo = normalizeCode(codigo);
   const doMaterialEm = (base: EstoqueItem[]) => montarCandidatos(base, giro, pref.criterio, [])
-    .filter((c) => normalizeCode(c.material) === alvo);
+    .filter((c) => normalizeCode(c.material) === alvo && !ehDepositoExcluidoSaldo(c.deposito));
   let doMaterial = doMaterialEm(estoque);
   // Cópia do aparelho pode ser de antes da última importação: confere no servidor antes de recusar.
   if (doMaterial.length === 0) doMaterial = doMaterialEm(await localDb.fetchEstoque(true));
@@ -90,7 +109,7 @@ export async function prepararContagemDoMaterial(
     const item = inv.itens.find((i) => doAlvo(i) && !itemEncerrado(i));
     if (!item) continue;
     return inv.criado_por_id === user.id
-      ? { tipo: 'pronto', inventario: inv, item, inventarios: lista }
+      ? { tipo: 'pronto', inventario: inv, item, inventarios: lista, criado: null }
       : { tipo: 'de_outro', inventario: inv, inventarios: lista };
   }
 
@@ -98,11 +117,14 @@ export async function prepararContagemDoMaterial(
   const hoje = hojeISO();
   const meu = lista.find((i) => aberto(i) && i.criterio === CRITERIO_QR && i.data === hoje && podeEditarFormulario(user, i));
   const itens = candidatos.map((c) => ({ material: c.material, deposito: c.deposito, classe: c.classe }));
+  if (!continuar()) return { tipo: 'cancelado' };
   let inventarioId: string;
+  let novas: Set<string>;
   if (meu) {
     const faltam = itens.filter((i) => !meu.itens.some((x) => chaveItem(x.material, x.deposito) === chaveItem(i.material, i.deposito)));
     if (faltam.length > 0) await adicionarItensInventario(meu.id, faltam);
     inventarioId = meu.id;
+    novas = new Set(faltam.map((i) => chaveItem(i.material, i.deposito)));
   } else {
     const r = await criarInventario({
       data: hoje,
@@ -112,6 +134,7 @@ export async function prepararContagemDoMaterial(
       criado_por_nome: user.name,
     }, itens);
     inventarioId = r.id;
+    novas = new Set(itens.map((i) => chaveItem(i.material, i.deposito)));
   }
 
   lista = await listarInventarios();
@@ -120,5 +143,23 @@ export async function prepararContagemDoMaterial(
   const item = inv?.itens.find((i) => doAlvo(i) && !itemEncerrado(i)) ?? inv?.itens.find(doAlvo);
   if (!inv || !item) return { tipo: 'offline', inventarios: lista };
   if (inv.criado_por_id !== user.id) return { tipo: 'de_outro', inventario: inv, inventarios: lista };
-  return { tipo: 'pronto', inventario: inv, item, inventarios: lista };
+  const criado: CriadoPeloAtalho = {
+    inventarioId,
+    inventarioCriado: !meu,
+    itemIds: inv.itens.filter((i) => novas.has(chaveItem(i.material, i.deposito))).map((i) => i.id),
+  };
+  return { tipo: 'pronto', inventario: inv, item, inventarios: lista, criado };
+}
+
+/**
+ * Fechou a contagem sem enviar: tira do inventário o que o atalho pôs e, se o
+ * inventário foi aberto por ele e ficou vazio, exclui. Item com contagem fica.
+ */
+export async function desfazerAtalhoSemContagem(criado: CriadoPeloAtalho, user: Profile): Promise<void> {
+  const inv = (await listarInventarios()).find((i) => i.id === criado.inventarioId);
+  if (!inv) return;
+  const semContagem = inv.itens.filter((i) => criado.itemIds.includes(i.id) && i.contagens.length === 0);
+  for (const item of semContagem) await removerItemInventario(item.id);
+  const restantes = inv.itens.length - semContagem.length;
+  if (criado.inventarioCriado && restantes === 0) await excluirInventario(inv.id, user.name);
 }

@@ -69,7 +69,7 @@ import { normalizeCode } from '../../lib/almoxarifado';
 import { canAccessForm } from '../../lib/pages';
 import { FORMULARIO_ACAO_ITEM } from '../../lib/acoesQr';
 import { hojeISO } from '../../lib/recebimentoAlmox';
-import { prepararContagemDoMaterial } from '../../lib/inventarioAtalho';
+import { desfazerAtalhoSemContagem, prepararContagemDoMaterial, type CriadoPeloAtalho } from '../../lib/inventarioAtalho';
 import { buscarInventario } from '../../lib/inventarioCiclicoApi';
 import type { ItemInventario } from '../../lib/inventarioCiclico';
 import {
@@ -193,7 +193,14 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [ultimasContagens, setUltimasContagens] = useState<Map<string, UltimaContagem> | null>(null);
   const [versaoContagem, setVersaoContagem] = useState(0);
   const [preparandoCodigo, setPreparandoCodigo] = useState<string | null>(null);
-  const [contando, setContando] = useState<{ inventarioId: string; item: ItemInventario; codigoSap: string } | null>(null);
+  const [contando, setContando] = useState<{
+    inventarioId: string; item: ItemInventario; codigoSap: string;
+    /** O que o toque em Contar gravou — desfeito se fechar sem enviar contagem. */
+    criado: CriadoPeloAtalho | null;
+  } | null>(null);
+  // Quem sai da tela no meio da preparação não deve ver o item entrar no inventário depois.
+  const montadoRef = useRef(true);
+  useEffect(() => () => { montadoRef.current = false; }, []);
   const hoje = hojeISO();
 
   // Modal de Cadastro de Foto
@@ -1030,7 +1037,12 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         localDb.fetchEstoque(),
         localDb.fetchGiroEstoque().catch(() => []),
       ]);
-      const r = await prepararContagemDoMaterial(item.codigo_sap, user, estoque, giro);
+      const r = await prepararContagemDoMaterial(item.codigo_sap, user, estoque, giro, () => montadoRef.current);
+      if (r.tipo === 'cancelado') return;
+      if (!montadoRef.current) {
+        if (r.tipo === 'pronto' && r.criado) void desfazerAtalhoSemContagem(r.criado, user).catch(() => {});
+        return;
+      }
       if (r.tipo === 'fora_zl0024') {
         toast.error(`${item.codigo_sap} não está na ZL0024. A contagem é comparada com ela, então não há saldo para inventariar.`);
       } else if (r.tipo === 'offline') {
@@ -1039,7 +1051,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         toast.warning(`Item já está em contagem no ${r.inventario.codigo}, de ${r.inventario.criado_por_nome || 'outro responsável'}.`);
       } else {
         setDetalheCodigo(null);
-        setContando({ inventarioId: r.inventario.id, item: r.item, codigoSap: item.codigo_sap });
+        setContando({ inventarioId: r.inventario.id, item: r.item, codigoSap: item.codigo_sap, criado: r.criado });
         toast.info(`Contagem no inventário ${r.inventario.codigo}.`);
       }
     } catch (err: any) {
@@ -1068,6 +1080,15 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     }
     setVersaoContagem(v => v + 1);
   }, [contando]);
+
+  /** Fechar sem enviar desfaz o que o "Contar" pôs no inventário — nada fica "a contar" sem querer. */
+  const fecharContagem = () => {
+    const atual = contando;
+    setContando(null);
+    if (!atual?.criado || atual.item.contagens.length > 0) return;
+    void desfazerAtalhoSemContagem(atual.criado, user)
+      .catch((err) => console.warn('[CadastroItensAlmox] Não foi possível desfazer o item sem contagem:', err));
+  };
 
   /** Foto tirada durante a contagem também vale para o catálogo. */
   const aplicarFotoDaContagem = (codigoSap: string, salvo: CatalogoItem) => {
@@ -2901,9 +2922,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
             onFotoSalva={(salvo) => aplicarFotoDaContagem(contando.codigoSap, salvo)}
             onVerZoom={(url, titulo, codigo) => setImagemZoom({ url, titulo, codigo })}
             onRecarregar={recarregarContagem}
-            onProximo={() => setContando(null)}
+            onProximo={fecharContagem}
             temProximo={false}
-            onClose={() => setContando(null)}
+            onClose={fecharContagem}
           />
         </Suspense>
       )}
