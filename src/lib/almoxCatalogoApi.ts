@@ -862,6 +862,79 @@ export function filtrarEAgruparZl0024Consumiveis(
 }
 
 /**
+ * Material que já teve saldo na ZL0024 (`alm_catalogo_material_visto`,
+ * gravado por trigger a cada importação e nunca apagado). É o que mantém no
+ * catálogo o item que zerou — em todos os aparelhos, não só onde foi visto.
+ */
+export interface MaterialVistoCatalogo {
+  codigo_sap: string;
+  descricao: string | null;
+  texto_tecnico: string | null;
+  grp_mercad: string | null;
+  grupo_mercadorias: string | null;
+  umb: string | null;
+}
+
+export async function carregarMateriaisVistos(): Promise<MaterialVistoCatalogo[]> {
+  if (!supabase) return [];
+  return buscarTudo<MaterialVistoCatalogo>((de, ate) =>
+    (supabase!.from as any)('alm_catalogo_material_visto')
+      .select('codigo_sap, descricao, texto_tecnico, grp_mercad, grupo_mercadorias, umb')
+      .order('codigo_sap')
+      .range(de, ate));
+}
+
+/**
+ * Lista do Cadastro de Itens: tudo o que tem saldo agora (`atuais`, já com os
+ * cadastrados à mão), mais o que já teve saldo e zerou (`vistos`), mais o que
+ * este aparelho já mostrava (`anterior`) — item que apareceu uma vez não some.
+ * O saldo dos que não estão em `atuais` é acertado depois, pela ZL0024.
+ */
+export function montarListaCatalogo(
+  atuais: ItemConsumivelZl0024[],
+  vistos: MaterialVistoCatalogo[],
+  anterior: ItemConsumivelZl0024[],
+  gruposMercadoria: CadastroGrupoMercadoria[],
+): ItemConsumivelZl0024[] {
+  const mapaGrupos = new Map<string, CadastroGrupoMercadoria>();
+  for (const grp of gruposMercadoria) {
+    if (grp.codigo) mapaGrupos.set(grp.codigo.trim().toUpperCase(), grp);
+  }
+  const lista = [...atuais];
+  const presentes = new Set(lista.map(it => it.codigo_sap));
+
+  for (const v of vistos) {
+    const codigo = String(v.codigo_sap || '').trim();
+    if (!codigo || presentes.has(codigo) || isProjetoItem(codigo)) continue;
+    const grpCodigo = String(v.grp_mercad || '').trim().toUpperCase();
+    const infoGrupo = mapaGrupos.get(grpCodigo);
+    lista.push({
+      codigo_sap: codigo,
+      descricao: String(v.descricao || '').trim(),
+      texto_tecnico: String(v.texto_tecnico || '').trim(),
+      grp_mercad: grpCodigo,
+      grupo_mercadorias: String(v.grupo_mercadorias || infoGrupo?.denominacao || '').trim(),
+      classificacao_nivel1: infoGrupo?.classificacao_nivel1 || 'CONSUMÍVEL',
+      classificacao_nivel2: (infoGrupo?.classificacao_nivel2 || '').trim(),
+      saldo_total: 0,
+      umb: String(v.umb || 'UN').trim(),
+      depositos: [],
+      item_catalogo: null,
+      tem_foto: false,
+      url_foto: null,
+    });
+    presentes.add(codigo);
+  }
+
+  for (const it of anterior) {
+    if (!it.codigo_sap || presentes.has(it.codigo_sap) || isProjetoItem(it.codigo_sap)) continue;
+    lista.push({ ...it, saldo_total: 0, depositos: [] });
+    presentes.add(it.codigo_sap);
+  }
+  return lista;
+}
+
+/**
  * Busca materiais para cadastrar/adicionar ao catálogo por Código SAP, Descrição ou Texto Técnico.
  * Vascula todo o acervo SAP (com ou sem saldo), catálogo existente e fotos do Book de EPIs.
  */
@@ -1271,22 +1344,32 @@ export async function pesquisarCatalogoSapOnline(
 export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<DadosCatalogoCompleto> {
   await migrarCatalogoLocalLegado().catch(err => console.warn('[almoxCatalogoApi] Migração do catálogo local falhou:', err));
 
-  const [grupos, itensCatalogo, mapaEpis] = await Promise.all([
+  const [grupos, itensCatalogo, mapaEpis, vistos] = await Promise.all([
     carregarGruposMercadoria(),
     listarItensCatalogo(),
     listarEpisComFoto(),
+    carregarMateriaisVistos().catch((err) => {
+      console.warn('[almoxCatalogoApi] Materiais já vistos indisponíveis; fica a lista do aparelho:', err);
+      return [] as MaterialVistoCatalogo[];
+    }),
   ]);
 
-  // Verifica se já existe lista fixa do catálogo persistida
-  let listaFixa = obterListaFixaCatalogoLocal();
+  // ZL0024 conferida pela versão da importação (fetchEstoque só rebaixa se mudou).
+  let estoqueLocal: EstoqueItem[];
+  try {
+    estoqueLocal = ((await localDb.fetchEstoque(false)) || []) as EstoqueItem[];
+  } catch {
+    estoqueLocal = (localDb.getEstoque() || []) as EstoqueItem[];
+  }
 
-  let estoqueLocal = (localDb.getEstoque() || []) as EstoqueItem[];
-  if (!estoqueLocal || estoqueLocal.length === 0) {
-    try {
-      estoqueLocal = (await localDb.fetchEstoque(false)) || [];
-    } catch {
-      estoqueLocal = [];
-    }
+  // A lista era montada uma vez por aparelho e só crescia por cadastro manual:
+  // material novo na ZL0024 nunca entrava. Agora é refeita a cada abertura —
+  // tudo com saldo (não só consumível) + o que já teve saldo e zerou + o que o
+  // aparelho já mostrava.
+  let listaFixa = obterListaFixaCatalogoLocal();
+  if (estoqueLocal.length > 0 || vistos.length > 0) {
+    const atuais = filtrarEAgruparZl0024Consumiveis(estoqueLocal, grupos, itensCatalogo, false, mapaEpis);
+    listaFixa = montarListaCatalogo(atuais, vistos, listaFixa, grupos);
   }
 
   // Mapa de saldos atuais da ZL0024 excluindo depósitos fora do almoxarifado (ex: 0105 - Transferência Produção)
@@ -1301,13 +1384,6 @@ export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<Da
       atual.saldo = arredondarSaldo(atual.saldo + q);
       if (dep && !atual.depositos.includes(dep)) atual.depositos.push(dep);
       mapaSaldos.set(mat, atual);
-    }
-  }
-
-  if (listaFixa.length === 0) {
-    if (estoqueLocal && estoqueLocal.length > 0) {
-      listaFixa = filtrarEAgruparZl0024Consumiveis(estoqueLocal, grupos, itensCatalogo, true, mapaEpis);
-      salvarListaFixaCatalogoLocal(listaFixa);
     }
   }
 

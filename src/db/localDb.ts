@@ -4137,12 +4137,18 @@ class LocalDatabase {
 
   public async fetchEstoque(force = false): Promise<EstoqueItem[]> {
     if (!supabase) return this.getEstoque();
-    if (!force && this.cache.has(this.estoqueKey)) {
+    // O boot repõe a memória a partir do IndexedDB, então "ter cache" não quer
+    // dizer "desta sessão": sem conferir a versão da importação, o aparelho
+    // ficava com a ZL0024 do primeiro download até alguém tocar em Atualizar
+    // (o Inventário dizia "não está na ZL0024" para item com saldo).
+    const markers = await this.fetchRemoteMarkers(force);
+    if (!force && !this.needsSync('estoque', this.estoqueKey, markers)) {
       return this.getEstoque();
     }
     try {
       const rows = await this.fetchAllFromTable<EstoqueItem>('sap_zl0024_stk', '*', 1000, undefined, 'id');
       this.setStorageItem(this.estoqueKey, rows);
+      this.commitDatasetMeta('estoque', markers);
       return rows;
     } catch (err) {
       console.warn('Falha ao buscar a posição de estoque; usando cache local.', err);

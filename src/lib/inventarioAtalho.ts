@@ -13,6 +13,7 @@
  */
 
 import type { EstoqueGiro, EstoqueItem, Profile } from '../types';
+import { localDb } from '../db/localDb';
 import { normalizeCode } from './almoxarifado';
 import { chaveItem, itemEncerrado, montarCandidatos, type CriterioCurva, type ItemInventario } from './inventarioCiclico';
 import { adicionarItensInventario, criarInventario, listarInventarios, type InventarioRow } from './inventarioCiclicoApi';
@@ -68,8 +69,11 @@ export async function prepararContagemDoMaterial(
 ): Promise<ResultadoPreparoContagem> {
   const pref = lerPreferenciasInventario();
   const alvo = normalizeCode(codigo);
-  const doMaterial = montarCandidatos(estoque, giro, pref.criterio, [])
+  const doMaterialEm = (base: EstoqueItem[]) => montarCandidatos(base, giro, pref.criterio, [])
     .filter((c) => normalizeCode(c.material) === alvo);
+  let doMaterial = doMaterialEm(estoque);
+  // Cópia do aparelho pode ser de antes da última importação: confere no servidor antes de recusar.
+  if (doMaterial.length === 0) doMaterial = doMaterialEm(await localDb.fetchEstoque(true));
   if (doMaterial.length === 0) return { tipo: 'fora_zl0024' };
 
   const preferidos = pref.depositos.map((d) => d.trim().padStart(4, '0'));
