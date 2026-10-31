@@ -16,7 +16,8 @@
  *
  * Acima das opções vem a situação do item (saldo por depósito, RM aberta,
  * pedido com previsão de entrega e MIGO — `SituacaoMaterialResumo`), a mesma
- * do Ctrl+K. Por isso o diálogo abre mesmo com uma opção só.
+ * do Ctrl+K, e a última contagem do Inventário Cíclico (data, resultado e
+ * quem contou). Por isso o diálogo abre mesmo com uma opção só.
  */
 
 import { useEffect, useState } from 'react';
@@ -31,6 +32,7 @@ import {
 import { buscarItemAtivoCatalogo } from '../lib/almoxCatalogoApi';
 import Modal, { ModalBody, ModalHeader } from './ui/Modal';
 import SituacaoMaterialResumo from './almoxarifado/SituacaoMaterialResumo';
+import UltimaContagemInventario from './almoxarifado/UltimaContagemInventario';
 import { useToast } from './ui/Toast';
 
 interface Props {
@@ -125,6 +127,9 @@ export default function EscolhaAcaoItemQr({ user, codigo, onNavigate, onClose }:
       </ModalHeader>
       <ModalBody className="space-y-2.5">
         <SituacaoMaterialResumo material={codigo} mostrarCabecalho={false} />
+        <div className="border-t pt-2.5" style={{ borderColor: 'var(--hairline)' }}>
+          <UltimaContagemInventario material={codigo} />
+        </div>
         <p className="border-t pt-3 text-xs font-semibold" style={{ color: 'var(--ink-secondary)', borderColor: 'var(--hairline)' }}>O que você quer fazer?</p>
         {acoes.map((acao) => {
           const { titulo, explicacao, icone: Icone } = DESTINOS[acao];

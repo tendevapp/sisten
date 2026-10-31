@@ -28,6 +28,10 @@ export interface SearchKeywordsChipsProps {
   className?: string;
   /** Modo compacto (altura reduzida) */
   compact?: boolean;
+  /** Texto ainda não confirmado, a cada tecla — para filtrar enquanto digita. */
+  onQueryChange?: (texto: string) => void;
+  /** Esconde o botão no celular (Enter do teclado continua criando o chip). */
+  ocultarBotaoNoCelular?: boolean;
 }
 
 export default function SearchKeywordsChips({
@@ -38,8 +42,14 @@ export default function SearchKeywordsChips({
   buttonLabel = 'Adicionar',
   className = '',
   compact = false,
+  onQueryChange,
+  ocultarBotaoNoCelular = false,
 }: SearchKeywordsChipsProps) {
-  const [queryInput, setQueryInput] = useState('');
+  const [queryInput, setQueryInputState] = useState('');
+  const setQueryInput = (texto: string) => {
+    setQueryInputState(texto);
+    onQueryChange?.(texto);
+  };
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleAdd = (e?: React.FormEvent) => {
@@ -124,7 +134,7 @@ export default function SearchKeywordsChips({
         </div>
         <button
           type="submit"
-          className={`flex items-center gap-1.5 px-4 ${compact ? 'py-1.5 text-[11px]' : 'py-2.5 text-xs'} font-bold rounded-xl shadow-xs transition-all cursor-pointer shrink-0 ${theme.btn}`}
+          className={`${ocultarBotaoNoCelular ? 'hidden sm:flex' : 'flex'} items-center gap-1.5 px-4 ${compact ? 'py-1.5 text-[11px]' : 'py-2.5 text-xs'} font-bold rounded-xl shadow-xs transition-all cursor-pointer shrink-0 ${theme.btn}`}
         >
           <Plus className="h-3.5 w-3.5" />
           <span>{buttonLabel}</span>

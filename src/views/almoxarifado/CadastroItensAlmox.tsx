@@ -11,18 +11,17 @@
  * e exibi-las na Solicitação de Compras.
  */
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue, lazy, Suspense } from 'react';
 import {
   ArrowLeft, RefreshCw, Search, Camera, ImageIcon, CheckCircle2,
   AlertCircle, X, Download, Filter, Eye, Trash2, Layers,
   Boxes, Sparkles, Tag, ShieldCheck, FileText, Check,
-  ChevronRight, ClipboardPaste, Upload, Plus, Pencil, Printer, MapPin
+  ChevronRight, ClipboardPaste, Upload, Plus, Printer, MapPin, SlidersHorizontal
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import {
   OPCOES_FILTRO_DATA,
   alteradoNoIntervalo,
-  formatarAlteracao,
   intervaloDoFiltro,
   type FiltroDataAlteracao,
 } from '../../lib/filtroDataAlteracao';
@@ -61,6 +60,25 @@ import type { Profile } from '../../types';
 import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../../lib/buscaKeywords';
 import FotosRecebimentoSugeridas from '../../components/almoxarifado/FotosRecebimentoSugeridas';
 import SearchKeywordsChips from '../../components/ui/SearchKeywordsChips';
+import CamposLoteValidade from '../../components/almoxarifado/CamposLotesValidade';
+import { lotesDoCatalogo, normalizarLotesCatalogo, type LoteValidadeCatalogo } from '../../lib/almoxCatalogoLotes';
+import CatalogoItemTile from '../../components/almoxarifado/CatalogoItemTile';
+import CatalogoItemDetalhe from '../../components/almoxarifado/CatalogoItemDetalhe';
+import { localDb } from '../../db/localDb';
+import { normalizeCode } from '../../lib/almoxarifado';
+import { canAccessForm } from '../../lib/pages';
+import { FORMULARIO_ACAO_ITEM } from '../../lib/acoesQr';
+import { hojeISO } from '../../lib/recebimentoAlmox';
+import { prepararContagemDoMaterial } from '../../lib/inventarioAtalho';
+import { buscarInventario } from '../../lib/inventarioCiclicoApi';
+import type { ItemInventario } from '../../lib/inventarioCiclico';
+import {
+  listarUltimasContagens, ultimaContagemDoMaterial, type UltimaContagem,
+} from '../../lib/inventarioUltimaContagem';
+
+// A contagem é a mesma do Inventário Cíclico (rodada preparada, controle de
+// movimentação, causa na recontagem); só baixa quando alguém toca em "Contar".
+const ModalContagem = lazy(() => import('./InventarioCiclico').then(m => ({ default: m.ModalContagem })));
 
 interface CadastroItensAlmoxProps {
   user: Profile;
@@ -73,6 +91,7 @@ type FiltroEtiqueta = 'todas' | 'impressa' | 'nao_impressa';
 
 /** Itens desenhados por vez; "Mostrar mais" acrescenta outro lote. */
 const LOTE_ITENS = 60;
+
 
 export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAlmoxProps) {
   const toast = useToast();
@@ -112,7 +131,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [fotoPreviewUrlSap, setFotoPreviewUrlSap] = useState<string | null>(null);
   const [observacaoSap, setObservacaoSap] = useState('');
   const [posicaoSap, setPosicaoSap] = useState('');
+  const [lotesSap, setLotesSap] = useState<LoteValidadeCatalogo[]>([]);
   const [posicaoFoto, setPosicaoFoto] = useState('');
+  const [lotesFoto, setLotesFoto] = useState<LoteValidadeCatalogo[]>([]);
   const [etiquetaDescricao, setEtiquetaDescricao] = useState('');
   const [etiquetaAplicacao, setEtiquetaAplicacao] = useState('');
   const [estoqueMinimo, setEstoqueMinimo] = useState('');
@@ -157,6 +178,23 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [periodoData, setPeriodoData] = useState({ de: '', ate: '' });
   const [filtroEtiqueta, setFiltroEtiqueta] = useState<FiltroEtiqueta>('todas');
   const [modoVis, setModoVis] = useState<ModoVisualizacao>('cards');
+  // Texto ainda não confirmado no campo de busca: filtra enquanto digita.
+  const [buscaDigitada, setBuscaDigitada] = useState('');
+  const buscaDigitadaAdiada = useDeferredValue(buscaDigitada);
+  // No celular os filtros secundários ficam recolhidos atrás de um botão.
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  // O campo "Adicionar item" só aparece pelo botão do topo.
+  const [adicionarAberto, setAdicionarAberto] = useState(false);
+  // Detalhe do item (pelo código: acompanha as edições salvas na lista).
+  const [detalheCodigo, setDetalheCodigo] = useState<string | null>(null);
+
+  // Inventário Cíclico: última contagem de cada material e a contagem aberta pelo atalho.
+  const podeContar = canAccessForm(user, FORMULARIO_ACAO_ITEM.inventario);
+  const [ultimasContagens, setUltimasContagens] = useState<Map<string, UltimaContagem> | null>(null);
+  const [versaoContagem, setVersaoContagem] = useState(0);
+  const [preparandoCodigo, setPreparandoCodigo] = useState<string | null>(null);
+  const [contando, setContando] = useState<{ inventarioId: string; item: ItemInventario; codigoSap: string } | null>(null);
+  const hoje = hojeISO();
 
   // Modal de Cadastro de Foto
   const [itemSelecionado, setItemSelecionado] = useState<ItemConsumivelZl0024 | null>(null);
@@ -200,6 +238,19 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   useEffect(() => {
     void carregarDados();
   }, [carregarDados]);
+
+  // Sem acesso ou sem rede, o cartão só não mostra a linha do inventário.
+  useEffect(() => {
+    let ativo = true;
+    listarUltimasContagens()
+      .then((mapa) => { if (ativo) setUltimasContagens(mapa); })
+      .catch((err) => console.warn('[CadastroItensAlmox] Últimas contagens indisponíveis:', err));
+    return () => { ativo = false; };
+  }, []);
+  const ultimaDoItem = useCallback(
+    (codigo: string) => (ultimasContagens ? ultimasContagens.get(normalizeCode(codigo)) ?? null : undefined),
+    [ultimasContagens],
+  );
 
   // Lista única de Níveis 2 presentes nos itens
   const opcoesNivel2 = useMemo(() => {
@@ -245,7 +296,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
   // Itens filtrados
   const itensFiltrados = useMemo(() => {
-    const tokens = buscaChips.map(normalizarParaBusca).filter(Boolean);
+    const tokens = [...buscaChips, ...extrairPalavrasChave(buscaDigitadaAdiada)].map(normalizarParaBusca).filter(Boolean);
     const intervaloData = intervaloDoFiltro(filtroData, periodoData);
 
     const filtrados = itens.filter(it => {
@@ -295,12 +346,12 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     // ordem em que já vinha (sort estável).
     const alteradoEm = (it: ItemConsumivelZl0024) => it.item_catalogo?.updated_at ?? '';
     return filtrados.sort((a, b) => alteradoEm(b).localeCompare(alteradoEm(a)));
-  }, [itens, buscaChips, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, filtroData, periodoData, filtroEtiqueta, posicaoDoItem, localizacoesDoItem]);
+  }, [itens, buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, filtroData, periodoData, filtroEtiqueta, posicaoDoItem, localizacoesDoItem]);
 
   // Desenha em lotes (como a aba BOM): o catálogo passa de mil itens com foto,
   // e montar todos de uma vez trava o celular e baixa dezenas de MB de imagem.
   const [visiveisQtd, setVisiveisQtd] = useState(LOTE_ITENS);
-  useEffect(() => { setVisiveisQtd(LOTE_ITENS); }, [buscaChips, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, filtroData, periodoData, filtroEtiqueta, modoVis]);
+  useEffect(() => { setVisiveisQtd(LOTE_ITENS); }, [buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, filtroData, periodoData, filtroEtiqueta, modoVis]);
   const itensVisiveis = useMemo(() => itensFiltrados.slice(0, visiveisQtd), [itensFiltrados, visiveisQtd]);
 
   // Estatísticas e KPIs
@@ -315,6 +366,30 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
     return { total, comFoto, semFoto, comLocalizacao, pctCobertura, saldoTotal, etiquetaImpressa };
   }, [itens, localizacoesDoItem]);
+
+  // Filtros secundários em uso — contados no botão "Filtros" do celular.
+  const filtrosSecundariosAtivos = [
+    filtroNivel2 !== 'todos', filtroGrupo !== 'todos', filtroLocalizacao !== 'todas',
+    filtroData !== 'todas', filtroEtiqueta !== 'todas',
+  ].filter(Boolean).length;
+  const algumFiltroAtivo = filtrosSecundariosAtivos > 0 || filtroRapido !== 'todos'
+    || buscaChips.length > 0 || buscaDigitadaAdiada.trim() !== '';
+  const limparFiltros = () => {
+    setFiltroNivel2('todos'); setFiltroGrupo('todos'); setFiltroLocalizacao('todas');
+    setFiltroData('todas'); setPeriodoData({ de: '', ate: '' }); setFiltroEtiqueta('todas');
+    setFiltroRapido('todos'); setBuscaChips([]);
+  };
+
+  const abrirAdicionar = () => {
+    setAdicionarAberto(true);
+    // Depois de montar: o campo só existe com o painel aberto.
+    window.setTimeout(() => inputAdicionarRef.current?.focus(), 0);
+  };
+  const fecharAdicionar = () => {
+    setAdicionarAberto(false);
+    setTermoAdicionar('');
+    setSugestoesAbertas(false);
+  };
 
   // Sugestões para o campo Adicionar Item
   const sugestoesAdicionar = useMemo(() => {
@@ -361,8 +436,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     };
 
     handleAbrirCadastroFoto(itemParaFoto);
-    setTermoAdicionar('');
-    setSugestoesAbertas(false);
+    fecharAdicionar();
   };
 
   // Funções de Abertura e Controle do Modal de Pesquisa SAP
@@ -374,6 +448,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setObservacaoSap('');
     setPosicaoSap('');
     setModalSapAberto(true);
+    setAdicionarAberto(false);
     setSugestoesAbertas(false);
   };
 
@@ -425,6 +500,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   }, [termoBuscaSap, modalSapAberto, itemSapSelecionado, executarBuscaSap]);
 
   const handleSelecionarItemSap = (candidato: MaterialCandidatoCatalogo) => {
+    const cadastro = dadosCompletos?.itensCatalogo.find(c => c.codigo_sap === candidato.codigo_sap);
+    setLotesSap(lotesDoCatalogo(cadastro));
     setItemSapSelecionado(candidato);
     setFotoArquivoSap(null);
     setFotoPreviewUrlSap(candidato.url_foto || null);
@@ -469,6 +546,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setFotoPreviewUrl(item.url_foto || null);
     setObservacao(item.item_catalogo?.observacao || '');
     setPosicaoFoto(item.item_catalogo?.posicao_estoque || '');
+    setLotesFoto(lotesDoCatalogo(item.item_catalogo));
     setEtiquetaDescricao(item.item_catalogo?.etiqueta_descricao || '');
     setEtiquetaAplicacao(item.item_catalogo?.etiqueta_aplicacao || '');
     const minimoGravado = item.item_catalogo?.estoque_minimo;
@@ -561,6 +639,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setFotoPreviewUrl(null);
     setObservacao('');
     setPosicaoFoto('');
+    setLotesFoto([]);
     setEtiquetaDescricao('');
     setEtiquetaAplicacao('');
     setEstoqueMinimo('');
@@ -619,7 +698,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     return posicaoFoto.trim() !== (cat?.posicao_estoque || '').trim()
       || etiquetaDescricao.trim() !== (cat?.etiqueta_descricao || '').trim()
       || etiquetaAplicacao.trim() !== (cat?.etiqueta_aplicacao || '').trim()
-      || numeroOuNull(estoqueMinimo) !== numeroOuNull(cat?.estoque_minimo);
+      || numeroOuNull(estoqueMinimo) !== numeroOuNull(cat?.estoque_minimo)
+      || JSON.stringify(normalizarLotesCatalogo(lotesFoto)) !== JSON.stringify(lotesDoCatalogo(cat));
   };
 
   /** Abre a pré-visualização; a data de impressão só é carimbada ao baixar. */
@@ -748,7 +828,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     if (!itemSelecionado) return;
     const cadastroMudou = cadastroDoItemMudou(itemSelecionado);
     if (!fotoArquivo && !itemSelecionado.tem_foto && !cadastroMudou && adicionaisNovas.length === 0) {
-      toast.warning('Tire uma foto, selecione um arquivo de imagem ou preencha a posição ou a etiqueta.');
+      toast.warning('Tire uma foto, selecione uma imagem ou preencha os dados do cadastro.');
       return;
     }
 
@@ -769,6 +849,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         etiqueta_descricao: etiquetaDescricao,
         etiqueta_aplicacao: etiquetaAplicacao,
         estoque_minimo: numeroOuNull(estoqueMinimo),
+        lotes_validade: normalizarLotesCatalogo(lotesFoto),
         fotoArquivo,
       }, user);
 
@@ -843,8 +924,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
   const handleSalvarItemSap = async () => {
     if (!itemSapSelecionado) return;
-    if (!fotoArquivoSap && !itemSapSelecionado.tem_foto && !posicaoSap.trim()) {
-      toast.warning('Tire uma foto, anexe uma imagem ou informe a posição no depósito.');
+    if (!fotoArquivoSap && !itemSapSelecionado.tem_foto && !posicaoSap.trim() && normalizarLotesCatalogo(lotesSap).length === 0) {
+      toast.warning('Tire uma foto, anexe uma imagem ou informe posição, lote ou validade.');
       return;
     }
 
@@ -862,6 +943,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         saldo_zl0024: itemSapSelecionado.saldo_total || 0,
         observacao: observacaoSap.trim() || null,
         posicao_estoque: posicaoSap.trim() || undefined,
+        lotes_validade: normalizarLotesCatalogo(lotesSap),
         fotoArquivo: fotoArquivoSap,
       }, user);
 
@@ -939,6 +1021,64 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     }
   };
 
+  /** Atalho "Contar": põe o item no inventário avulso do dia e abre a contagem auditada. */
+  const contarItem = async (item: ItemConsumivelZl0024) => {
+    if (preparandoCodigo) return;
+    setPreparandoCodigo(item.codigo_sap);
+    try {
+      const [estoque, giro] = await Promise.all([
+        localDb.fetchEstoque(),
+        localDb.fetchGiroEstoque().catch(() => []),
+      ]);
+      const r = await prepararContagemDoMaterial(item.codigo_sap, user, estoque, giro);
+      if (r.tipo === 'fora_zl0024') {
+        toast.error(`${item.codigo_sap} não está na ZL0024. A contagem é comparada com ela, então não há saldo para inventariar.`);
+      } else if (r.tipo === 'offline') {
+        toast.info('Sem rede: o item entrou na fila do inventário. A contagem abre quando sincronizar.');
+      } else if (r.tipo === 'de_outro') {
+        toast.warning(`Item já está em contagem no ${r.inventario.codigo}, de ${r.inventario.criado_por_nome || 'outro responsável'}.`);
+      } else {
+        setDetalheCodigo(null);
+        setContando({ inventarioId: r.inventario.id, item: r.item, codigoSap: item.codigo_sap });
+        toast.info(`Contagem no inventário ${r.inventario.codigo}.`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Não foi possível abrir a contagem deste item.');
+    } finally {
+      setPreparandoCodigo(null);
+    }
+  };
+
+  /** Depois de cada contagem: item atualizado no modal e a última contagem do cartão. */
+  const recarregarContagem = useCallback(async () => {
+    if (!contando) return;
+    const [inv, ultima] = await Promise.all([
+      buscarInventario(contando.inventarioId).catch(() => null),
+      ultimaContagemDoMaterial(contando.codigoSap).catch(() => undefined),
+    ]);
+    const item = inv?.itens.find(i => i.id === contando.item.id);
+    if (item) setContando(c => (c ? { ...c, item } : c));
+    if (ultima !== undefined) {
+      setUltimasContagens(mapa => {
+        const novo = new Map(mapa ?? []);
+        const chave = normalizeCode(contando.codigoSap);
+        if (ultima) novo.set(chave, ultima); else novo.delete(chave);
+        return novo;
+      });
+    }
+    setVersaoContagem(v => v + 1);
+  }, [contando]);
+
+  /** Foto tirada durante a contagem também vale para o catálogo. */
+  const aplicarFotoDaContagem = (codigoSap: string, salvo: CatalogoItem) => {
+    setItens(prev => prev.map(it => (it.codigo_sap === codigoSap
+      ? { ...it, item_catalogo: salvo, tem_foto: Boolean(salvo.imagem_path), url_foto: salvo.url_imagem || it.url_foto, origem_foto: 'catalogo' as const }
+      : it)));
+  };
+
+  const itemDetalhe = detalheCodigo ? itens.find(it => it.codigo_sap === detalheCodigo) ?? null : null;
+  const itemContando = contando ? itens.find(it => it.codigo_sap === contando.codigoSap) ?? null : null;
+
   // Exportar dados para CSV
   const handleExportarCsv = () => {
     if (itensFiltrados.length === 0) {
@@ -992,46 +1132,35 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-12">
-      {/* Topo / Cabeçalho */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
+    <div className="space-y-3 sm:space-y-6 animate-fade-in pb-12">
+      {/* Topo: no celular, título curto e ações em ícone — a lista é o que importa */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <button
             type="button"
             onClick={() => onNavigate('/formularios/almoxarifado')}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold hover:underline cursor-pointer mb-2"
+            className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold hover:underline cursor-pointer mb-1 sm:mb-2"
             style={{ color: 'var(--ink-secondary)' }}
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar aos formulários do almoxarifado
+            <span className="sm:hidden">Formulários</span>
+            <span className="hidden sm:inline">Voltar aos formulários do almoxarifado</span>
           </button>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-black tracking-tight flex items-center gap-2" style={{ color: 'var(--ink-primary)' }}>
-              <Layers className="h-6 w-6 text-amber-600 dark:text-amber-500" />
-              Cadastro de Itens — Catálogo de Consumíveis
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="text-lg sm:text-2xl font-black tracking-tight flex items-center gap-2" style={{ color: 'var(--ink-primary)' }}>
+              <Layers className="hidden sm:block h-6 w-6 text-amber-600 dark:text-amber-500" />
+              Cadastro de Itens<span className="hidden sm:inline"> — Catálogo de Consumíveis</span>
             </h1>
-            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+            <span className="hidden sm:inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
               FRM.ALM-0016
             </span>
           </div>
-          <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
+          <p className="hidden sm:block mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
             Catálogo de itens consumíveis do almoxarifado. Vincule fotos aos cadastros para visualização automática na Solicitação de Compras e no Inventário Cíclico.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              inputAdicionarRef.current?.focus();
-              inputAdicionarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }}
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-xs transition cursor-pointer"
-          >
-            <Plus className="h-4 w-4" />
-            Adicionar Item
-          </button>
-
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 pt-5 sm:pt-0">
           <button
             type="button"
             disabled={atualizando || carregando}
@@ -1040,28 +1169,40 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               void carregarDados().finally(() => setAtualizando(false));
             }}
             title="Recarregar catálogo e fotos"
-            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold transition cursor-pointer disabled:opacity-50"
+            aria-label="Recarregar catálogo e fotos"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 sm:px-3 py-2 text-xs font-bold transition cursor-pointer disabled:opacity-50"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
           >
             <RefreshCw className={`h-3.5 w-3.5 ${atualizando ? 'animate-spin' : ''}`} />
-            {atualizando ? 'Atualizando…' : 'Recarregar'}
+            <span className="hidden sm:inline">{atualizando ? 'Atualizando…' : 'Recarregar'}</span>
           </button>
 
           <button
             type="button"
             onClick={handleExportarCsv}
             title="Exportar dados filtrados para planilha CSV"
-            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold transition cursor-pointer"
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold transition cursor-pointer"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
           >
             <Download className="h-3.5 w-3.5" />
             Exportar CSV
           </button>
+
+          <button
+            type="button"
+            onClick={() => (adicionarAberto ? fecharAdicionar() : abrirAdicionar())}
+            aria-expanded={adicionarAberto}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-xs transition cursor-pointer"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="sm:hidden">Adicionar</span>
+            <span className="hidden sm:inline">Adicionar Item</span>
+          </button>
         </div>
       </div>
 
-      {/* Cards de Métricas e KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Indicadores: só no desktop — no celular, os números já estão nos filtros rápidos */}
+      <div className="hidden sm:grid grid-cols-4 gap-3">
         <div className="rounded-xl border p-4 shadow-xs" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
           <span className="text-[11px] font-bold block" style={{ color: 'var(--ink-muted)' }}>
             Total no Catálogo
@@ -1116,80 +1257,101 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         </div>
       </div>
 
-      {/* Bloco: Adicionar Item ao Catálogo (Campo de busca por Código SAP ou Descrição) */}
-      <div
-        ref={containerAdicionarRef}
-        className="rounded-xl border p-4 shadow-xs relative"
-        style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-400">
-              <Plus className="h-4 w-4" />
-            </div>
-            <div>
-              <h3 className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
-                Adicionar Item ao Catálogo
+      {/* Adicionar item: só pelo botão do topo. No celular ocupa a tela, com os
+          resultados logo abaixo do campo (o teclado não esconde nada). */}
+      {adicionarAberto && (
+        <div
+          ref={containerAdicionarRef}
+          className="fixed inset-0 z-[90] flex flex-col p-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:static sm:z-auto sm:block sm:rounded-xl sm:border sm:p-4 sm:shadow-xs"
+          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
+          role="dialog"
+          aria-label="Adicionar item ao catálogo"
+          onKeyDown={(e) => { if (e.key === 'Escape') fecharAdicionar(); }}
+        >
+          <div className="flex items-center justify-between gap-2 mb-2.5">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
+                Adicionar item ao catálogo
               </h3>
-              <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              <p className="hidden sm:block text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                 Busque por código SAP ou descrição para cadastrar a foto, ou insira um novo item manualmente. Fotos do Book de EPIs são puxadas automaticamente.
               </p>
             </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => handleAbrirModalSap()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-xs cursor-pointer self-start sm:self-auto transition"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Cadastrar Item (Catálogo SAP)
-          </button>
-        </div>
-
-        {/* Campo de Busca Rápida de Adição */}
-        <div className="relative">
-          <div className="relative flex items-center">
-            <Search className="absolute left-3.5 h-4 w-4 pointer-events-none text-slate-400" />
-            <input
-              ref={inputAdicionarRef}
-              type="text"
-              value={termoAdicionar}
-              onFocus={() => { if (termoAdicionar.trim()) setSugestoesAbertas(true); }}
-              onChange={(e) => {
-                setTermoAdicionar(e.target.value);
-                setSugestoesAbertas(true);
-              }}
-              placeholder="Adicionar item: digite o código SAP (ex: 1291134) ou descrição do material para vincular a foto..."
-              className="w-full pl-10 pr-10 py-2.5 text-xs rounded-lg border transition focus:outline-2 focus:outline-offset-1 font-medium"
-              style={{
-                borderColor: termoAdicionar ? 'var(--brand)' : 'var(--hairline)',
-                background: 'var(--surface-raised)',
-                color: 'var(--ink-primary)',
-              }}
-            />
-            {termoAdicionar && (
+            <div className="flex shrink-0 items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => {
-                  setTermoAdicionar('');
-                  setSugestoesAbertas(false);
-                }}
-                className="absolute right-3 text-xs text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                onClick={() => handleAbrirModalSap(termoAdicionar)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition hover:bg-slate-100 dark:hover:bg-slate-800"
+                style={{ borderColor: 'var(--hairline)', color: 'var(--ink-primary)' }}
               >
-                <X className="h-3.5 w-3.5" />
+                <Search className="h-3.5 w-3.5" />
+                <span className="sm:hidden">Catálogo SAP</span>
+                <span className="hidden sm:inline">Buscar no catálogo SAP</span>
               </button>
-            )}
+              <button
+                type="button"
+                onClick={fecharAdicionar}
+                aria-label="Fechar adicionar item"
+                className="p-1.5 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                style={{ color: 'var(--ink-muted)' }}
+              >
+                <X className="h-5 w-5 sm:h-4 sm:w-4" />
+              </button>
+            </div>
           </div>
+
+          <div className="relative flex min-h-0 flex-1 flex-col sm:block">
+            <div className="relative flex items-center">
+              <Search className="absolute left-3.5 h-4 w-4 pointer-events-none text-slate-400" />
+              <input
+                ref={inputAdicionarRef}
+                type="text"
+                enterKeyHint="search"
+                value={termoAdicionar}
+                onFocus={() => { if (termoAdicionar.trim()) setSugestoesAbertas(true); }}
+                onChange={(e) => {
+                  setTermoAdicionar(e.target.value);
+                  setSugestoesAbertas(true);
+                }}
+                placeholder="Código SAP ou descrição do material"
+                className="w-full pl-10 pr-10 py-3 sm:py-2.5 text-sm sm:text-xs rounded-lg border transition focus:outline-2 focus:outline-offset-1 font-medium"
+                style={{
+                  borderColor: termoAdicionar ? 'var(--brand)' : 'var(--hairline)',
+                  background: 'var(--surface-raised)',
+                  color: 'var(--ink-primary)',
+                }}
+              />
+              {termoAdicionar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTermoAdicionar('');
+                    setSugestoesAbertas(false);
+                    inputAdicionarRef.current?.focus();
+                  }}
+                  aria-label="Limpar busca"
+                  className="absolute right-3 text-xs text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {!termoAdicionar.trim() && (
+              <p className="sm:hidden mt-3 text-xs" style={{ color: 'var(--ink-muted)' }}>
+                Digite o código SAP ou parte da descrição. Fotos do Book de EPIs entram sozinhas.
+              </p>
+            )}
 
           {/* Dropdown de Sugestões em Tempo Real */}
           {sugestoesAbertas && termoAdicionar.trim().length > 0 && (
             <div
-              className="absolute left-0 right-0 top-full mt-1.5 z-40 max-h-80 overflow-y-auto rounded-xl border shadow-xl animate-fade-in"
+              className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-xl border sm:absolute sm:left-0 sm:right-0 sm:top-full sm:z-40 sm:mt-1.5 sm:max-h-80 sm:flex-none sm:shadow-xl animate-fade-in"
               style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
             >
               <div className="p-2 border-b text-[11px] font-bold flex items-center justify-between" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
                 <span>Resultados na base SAP / Estoque ({sugestoesAdicionar.length})</span>
-                <span className="text-[10px]">Clique para selecionar e tirar a foto</span>
+                <span className="hidden text-[10px] sm:inline">Clique para selecionar e tirar a foto</span>
               </div>
 
               {sugestoesAdicionar.length === 0 ? (
@@ -1278,7 +1440,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                     </div>
                   ))}
 
-                  <div className="p-2.5 bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between">
+                  <div className="p-2.5 bg-slate-50 dark:bg-slate-900/60 flex flex-wrap items-center justify-between gap-1.5">
                     <span className="text-[11px] text-slate-500">
                       Não encontrou o que procurava na base local?
                     </span>
@@ -1295,67 +1457,67 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               )}
             </div>
           )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Barra de Filtros e Busca */}
-      <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
-        <div className="flex flex-col md:flex-row md:items-center gap-3">
-          {/* Busca textual por palavras-chave com chips */}
-          <div className="flex-1">
+      {/* Busca e filtros: no celular, uma linha (busca + Filtros) e pílulas que deslizam */}
+      <div className="rounded-xl border p-2.5 sm:p-4 space-y-2.5 sm:space-y-3" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
+        <div className="flex flex-col md:flex-row md:items-center gap-2.5 sm:gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-2">
             <SearchKeywordsChips
               chips={buscaChips}
               onChangeChips={setBuscaChips}
+              onQueryChange={setBuscaDigitada}
+              ocultarBotaoNoCelular
               accent="amber"
-              placeholder="Digite um termo (código SAP, descrição, texto técnico, grupo) e pressione Enter..."
+              className="min-w-0 flex-1"
+              placeholder="Buscar código, descrição, grupo, posição…"
             />
+            <button
+              type="button"
+              onClick={() => setFiltrosAbertos(v => !v)}
+              aria-expanded={filtrosAbertos}
+              className="md:hidden relative inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-bold cursor-pointer"
+              style={{
+                borderColor: filtrosAbertos || filtrosSecundariosAtivos > 0 ? 'var(--brand)' : 'var(--hairline)',
+                color: 'var(--ink-primary)',
+                background: 'var(--surface-raised)',
+              }}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filtros
+              {filtrosSecundariosAtivos > 0 && (
+                <span className="rounded-full bg-amber-600 px-1.5 text-[10px] font-black text-white tabular-nums">{filtrosSecundariosAtivos}</span>
+              )}
+            </button>
           </div>
 
           {/* Filtros rápidos do catálogo */}
-          <div className="flex items-center gap-1 rounded-lg border p-1" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
-            <button
-              type="button"
-              onClick={() => setFiltroRapido('todos')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
-                filtroRapido === 'todos' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              Todos ({itens.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFiltroRapido('com_foto')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1 ${
-                filtroRapido === 'com_foto' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              <Check className="h-3 w-3" />
-              Com Foto ({kpis.comFoto})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFiltroRapido('com_localizacao')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1 ${
-                filtroRapido === 'com_localizacao' ? 'bg-sky-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              <MapPin className="h-3 w-3" />
-              Com localização ({kpis.comLocalizacao})
-            </button>
-            <button
-              type="button"
-              onClick={() => setFiltroRapido('sem_foto')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1 ${
-                filtroRapido === 'sem_foto' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              <Camera className="h-3 w-3" />
-              Pendentes ({kpis.semFoto})
-            </button>
+          <div className="flex min-w-0 items-center gap-1 overflow-x-auto no-scrollbar rounded-lg border p-1" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+            {([
+              { valor: 'todos', rotulo: 'Todos', n: itens.length, ativo: 'bg-amber-600', icone: null },
+              { valor: 'com_foto', rotulo: 'Com foto', n: kpis.comFoto, ativo: 'bg-emerald-600', icone: Check },
+              { valor: 'com_localizacao', rotulo: 'Com localização', n: kpis.comLocalizacao, ativo: 'bg-sky-600', icone: MapPin },
+              { valor: 'sem_foto', rotulo: 'Sem foto', n: kpis.semFoto, ativo: 'bg-amber-600', icone: Camera },
+            ] as const).map(({ valor, rotulo, n, ativo, icone: Icone }) => (
+              <button
+                key={valor}
+                type="button"
+                onClick={() => setFiltroRapido(valor)}
+                aria-pressed={filtroRapido === valor}
+                className={`shrink-0 whitespace-nowrap px-2.5 py-1.5 sm:py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1 ${
+                  filtroRapido === valor ? `${ativo} text-white shadow-xs` : 'text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                {Icone && <Icone className="h-3 w-3" />}
+                {rotulo} <span className="tabular-nums opacity-80">{n}</span>
+              </button>
+            ))}
           </div>
 
-          {/* Alternância Cards vs Tabela */}
-          <div className="flex items-center gap-1 rounded-lg border p-1" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+          {/* Alternância Cards vs Tabela — no celular, só cartões */}
+          <div className="hidden sm:flex items-center gap-1 rounded-lg border p-1" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
             <button
               type="button"
               onClick={() => setModoVis('cards')}
@@ -1377,10 +1539,10 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           </div>
         </div>
 
-        {/* Linha secundária de filtros: Subcategoria, Grupo, Localização e Data de alteração */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 pt-2 border-t" style={{ borderColor: 'var(--hairline)' }}>
+        {/* Linha secundária de filtros: recolhida no celular até tocar em "Filtros" */}
+        <div className={`${filtrosAbertos ? 'grid' : 'hidden'} md:grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5 sm:gap-3 pt-2 border-t`} style={{ borderColor: 'var(--hairline)' }}>
           <div>
-            <label className="text-[10px] font-bold block mb-1 uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+            <label className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
               Subcategoria (Nível 2)
             </label>
             <select
@@ -1397,7 +1559,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           </div>
 
           <div>
-            <label className="text-[10px] font-bold block mb-1 uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+            <label className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
               Grupo de Mercadorias (SAP)
             </label>
             <select
@@ -1414,7 +1576,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           </div>
 
           <div>
-            <label className="text-[10px] font-bold block mb-1 uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+            <label className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
               Localização no estoque
             </label>
             <select
@@ -1432,7 +1594,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           </div>
 
           <div>
-            <label className="text-[10px] font-bold block mb-1 uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+            <label className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
               Data de alteração
             </label>
             <select
@@ -1464,7 +1626,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           </div>
 
           <div>
-            <label className="text-[10px] font-bold block mb-1 uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+            <label className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
               Etiqueta
             </label>
             <select
@@ -1481,30 +1643,49 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         </div>
       </div>
 
+      {/* Resultado da busca logo abaixo dela: confirma o que achou sem rolar a tela */}
+      {!carregando && algumFiltroAtivo && (
+        <div className="flex items-center justify-between gap-2 px-1 text-xs" style={{ color: 'var(--ink-secondary)' }}>
+          <span>
+            <strong className="tabular-nums" style={{ color: 'var(--ink-primary)' }}>{itensFiltrados.length}</strong> de {itens.length} itens
+          </span>
+          <button
+            type="button"
+            onClick={limparFiltros}
+            className="font-bold cursor-pointer hover:underline"
+            style={{ color: 'var(--brand)' }}
+          >
+            Limpar filtros
+          </button>
+        </div>
+      )}
+
       {/* Etiquetas de prateleira: seleção e impressão */}
       {!carregando && itensFiltrados.length > 0 && (
         <div
-          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2"
+          className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2"
           style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
         >
-          <label className="inline-flex flex-wrap items-center gap-2 text-xs font-bold cursor-pointer" style={{ color: 'var(--ink-secondary)' }}>
+          <label className="inline-flex min-w-0 items-center gap-2 text-xs font-bold cursor-pointer" style={{ color: 'var(--ink-secondary)' }}>
             <input
               type="checkbox"
               checked={itensFiltrados.every(it => selecionados.has(it.codigo_sap))}
               onChange={(e) => setSelecionados(e.target.checked ? new Set(itensFiltrados.map(it => it.codigo_sap)) : new Set())}
-              className="h-4 w-4 cursor-pointer accent-amber-600"
+              className="h-4 w-4 shrink-0 cursor-pointer accent-amber-600"
             />
-            Marcar os {itensFiltrados.length} filtrados
-            <span className="font-normal" style={{ color: 'var(--ink-muted)' }}>
+            <span className="truncate">
+              Marcar os {itensFiltrados.length}<span className="hidden sm:inline"> filtrados</span>
+            </span>
+            <span className="hidden sm:inline font-normal" style={{ color: 'var(--ink-muted)' }}>
               · {selecionados.size} marcado(s) para etiqueta
             </span>
           </label>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {selecionados.size > 0 && (
               <button
                 type="button"
                 onClick={() => setSelecionados(new Set())}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
                 style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
               >
                 Limpar
@@ -1515,10 +1696,12 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               onClick={imprimirSelecionadas}
               disabled={selecionados.size === 0}
               title="PDF A4 com 10 etiquetas por folha. O QR de cada uma é lido pelo botão de QR do cabeçalho (baixa ou inventário) e pelo Ler QR da Requisição no Balcão"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 shadow-xs transition cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 shadow-xs transition cursor-pointer disabled:opacity-50"
             >
               <Printer className="h-3.5 w-3.5" />
-              Imprimir etiquetas ({selecionados.size})
+              <span className="hidden sm:inline">Imprimir etiquetas</span>
+              <span className="sm:hidden">Etiquetas</span>
+              <span className="tabular-nums">({selecionados.size})</span>
             </button>
           </div>
         </div>
@@ -1548,206 +1731,23 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           </p>
         </div>
       ) : modoVis === 'cards' ? (
-        /* Visualização em Cards (Estilo Catálogo / Book) */
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        /* Cartões compactos: 2 colunas no celular; tocar abre o detalhe */
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-2 sm:gap-3">
           {itensVisiveis.map((item) => (
-            <div
+            <CatalogoItemTile
               key={item.codigo_sap}
-              className="rounded-xl border shadow-xs flex flex-col justify-between overflow-hidden transition-all hover:shadow-md"
-              style={{
-                borderColor: item.tem_foto ? 'color-mix(in srgb, var(--brand) 30%, var(--hairline))' : 'var(--hairline)',
-                background: 'var(--surface-card)',
-              }}
-            >
-              <div>
-                {/* 1. Header Separado de Metadados: Código SAP, Origem/Status e Saldo ZL0024 */}
-                <div
-                  className="px-3.5 py-2.5 border-b flex items-center justify-between gap-2 bg-slate-50/80 dark:bg-slate-900/50"
-                  style={{ borderColor: 'var(--hairline)' }}
-                >
-                  <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                    <input
-                      type="checkbox"
-                      checked={selecionados.has(item.codigo_sap)}
-                      onChange={() => alternarSelecao(item.codigo_sap)}
-                      title="Marcar para imprimir etiqueta"
-                      aria-label={`Marcar ${item.codigo_sap} para imprimir etiqueta`}
-                      className="h-4 w-4 cursor-pointer accent-amber-600"
-                    />
-                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-900 text-white dark:bg-slate-800 shadow-xs">
-                      {item.codigo_sap}
-                    </span>
-                    {item.tem_foto && item.origem_foto === 'book_epi' ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                        <ShieldCheck className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-                        Book EPI {item.ca_epi ? `· CA ${item.ca_epi}` : ''}
-                      </span>
-                    ) : item.tem_foto ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                        <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                        Foto Ativa
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-200/80 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                        Sem foto
-                      </span>
-                    )}
-                  </div>
-
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 shrink-0">
-                    Saldo: {formatarSaldo(item.saldo_total)} {item.umb}
-                  </span>
-                </div>
-
-                {/* 2. Vitrine da Imagem do Produto: Sem Cortes, Centralizada e com Fundo Limpo */}
-                <div
-                  className="relative h-56 w-full bg-gradient-to-b from-slate-50/60 via-white to-slate-50/60 dark:from-slate-900/40 dark:via-slate-900/20 dark:to-slate-950 flex items-center justify-center p-3.5 border-b overflow-hidden group"
-                  style={{ borderColor: 'var(--hairline)' }}
-                >
-                  {item.url_foto ? (
-                    <>
-                      <img
-                        src={item.url_foto}
-                        alt={item.descricao}
-                        className="h-full w-full object-contain drop-shadow-xs transition-transform duration-300 group-hover:scale-105"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                      {/* Overlay com botões no hover */}
-                      <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setImagemZoom({ url: item.url_foto!, titulo: item.descricao, codigo: item.codigo_sap })}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-slate-900/85 hover:bg-slate-900 border border-white/20 shadow-md cursor-pointer transition hover:scale-105 active:scale-95"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          Ampliar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAbrirCadastroFoto(item)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-md cursor-pointer transition hover:scale-105 active:scale-95"
-                        >
-                          <Camera className="h-3.5 w-3.5" />
-                          Alterar foto
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleAbrirCadastroFoto(item)}
-                      className="h-full w-full flex flex-col items-center justify-center gap-2 p-4 text-center text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg hover:border-amber-400 dark:hover:border-amber-500 transition cursor-pointer group/empty"
-                    >
-                      <div className="p-3 rounded-full bg-slate-100 dark:bg-slate-800 group-hover/empty:bg-amber-50 dark:group-hover/empty:bg-amber-950/50 transition">
-                        <Camera className="h-6 w-6 stroke-1.5 text-slate-400 group-hover/empty:text-amber-600 dark:group-hover/empty:text-amber-400" />
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold block">Adicionar foto</span>
-                        <span className="text-[10px] text-slate-400 block">Tire com a câmera ou envie arquivo</span>
-                      </div>
-                    </button>
-                  )}
-                </div>
-
-                {/* Corpo do Card */}
-                <div className="p-4 space-y-2.5">
-                  <div>
-                    <h4 className="text-sm font-bold line-clamp-2 leading-snug" style={{ color: 'var(--ink-primary)' }} title={item.descricao}>
-                      {item.descricao || '—'}
-                    </h4>
-
-                    {item.texto_tecnico && (
-                      <p className="mt-1 text-[11px] line-clamp-2 italic" style={{ color: 'var(--ink-secondary)' }} title={item.texto_tecnico}>
-                        {item.texto_tecnico}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Taxonomia: Nível 1, Nível 2 e Grupo */}
-                  <div className="space-y-1 text-[11px] pt-1 border-t" style={{ borderColor: 'var(--hairline)' }}>
-                    <div className="flex items-center justify-between">
-                      <span style={{ color: 'var(--ink-muted)' }}>Classificação:</span>
-                      <span className="font-bold text-amber-700 dark:text-amber-400">
-                        {item.classificacao_nivel1} {item.classificacao_nivel2 ? `• ${item.classificacao_nivel2}` : ''}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span style={{ color: 'var(--ink-muted)' }}>Grupo SAP:</span>
-                      <span className="font-medium truncate max-w-[190px]" style={{ color: 'var(--ink-secondary)' }} title={item.grupo_mercadorias}>
-                        {item.grp_mercad ? `${item.grp_mercad} - ${item.grupo_mercadorias}` : item.grupo_mercadorias || '—'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span style={{ color: 'var(--ink-muted)' }}>Depósitos ZL0024:</span>
-                      <span className="font-mono font-bold" style={{ color: 'var(--ink-secondary)' }}>
-                        {item.depositos.join(', ') || 'Principal'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span style={{ color: 'var(--ink-muted)' }}>Posição no depósito:</span>
-                      <span className="font-mono font-bold truncate max-w-[190px]" style={{ color: 'var(--ink-secondary)' }} title={posicaoDoItem(item)}>
-                        {posicaoDoItem(item) || '—'}
-                      </span>
-                    </div>
-                    {item.item_catalogo?.codigo_registro && (
-                      <div className="flex items-center justify-between">
-                        <span style={{ color: 'var(--ink-muted)' }}>Registro:</span>
-                        <span className="font-mono text-[10px] font-bold text-slate-500">
-                          {item.item_catalogo.codigo_registro}
-                        </span>
-                      </div>
-                    )}
-                    {item.item_catalogo?.updated_at && (
-                      <div className="flex items-center justify-between gap-2">
-                        <span style={{ color: 'var(--ink-muted)' }}>Alterado em:</span>
-                        <span className="text-[10px] font-bold text-slate-500 text-right truncate">
-                          {formatarAlteracao(item.item_catalogo.updated_at)}
-                          {item.item_catalogo.atualizado_por_nome ? ` · ${item.item_catalogo.atualizado_por_nome}` : ''}
-                        </span>
-                      </div>
-                    )}
-                    {item.item_catalogo?.estoque_minimo !== null && item.item_catalogo?.estoque_minimo !== undefined && (
-                      <div className="flex items-center justify-between">
-                        <span style={{ color: 'var(--ink-muted)' }}>Estoque mínimo:</span>
-                        <span className="font-mono font-bold" style={{ color: 'var(--ink-secondary)' }}>
-                          {Number(item.item_catalogo.estoque_minimo).toLocaleString('pt-BR')} {item.umb}
-                        </span>
-                      </div>
-                    )}
-                    {item.item_catalogo?.etiqueta_impressa_em && (
-                      <div className="flex items-center justify-between">
-                        <span style={{ color: 'var(--ink-muted)' }}>Etiqueta impressa:</span>
-                        <span className="text-[10px] font-bold text-slate-500">
-                          {new Date(item.item_catalogo.etiqueta_impressa_em).toLocaleDateString('pt-BR')}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Rodapé / Ações */}
-              <div className="p-3 border-t bg-slate-50/50 dark:bg-slate-900/30 flex items-center justify-between" style={{ borderColor: 'var(--hairline)' }}>
-                <span className="text-[10px] font-mono" style={{ color: 'var(--ink-muted)' }}>
-                  {item.tem_foto ? 'Visível em Compras' : 'Pendente de foto'}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => handleAbrirCadastroFoto(item)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                    item.tem_foto
-                      ? 'border hover:bg-slate-100 dark:hover:bg-slate-800'
-                      : 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
-                  }`}
-                  style={item.tem_foto ? { borderColor: 'var(--hairline)', color: 'var(--ink-primary)' } : undefined}
-                >
-                  {item.tem_foto ? <Pencil className="h-3.5 w-3.5" /> : <Camera className="h-3.5 w-3.5" />}
-                  {item.tem_foto ? 'Editar' : 'Tirar / Vincular foto'}
-                </button>
-              </div>
-            </div>
+              item={item}
+              posicao={posicaoDoItem(item)}
+              ultima={ultimaDoItem(item.codigo_sap)}
+              hoje={hoje}
+              marcado={selecionados.has(item.codigo_sap)}
+              podeContar={podeContar}
+              preparandoContagem={preparandoCodigo === item.codigo_sap}
+              onAbrir={(it) => setDetalheCodigo(it.codigo_sap)}
+              onEditar={handleAbrirCadastroFoto}
+              onContar={(it) => void contarItem(it)}
+              onMarcar={alternarSelecao}
+            />
           ))}
         </div>
       ) : (
@@ -2242,6 +2242,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                 </p>
               </div>
 
+              <CamposLoteValidade valores={lotesFoto} onChange={setLotesFoto} disabled={salvando} />
+
               {/* Campo de Observação Adicional */}
               <div>
                 <label className="text-xs font-bold block mb-1" style={{ color: 'var(--ink-primary)' }}>
@@ -2376,7 +2378,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       {/* Modal: Visualizador em Alta Resolução (Zoom) */}
       {imagemZoom && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[120] animate-fade-in"
           onClick={() => setImagemZoom(null)}
           role="dialog"
           aria-modal="true"
@@ -2798,6 +2800,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                       />
                     </div>
 
+                    <CamposLoteValidade valores={lotesSap} onChange={setLotesSap} disabled={salvandoSap} />
+
                     {/* Observações Internas (Opcional) */}
                     <div className="space-y-1 pt-1">
                       <label className="text-[11px] font-bold block" style={{ color: 'var(--ink-secondary)' }}>
@@ -2846,7 +2850,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                   <button
                     type="button"
                     onClick={handleSalvarItemSap}
-                    disabled={salvandoSap || (!fotoArquivoSap && !itemSapSelecionado.tem_foto)}
+                    disabled={salvandoSap || (!fotoArquivoSap && !itemSapSelecionado.tem_foto && !posicaoSap.trim() && normalizarLotesCatalogo(lotesSap).length === 0)}
                     className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-md transition cursor-pointer disabled:opacity-50"
                   >
                     {salvandoSap ? (
@@ -2866,6 +2870,42 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
             </div>
           </div>
         </div>
+      )}
+
+      {/* Detalhe do item: tudo o que saiu do cartão, com Editar / Contar / Etiqueta */}
+      {itemDetalhe && (
+        <CatalogoItemDetalhe
+          item={itemDetalhe}
+          posicao={posicaoDoItem(itemDetalhe)}
+          ultima={ultimaDoItem(itemDetalhe.codigo_sap)}
+          versaoContagem={versaoContagem}
+          podeContar={podeContar}
+          preparandoContagem={preparandoCodigo === itemDetalhe.codigo_sap}
+          onEditar={() => { setDetalheCodigo(null); handleAbrirCadastroFoto(itemDetalhe); }}
+          onContar={() => void contarItem(itemDetalhe)}
+          onEtiqueta={() => prepararEtiquetas([itemDetalhe])}
+          onZoom={(url) => setImagemZoom({ url, titulo: itemDetalhe.descricao, codigo: itemDetalhe.codigo_sap })}
+          onClose={() => setDetalheCodigo(null)}
+        />
+      )}
+
+      {/* Contagem do Inventário Cíclico aberta pelo atalho "Contar" */}
+      {contando && (
+        <Suspense fallback={null}>
+          <ModalContagem
+            user={user}
+            item={contando.item}
+            inventarioId={contando.inventarioId}
+            numero={contando.item.ordem}
+            fotoItem={itemContando?.item_catalogo ?? undefined}
+            onFotoSalva={(salvo) => aplicarFotoDaContagem(contando.codigoSap, salvo)}
+            onVerZoom={(url, titulo, codigo) => setImagemZoom({ url, titulo, codigo })}
+            onRecarregar={recarregarContagem}
+            onProximo={() => setContando(null)}
+            temProximo={false}
+            onClose={() => setContando(null)}
+          />
+        </Suspense>
       )}
     </div>
   );
