@@ -13,6 +13,12 @@
  * - o nº do pagamento grudado na data: "Pagamento número 18548436270328 de
  *   outubro | # 185484362703" — vale o número depois do "#".
  *
+ * Há dois modelos de página. "Detalhe da compra" traz "Produtos (n)", "Total",
+ * a seção de pagamento/envio e os itens em blocos "Pacote N". "Detalhes da
+ * transação" traz a data numa linha e o "#número" na seguinte, cada item como
+ * descrição / "N unidades" / "R$ valor", "Desconto", "Frete" e "Total pago" —
+ * sem forma de pagamento nem endereço.
+ *
  * Tudo aqui é sugestão: o comprador confere e corrige antes de gravar.
  */
 
@@ -32,6 +38,8 @@ export interface DetalheCompraMl {
   qtdProdutos: number | null;
   valorProdutos: number | null;
   valorFrete: number | null;
+  /** Desconto (positivo) do modelo "Detalhes da transação"; não é gravado — só confere a conta. */
+  valorDesconto: number | null;
   valorTotal: number | null;
   formaPagamento: string | null;
   numeroPagamento: string | null;
@@ -127,13 +135,17 @@ export function interpretarDetalheCompraMl(texto: string, referencia: Date = new
 
   // O nº da compra é o primeiro "# <16 dígitos>"; o do pagamento é mais curto e vem depois.
   const numeroCompra = normalizarNumeroCompraMl(texto.match(/#\s*(\d{14,})/)?.[1] ?? '');
-  const linhaCabecalho = linhas.find(l => /#\s*\d{14,}/.test(l)) ?? texto;
-  const dataCompra = dataDoTexto(linhaCabecalho, referencia);
+  const iCabecalho = linhas.findIndex(l => /#\s*\d{14,}/.test(l));
+  const linhaCabecalho = iCabecalho >= 0 ? linhas[iCabecalho] : texto;
+  // "Detalhes da transação" põe a data ("30 de outubro |") na linha de cima do "#número".
+  const dataCompra = dataDoTexto(linhaCabecalho, referencia)
+    ?? (iCabecalho > 0 ? dataDoTexto(linhas[iCabecalho - 1], referencia) : null);
 
-  const qtdProdutos = Number(texto.match(/Produtos\s*\((\d+)\)/i)?.[1] ?? NaN);
+  let qtdProdutos = Number(texto.match(/Produtos\s*\((\d+)\)/i)?.[1] ?? NaN);
   const produtos = valorApos(linhas, /^Produtos\s*\(\d+\)/i);
   const frete = valorApos(linhas, /^Frete$/i);
-  const total = valorApos(linhas, /^Total$/i);
+  const total = valorApos(linhas, /^Total(?:\s+pago)?$/i);
+  const desconto = valorApos(linhas, /^Desconto$/i);
 
   const iPagamento = linhas.findIndex(l => /^Pagamento$/i.test(l));
   const formaPagamento = iPagamento >= 0 ? (linhas[iPagamento + 1] ?? null) : null;
@@ -151,7 +163,9 @@ export function interpretarDetalheCompraMl(texto: string, referencia: Date = new
     ?? linhas.find(l => /^(Pago|Pagamento confirmado)$/i.test(l)) ?? null;
 
   // Endereço: entre o "Frete" da seção de envio (depois do pagamento) e o 1º pacote.
-  const iFreteEnvio = linhas.findIndex((l, k) => k > Math.max(iPagamento, 0) && /^Frete$/i.test(l));
+  // Sem seção de pagamento ("Detalhes da transação") não há endereço — o "Frete"
+  // que existe é o do resumo, seguido de "Total pago".
+  const iFreteEnvio = iPagamento < 0 ? -1 : linhas.findIndex((l, k) => k > iPagamento && /^Frete$/i.test(l));
   const iPrimeiroPacote = linhas.findIndex(l => /^Pacote\s+\d+$/i.test(l));
   let endereco: string | null = null;
   if (iFreteEnvio >= 0) {
@@ -178,7 +192,33 @@ export function interpretarDetalheCompraMl(texto: string, referencia: Date = new
     if (descricao || valor != null) pacotes.push({ descricao, valor, quantidade });
   });
 
+  // "Detalhes da transação": cada item é descrição / "N unidades" / "R$ valor".
+  // O mesmo produto pode vir duas vezes (dois itens da compra) — os dois contam.
+  if (pacotes.length === 0) {
+    linhas.forEach((l, i) => {
+      const un = l.match(/^(\d+)\s+unidades?$/i);
+      if (!un || i === 0) return;
+      const descricao = linhas[i - 1];
+      if (/^R\$|^#|unidades?$/i.test(descricao)) return;
+      const proxima = linhas.slice(i + 1, i + 3).find(x => /^R\$/.test(x));
+      pacotes.push({ descricao, valor: proxima ? valorDaLinha(proxima) : null, quantidade: Number(un[1]) });
+    });
+  }
+
+  // Sem "Produtos (n)", os produtos são a soma dos itens.
+  let valorProdutos = produtos.valor;
+  if (valorProdutos == null && pacotes.length && pacotes.every(p => p.valor != null)) {
+    valorProdutos = arred(pacotes.reduce((s, p) => s + (p.valor ?? 0), 0));
+    if (!Number.isFinite(qtdProdutos)) qtdProdutos = pacotes.reduce((s, p) => s + (p.quantidade ?? 0), 0);
+  }
+
   const valorTotal = total.valor ?? produtos.valor;
+  if (total.valor != null && produtos.valor == null && valorProdutos != null) {
+    const esperado = arred(valorProdutos + (frete.valor ?? 0) - (desconto.valor ?? 0));
+    if (Math.abs(esperado - total.valor) > 0.01) {
+      avisos.push(`Itens + frete − desconto dão ${esperado.toFixed(2).replace('.', ',')}, mas o total pago é ${total.valor.toFixed(2).replace('.', ',')} — confira os valores.`);
+    }
+  }
   if (!numeroCompra) avisos.push('Nº da compra não encontrado no texto.');
   if (valorTotal == null) avisos.push('Total da compra não encontrado — digite o valor do boleto.');
   if (pacotes.length) {
@@ -196,8 +236,9 @@ export function interpretarDetalheCompraMl(texto: string, referencia: Date = new
     numeroCompra,
     dataCompra,
     qtdProdutos: Number.isFinite(qtdProdutos) ? qtdProdutos : null,
-    valorProdutos: produtos.valor,
+    valorProdutos,
     valorFrete: frete.valor,
+    valorDesconto: desconto.valor,
     valorTotal,
     formaPagamento,
     numeroPagamento,
@@ -210,5 +251,5 @@ export function interpretarDetalheCompraMl(texto: string, referencia: Date = new
 
 /** O texto colado parece um "Detalhe da compra" do ML (e não só o número)? */
 export function pareceDetalheCompraMl(texto: string): boolean {
-  return /Detalhe da compra|Pacote\s+\d|Produtos\s*\(\d+\)|reais com/i.test(texto ?? '');
+  return /Detalhes? da (compra|transa[çc][ãa]o)|Pacote\s+\d|Produtos\s*\(\d+\)|reais com|Total pago|^\d+\s+unidades?$/im.test(texto ?? '');
 }

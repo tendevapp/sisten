@@ -141,6 +141,102 @@ describe('interpretarDetalheCompraMl', () => {
 
   it('reconhece texto de detalhe e ignora só o número', () => {
     expect(pareceDetalheCompraMl(COLADO)).toBe(true);
+    expect(pareceDetalheCompraMl(TRANSACAO)).toBe(true);
     expect(pareceDetalheCompraMl('# 2000015748279995')).toBe(false);
+  });
+});
+
+// Modelo "Detalhes da transação" colado em 30/10/2026: data e "#" em linhas
+// separadas, item = descrição / "N unidades" / "R$", Desconto e "Total pago".
+const TRANSACAO = `Detalhes da transação
+30 de outubro |
+
+#2000015778845939
+Carneira Mascara De Solda Sem Catraca Ledan
+
+25 unidades
+
+R$ 779,75
+
+Cotovelo Joelho 90° Galvanizado 3/4 Polegada Fêmea Rosca Bsp 3/4 Polegada Dn 20
+
+6 unidades
+
+R$ 92,88
+
+Mancal Com Rolamento Ucp 207 Para Eixo De 35mm (ucp207)
+
+1 unidade
+
+R$ 45
+
+Tee 3/4 Bsp Galvanizado Femea Marca Ga/segur Conexão Metal Rosca 150 Lbf
+
+6 unidades
+
+R$ 118,80
+
+Cartão De Memória Adata High Endurance Microsd 64gb Classe10
+
+8 unidades
+
+R$ 2.223,92
+
+Carneira Mascara De Solda Sem Catraca Ledan
+
+25 unidades
+
+R$ 779,75
+
+Retentor Tc 50x72x10mm Fkm 80 Viton - Dtk Freudenberg
+
+6 unidades
+
+R$ 330
+
+Fragmentadora Jst Jfp15 15 Folhas Corte Em Partículas 220v Preto
+
+1 unidade
+
+R$ 963,61
+
+Desconto
+
+- R$ 17
+
+Frete
+
+Grátis
+
+Total pago
+
+R$ 5.316,71`;
+
+describe('interpretarDetalheCompraMl — Detalhes da transação', () => {
+  const d = interpretarDetalheCompraMl(TRANSACAO, new Date(2026, 9, 30));
+
+  it('lê número, data na linha de cima, total pago, desconto e frete', () => {
+    expect(d.numeroCompra).toBe('2000015778845939');
+    expect(d.dataCompra).toBe('2026-10-30');
+    expect(d.valorTotal).toBe(5316.71);
+    expect(d.valorDesconto).toBe(17);
+    expect(d.valorFrete).toBe(0);
+    expect(d.endereco).toBeNull();
+    expect(d.formaPagamento).toBeNull();
+  });
+
+  it('lê os itens (o repetido conta duas vezes) e a conta fecha', () => {
+    expect(d.pacotes).toHaveLength(8);
+    expect(d.pacotes[0]).toEqual({ descricao: 'Carneira Mascara De Solda Sem Catraca Ledan', valor: 779.75, quantidade: 25 });
+    expect(d.pacotes[2]).toEqual({ descricao: 'Mancal Com Rolamento Ucp 207 Para Eixo De 35mm (ucp207)', valor: 45, quantidade: 1 });
+    expect(d.pacotes[4]).toMatchObject({ valor: 2223.92, quantidade: 8 });
+    expect(d.valorProdutos).toBe(5333.71);
+    expect(d.qtdProdutos).toBe(78);
+    expect(d.avisos).toEqual([]);
+  });
+
+  it('avisa quando itens + frete − desconto não fecham com o total pago', () => {
+    const r = interpretarDetalheCompraMl(TRANSACAO.replace('R$ 330', 'R$ 33'), new Date(2026, 9, 30));
+    expect(r.avisos.some(a => a.includes('total pago'))).toBe(true);
   });
 });

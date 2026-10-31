@@ -305,7 +305,10 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
                 <div><span className="block text-[10px] text-slate-500">Total</span><b className="tabular">{brl(detalhe.valorTotal)}</b></div>
                 <div><span className="block text-[10px] text-slate-500">Pagamento</span><b>{detalhe.formaPagamento ?? '—'}</b></div>
                 <div><span className="block text-[10px] text-slate-500">Nº pagamento</span><b className="font-mono">{detalhe.numeroPagamento ?? '—'}</b></div>
-                <div className="col-span-2"><span className="block text-[10px] text-slate-500">Situação no ML</span><b>{detalhe.statusPagamento ?? '—'}</b></div>
+                {detalhe.valorDesconto != null && (
+                  <div><span className="block text-[10px] text-slate-500">Desconto</span><b className="tabular">− {brl(detalhe.valorDesconto)}</b></div>
+                )}
+                <div className={detalhe.valorDesconto != null ? '' : 'col-span-2'}><span className="block text-[10px] text-slate-500">Situação no ML</span><b>{detalhe.statusPagamento ?? '—'}</b></div>
                 {detalhe.endereco && <div className="col-span-2 sm:col-span-4"><span className="block text-[10px] text-slate-500">Entrega</span>{detalhe.endereco}</div>}
               </div>
               {detalhe.pacotes.length > 0 && (
