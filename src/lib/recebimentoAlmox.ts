@@ -14,6 +14,7 @@
  */
 
 import { isProjetoItem } from './rastreio';
+import type { LoteValidade } from './lotesValidade';
 import { casarTokens } from './buscaKeywords';
 
 /** Prefixos dos registros — regra 2 do CLAUDE.md, índice reinicia POR DIA. */
@@ -90,6 +91,7 @@ export interface LinhaConferencia {
    * então não abre pendência com Suprimentos. `false` = divergente da NF (abre).
    */
   parcialConformeNf?: boolean;
+  lotesValidade?: LoteValidade[];
   observacao: string;
   evidencias: AnexoRecebimento[];
 }

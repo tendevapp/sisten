@@ -12,6 +12,7 @@ import {
   createDoc, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado, MARGIN, PDF_COLORS, PdfTextWriter, sanitizeText, type GridField,
 } from './core';
 import { embutirFotoPdf, LADO_FOTO } from './fotosPdf';
+import { formatarLotesValidade } from '../lotesValidade';
 export type { PdfGerado };
 import { formatDateTimeBR, formatQtd } from '../format';
 import {
@@ -252,6 +253,14 @@ export async function gerarConferenciaPdf(c: ConferenciaRow, opcoes: { cargaCodi
       }
       if (it.observacao) partes.push(it.observacao);
       w.drawCallout(`Item ${n} · ${vazio(it.material_code)} · ${vazio(it.descricao)}`, partes.join(' '));
+    }
+  }
+
+  const comLotes = c.itens.filter(it => it.lotes_validade?.length);
+  if (comLotes.length) {
+    w.drawSectionHeader('Lotes e validades', comLotes.length);
+    for (const it of comLotes) {
+      w.drawCallout(`Item · ${vazio(it.material_code)} · ${vazio(it.descricao)}`, formatarLotesValidade(it.lotes_validade));
     }
   }
 

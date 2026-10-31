@@ -110,6 +110,15 @@ describe('recebimentoAlmoxPlanilha', () => {
   });
 
   describe('montarLinhasItensRecebimento', () => {
+    it('mantém lotes associados às respectivas validades e deixa itens sem controle em branco', () => {
+      const linhas = montarLinhasItensRecebimento([{ ...confMock, itens: [
+        { ...itemMock, lotes_validade: [{ lote: 'A-01', validade: '2027-03-31' }, { lote: 'B-02', validade: '2028-08-15' }] },
+        itemDivergenteMock,
+      ] }]);
+      expect(linhas[0]['Lotes e validades']).toBe('Lote: A-01 · Validade: 31/03/2027\nLote: B-02 · Validade: 15/08/2028');
+      expect(linhas[1]['Lotes e validades']).toBe('');
+    });
+
     it('mapeia os itens com colunas detalhadas e calculos de pendencia', () => {
       const linhas = montarLinhasItensRecebimento([confMock]);
       expect(linhas).toHaveLength(2);

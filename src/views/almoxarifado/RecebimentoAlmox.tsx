@@ -67,6 +67,8 @@ import { listarDevolutivasAlmox } from '../../lib/pendenciasRecebimentoApi';
 import { parametrosDaRota, type PendenciaRecebimento } from '../../lib/pendenciasRecebimento';
 import { exportarRelatorioRecebimentoExcel } from '../../lib/recebimentoAlmoxPlanilha';
 import type { PdfGerado } from '../../lib/pdfExport/core';
+import ModalLotesValidade from '../../components/almoxarifado/ModalLotesValidade';
+import { normalizarLotesValidade, type LoteValidade } from '../../lib/lotesValidade';
 
 interface Props {
   user: Profile;
@@ -1262,6 +1264,7 @@ function VistaNaoConformidades({
 // ===========================================================================
 
 const ROTULO_CAMPO: Record<string, string> = {
+  lotes_validade: 'Lotes e validades',
   data: 'Data', hora: 'Hora', transportadora: 'Transportadora', veiculo_placa: 'Placa',
   motorista: 'Motorista', doc_transporte: 'CT-e / canhoto', nota_fiscal: 'Nota fiscal',
   nro_pedido: 'PO', qtd_volumes_declarada: 'Volumes declarados', qtd_volumes_contada: 'Volumes contados',
@@ -1451,6 +1454,7 @@ function ModalDetalhe({
   const codigo = (row as any).codigo as string;
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [catalogando, setCatalogando] = useState(false);
+  const [lotesDetalhe, setLotesDetalhe] = useState<{ descricao: string; valores: LoteValidade[] } | null>(null);
 
   const itensComFoto = tipo === 'conferencia'
     ? (row as ConferenciaRow).itens.filter((it) => (it.evidencias?.length ?? 0) > 0)
@@ -1499,7 +1503,7 @@ function ModalDetalhe({
 
   return (
     <>
-    <Modal onClose={onClose} maxWidth="max-w-2xl" ariaLabel={`Detalhes de ${codigo}`}>
+    <Modal onClose={onClose} maxWidth="max-w-2xl" ariaLabel={`Detalhes de ${codigo}`} disableOutsideClose={!!lotesDetalhe}>
       <ModalHeader onClose={onClose}>
         <h3 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>{codigo}</h3>
         <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>Preenchimento do registro. O log fica no fim.</p>
@@ -1643,6 +1647,7 @@ function ModalDetalhe({
                         recebido {formatQtd(it.qtd_recebida)} {it.unidade}
                         {it.qtd_pedido != null ? ` · pendente era ${formatQtd(pend)}` : ''}
                       </p>
+                      {!!it.lotes_validade?.length && <button type="button" onClick={() => setLotesDetalhe({ descricao: it.descricao || it.material_code || 'Item', valores: it.lotes_validade! })} className="my-1 rounded-lg border px-2 py-1 text-[11px] font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--brand)' }}>Lotes / validades ({it.lotes_validade.length})</button>}
                       {it.observacao && <p className="text-[11px] italic" style={{ color: 'var(--ink-muted)' }}>{it.observacao}</p>}
                     </div>
                   );
@@ -1787,6 +1792,7 @@ function ModalDetalhe({
         onClose={() => setPdfPreview(null)}
       />
     )}
+    {lotesDetalhe && <ModalLotesValidade descricao={lotesDetalhe.descricao} valores={lotesDetalhe.valores} onClose={() => setLotesDetalhe(null)} />}
     {lb.elemento}
     </>
   );
@@ -2355,6 +2361,7 @@ function ModalConferencia({
           qtdRecebida: Number(it.qtd_recebida) || 0,
           itemManual: it.item_manual ?? false,
           observacao: it.observacao ?? '',
+          lotesValidade: normalizarLotesValidade(it.lotes_validade),
           evidencias: it.evidencias ?? [],
           fotos: [],
           estado: est,
@@ -2506,6 +2513,7 @@ function ModalConferencia({
     }
     aplicarEstado(idx, alvo);
   };
+  const [lotesEditando, setLotesEditando] = useState<number | null>(null);
   const [perguntaNf, setPerguntaNf] = useState<number | null>(null);
   const responderNf = (conformeNf: boolean) => {
     if (perguntaNf !== null) aplicarEstado(perguntaNf, 'parcial', conformeNf);
@@ -2637,6 +2645,7 @@ function ModalConferencia({
           parcial_conforme_nf: l.parcial && !!l.parcialConformeNf,
           nota_fiscal: nfDoItem(l.nroPedido, l.notaFiscal, notas, nfPorPedido),
           observacao: l.observacao.trim() || null,
+          lotes_validade: normalizarLotesValidade(l.lotesValidade),
           evidencias: [...l.evidencias, ...evidNovas],
         });
       }
@@ -3323,6 +3332,9 @@ function ModalConferencia({
                   </div>
 
                   <div className="mt-2 space-y-1.5">
+                    <button type="button" disabled={salvando} onClick={() => setLotesEditando(idx)} className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--brand)' }} aria-label={`Lotes e validades de ${l.descricao || l.materialCode || 'item'}`}>
+                      <ClipboardList className="h-3.5 w-3.5" />{l.lotesValidade?.length ? `Lotes / validades (${l.lotesValidade.length})` : 'Inserir lote / validade'}
+                    </button>
                     <input
                       value={l.observacao}
                       onChange={(e) => setLinha(idx, { observacao: e.target.value })}
@@ -3425,6 +3437,12 @@ function ModalConferencia({
         </button>
       </ModalFooter>
     </Modal>
+        {lotesEditando !== null && linhas[lotesEditando] && <ModalLotesValidade
+          descricao={linhas[lotesEditando].descricao || linhas[lotesEditando].materialCode || 'Item'}
+          valores={linhas[lotesEditando].lotesValidade ?? []}
+          onConfirm={lotesValidade => setLinha(lotesEditando, { lotesValidade })}
+          onClose={() => setLotesEditando(null)}
+        />}
         {perguntaNf !== null && linhas[perguntaNf] && (
           <Modal onClose={() => setPerguntaNf(null)} maxWidth="max-w-md" ariaLabel="Parcial de acordo com a NF?" zIndexClassName="z-[120]">
             <ModalBody className="space-y-3 p-5">

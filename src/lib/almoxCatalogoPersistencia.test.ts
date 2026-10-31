@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Profile } from '../types';
+import { dadosEtiquetaDoItem } from './etiquetaMaterial';
 import {
   salvarItemCatalogo, listarItensCatalogo, buscarFotoCatalogoPorCodigoSap, buscarFotosCatalogoPorCodigosSap,
   excluirItemCatalogo, migrarCatalogoLocalLegado, salvarItensCatalogoLocal, obterItensCatalogoLocal,
@@ -110,6 +111,37 @@ beforeEach(() => {
 });
 
 describe('salvarItemCatalogo', () => {
+  it('preserva cada par de múltiplos lotes nas edições parciais e permite remover linhas ou limpar a lista', async () => {
+    const primeiro = await salvarItemCatalogo({ codigo_sap: '1423710', descricao: 'ALAVANCA', lotes_validade: [
+      { lote: '  A-01 ', validade: '2027-03-31' }, { lote: 'B-02', validade: '2028-08-15' }, { lote: '', validade: null },
+    ] }, usuario);
+    expect(primeiro.lotes_validade).toEqual([{ lote: 'A-01', validade: '2027-03-31' }, { lote: 'B-02', validade: '2028-08-15' }]);
+    const parcial = await salvarItemCatalogo({ codigo_sap: '1423710', descricao: 'ALAVANCA', observacao: 'Nova observação' }, usuario);
+    expect(parcial.lotes_validade).toEqual(primeiro.lotes_validade);
+    const legado = await salvarItemCatalogo({ codigo_sap: '1423710', descricao: 'ALAVANCA', lote: 'A-CORRIGIDO' }, usuario);
+    expect(legado.lotes_validade).toEqual([{ lote: 'A-CORRIGIDO', validade: '2027-03-31' }, { lote: 'B-02', validade: '2028-08-15' }]);
+    const etiqueta = dadosEtiquetaDoItem({ codigo_sap: legado.codigo_sap, descricao: legado.descricao, item_catalogo: legado }, '101.A10');
+    expect(etiqueta).not.toHaveProperty('lotes_validade');
+    const removido = await salvarItemCatalogo({ codigo_sap: '1423710', descricao: 'ALAVANCA', lotes_validade: [legado.lotes_validade![1]] }, usuario);
+    expect(removido.lotes_validade).toEqual([{ lote: 'B-02', validade: '2028-08-15' }]);
+    const vazio = await salvarItemCatalogo({ codigo_sap: '1423710', descricao: 'ALAVANCA', lotes_validade: [] }, usuario);
+    expect(vazio).toMatchObject({ lotes_validade: [], lote: null, validade: null });
+  });
+
+  it('lote e validade são opcionais, persistem em atualizações parciais e não entram na etiqueta', async () => {
+    const inicial = await salvarItemCatalogo({ codigo_sap: '1423710', descricao: 'ALAVANCA', lote: '  LT-2026-A  ', validade: '2028-12-31' }, usuario);
+    expect(inicial).toMatchObject({ lote: 'LT-2026-A', validade: '2028-12-31', imagem_path: null });
+    const parcial = await salvarItemCatalogo({ codigo_sap: '1423710', descricao: 'ALAVANCA', etiqueta_aplicacao: 'MANUTENÇÃO' }, usuario);
+    expect(parcial).toMatchObject({ lote: 'LT-2026-A', validade: '2028-12-31' });
+    const etiqueta = dadosEtiquetaDoItem({ codigo_sap: parcial.codigo_sap, descricao: parcial.descricao, item_catalogo: parcial }, '101.A10');
+    expect(etiqueta).not.toHaveProperty('lote');
+    expect(etiqueta).not.toHaveProperty('validade');
+    const semLote = await salvarItemCatalogo({ codigo_sap: '1423710', descricao: 'ALAVANCA', lote: '' }, usuario);
+    expect(semLote).toMatchObject({ lote: null, validade: '2028-12-31' });
+    const semValidade = await salvarItemCatalogo({ codigo_sap: '1423710', descricao: 'ALAVANCA', validade: null }, usuario);
+    expect(semValidade).toMatchObject({ lote: null, validade: null });
+  });
+
   it('grava na tabela e sobe a foto comprimida como .jpg', async () => {
     const salvo = await salvarItemCatalogo({
       codigo_sap: '1423710', descricao: 'ALAVANCA MAKITA 4187280', observacao: 'Peça da 9557N', fotoArquivo: foto(),

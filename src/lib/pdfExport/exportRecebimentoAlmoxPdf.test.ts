@@ -10,7 +10,7 @@ vi.mock('./core', async (importOriginal) => ({
   downloadPdf: vi.fn(async () => {}),
 }));
 
-import { downloadPdf } from './core';
+import { downloadPdf, PdfTextWriter } from './core';
 import { exportConferenciaPdf, exportFichaCegaPdf, exportNaoConformidadePdf } from './exportRecebimentoAlmoxPdf';
 import type { CargaRow, ConferenciaRow, NaoConformidadeRow } from '../recebimentoAlmoxApi';
 
@@ -86,6 +86,17 @@ describe('PDF do Recebimento (FRM.ALM-0001)', () => {
     const [doc, nome] = ultimoDoc();
     expect(nome).toBe('NCR-010126-01.pdf');
     expect((await doc.save()).byteLength).toBeGreaterThan(1000);
+  });
+
+  it('inclui os pares lote e validade no PDF do item recebido', async () => {
+    const c = conferencia(1);
+    c.itens[0].lotes_validade = [{ lote: 'A-01', validade: '2027-03-31' }, { lote: 'B-02', validade: '2028-08-15' }];
+    const callout = vi.spyOn(PdfTextWriter.prototype, 'drawCallout');
+    try {
+      await exportConferenciaPdf(c);
+      expect(callout).toHaveBeenCalledWith(expect.stringContaining('20001'),
+        'Lote: A-01 · Validade: 31/03/2027\nLote: B-02 · Validade: 15/08/2028');
+    } finally { callout.mockRestore(); }
   });
 
   it('não quebra quando a foto não baixa', async () => {

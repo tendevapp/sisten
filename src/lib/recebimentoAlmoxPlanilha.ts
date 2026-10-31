@@ -10,6 +10,7 @@
  */
 
 import * as XLSX from 'xlsx';
+import { formatarLotesValidade } from './lotesValidade';
 import { formatDateBR, formatDateTimeBR } from './format';
 import {
   pendentePedido, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE,
@@ -77,6 +78,7 @@ export function montarLinhasItensRecebimento(conferencias: ConferenciaRow[]): Re
         'Tipo Divergência': it.tipo_divergencia ? (ROTULO_DIVERGENCIA[it.tipo_divergencia as TipoDivergencia] ?? it.tipo_divergencia) : '',
         'Entrega Parcial': it.parcial ? 'SIM' : 'NÃO',
         'Parcial Conforme NF': it.parcial ? (it.parcial_conforme_nf ? 'SIM' : 'NÃO') : '',
+        'Lotes e validades': formatarLotesValidade(it.lotes_validade),
         'Observação Item': it.observacao || '',
         'Conferente': c.criado_por_nome || '',
         'NCR Gerada': c.tem_nc ? 'SIM' : 'NÃO',
@@ -161,6 +163,7 @@ export function gerarWorkbookRecebimento(conferencias: ConferenciaRow[]): XLSX.W
     { wch: 13 }, // Data Conferência
     { wch: 28 }, // Fornecedor
     { wch: 18 }, // PO
+    { wch: 16 }, // NF
     { wch: 10 }, // Linha PO
     { wch: 14 }, // Cód. Material
     { wch: 38 }, // Descrição Material
@@ -176,6 +179,7 @@ export function gerarWorkbookRecebimento(conferencias: ConferenciaRow[]): XLSX.W
     { wch: 16 }, // Tipo Divergência
     { wch: 14 }, // Entrega Parcial
     { wch: 18 }, // Parcial Conforme NF
+    { wch: 45 }, // Lotes e validades
     { wch: 30 }, // Observação Item
     { wch: 20 }, // Conferente
     { wch: 12 }, // NCR Gerada

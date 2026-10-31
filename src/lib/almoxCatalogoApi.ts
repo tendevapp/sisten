@@ -18,6 +18,7 @@ import { comprimirImagemUpload } from './imageCompression';
 import { isProjetoItem } from './demandas';
 import { SSMA_BOOK_EPIS_BUCKET } from './ssmaBookEpisApi';
 import { buscarMateriais, normalizarTermo, ehCodigoSapInativo } from './materiais';
+import { lotesDoCatalogo, normalizarLotesCatalogo, type LoteValidadeCatalogo } from './almoxCatalogoLotes';
 import type { EstoqueItem, CadastroGrupoMercadoria, RequestAttachment, Profile } from '../types';
 
 export const PREFIXO_CAT_ITEM = 'CAT';
@@ -59,6 +60,10 @@ export interface CatalogoItem {
   etiqueta_impressa_em?: string | null;
   /** Estoque mínimo digitado no cadastro (sai na etiqueta). */
   estoque_minimo?: number | null;
+  /** Metadados opcionais do cadastro; não fazem parte da etiqueta. */
+  lote?: string | null;
+  validade?: string | null;
+  lotes_validade?: LoteValidadeCatalogo[];
   ativo: boolean;
   criado_por: string;
   criado_por_nome: string | null;
@@ -138,6 +143,11 @@ export interface SalvarItemCatalogoPayload {
   etiqueta_aplicacao?: string | null;
   /** undefined mantém o gravado; null apaga. */
   estoque_minimo?: number | null;
+  /** undefined mantém o gravado; null ou vazio apaga. */
+  lote?: string | null;
+  validade?: string | null;
+  /** undefined mantém a lista; [] remove todos os lotes. */
+  lotes_validade?: LoteValidadeCatalogo[];
   fotoArquivo?: File | null;
   removerFoto?: boolean;
 }
@@ -1484,6 +1494,10 @@ function linhaDoPayload(
     if (v === undefined) return (existente?.[campo] as string | null | undefined) ?? null;
     return typeof v === 'string' ? v.trim() || null : null;
   };
+  const lotes = payload.lotes_validade !== undefined ? normalizarLotesCatalogo(payload.lotes_validade)
+    : payload.lote !== undefined || payload.validade !== undefined
+      ? normalizarLotesCatalogo([{ lote: texto('lote'), validade: texto('validade') }, ...lotesDoCatalogo(existente).slice(1)])
+      : lotesDoCatalogo(existente);
   return {
     codigo_sap: payload.codigo_sap.trim(),
     descricao: payload.descricao.trim() || existente?.descricao || payload.codigo_sap.trim(),
@@ -1500,6 +1514,10 @@ function linhaDoPayload(
     etiqueta_descricao: texto('etiqueta_descricao'),
     etiqueta_aplicacao: texto('etiqueta_aplicacao'),
     estoque_minimo: payload.estoque_minimo !== undefined ? payload.estoque_minimo : existente?.estoque_minimo ?? null,
+    lotes_validade: lotes,
+    // Compatibilidade com leitores antigos: o par único espelha a primeira linha.
+    lote: lotes[0]?.lote ?? null,
+    validade: lotes[0]?.validade ?? null,
     ativo: true,
     criado_por: existente?.criado_por || user.id,
     criado_por_nome: existente?.criado_por_nome || user.name,

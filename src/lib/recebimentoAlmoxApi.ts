@@ -15,6 +15,7 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import type { LoteValidade } from './lotesValidade';
 import { localDb } from '../db/localDb';
 import { comprimirImagemUpload, type PreparedAttachment } from './imageCompression';
 import { apenasVigentes, marcarExcluido, semExcluidos } from './softDelete';
@@ -227,6 +228,7 @@ export async function registrarCarga(carga: CargaInput): Promise<{ id: string; c
 // ---------------------------------------------------------------------------
 
 export interface ConferenciaItemInput {
+  lotes_validade?: LoteValidade[];
   linha_ref?: string | null;
   /** PO da linha — uma conferência pode misturar itens de vários pedidos. */
   nro_pedido?: string | null;
