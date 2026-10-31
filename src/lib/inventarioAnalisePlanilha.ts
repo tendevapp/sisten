@@ -9,6 +9,7 @@
 import * as XLSX from 'xlsx';
 import { ROTULO_STATUS_ITEM } from './inventarioCiclico';
 import { ROTULO_ORIGEM, type LinhaAnalise, type ResumoAnalise } from './inventarioAnalise';
+import { rotuloCausa } from './inventarioAuditoria';
 
 const dataBR = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/');
 
@@ -30,6 +31,8 @@ export function montarLinhasPlanilhaAnalise(linhas: LinhaAnalise[]): Record<stri
       'Valor do erro (R$)': l.valor === null ? '' : Math.round(l.valor * 100) / 100,
       'Valor estimado?': l.valor === null ? '' : l.valorEstimado ? 'SIM' : 'NÃO',
       Contagens: l.contagens,
+      'Causa provável declarada': l.causa ? rotuloCausa(l.causa) : '',
+      'Detalhe da causa': l.causaDetalhe || '',
     }));
 }
 

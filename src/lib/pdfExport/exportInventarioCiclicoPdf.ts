@@ -15,6 +15,7 @@ import {
   type StatusItemInventario,
 } from '../inventarioCiclico';
 import type { InventarioParaExportar } from '../inventarioCiclicoPlanilha';
+import { rotuloCausa } from '../inventarioAuditoria';
 
 const qtd = (v: number | null) => (v == null ? '-' : formatQtd(v));
 const dataBR = (iso: string) => iso.split('-').reverse().join('/');
@@ -103,6 +104,15 @@ export async function gerarInventarioCiclicoPdf(inv: InventarioParaExportar & { 
     alertas.forEach((l) => w.drawCallout(`Item ${l.item} · ${l.material} · ${l.descricao}`, l.alerta));
   }
 
+  const rastreaveis = inv.itens.filter(i => i.causa_encerramento || i.contagens.some(c => c.causa || c.preparacao_id));
+  if (rastreaveis.length) {
+    w.drawSectionHeader('Referência e causas prováveis declaradas', rastreaveis.length);
+    for (const i of rastreaveis) {
+      const detalhes = i.contagens.filter(c => c.causa || c.preparacao_id).map(c => `${c.numero}ª: ${c.causa ? `${rotuloCausa(c.causa)} — ${c.causa_detalhe || ''}. ` : ''}Rodada: ${c.preparacao_id || 'legado'}. Início: ${c.iniciada_em || '-'}.`);
+      if (i.causa_encerramento) detalhes.push(`Encerramento: ${rotuloCausa(i.causa_encerramento)} — ${i.causa_encerramento_detalhe || ''}.`);
+      w.drawCallout(`${i.material} · ${i.deposito}`, detalhes.join('\n'));
+    }
+  }
   w.drawSignatures([
     { role: 'Responsável', name: inv.criado_por_nome || undefined },
     { role: 'Conferente', name: inv.conferente_nome || undefined },

@@ -11,6 +11,7 @@
 import * as XLSX from 'xlsx';
 import { descricaoDeposito } from './almoxarifado';
 import { MAX_CONTAGENS, linhasResultado, nomeArquivoInventario, type ItemInventario } from './inventarioCiclico';
+import { rotuloCausa } from './inventarioAuditoria';
 
 export interface InventarioParaExportar {
   codigo: string;
@@ -25,7 +26,8 @@ const vazio = (v: number | null) => (v == null ? '' : v);
 
 /** Linhas da aba "Resultado", já com os cabeçalhos em português. */
 export function montarLinhasPlanilhaInventario(inv: InventarioParaExportar): Record<string, string | number>[] {
-  return linhasResultado(inv.itens).map((l) => {
+  const ordenados = [...inv.itens].sort((a, b) => a.ordem - b.ordem);
+  return linhasResultado(inv.itens).map((l, indice) => {
     const linha: Record<string, string | number> = {
       Item: l.item,
       Material: l.material,
@@ -43,6 +45,18 @@ export function montarLinhasPlanilhaInventario(inv: InventarioParaExportar): Rec
     linha['Endereço encontrado'] = l.endereco;
     linha['Validade'] = l.validade ? l.validade.split('-').reverse().join('/') : '';
     linha.Alerta = l.alerta;
+    const item = ordenados[indice];
+    for (let n = 1; n <= MAX_CONTAGENS; n++) {
+      const c = item?.contagens.find(c => c.numero === n);
+      linha[`Causa provável ${n}ª`] = c?.causa ? rotuloCausa(c.causa) : '';
+      linha[`Detalhe ${n}ª`] = c?.causa_detalhe || '';
+      linha[`Referência da rodada ${n}ª`] = c?.preparacao_id || '';
+      linha[`Início ${n}ª`] = c?.iniciada_em || '';
+      linha[`Tempo de tela ${n}ª (s)`] = c?.duracao_segundos ?? '';
+      linha[`Controle de movimentações ${n}ª`] = c?.movimentacoes_controladas == null ? '' : c.movimentacoes_controladas ? 'Confirmado' : 'Não confirmado';
+    }
+    linha['Causa do encerramento'] = item?.causa_encerramento ? rotuloCausa(item.causa_encerramento) : '';
+    linha['Detalhe do encerramento'] = item?.causa_encerramento_detalhe || '';
     return linha;
   });
 }

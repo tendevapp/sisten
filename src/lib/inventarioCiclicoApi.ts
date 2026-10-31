@@ -14,9 +14,40 @@
 
 import { supabase } from '../db/supabaseClient';
 import type { ContagemInventario, ItemInventario, StatusItemInventario } from './inventarioCiclico';
+import type { LinhaImportacaoInventario, ResumoImportacaoInventario } from './inventarioCiclicoImportacao';
+import type { CausaInventario, ContextoAuditoriaInventario } from './inventarioAuditoria';
+
+export async function contextoAuditoriaInventario(id?: string): Promise<ContextoAuditoriaInventario> {
+  const { data, error } = await supabase.rpc('alm_inv_contexto_auditoria' as any, { p_inventario: id ?? null } as any);
+  if (error) throw new Error(error.message);
+  return data as unknown as ContextoAuditoriaInventario;
+}
+export async function solicitarAtualizacaoInventario(id: string, janela: number): Promise<void> {
+  const { error } = await supabase.rpc('alm_inv_solicitar_atualizacao' as any, { p_inventario: id, p_janela_minutos: janela } as any);
+  if (error) throw new Error(error.message);
+}
+export async function liberarPreparacaoInventario(id: string, extracao: string, obs: string): Promise<void> {
+  const { error } = await supabase.rpc('alm_inv_liberar_preparacao' as any, { p_preparacao: id, p_extracao_em: extracao, p_corte_confirmado: true, p_observacao: obs } as any);
+  if (error) throw new Error(error.message);
+}
+
+export async function importarBaseInventario(linhas: LinhaImportacaoInventario[], arquivo: string, gravar = false): Promise<ResumoImportacaoInventario> {
+  const { data, error } = await supabase.rpc('alm_inv_importar_base' as any, {
+    p_linhas: linhas, p_arquivo: arquivo, p_gravar: gravar,
+  } as any);
+  if (error) throw new Error(error.message);
+  return data as unknown as ResumoImportacaoInventario;
+}
+
+export async function ultimoResumoImportacaoInventario(): Promise<ResumoImportacaoInventario | null> {
+  const { data, error } = await (supabase.from as any)('alm_inv_importacoes')
+    .select('resumo').order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.resumo ?? null;
+}
 
 const COLUNAS_CONTAGEM =
-  'id, numero, quantidade, divergente, endereco_encontrado, validade, observacao, contado_por_nome, created_at';
+  'id, numero, quantidade, divergente, endereco_encontrado, validade, observacao, contado_por_nome, created_at, causa, causa_detalhe, preparacao_id, iniciada_em, duracao_segundos, movimentacoes_controladas';
 
 export interface InventarioRow {
   id: string;
@@ -37,6 +68,21 @@ export interface ItemParaInventario {
   material: string;
   deposito: string;
   classe?: string | null;
+}
+
+export interface ReservaInventario {
+  material: string; deposito: string; minha: boolean; responsavel: string;
+  inventario: string | null; item_id: string | null; expira_em: string | null;
+}
+export async function listarReservasInventario(sessao: string): Promise<ReservaInventario[]> {
+  const { data, error } = await supabase.rpc('alm_inv_listar_reservas' as any, { p_sessao: sessao } as any);
+  if (error) throw new Error(error.message);
+  return data as unknown as ReservaInventario[];
+}
+export async function definirReservaInventario(sessao: string, itens: ItemParaInventario[]): Promise<ReservaInventario[]> {
+  const { data, error } = await supabase.rpc('alm_inv_definir_reserva' as any, { p_sessao: sessao, p_itens: itens } as any);
+  if (error) throw new Error(error.message);
+  return data as unknown as ReservaInventario[];
 }
 
 function normalizar(r: any): InventarioRow {
@@ -68,17 +114,27 @@ export async function listarInventarios(limite = 200): Promise<InventarioRow[]> 
   return ((data || []) as any[]).map(normalizar);
 }
 
+/** Um inventário só, com itens e contagens — para quem conta fora da tela do inventário. */
+export async function buscarInventario(id: string): Promise<InventarioRow | null> {
+  const { data, error } = await (supabase.from as any)('alm_inventarios')
+    .select(`*, itens:alm_inventario_itens(*, contagens:alm_inventario_contagens(${COLUNAS_CONTAGEM}))`)
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? normalizar(data) : null;
+}
+
 export async function criarInventario(
-  inv: { data: string; criterio: string; observacao: string | null; conferente_nome: string | null; criado_por_nome: string },
+  inv: { data: string; criterio: string; observacao: string | null; conferente_nome: string | null; criado_por_nome: string; reserva_sessao?: string },
   itens: ItemParaInventario[],
 ): Promise<{ id: string; codigo: string }> {
-  const { data, error } = await supabase.rpc('alm_inv_criar' as any, { p_inv: inv, p_itens: itens } as any);
+  const { data, error } = await supabase.rpc('alm_inv_criar_auditado' as any, { p_inv: inv, p_itens: itens } as any);
   if (error) throw new Error(error.message);
   return { id: (data as any)?.id, codigo: (data as any)?.codigo ?? '' };
 }
 
-export async function adicionarItensInventario(id: string, itens: ItemParaInventario[]): Promise<number> {
-  const { data, error } = await supabase.rpc('alm_inv_adicionar_itens' as any, { p_id: id, p_itens: itens } as any);
+export async function adicionarItensInventario(id: string, itens: ItemParaInventario[], sessao?: string): Promise<number> {
+  const { data, error } = await supabase.rpc('alm_inv_adicionar_reservados' as any, { p_id: id, p_itens: itens, p_sessao: sessao ?? null } as any);
   if (error) throw new Error(error.message);
   return Number(data) || 0;
 }
@@ -101,15 +157,17 @@ export interface ResultadoContagem {
 /** Grava uma contagem (imutável). O banco compara com a ZL0024. */
 export async function registrarContagem(
   itemId: string,
-  c: { quantidade: number; endereco: string | null; validade: string | null; observacao: string | null; por: string },
+  c: { quantidade: number; endereco: string | null; validade: string | null; observacao: string | null; por: string;
+    causa: CausaInventario | null; causaDetalhe: string | null; preparacao: string; iniciadaEm: string },
 ): Promise<ResultadoContagem> {
-  const { data, error } = await supabase.rpc('alm_inv_registrar_contagem' as any, {
+  const { data, error } = await supabase.rpc('alm_inv_registrar_contagem_auditada' as any, {
     p_item_id: itemId,
     p_quantidade: c.quantidade,
     p_endereco: c.endereco,
     p_validade: c.validade,
     p_observacao: c.observacao,
     p_por: c.por,
+    p_causa: c.causa, p_causa_detalhe: c.causaDetalhe, p_preparacao: c.preparacao, p_iniciada_em: c.iniciadaEm, p_sem_movimentacao: true,
   } as any);
   if (error) throw new Error(error.message);
   return data as ResultadoContagem;
@@ -118,9 +176,10 @@ export async function registrarContagem(
 /** Recusa nova contagem: revela o saldo da ZL0024 e grava o alerta. */
 export async function encerrarItemInventario(
   itemId: string,
-  por: string,
+  causa: CausaInventario,
+  detalhe: string,
 ): Promise<{ status: StatusItemInventario; saldo_sistema: number; diferenca: number; alerta: string }> {
-  const { data, error } = await supabase.rpc('alm_inv_encerrar_item' as any, { p_item_id: itemId, p_por: por } as any);
+  const { data, error } = await supabase.rpc('alm_inv_encerrar_auditado' as any, { p_item_id: itemId, p_causa: causa, p_detalhe: detalhe } as any);
   if (error) throw new Error(error.message);
   return data as any;
 }

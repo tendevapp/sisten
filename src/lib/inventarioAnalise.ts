@@ -54,6 +54,8 @@ export interface InventarioAnalise {
 
 /** Uma linha por item de inventário, já com o que a análise precisa. */
 export interface LinhaAnalise {
+  causa?: string | null;
+  causaDetalhe?: string | null;
   chave: string;
   inventarioId: string;
   inventario: string;
@@ -119,6 +121,8 @@ export function linhasAnalise(
       const contagens = Math.max(item.contagens.length, contagensPlanilha);
 
       linhas.push({
+        causa: item.causa_encerramento || [...item.contagens].sort((a, b) => b.numero - a.numero).find(c => c.causa)?.causa || null,
+        causaDetalhe: item.causa_encerramento_detalhe || [...item.contagens].sort((a, b) => b.numero - a.numero).find(c => c.causa)?.causa_detalhe || null,
         chave: chaveItem(item.material, item.deposito),
         inventarioId: inv.id,
         inventario: inv.codigo,

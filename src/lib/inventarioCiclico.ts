@@ -137,6 +137,12 @@ export interface ContagemInventario {
   observacao: string | null;
   contado_por_nome: string | null;
   created_at: string;
+  causa?: string | null;
+  causa_detalhe?: string | null;
+  preparacao_id?: string | null;
+  iniciada_em?: string | null;
+  duracao_segundos?: number | null;
+  movimentacoes_controladas?: boolean | null;
 }
 
 export interface ItemInventario {
@@ -156,6 +162,8 @@ export interface ItemInventario {
   /** Linha e campos originais, presentes apenas no histórico importado. */
   origem_linha?: number | null;
   dados_origem?: Record<string, unknown> | null;
+  causa_encerramento?: string | null;
+  causa_encerramento_detalhe?: string | null;
   contagens: ContagemInventario[];
 }
 

@@ -25,7 +25,7 @@ import {
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
 import { localDb } from '../../db/localDb';
-import { formatDeposito, normalizeCode, ordenarDepositos } from '../../lib/almoxarifado';
+import { formatDeposito, ordenarDepositos } from '../../lib/almoxarifado';
 import { formatDateBR, formatDateTimeBR, formatQtd } from '../../lib/format';
 import { extrairPalavrasChave, casarTokens } from '../../lib/buscaKeywords';
 import {
@@ -54,6 +54,12 @@ import {
 } from '../../lib/almoxCatalogoApi';
 import { comprimirImagemUpload } from '../../lib/imageCompression';
 import { EVENTO_ITEM_QR_INVENTARIO, consumirItemInventarioPendente } from '../../lib/etiquetaMaterial';
+import ImportarInventarioModal from '../../components/almoxarifado/ImportarInventarioModal';
+import PreparacaoInventario from '../../components/almoxarifado/PreparacaoInventario';
+import { CAUSAS_INVENTARIO, rotuloCausa, sugerirEscopoRapido, type CausaInventario, type ContextoAuditoriaInventario, type PendenciaContagem } from '../../lib/inventarioAuditoria';
+import { contextoAuditoriaInventario } from '../../lib/inventarioCiclicoApi';
+import { useReservasInventario } from '../../lib/useReservasInventario';
+import { gravarPreferenciasInventario, lerPreferenciasInventario, prepararContagemDoMaterial } from '../../lib/inventarioAtalho';
 
 /** Itens com contagem guardada no aparelho (sem rede) — ainda sem resultado do servidor. */
 function useItensContadosNaFila(): Set<string> {
@@ -126,34 +132,9 @@ function ChipStatusItem({ status }: { status: StatusItemInventario }) {
   );
 }
 
-// Depósitos e critério da última seleção — conveniência do aparelho.
-const CHAVE_PREFERENCIAS = 'sisten_inventario_ciclico_selecao';
-interface Preferencias { depositos: string[]; criterio: CriterioCurva }
-function lerPreferencias(): Preferencias {
-  try {
-    const p = JSON.parse(localStorage.getItem(CHAVE_PREFERENCIAS) || '{}');
-    return {
-      depositos: Array.isArray(p.depositos) ? p.depositos : ['0001', '0002'],
-      criterio: p.criterio === 'valor' ? 'valor' : 'consumo',
-    };
-  } catch {
-    return { depositos: ['0001', '0002'], criterio: 'consumo' };
-  }
-}
-function gravarPreferencias(p: Preferencias): void {
-  try { localStorage.setItem(CHAVE_PREFERENCIAS, JSON.stringify(p)); } catch { /* sem storage: só não lembra */ }
-}
-
 // ===========================================================================
 // Tela
 // ===========================================================================
-
-/**
- * Critério gravado no inventário aberto pela leitura de QR (botão do cabeçalho).
- * As leituras do dia da mesma pessoa vão para o mesmo inventário, em vez de
- * abrir um por etiqueta lida.
- */
-const CRITERIO_QR = 'Leitura de QR da etiqueta';
 
 export default function InventarioCiclico({ user, onNavigate }: Props) {
   const toast = useToast();
@@ -161,9 +142,11 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
   const [estoque, setEstoque] = useState<EstoqueItem[]>([]);
   const [giro, setGiro] = useState<EstoqueGiro[]>([]);
   const [loading, setLoading] = useState(true);
-  const [abertoId, setAbertoId] = useState<string | null>(null);
+  const [abertoId, setAbertoId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('id'));
   const [novo, setNovo] = useState<{ inventario?: InventarioRow } | null>(null);
   const [busca, setBusca] = useState('');
+  const [importando, setImportando] = useState(false);
+  const podeImportar = user.roles?.includes('admin') || user.page_access?.almox_importar_planilhas === true;
   // Item lido no QR do cabeçalho e a contagem que a vista do inventário deve abrir.
   const [itemQr, setItemQr] = useState<{ codigo: string; n: number } | null>(null);
   const [abrirContagem, setAbrirContagem] = useState<{ itemId: string; n: number } | null>(null);
@@ -206,67 +189,23 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
 
   const qrAplicado = useRef(0);
   const abrirContagemDoQr = useCallback(async (codigo: string) => {
-    const alvo = normalizeCode(codigo);
-    const doMaterial = montarCandidatos(estoque, giro, lerPreferencias().criterio, [])
-      .filter((c) => normalizeCode(c.material) === alvo);
-    if (doMaterial.length === 0) {
-      toast.error(`Item ${codigo} não está na ZL0024 — não há saldo para inventariar.`);
-      return;
-    }
-    // Depósitos da última seleção do aparelho; se o item não está neles, todos em que ele tem saldo.
-    const preferidos = lerPreferencias().depositos.map((d) => d.trim().padStart(4, '0'));
-    const naPreferencia = doMaterial.filter((c) => preferidos.includes(c.deposito));
-    const candidatos = naPreferencia.length > 0 ? naPreferencia : doMaterial;
-    const chaves = new Set(candidatos.map((c) => c.chave));
-    const abertoDe = (inv: InventarioRow) => inv.status === 'aberto';
-    const emAberto = (inv: InventarioRow) => inv.itens.find((i) => chaves.has(chaveItem(i.material, i.deposito)) && !itemEncerrado(i));
-
     try {
-      let lista = await listarInventarios();
-      setInventarios(lista);
-
-      // 1) Já existe contagem em aberto deste item (de qualquer inventário): vai direto a ela.
-      let destino: { inv: InventarioRow; item: ItemInventario } | null = null;
-      for (const inv of lista.filter(abertoDe)) {
-        const item = emAberto(inv);
-        if (item) { destino = { inv, item }; break; }
+      const r = await prepararContagemDoMaterial(codigo, user, estoque, giro);
+      if (r.tipo === 'fora_zl0024') {
+        toast.error(`Item ${codigo} não está na ZL0024 — não há saldo para inventariar.`);
+        return;
       }
-
-      // 2) Senão, entra no inventário de QR do dia desta pessoa (ou abre um).
-      if (!destino) {
-        const hoje = hojeISO();
-        const meu = lista.find((i) => abertoDe(i) && i.criterio === CRITERIO_QR && i.data === hoje && podeEditarFormulario(user, i));
-        const itens = candidatos.map((c) => ({ material: c.material, deposito: c.deposito, classe: c.classe }));
-        let inventarioId: string;
-        if (meu) {
-          const faltam = itens.filter((i) => !meu.itens.some((x) => chaveItem(x.material, x.deposito) === chaveItem(i.material, i.deposito)));
-          if (faltam.length > 0) await adicionarItensInventario(meu.id, faltam);
-          inventarioId = meu.id;
-        } else {
-          const r = await criarInventario({
-            data: hoje,
-            criterio: CRITERIO_QR,
-            observacao: null,
-            conferente_nome: user.name,
-            criado_por_nome: user.name,
-          }, itens);
-          inventarioId = r.id;
-        }
-        lista = await listarInventarios();
-        setInventarios(lista);
-        const inv = lista.find((i) => i.id === inventarioId);
-        // Se já foi contado e encerrado hoje, abre o resultado dele.
-        const item = inv?.itens.find((i) => chaves.has(chaveItem(i.material, i.deposito)) && !itemEncerrado(i))
-          ?? inv?.itens.find((i) => chaves.has(chaveItem(i.material, i.deposito)));
-        if (!inv || !item) {
-          toast.info('Contagem guardada sem rede. Ela aparece aqui quando sincronizar.');
-          return;
-        }
-        destino = { inv, item };
+      setInventarios(r.inventarios);
+      if (r.tipo === 'offline') {
+        toast.info('Contagem guardada sem rede. Ela aparece aqui quando sincronizar.');
+        return;
       }
-
-      setAbertoId(destino.inv.id);
-      setAbrirContagem((atual) => ({ itemId: destino!.item.id, n: (atual?.n ?? 0) + 1 }));
+      if (r.tipo === 'de_outro') {
+        toast.warning(`Item já selecionado no inventário ${r.inventario.codigo}, de ${r.inventario.criado_por_nome || 'outro responsável'}.`);
+        return;
+      }
+      setAbertoId(r.inventario.id);
+      setAbrirContagem((atual) => ({ itemId: r.item.id, n: (atual?.n ?? 0) + 1 }));
     } catch (err: any) {
       toast.error(err?.message || 'Não foi possível abrir a contagem do item lido.');
     }
@@ -372,7 +311,8 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
             Contagem cega dos itens selecionados, comparada com o saldo da ZL0024.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {podeImportar && <button onClick={() => setImportando(true)} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}><Upload className="h-3.5 w-3.5" /> Importar planilha</button>}
           {canAccessPage(user, 'almox_inventario_analise') && (
             <button onClick={() => onNavigate('/almoxarifado/inventario-analise')} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
               <BarChart3 className="h-3.5 w-3.5" /> Inventário
@@ -428,6 +368,7 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
       )}
 
       {modalNovo}
+      {importando && <ImportarInventarioModal onClose={() => setImportando(false)} onImportado={recarregarInventarios} />}
     </div>
   );
 }
@@ -580,7 +521,7 @@ function ModalSelecaoItens({
   onSalvo: (id: string) => void | Promise<void>;
 }) {
   const toast = useToast();
-  const pref = useMemo(lerPreferencias, []);
+  const pref = useMemo(lerPreferenciasInventario, []);
   const [data, setData] = useState(hojeISO());
   const [conferente, setConferente] = useState('');
   const [observacao, setObservacao] = useState('');
@@ -592,6 +533,16 @@ function ModalSelecaoItens({
   const hoje = hojeISO();
   const [marcados, setMarcados] = useState<Map<string, CandidatoInventario>>(new Map());
   const [salvando, setSalvando] = useState(false);
+  const [tempo, setTempo] = useState('');
+  const [unidadeTempo, setUnidadeTempo] = useState<'minutos' | 'horas' | 'turnos' | 'dias'>('minutos');
+  const [horasJornada, setHorasJornada] = useState(8);
+  const [minPorItem, setMinPorItem] = useState(2);
+  const [pendenciasEscopo, setPendenciasEscopo] = useState<PendenciaContagem[]>([]);
+  const [verificandoEscopo, setVerificandoEscopo] = useState(false);
+  const [resumoEscopo, setResumoEscopo] = useState('');
+  const aoPerderReserva = useCallback(() => setResumoEscopo(''), []);
+  const reservas = useReservasInventario(marcados, setMarcados, aoPerderReserva);
+  const tempoMin = tempo.trim() ? Number(tempo.replace(',', '.')) * (unidadeTempo === 'minutos' ? 1 : unidadeTempo === 'horas' ? 60 : horasJornada * 60) : 30;
 
   const jaNoInventario = useMemo(
     () => new Set((inventario?.itens || []).map((i) => chaveItem(i.material, i.deposito))),
@@ -623,31 +574,48 @@ function ModalSelecaoItens({
   const qtdDivergentesAnteriores = candidatos.filter((c) => historico.get(c.chave)?.jaDivergiu).length;
   const coberturaSelecao = useMemo(() => coberturaInventario(estoque, historico, depositos), [estoque, historico, depositos]);
 
-  const alternar = (c: CandidatoInventario) => setMarcados((m) => {
-    const n = new Map(m);
+  const alternar = (c: CandidatoInventario) => {
+    if (!reservas.pronto || reservas.ocupado || reservas.ocupadas.has(c.chave)) return;
+    setResumoEscopo('');
+    const n = new Map(marcados);
     if (n.has(c.chave)) n.delete(c.chave); else n.set(c.chave, c);
-    return n;
-  });
+    void reservas.aplicar(n);
+  };
 
-  const marcarVarios = (lista: CandidatoInventario[], valor: boolean) => setMarcados((m) => {
-    const n = new Map(m);
-    lista.forEach((c) => (valor ? n.set(c.chave, c) : n.delete(c.chave)));
-    return n;
-  });
+  const marcarVarios = (lista: CandidatoInventario[], valor: boolean) => {
+    if (!reservas.pronto || reservas.ocupado) return;
+    setResumoEscopo(''); const n = new Map(marcados);
+    lista.filter(c => !reservas.ocupadas.has(c.chave)).forEach((c) => (valor ? n.set(c.chave, c) : n.delete(c.chave)));
+    void reservas.aplicar(n);
+  };
+
+  const sugerir = async () => {
+    setVerificandoEscopo(true);
+    try {
+      const ctx = await contextoAuditoriaInventario();
+      setPendenciasEscopo(ctx.pendencias);
+      const r = sugerirEscopoRapido(visiveis.filter(c => !reservas.ocupadas.has(c.chave)), estoque, historico, ctx.pendencias, hoje, tempoMin, minPorItem);
+      if (!r.itens.length) { toast.warning('Nenhum item cabe nesse tempo com as premissas atuais ou os itens têm pendências. Amplie o tempo ou regularize as movimentações.'); return; }
+      if (!await reservas.aplicar(new Map(r.itens.map(c => [c.chave, c])))) return;
+      setResumoEscopo(`Escopo rápido: ${r.itens.length} itens; estimativa ${r.minutos} min em ${Math.round(tempoMin)} min disponíveis. Premissas: ${minPorItem} min/item, preparação 5 min, reserva 20%, adicionais por endereço/unidade e deslocamento. Prioridade: divergências anteriores, classe A e cobertura. ${r.excluidosPendencia} itens excluídos por pendência de movimentação.`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Falha ao verificar pendências do escopo.'); }
+    finally { setVerificandoEscopo(false); }
+  };
 
   const alternarDeposito = (d: string) =>
     setDepositos((ds) => (ds.includes(d) ? ds.filter((x) => x !== d) : [...ds, d].sort()));
 
   const salvar = async () => {
     if (marcados.size === 0) { toast.error('Selecione ao menos um item para contar.'); return; }
+    if (!reservas.pronto || reservas.ocupado) { toast.error('Aguarde a verificação das reservas antes de salvar.'); return; }
     setSalvando(true);
-    gravarPreferencias({ depositos, criterio });
-    const itens = [...marcados.values()]
-      .sort((a, b) => a.deposito.localeCompare(b.deposito) || a.posicao - b.posicao)
-      .map((c) => ({ material: c.material, deposito: c.deposito, classe: c.classe }));
+    gravarPreferenciasInventario({ depositos, criterio });
+    const selecionados = [...marcados.values()];
+    if (!resumoEscopo) selecionados.sort((a, b) => a.deposito.localeCompare(b.deposito) || a.posicao - b.posicao);
+    const itens = selecionados.map((c) => ({ material: c.material, deposito: c.deposito, classe: c.classe }));
     try {
       if (inventario) {
-        const n = await adicionarItensInventario(inventario.id, itens);
+        const n = await adicionarItensInventario(inventario.id, itens, reservas.sessao);
         toast.success(`${n} item(ns) acrescentado(s) ao ${inventario.codigo}.`);
         await onSalvo(inventario.id);
       } else {
@@ -655,15 +623,17 @@ function ModalSelecaoItens({
         const r = await criarInventario({
           data,
           criterio: `Curva 80/20 por ${ROTULO_CRITERIO[criterio].toLowerCase()} — ${depTxt}`,
-          observacao: observacao.trim() || null,
+          observacao: [observacao.trim(), resumoEscopo].filter(Boolean).join('\n') || null,
           conferente_nome: conferente.trim() || null,
           criado_por_nome: user.name,
+          reserva_sessao: reservas.sessao,
         }, itens);
         toast.success(`Inventário ${r.codigo} aberto com ${itens.length} item(ns).`);
         await onSalvo(r.id);
       }
     } catch (err: any) {
       toast.error(err?.message || 'Falha ao salvar o inventário.');
+      await reservas.atualizar();
     } finally {
       setSalvando(false);
     }
@@ -680,6 +650,26 @@ function ModalSelecaoItens({
         </p>
       </ModalHeader>
       <ModalBody className="space-y-4">
+        <div className="rounded-xl border p-3 text-xs" style={{ borderColor: 'var(--hairline)' }}>
+          <strong>Seleção exclusiva por material e depósito</strong>
+          <p>Ao marcar, o item fica reservado nesta seleção. Itens em outra seleção ou inventário em andamento não podem ser marcados. Ao fechar, a seleção é liberada; sem renovação, as reservas temporárias expiram em até 2 minutos.</p>
+          {!reservas.pronto && !reservas.erro && <p role="status">Verificando disponibilidade…</p>}
+          {reservas.erro && <p role="alert" className="text-rose-600">{reservas.erro}</p>}
+          <button type="button" onClick={() => void reservas.atualizar()} disabled={reservas.ocupado} className="mt-1 font-bold underline">Atualizar disponibilidade</button>
+        </div>
+        <section className="space-y-2 rounded-xl border p-3 text-xs" style={{ borderColor: 'var(--hairline)' }}>
+          <strong>Sugerir escopo rápido de contagem</strong>
+          <div className="grid gap-2 sm:grid-cols-4">
+            <Campo rotulo="Tempo disponível (opcional)"><input className={inputCls} type="number" min="0.1" step="any" value={tempo} placeholder="Sem informar: 30 min" onChange={e => { setTempo(e.target.value); setResumoEscopo(''); }} /></Campo>
+            <Campo rotulo="Unidade de tempo"><select className={inputCls} value={unidadeTempo} onChange={e => { setUnidadeTempo(e.target.value as typeof unidadeTempo); setResumoEscopo(''); }}><option value="minutos">Minutos</option><option value="horas">Horas</option><option value="turnos">Turnos</option><option value="dias">Dias</option></select></Campo>
+            <Campo rotulo="Minutos por item (premissa)"><input className={inputCls} type="number" min="0.1" step="0.5" value={minPorItem} onChange={e => { setMinPorItem(Number(e.target.value)); setResumoEscopo(''); }} /></Campo>
+            {(unidadeTempo === 'turnos' || unidadeTempo === 'dias') && <Campo rotulo="Horas úteis por turno/dia"><input className={inputCls} type="number" min="1" max="24" value={horasJornada} onChange={e => { setHorasJornada(Number(e.target.value)); setResumoEscopo(''); }} /></Campo>}
+          </div>
+          <p>Estimativa operacional ajustável, com reserva de 20%. Prioriza risco e cobertura; não substitui um plano estatístico de auditoria. Cada rodada depende de nova atualização e liberação da gestão.</p>
+          <button type="button" onClick={() => void sugerir()} disabled={verificandoEscopo || !reservas.pronto || reservas.ocupado || !Number.isFinite(tempoMin) || tempoMin <= 0 || minPorItem <= 0 || horasJornada < 1 || horasJornada > 24} className={btnSec} style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}>{verificandoEscopo ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}Sugerir escopo rápido</button>
+          {resumoEscopo && <p role="status">{resumoEscopo}</p>}
+          {!!pendenciasEscopo.length && <p>Materiais com saída extraordinária ou requisição pendente não entram na sugestão. Regularize em Pendências antes de incluí-los.</p>}
+        </section>
         {!inventario && (
           <div className="grid gap-3 sm:grid-cols-3">
             <Campo rotulo="Data da conferência" obrigatorio>
@@ -791,7 +781,7 @@ function ModalSelecaoItens({
             <button type="button" onClick={() => marcarVarios(visiveis.slice(0, LIMITE_LISTA), true)} className="hover:underline" style={{ color: 'var(--brand)' }}>
               Marcar visíveis
             </button>
-            <button type="button" onClick={() => setMarcados(new Map())} className="hover:underline">Limpar seleção</button>
+            <button type="button" disabled={reservas.ocupado} onClick={() => { setResumoEscopo(''); void reservas.aplicar(new Map()); }} className="hover:underline">Limpar seleção</button>
           </span>
         </div>
 
@@ -800,13 +790,14 @@ function ModalSelecaoItens({
             <p className="py-8 text-center text-xs" style={{ color: 'var(--ink-muted)' }}>Nenhum item nesse filtro.</p>
           ) : visiveis.slice(0, LIMITE_LISTA).map((c) => {
             const marcado = marcados.has(c.chave);
+            const reserva = reservas.ocupadas.get(c.chave);
             return (
               <label
                 key={c.chave}
                 className="flex cursor-pointer items-center gap-3 px-3 py-2"
                 style={{ borderColor: 'var(--hairline)', background: marcado ? 'color-mix(in srgb, var(--brand) 7%, transparent)' : undefined }}
               >
-                <input type="checkbox" checked={marcado} onChange={() => alternar(c)} className="shrink-0" />
+                <input type="checkbox" checked={marcado} disabled={!!reserva || !reservas.pronto || reservas.ocupado || salvando} onChange={() => alternar(c)} className="shrink-0" />
                 <span className="w-7 shrink-0 text-center text-[11px] font-extrabold" style={{ color: COR_CLASSE[c.classe] }}>{c.classe}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{c.descricao || '—'}</span>
@@ -814,6 +805,7 @@ function ModalSelecaoItens({
                     {c.material} · {formatDeposito(c.deposito)} · {c.unidade}
                   </span>
                   <ChipsHistorico h={historico.get(c.chave)} hoje={hoje} />
+                  {reserva && <span className="mt-1 block text-[11px] font-bold" style={{ color: 'var(--status-serious)' }}>Reservado por {reserva.responsavel}{reserva.inventario ? ` · ${reserva.inventario}` : ' · seleção em andamento'}</span>}
                 </span>
                 <span className="shrink-0 text-[10px] font-semibold tabular-nums" style={{ color: 'var(--ink-muted)' }}>#{c.posicao}</span>
               </label>
@@ -824,7 +816,7 @@ function ModalSelecaoItens({
       <ModalFooter>
         <span className="mr-auto text-xs font-bold" style={{ color: 'var(--ink-secondary)' }}>{marcados.size} item(ns) selecionado(s)</span>
         <button onClick={onClose} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Cancelar</button>
-        <button onClick={() => void salvar()} disabled={salvando || marcados.size === 0} className={btnPri} style={{ background: 'var(--brand)' }}>
+        <button onClick={() => void salvar()} disabled={salvando || !reservas.pronto || reservas.ocupado || verificandoEscopo || marcados.size === 0} className={btnPri} style={{ background: 'var(--brand)' }}>
           {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
           {inventario ? 'Acrescentar itens' : 'Abrir inventário'}
         </button>
@@ -1040,6 +1032,7 @@ function VistaInventario({
         <Indicador rotulo="Acuracidade" valor={r.acuracidade == null ? '—' : `${r.acuracidade.toFixed(0)}%`} />
       </div>
       <BarraProgresso inv={inv} />
+      {inv.status === 'aberto' && <PreparacaoInventario inventarioId={inv.id} gestor={!!(user.roles?.includes('admin') || user.page_access?.almox_importar_planilhas)} />}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex min-w-0 overflow-x-auto no-scrollbar rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)' }}>
@@ -1091,6 +1084,7 @@ function VistaInventario({
           key={contando.id}
           user={user}
           item={contando}
+          inventarioId={inv.id}
           numero={inv.itens.indexOf(contando) + 1}
           fotoItem={mapaFotos.get(contando.material)}
           onFotoSalva={(salvo) => handleFotoSalva(contando.material, salvo)}
@@ -1225,7 +1219,7 @@ function LinhaItem({
           {item.classe && <span>Classe {item.classe}</span>}
           {item.contagens.map((c) => (
             <span key={c.id} className="font-semibold" style={{ color: c.divergente ? 'var(--status-critical)' : 'var(--status-good)' }}>
-              {c.numero}ª: {formatQtd(c.quantidade)} {item.unidade}
+              {c.numero}ª: {encerrado ? `${formatQtd(c.quantidade)} ${item.unidade || ''}` : 'enviada'}
             </span>
           ))}
           {encerrado && item.saldo_sistema != null && (
@@ -1257,11 +1251,12 @@ function faseInicial(item: ItemInventario): Fase {
   return 'contar';
 }
 
-function ModalContagem({
-  user, item, numero, fotoItem, onFotoSalva, onVerZoom, onRecarregar, onProximo, temProximo, onClose,
+export function ModalContagem({
+  user, item, inventarioId, numero, fotoItem, onFotoSalva, onVerZoom, onRecarregar, onProximo, temProximo, onClose,
 }: {
   user: Profile;
   item: ItemInventario;
+  inventarioId: string;
   numero: number;
   fotoItem?: CatalogoItem;
   onFotoSalva?: (itemCatalogo: CatalogoItem) => void;
@@ -1282,6 +1277,17 @@ function ModalContagem({
   const [fotoAtual, setFotoAtual] = useState<CatalogoItem | null>(fotoItem ?? null);
   const [modalFotoAberto, setModalFotoAberto] = useState(false);
   const qtdRef = useRef<HTMLInputElement>(null);
+  const [contexto, setContexto] = useState<ContextoAuditoriaInventario | null>(null);
+  const [causa, setCausa] = useState<CausaInventario | ''>('');
+  const [causaDetalhe, setCausaDetalhe] = useState('');
+  const [semMovimento, setSemMovimento] = useState(false);
+  const preparacaoRef = useRef<string | null>(null);
+  const iniciadaRef = useRef<string | null>(null);
+  const receberContexto = useCallback((ctx: ContextoAuditoriaInventario | null) => {
+    setContexto(ctx);
+    if (!ctx?.pronta) { preparacaoRef.current = null; iniciadaRef.current = null; setSemMovimento(false); }
+    else if (preparacaoRef.current !== ctx.preparacao?.id) { preparacaoRef.current = ctx.preparacao!.id; iniciadaRef.current = new Date().toISOString(); setSemMovimento(false); }
+  }, []);
 
   useEffect(() => {
     setFotoAtual(fotoItem ?? null);
@@ -1299,9 +1305,13 @@ function ModalContagem({
   const proxima = proximaContagem(item);
   const qtdNum = qtd.trim() === '' ? NaN : Number(qtd.replace(',', '.'));
   const qtdValida = Number.isFinite(qtdNum) && qtdNum >= 0;
+  const causaValida = !!causa && causaDetalhe.trim().length >= 5;
+  const podeContarAgora = !!contexto?.pronta && !contexto.pendencias.some(p => p.item_id === item.id) && semMovimento;
 
   const enviar = async () => {
     if (!qtdValida) { toast.error('Informe a quantidade contada (zero ou mais).'); return; }
+    if (!podeContarAgora || !preparacaoRef.current || !iniciadaRef.current) { toast.error('Atualize/libere a rodada e confirme o controle das movimentações antes de contar.'); return; }
+    if ((proxima ?? 1) >= 2 && !causaValida) { toast.error('Informe a causa provável e o detalhe da recontagem.'); return; }
     setEnviando(true);
     try {
       const r = await registrarContagem(item.id, {
@@ -1310,17 +1320,11 @@ function ModalContagem({
         validade: validade || null,
         observacao: obs.trim() || null,
         por: user.name,
+        causa: causa || null, causaDetalhe: causaDetalhe.trim() || null,
+        preparacao: preparacaoRef.current, iniciadaEm: iniciadaRef.current,
       });
-      if (ehRespostaOffline(r)) {
-        // Sem rede a contagem fica na fila do aparelho; quem compara com a
-        // ZL0024 (e pede recontagem) é o servidor, no envio.
-        toast.info('Sem conexão: contagem guardada neste aparelho. A comparação com a ZL0024 acontece quando sincronizar.');
-        setQtd(''); setObs('');
-        if (temProximo) onProximo(); else onClose();
-        return;
-      }
       setUltimo(r);
-      setQtd(''); setObs('');
+      setQtd(''); setObs(''); setCausa(''); setCausaDetalhe(''); setSemMovimento(false);
       await onRecarregar();
       if (!r.divergente) {
         toast.success(`${r.numero}ª contagem confere com a ZL0024.`);
@@ -1340,9 +1344,10 @@ function ModalContagem({
   };
 
   const encerrar = async () => {
+    if (!causaValida) { toast.error('Informe a causa provável e o detalhe antes de encerrar.'); return; }
     setEnviando(true);
     try {
-      await encerrarItemInventario(item.id, user.name);
+      await encerrarItemInventario(item.id, causa as CausaInventario, causaDetalhe);
       toast.warning('Divergência registrada — alerta gravado.');
       await onRecarregar();
       setFase('final');
@@ -1364,6 +1369,7 @@ function ModalContagem({
         <h2 className="text-sm font-extrabold" style={{ color: 'var(--ink-primary)' }}>{item.descricao || '—'}</h2>
       </ModalHeader>
       <ModalBody className="space-y-4">
+        {!itemEncerrado(item) && <PreparacaoInventario inventarioId={inventarioId} itemId={item.id} gestor={!!(user.roles?.includes('admin') || user.page_access?.almox_importar_planilhas)} onContexto={receberContexto} />}
         {/* Card de Foto de Cadastro do Material */}
         <div
           className="rounded-xl border p-3 flex flex-col sm:flex-row items-center gap-3 transition-all"
@@ -1462,7 +1468,7 @@ function ModalContagem({
                 style={{ borderColor: `color-mix(in srgb, ${c.divergente ? 'var(--status-critical)' : 'var(--status-good)'} 40%, var(--hairline))` }}
               >
                 <span className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
-                  {c.numero}ª contagem: <span className="tabular-nums">{formatQtd(c.quantidade)}</span> {item.unidade}
+                  {c.numero}ª contagem: <span className="tabular-nums">{itemEncerrado(item) ? `${formatQtd(c.quantidade)} ${item.unidade || ''}` : 'enviada · quantidade oculta durante a recontagem'}</span>
                 </span>
                 <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                   {c.contado_por_nome || '—'} · {formatDateTimeBR(c.created_at)}
@@ -1473,6 +1479,7 @@ function ModalContagem({
                       .filter(Boolean).join(' · ')}
                   </span>
                 )}
+                {c.causa && <span className="basis-full text-[11px]">Causa provável: {rotuloCausa(c.causa)} · {c.causa_detalhe}</span>}
               </div>
             ))}
           </div>
@@ -1502,11 +1509,19 @@ function ModalContagem({
             <Campo rotulo="Observação">
               <input value={obs} onChange={(e) => setObs(e.target.value)} className={inputCls} />
             </Campo>
+            <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={semMovimento} onChange={e => setSemMovimento(e.target.checked)} />Contei após a liberação e não houve movimentação do material durante a contagem. Se houve, vou interromper e solicitar nova atualização.</label>
+            {proxima >= 2 && <p className="text-xs">Prefira outro conferente para a recontagem. O saldo e as quantidades anteriores ficam ocultos nesta tela até o encerramento.</p>}
             <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
               Ao enviar, a contagem fica gravada e não pode ser alterada.
             </p>
           </div>
         )}
+
+        {((fase === 'contar' && (proxima ?? 1) >= 2) || fase === 'decidir') && <div className="space-y-2 rounded-xl border p-3" style={{ borderColor: 'var(--hairline)' }}>
+          <Campo rotulo="Causa provável da diferença anterior" obrigatorio><select className={inputCls} value={causa} onChange={e => setCausa(e.target.value as CausaInventario | '')}><option value="">Selecione…</option>{Object.entries(CAUSAS_INVENTARIO).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></Campo>
+          <Campo rotulo="Detalhe / evidência / documento verificado" obrigatorio><textarea className={inputCls} value={causaDetalhe} onChange={e => setCausaDetalhe(e.target.value)} minLength={5} /></Campo>
+          <p className="text-[11px]">Classificação declarada para investigação. Use “Em apuração” se a causa ainda não estiver comprovada.</p>
+        </div>}
 
         {fase === 'decidir' && (
           <div
@@ -1533,17 +1548,17 @@ function ModalContagem({
         {fase === 'contar' && (
           <>
             <button onClick={onClose} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Cancelar</button>
-            <button onClick={() => void enviar()} disabled={enviando || !qtdValida} className={btnPri} style={{ background: 'var(--brand)' }}>
+            <button onClick={() => void enviar()} disabled={enviando || !qtdValida || !podeContarAgora || ((proxima ?? 1) >= 2 && !causaValida)} className={btnPri} style={{ background: 'var(--brand)' }}>
               {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Enviar contagem
             </button>
           </>
         )}
         {fase === 'decidir' && (
           <>
-            <button onClick={() => void encerrar()} disabled={enviando} className={btnSec} style={{ borderColor: 'var(--status-critical)', color: 'var(--status-critical)' }}>
+            <button onClick={() => void encerrar()} disabled={enviando || !causaValida} className={btnSec} style={{ borderColor: 'var(--status-critical)', color: 'var(--status-critical)' }}>
               {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />} Não, mostrar saldo
             </button>
-            <button onClick={() => setFase('contar')} disabled={enviando || proxima == null} className={btnPri} style={{ background: 'var(--brand)' }}>
+            <button onClick={() => { setFase('contar'); iniciadaRef.current = new Date().toISOString(); setSemMovimento(false); }} disabled={enviando || proxima == null} className={btnPri} style={{ background: 'var(--brand)' }}>
               <RotateCcw className="h-4 w-4" /> Sim, nova contagem
             </button>
           </>

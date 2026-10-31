@@ -43,6 +43,7 @@ import {
   TableBody, TableCardRow, TableCards, TableDesktop, TableEmpty, TableHeadRow, TableShell, Td, Th, Tr,
 } from '../../components/ui/DataTable';
 import { canAccessPage } from '../../lib/pages';
+import { rotuloCausa } from '../../lib/inventarioAuditoria';
 
 interface Props {
   user: Profile;
@@ -125,6 +126,11 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
   const precos = useMemo(() => precosPorMaterial(estoque), [estoque]);
   const todas = useMemo(() => linhasAnalise(inventarios, precos), [inventarios, precos]);
   const linhas = useMemo(() => aplicarFiltro(todas, filtro), [todas, filtro]);
+  const causas = useMemo(() => {
+    const mapa = new Map<string, number>();
+    linhas.forEach(l => { if (l.causa) mapa.set(l.causa, (mapa.get(l.causa) ?? 0) + 1); });
+    return [...mapa].sort((a, b) => b[1] - a[1]);
+  }, [linhas]);
 
   const depositosDisponiveis = useMemo(() => [...new Set(todas.map((l) => l.deposito))].sort(), [todas]);
   const classesDisponiveis = useMemo(() => {
@@ -637,6 +643,11 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
         </div>
       )}
 
+      {causas.length > 0 && <section className="space-y-2 rounded-xl border p-4" style={{ borderColor: 'var(--hairline)' }}>
+        <h2 className="text-sm font-bold">Causas prováveis registradas</h2>
+        <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>Última classificação declarada por item no filtro atual, inclusive diferenças resolvidas na recontagem. Depende de investigação e evidência; não representa causa raiz comprovada.</p>
+        <div className="flex flex-wrap gap-2">{causas.map(([causa, n]) => <span key={causa} className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: 'var(--hairline)' }}>{rotuloCausa(causa)}: <strong>{n}</strong></span>)}</div>
+      </section>}
       {/* Filtros */}
       <div className="space-y-3 rounded-xl border p-3" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
         <div className="flex flex-wrap items-end gap-3">
