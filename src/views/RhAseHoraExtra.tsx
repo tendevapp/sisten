@@ -59,6 +59,8 @@ import {
 import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import SeletorColaboradoresModal from '../components/rh/SeletorColaboradoresModal';
+import CampoHorarioAse from '../components/rh/CampoHorarioAse';
+import { ATALHOS_ENTRADA_ASE, ATALHOS_SAIDA_ASE, validarPeriodoAse } from '../lib/aseHorarios';
 
 // Carregado sob demanda: o relatorio traz o Recharts junto, e quem só vai
 // preencher uma ASE não deveria pagar esse download.
@@ -996,7 +998,9 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       if (!d) return d;
       return {
         ...d,
-        itens: api.aplicarPreenchimentoLoteItens(d.itens, patch),
+        itens: api.aplicarPreenchimentoLoteItens(d.itens, patch).map(it => (
+          validarPeriodoAse(it.hora_entrada, it.hora_saida) ? { ...it, total_horas: 0 } : it
+        )),
       };
     });
     setSujo(true);
@@ -1071,7 +1075,9 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         // Recalcula o total sempre que um campo que afeta o cálculo muda —
         // o usuário nunca precisa acionar isso manualmente.
         if ('hora_entrada' in patch || 'hora_saida' in patch || 'intervalo_minutos' in patch) {
-          merged.total_horas = calcularHorasASE(merged.hora_entrada, merged.hora_saida, merged.intervalo_minutos).totalHoras;
+          merged.total_horas = validarPeriodoAse(merged.hora_entrada, merged.hora_saida)
+            ? 0
+            : calcularHorasASE(merged.hora_entrada, merged.hora_saida, merged.intervalo_minutos).totalHoras;
         }
         return merged;
       }),
@@ -1081,6 +1087,11 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
 
   const salvar = useCallback(async (silencioso = false): Promise<string | null> => {
     if (!dados) return null;
+    const itemInvalido = dados.itens.find(it => validarPeriodoAse(it.hora_entrada, it.hora_saida));
+    if (itemInvalido) {
+      toast.warning(`${itemInvalido.nome || itemInvalido.registro}: ${validarPeriodoAse(itemInvalido.hora_entrada, itemInvalido.hora_saida)} Corrija antes de salvar ou enviar.`);
+      return null;
+    }
     setSalvando(true);
     try {
       const setorNome = setores.find(s => s.id === dados.setor_id)?.nome;
@@ -1676,33 +1687,33 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300 mb-1">
-                      Entrada (Todos)
-                    </label>
-                    <input
-                      type="time"
-                      value={loteHoraEntrada}
-                      onChange={e => setLoteHoraEntrada(e.target.value)}
-                      className="h-9 w-full rounded-lg border border-blue-300 bg-white px-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-blue-700 dark:bg-slate-900 dark:text-slate-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300 mb-1">
-                      Saída (Todos)
-                    </label>
-                    <input
-                      type="time"
-                      value={loteHoraSaida}
-                      onChange={e => setLoteHoraSaida(e.target.value)}
-                      className="h-9 w-full rounded-lg border border-blue-300 bg-white px-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-blue-700 dark:bg-slate-900 dark:text-slate-50"
-                    />
-                  </div>
+                  <CampoHorarioAse
+                    label="Entrada (Todos)"
+                    value={loteHoraEntrada}
+                    onChange={setLoteHoraEntrada}
+                    atalhos={ATALHOS_ENTRADA_ASE}
+                  />
+                  <CampoHorarioAse
+                    label="Saída (Todos)"
+                    value={loteHoraSaida}
+                    onChange={setLoteHoraSaida}
+                    atalhos={ATALHOS_SAIDA_ASE}
+                  />
                 </div>
 
+                {validarPeriodoAse(loteHoraEntrada, loteHoraSaida) && (
+                  <p role="alert" className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                    {validarPeriodoAse(loteHoraEntrada, loteHoraSaida)}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={() => {
+                    const erroHorario = validarPeriodoAse(loteHoraEntrada, loteHoraSaida);
+                    if (erroHorario) {
+                      toast.warning(erroHorario);
+                      return;
+                    }
                     if (!loteHoraEntrada && !loteHoraSaida) {
                       toast.warning('Informe pelo menos o horário de entrada ou saída para aplicar.');
                       return;
@@ -2185,6 +2196,7 @@ function CardColaboradorMobile({
   onChange: (patch: Partial<AseHoraExtraItem>) => void;
   onRemover: () => void;
 }) {
+  const erroHorario = validarPeriodoAse(item.hora_entrada, item.hora_saida);
   const excedeLimiteClt = (item.total_horas || 0) > LIMITE_DIARIO_CLT_HORAS;
   const inputStyle = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50';
   const manual = item.pessoa_id === null;
@@ -2284,31 +2296,24 @@ function CardColaboradorMobile({
 
       {/* Horários: Entrada e Saída */}
       <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
-            Entrada
-          </label>
-          <input
-            type="time"
-            value={item.hora_entrada}
-            disabled={somenteLeitura}
-            onChange={e => onChange({ hora_entrada: e.target.value })}
-            className={inputStyle}
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
-            Saída
-          </label>
-          <input
-            type="time"
-            value={item.hora_saida}
-            disabled={somenteLeitura}
-            onChange={e => onChange({ hora_saida: e.target.value })}
-            className={inputStyle}
-          />
-        </div>
+        <CampoHorarioAse
+          label="Entrada"
+          value={item.hora_entrada}
+          disabled={somenteLeitura}
+          onChange={hora => onChange({ hora_entrada: hora })}
+          atalhos={ATALHOS_ENTRADA_ASE}
+        />
+        <CampoHorarioAse
+          label="Saída"
+          value={item.hora_saida}
+          disabled={somenteLeitura}
+          onChange={hora => onChange({ hora_saida: hora })}
+          atalhos={ATALHOS_SAIDA_ASE}
+        />
       </div>
+      {erroHorario && (
+        <p role="alert" className="text-xs font-semibold text-rose-600 dark:text-rose-400">{erroHorario}</p>
+      )}
 
       {/* Intervalo, % HE e Total */}
       <div className="grid grid-cols-3 gap-2 items-end">
@@ -2357,7 +2362,7 @@ function CardColaboradorMobile({
             title={excedeLimiteClt ? `Acima de ${LIMITE_DIARIO_CLT_HORAS}h/dia (Art. 59 CLT)` : undefined}
           >
             {excedeLimiteClt && <AlertTriangle className="mr-1 h-3.5 w-3.5" />}
-            {(item.total_horas ?? 0).toFixed(2)}h
+            {erroHorario ? '—' : `${(item.total_horas ?? 0).toFixed(2)}h`}
           </span>
         </div>
       </div>
@@ -2377,6 +2382,7 @@ function LinhaColaborador({
   onChange: (patch: Partial<AseHoraExtraItem>) => void;
   onRemover: () => void;
 }) {
+  const erroHorario = validarPeriodoAse(item.hora_entrada, item.hora_saida);
   const excedeLimiteClt = (item.total_horas || 0) > LIMITE_DIARIO_CLT_HORAS;
   const cellInput = 'h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50';
   const manual = item.pessoa_id === null;
@@ -2440,6 +2446,9 @@ function LinhaColaborador({
       </td>
       <td className="px-2 py-2">
         <input type="time" value={item.hora_saida} disabled={somenteLeitura} onChange={e => onChange({ hora_saida: e.target.value })} className={cellInput} />
+        {erroHorario && (
+          <p role="alert" className="mt-1 text-[10px] font-semibold text-rose-600 dark:text-rose-400">{erroHorario}</p>
+        )}
       </td>
       <td className="px-2 py-2">
         <input type="number" min={0} step={5} value={item.intervalo_minutos} disabled={somenteLeitura} onChange={e => onChange({ intervalo_minutos: Number(e.target.value) || 0 })} className={cellInput} />
@@ -2453,7 +2462,7 @@ function LinhaColaborador({
           title={excedeLimiteClt ? `Acima de ${LIMITE_DIARIO_CLT_HORAS}h/dia (Art. 59 CLT)` : undefined}
         >
           {excedeLimiteClt && <AlertTriangle className="h-3.5 w-3.5" />}
-          {(item.total_horas ?? 0).toFixed(2)}h
+          {erroHorario ? '—' : `${(item.total_horas ?? 0).toFixed(2)}h`}
         </span>
       </td>
     </tr>
