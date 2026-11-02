@@ -55,6 +55,10 @@ import {
 import { comprimirImagemUpload } from '../../lib/imageCompression';
 import { EVENTO_ITEM_QR_INVENTARIO, consumirItemInventarioPendente } from '../../lib/etiquetaMaterial';
 import ImportarInventarioModal from '../../components/almoxarifado/ImportarInventarioModal';
+import DivergenciasInventarioModal from '../../components/almoxarifado/DivergenciasInventarioModal';
+import { OPCOES_FILTRO_DATA, intervaloDoFiltro, type FiltroDataAlteracao } from '../../lib/filtroDataAlteracao';
+import { agruparPorData, dataNoIntervalo } from '../../lib/inventarioPorData';
+import { diaLocal } from '../../lib/sessaoDiaria';
 import { CAUSAS_INVENTARIO, rotuloCausa, sugerirEscopoRapido, type CausaInventario, type PendenciaContagem } from '../../lib/inventarioAuditoria';
 import { contextoAuditoriaInventario } from '../../lib/inventarioCiclicoApi';
 import { useReservasInventario } from '../../lib/useReservasInventario';
@@ -145,6 +149,10 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
   const [novo, setNovo] = useState<{ inventario?: InventarioRow } | null>(null);
   const [busca, setBusca] = useState('');
   const [importando, setImportando] = useState(false);
+  const [filtroData, setFiltroData] = useState<FiltroDataAlteracao>('todas');
+  const [periodoData, setPeriodoData] = useState({ de: '', ate: '' });
+  // Janela de divergências: de todos os inventários (null) ou de um só.
+  const [divergencias, setDivergencias] = useState<{ inventarioId: string | null } | null>(null);
   const podeImportar = user.roles?.includes('admin') || user.page_access?.almox_importar_planilhas === true;
   // Item lido no QR do cabeçalho e a contagem que a vista do inventário deve abrir.
   const [itemQr, setItemQr] = useState<{ codigo: string; n: number } | null>(null);
@@ -222,8 +230,10 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
 
   const filtrados = useMemo(() => {
     const tokens = extrairPalavrasChave(busca);
-    if (tokens.length === 0) return inventarios;
+    const intervalo = intervaloDoFiltro(filtroData, periodoData);
     return inventarios.filter((i) => {
+      if (!dataNoIntervalo(i.data, intervalo)) return false;
+      if (tokens.length === 0) return true;
       const alvos = [
         i.codigo,
         i.criado_por_nome,
@@ -232,7 +242,15 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
       ];
       return casarTokens(alvos, tokens);
     });
-  }, [inventarios, busca]);
+  }, [inventarios, busca, filtroData, periodoData]);
+
+  // Separação por dia do inventário (a lista já vem do mais recente).
+  const gruposPorData = useMemo(() => {
+    const agora = new Date();
+    const ontem = new Date(agora);
+    ontem.setDate(ontem.getDate() - 1);
+    return agruparPorData(filtrados, diaLocal(agora), diaLocal(ontem));
+  }, [filtrados]);
 
   const historico = useMemo(() => historicoPorItem(inventarios), [inventarios]);
   const cobertura = useMemo(() => coberturaInventario(estoque, historico), [estoque, historico]);
@@ -330,19 +348,47 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
       <div className="grid grid-cols-3 gap-3">
         <Indicador rotulo="Inventários" valor={inventarios.length} />
         <Indicador rotulo="Em andamento" valor={emAberto} destaque={emAberto > 0} />
-        <Indicador rotulo="Com divergência" valor={comDivergencia} critico={comDivergencia > 0} />
+        <Indicador
+          rotulo="Com divergência"
+          valor={comDivergencia}
+          critico={comDivergencia > 0}
+          onClick={comDivergencia > 0 ? () => setDivergencias({ inventarioId: null }) : undefined}
+          dica="Ver os itens divergentes e abrir recontagem"
+        />
       </div>
 
       <PainelCobertura cobertura={cobertura} carregando={loading && estoque.length === 0} />
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
-        <input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por palavras-chave (código, responsável, conferente ou material)..."
-          className={`${inputCls} pl-8 text-xs`}
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1 basis-60">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por palavras-chave (código, responsável, conferente ou material)..."
+            className={`${inputCls} pl-8 text-xs`}
+          />
+        </div>
+        <select
+          value={filtroData}
+          onChange={(e) => setFiltroData(e.target.value as FiltroDataAlteracao)}
+          aria-label="Filtrar pela data do inventário"
+          className={`${inputCls} w-auto text-xs`}
+        >
+          {OPCOES_FILTRO_DATA.map((op) => (
+            <option key={op.valor} value={op.valor}>{op.valor === 'todas' ? 'Todas as datas' : op.rotulo}</option>
+          ))}
+        </select>
+        {filtroData === 'periodo' && (
+          <div className="flex items-center gap-1.5 text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>
+            <label className="flex items-center gap-1">De
+              <input type="date" value={periodoData.de} onChange={(e) => setPeriodoData((p) => ({ ...p, de: e.target.value }))} className={`${inputCls} w-auto py-1.5 text-xs`} />
+            </label>
+            <label className="flex items-center gap-1">Até
+              <input type="date" value={periodoData.ate} onChange={(e) => setPeriodoData((p) => ({ ...p, ate: e.target.value }))} className={`${inputCls} w-auto py-1.5 text-xs`} />
+            </label>
+          </div>
+        )}
       </div>
 
       {loading && inventarios.length === 0 ? (
@@ -354,28 +400,61 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
           {inventarios.length === 0 ? 'Nenhum inventário registrado ainda.' : 'Nada encontrado com esse filtro.'}
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtrados.map((inv) => (
-            <CartaoInventario
-              key={inv.id}
-              inv={inv}
-              podeExcluir={podeExcluirInventario(user, inv)}
-              onAbrir={() => setAbertoId(inv.id)}
-              onExcluir={() => void confirmarExcluirInventario(inv)}
-            />
+        <div className="space-y-5">
+          {gruposPorData.map((grupo) => (
+            <section key={grupo.data} className="space-y-2" aria-label={grupo.rotulo}>
+              <h2
+                className="flex items-baseline justify-between gap-2 border-b pb-1 text-xs font-extrabold"
+                style={{ borderColor: 'var(--hairline)', color: 'var(--ink-primary)' }}
+              >
+                {grupo.rotulo}
+                <span className="text-[11px] font-semibold tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+                  {grupo.itens.length} inventário(s)
+                </span>
+              </h2>
+              {grupo.itens.map((inv) => (
+                <CartaoInventario
+                  key={inv.id}
+                  inv={inv}
+                  podeExcluir={podeExcluirInventario(user, inv)}
+                  onAbrir={() => setAbertoId(inv.id)}
+                  onExcluir={() => void confirmarExcluirInventario(inv)}
+                  onVerDivergencias={() => setDivergencias({ inventarioId: inv.id })}
+                />
+              ))}
+            </section>
           ))}
         </div>
       )}
 
       {modalNovo}
       {importando && <ImportarInventarioModal onClose={() => setImportando(false)} onImportado={recarregarInventarios} />}
+      {divergencias && (
+        <DivergenciasInventarioModal
+          user={user}
+          inventarios={inventarios}
+          estoque={estoque}
+          inventarioId={divergencias.inventarioId}
+          onClose={() => setDivergencias(null)}
+          onAbrirInventario={(id) => { setDivergencias(null); setAbertoId(id); }}
+          onCriado={async (id) => {
+            setDivergencias(null);
+            await recarregarInventarios();
+            setAbertoId(id);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function Indicador({ rotulo, valor, destaque, critico }: { rotulo: string; valor: number | string; destaque?: boolean; critico?: boolean }) {
-  return (
-    <div className="rounded-xl border px-4 py-3" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+function Indicador({ rotulo, valor, destaque, critico, onClick, dica }: {
+  rotulo: string; valor: number | string; destaque?: boolean; critico?: boolean;
+  /** Com ação, o indicador vira botão (ex.: abrir a lista de divergências). */
+  onClick?: () => void; dica?: string;
+}) {
+  const conteudo = (
+    <>
       <span className="block text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>{rotulo}</span>
       <span
         className="block text-2xl font-extrabold tabular-nums"
@@ -383,7 +462,22 @@ function Indicador({ rotulo, valor, destaque, critico }: { rotulo: string; valor
       >
         {valor}
       </span>
-    </div>
+      {onClick && <span className="block text-[10px] font-bold underline" style={{ color: 'var(--ink-secondary)' }}>Ver itens</span>}
+    </>
+  );
+  const estilo = { borderColor: 'var(--hairline)', background: 'var(--surface-raised)' };
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      title={dica}
+      className="rounded-xl border px-4 py-3 text-left cursor-pointer transition-colors hover:border-[var(--status-critical)]"
+      style={estilo}
+    >
+      {conteudo}
+    </button>
+  ) : (
+    <div className="rounded-xl border px-4 py-3" style={estilo}>{conteudo}</div>
   );
 }
 
@@ -438,11 +532,13 @@ function CartaoInventario({
   onAbrir,
   onExcluir,
   podeExcluir,
+  onVerDivergencias,
 }: {
   inv: InventarioRow;
   onAbrir: () => void;
   onExcluir?: () => void;
   podeExcluir?: boolean;
+  onVerDivergencias?: () => void;
 }) {
   const r = resumirInventario(inv.itens);
   return (
@@ -465,7 +561,17 @@ function CartaoInventario({
           {inv.status === 'concluido'
             ? <Chip token="var(--status-good)"><Check className="h-3 w-3" /> Concluído</Chip>
             : <Chip token="var(--brand)">Em andamento</Chip>}
-          {r.divergentes > 0 && <Chip token="var(--status-critical)"><AlertTriangle className="h-3 w-3" /> {r.divergentes} divergente(s)</Chip>}
+          {r.divergentes > 0 && (onVerDivergencias ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onVerDivergencias(); }}
+              onKeyDown={(e) => e.stopPropagation()}
+              title="Ver os itens divergentes e abrir recontagem"
+              className="cursor-pointer rounded-full hover:opacity-80"
+            >
+              <Chip token="var(--status-critical)"><AlertTriangle className="h-3 w-3" /> {r.divergentes} divergente(s)</Chip>
+            </button>
+          ) : <Chip token="var(--status-critical)"><AlertTriangle className="h-3 w-3" /> {r.divergentes} divergente(s)</Chip>)}
           {r.aguardando > 0 && <Chip token="var(--status-serious)">{r.aguardando} aguardando decisão</Chip>}
         </div>
         <div className="flex items-center gap-2">
@@ -1446,15 +1552,18 @@ export function ModalContagem({
             </p>
 
             <div className="pt-1 flex flex-wrap items-center justify-center sm:justify-start gap-2">
-              <button
-                type="button"
-                onClick={() => setModalFotoAberto(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer text-white shadow-xs"
-                style={{ background: fotoAtual?.url_imagem ? 'var(--ink-secondary)' : 'var(--brand)' }}
-              >
-                <Camera className="h-3.5 w-3.5" />
-                {fotoAtual?.url_imagem ? 'Alterar / Tirar Nova Foto' : 'Tirar Foto de Cadastro'}
-              </button>
+              {/* Com foto, trocar fica no Cadastro de Itens: na contagem só se tira a que falta. */}
+              {!fotoAtual?.url_imagem && (
+                <button
+                  type="button"
+                  onClick={() => setModalFotoAberto(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer text-white shadow-xs"
+                  style={{ background: 'var(--brand)' }}
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                  Tirar Foto de Cadastro
+                </button>
+              )}
 
               {fotoAtual?.url_imagem && (
                 <button
@@ -1562,7 +1671,7 @@ export function ModalContagem({
             <p className="text-xs" style={{ color: 'var(--ink-secondary)' }}>
               Quer fazer mais uma contagem? A nova fica ao lado da anterior, sem substituí-la
               ({nContagens} de {MAX_CONTAGENS}). Se não, o saldo da ZL0024 é exibido, o alerta é gravado e o item
-              não aceita mais contagem.
+              não aceita mais contagem. Para decidir depois, feche sem recontar: o item fica em aberto neste inventário.
             </p>
             <AvisoGestaoDivergencia importadaEm={zl0024ImportadaEm} />
           </div>
@@ -1586,6 +1695,15 @@ export function ModalContagem({
         )}
         {fase === 'decidir' && (
           <>
+            {/* Nem reconta nem encerra agora: o item segue "aguardando decisão" no inventário. */}
+            <button
+              onClick={() => { toast.info('Contagem em aberto: o item fica aguardando decisão neste inventário.'); onClose(); }}
+              disabled={enviando}
+              className={`${btnSec} sm:mr-auto`}
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+            >
+              <X className="h-3.5 w-3.5" /> Fechar sem recontar
+            </button>
             <button onClick={() => void encerrar()} disabled={enviando || !causaValida} className={btnSec} style={{ borderColor: 'var(--status-critical)', color: 'var(--status-critical)' }}>
               {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />} Não, mostrar saldo
             </button>
