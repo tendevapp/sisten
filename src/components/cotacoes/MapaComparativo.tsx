@@ -45,13 +45,14 @@ import type { LinhaSapExport } from '../../lib/exportSapCotacao';
 import { useToast } from '../ui/Toast';
 import { formatBRL, formatDateBR, formatQtd } from '../../lib/format';
 import { formatarCnpj, nomeFornecedorCurto, normalizarDescricao } from '../../lib/cotacoes';
-import { salvarFreteProposta, salvarSelecaoMapa } from '../../lib/cotacoesApi';
+import { buscarNotasDosPedidos, buscarValoresPedidos, salvarFreteProposta, salvarSelecaoMapa } from '../../lib/cotacoesApi';
 import { listarMateriaisGenericos } from '../../lib/cotacoesHistoricoApi';
 import { localDb } from '../../db/localDb';
 import {
-  INICIO_HISTORICO_COMPRAS, chaveMaterialSap, menorPrecoPorMaterial,
+  INICIO_HISTORICO_COMPRAS, chaveMaterialSap, chavePedidoMaterial, compraPelaNf, fatorGrossPorPedido, menorPrecoPorMaterial,
+  notasPorPedidoMaterial,
 } from '../../lib/menorPrecoComprado';
-import type { MenorPrecoComprado } from '../../lib/menorPrecoComprado';
+import type { CompraPelaNf, MenorPrecoComprado, NotaPedido } from '../../lib/menorPrecoComprado';
 import {
   descreverRegime, ehSimplesParaImposto, resolverRegimes, situacaoIrregular, soDigitos,
 } from '../../lib/regimeFornecedor';
@@ -801,21 +802,61 @@ function Celula({
 // Histórico de compras
 // =====================================================================
 
+/** Comparação da melhor compra passada com a melhor oferta, na base mais justa disponível. */
+interface ComparacaoCompra {
+  base: 'custo' | 'gross' | 'liquido';
+  passado: number;
+  atual: number;
+  /** (atual − passado) ÷ atual × 100: positivo = a compra passada saiu mais barata. */
+  pct: number;
+}
+
+function compararCompra(
+  compraNf: CompraPelaNf | null,
+  gross: number | null,
+  liquido: number,
+  melhorOferta: number | null,
+  custoMelhorOferta: number | null,
+): ComparacaoCompra | null {
+  // Custo de aquisição contra custo de aquisição: nota + DIFAL + frete − crédito
+  // dos dois lados. Sem NF, gross contra o preço cotado; sem gross, o líquido.
+  if (compraNf && custoMelhorOferta != null && custoMelhorOferta > 0) {
+    return { base: 'custo', passado: compraNf.custoUnitario, atual: custoMelhorOferta, pct: ((custoMelhorOferta - compraNf.custoUnitario) / custoMelhorOferta) * 100 };
+  }
+  if (melhorOferta == null || melhorOferta <= 0) return null;
+  const passado = gross ?? liquido;
+  return { base: gross != null ? 'gross' : 'liquido', passado, atual: melhorOferta, pct: ((melhorOferta - passado) / melhorOferta) * 100 };
+}
+
+const ROTULO_BASE: Record<ComparacaoCompra['base'], string> = {
+  custo: 'custo de aquisição',
+  gross: 'preço gross',
+  liquido: 'preço líquido',
+};
+
 /**
- * Menor preço já pago pelo material desde 2026, com fornecedor e valor
- * unitário. Só referência: o comprador vê de relance se uma compra anterior
- * saiu mais barata que a melhor oferta desta linha. A comparação usa o
- * unitário da base escolhida na barra de opções; o pedido traz o líquido pago.
+ * Menor preço já pago pelo material desde 2026. Gross em destaque (a base do
+ * preço cotado), líquido embaixo, NF do pedido. A comparação com a melhor
+ * oferta usa o custo de aquisição quando há NF — mesmo preço de nota pode
+ * custar diferente (frete, DIFAL) — e "ver detalhes" mostra as notas e a conta.
  */
 function CelulaHistorico({
-  compra, melhorOferta, unidade, carregando, generico,
+  compra, melhorOferta, unidade, carregando, generico, fatorGross, notas, melhorCelula, melhorFornecedor,
 }: {
   compra: MenorPrecoComprado | null;
   melhorOferta: number | null;
   unidade: string;
   carregando: boolean;
   generico: boolean;
+  /** Valor efetivo ÷ líquido do pedido na ZL0132 (`null` enquanto carrega ou sem dado). */
+  fatorGross: number | null;
+  /** Notas do pedido × material (NF-e e CT-e), da mais antiga para a mais nova. */
+  notas: NotaPedido[];
+  /** Melhor célula da linha (oferta atual), para comparar custo com custo. */
+  melhorCelula: CelulaMapa | null;
+  melhorFornecedor: string | null;
 }) {
+  const [detalheAberto, setDetalheAberto] = useState(false);
   if (!compra) {
     return (
       <div className="flex h-full min-h-[70px] items-center justify-center px-2 text-center text-[10px] text-slate-300 dark:text-slate-600">
@@ -823,40 +864,218 @@ function CelulaHistorico({
       </div>
     );
   }
-  const abaixoDaOferta = melhorOferta != null && compra.preco < melhorOferta;
-  const difPct = melhorOferta != null && melhorOferta > 0 ? ((melhorOferta - compra.preco) / melhorOferta) * 100 : null;
-  const detalhe = [
-    `Menor preço pago desde ${formatDateBR(INICIO_HISTORICO_COMPRAS)}: ${formatBRL(compra.preco)}`,
-    `Fornecedor: ${compra.fornecedor}`,
-    `Pedido ${compra.pedido || '—'} de ${formatDateBR(compra.data)} (${formatQtd(compra.qtd)} un)`,
-    `${compra.compras} ${compra.compras === 1 ? 'compra' : 'compras'} do material no período`,
-  ].join('\n');
+  const gross = fatorGross != null ? compra.preco * fatorGross : null;
+  const compraNf = compraPelaNf(notas);
+  const custoOferta = melhorCelula ? custoAquisicao(melhorCelula.custo)?.unitario ?? null : null;
+  const comp = compararCompra(compraNf, gross, compra.preco, melhorOferta, custoOferta);
+  const passadoMaisBarato = comp != null && comp.pct > 0.05;
+  const ofertaMaisBarata = comp != null && comp.pct < -0.05;
+  const numerosNf = [...new Set(notas.filter(n => n.modelo !== '57').map(n => n.nota))];
 
   return (
     <div
-      title={detalhe}
       className={`flex h-full flex-col gap-1 rounded-xl border p-2 ${
-        abaixoDaOferta
+        passadoMaisBarato
           ? 'border-amber-300 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/20'
           : 'border-transparent'
       }`}
     >
+      {/* Gross em destaque: é a base do preço cotado. Sem ele, o líquido sobe. */}
       <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-50">
-        {formatBRL(compra.preco)}
-        <span className="ml-0.5 text-[10px] font-normal text-slate-400">/{unidade}</span>
+        {formatBRL(gross ?? compra.preco)}
+        <span className="ml-0.5 text-[10px] font-normal text-slate-400">/{unidade} {gross != null ? 'gross' : 'líquido'}</span>
       </div>
+      {gross != null && (
+        <div className="-mt-0.5 text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
+          líquido <span className="font-semibold text-slate-700 dark:text-slate-200">{formatBRL(compra.preco)}</span>
+          <span className="text-[10px] text-slate-400">/{unidade}</span>
+        </div>
+      )}
       <div className="line-clamp-2 text-[11px] font-medium leading-snug text-slate-600 dark:text-slate-300">
         {nomeFornecedorCurto(compra.fornecedor)}
       </div>
       <div className="text-[10px] text-slate-400">
         {formatDateBR(compra.data)}{compra.pedido ? ` · PO ${compra.pedido}` : ''}
+        {numerosNf.length > 0 && (
+          <span className="text-slate-500 dark:text-slate-400">
+            {' · NF '}<span className="font-semibold">{numerosNf[0]}</span>
+            {numerosNf.length > 1 ? ` +${numerosNf.length - 1}` : ''}
+          </span>
+        )}
       </div>
-      {abaixoDaOferta && (
-        <Chip tom="aviso" title="O menor preço já pago é menor que a melhor oferta desta linha.">
-          {difPct != null ? `${difPct.toFixed(1)}% abaixo da melhor oferta` : 'abaixo da melhor oferta'}
+      {compraNf && (
+        <div className="text-[10px] tabular-nums text-slate-500 dark:text-slate-400">
+          custo de aquisição <span className="font-semibold text-slate-700 dark:text-slate-200">{formatBRL(compraNf.custoUnitario)}</span>
+          <span className="text-slate-400">/{unidade}</span>
+        </div>
+      )}
+      {comp && (passadoMaisBarato || ofertaMaisBarata) && (
+        <Chip tom={passadoMaisBarato ? 'aviso' : 'ok'} title={`Comparação pelo ${ROTULO_BASE[comp.base]}.`}>
+          {passadoMaisBarato
+            ? `${comp.pct.toFixed(1)}% abaixo da melhor oferta`
+            : `oferta ${Math.abs(comp.pct).toFixed(1)}% melhor`}
+          {comp.base === 'custo' ? ' (custo)' : ''}
         </Chip>
       )}
+      <button
+        type="button"
+        onClick={() => setDetalheAberto(true)}
+        className="self-start text-[10px] font-semibold text-indigo-600 underline decoration-dotted hover:text-indigo-800 dark:text-indigo-400"
+      >
+        ver detalhes
+      </button>
+      {detalheAberto && createPortal(
+        <DetalheMenorCompraModal
+          compra={compra}
+          gross={gross}
+          notas={notas}
+          compraNf={compraNf}
+          comparacao={comp}
+          unidade={unidade}
+          melhorCelula={melhorCelula}
+          melhorFornecedor={melhorFornecedor}
+          onClose={() => setDetalheAberto(false)}
+        />,
+        document.body,
+      )}
     </div>
+  );
+}
+
+/** Detalhe da melhor compra passada: pedido, notas fiscais, custo e a comparação com a oferta atual. */
+function DetalheMenorCompraModal({
+  compra, gross, notas, compraNf, comparacao, unidade, melhorCelula, melhorFornecedor, onClose,
+}: {
+  compra: MenorPrecoComprado;
+  gross: number | null;
+  notas: NotaPedido[];
+  compraNf: CompraPelaNf | null;
+  comparacao: ComparacaoCompra | null;
+  unidade: string;
+  melhorCelula: CelulaMapa | null;
+  melhorFornecedor: string | null;
+  onClose: () => void;
+}) {
+  const num = (v: number | string | null) => (v == null || v === '' ? null : Number(v));
+  const qtd = compraNf?.qtd ?? 1;
+  const porUn = (v: number) => formatBRL(v / qtd);
+  const custoOferta = melhorCelula ? custoAquisicao(melhorCelula.custo) : null;
+  const memoriaPassado = compraNf ? [
+    `  Nota (${formatQtd(compraNf.qtd)} ${unidade}) ${porUn(compraNf.valorNota)}${compraNf.ipi > 0 ? ` (inclui IPI ${porUn(compraNf.ipi)})` : ''}`,
+    compraNf.difal > 0 ? `+ DIFAL ${porUn(compraNf.difal)} (da NF)` : '  DIFAL: não houve',
+    compraNf.frete > 0 ? `+ Frete (CT-e) ${porUn(compraNf.frete)}` : '  Frete: nenhum CT-e lançado no pedido',
+    `− Crédito PIS/COFINS 9,25% sobre (nota − IPI − ICMS) ${porUn(compraNf.creditoPisCofins)}`,
+    `  ICMS ${porUn(compraNf.icms)} não credita no consumo: fica no custo.`,
+    `= ${formatBRL(compraNf.custoUnitario)}/${unidade}`,
+  ] : [];
+  const tituloComparacao = !comparacao ? null
+    : comparacao.pct > 0.05 ? `A melhor compra passada saiu ${comparacao.pct.toFixed(1)}% mais barata que a melhor oferta atual.`
+      : comparacao.pct < -0.05 ? `A melhor oferta atual está ${Math.abs(comparacao.pct).toFixed(1)}% mais barata que a melhor compra passada.`
+        : 'A melhor oferta atual e a melhor compra passada custam o mesmo.';
+
+  return (
+    <Modal onClose={onClose} maxWidth="max-w-3xl" ariaLabel="Detalhes da menor compra">
+      <ModalHeader onClose={onClose}>
+        <h2 className="text-sm font-extrabold text-slate-800 dark:text-slate-100">Menor compra desde {formatDateBR(INICIO_HISTORICO_COMPRAS)}</h2>
+        <p className="text-xs text-slate-500">{compra.fornecedor} · PO {compra.pedido || '—'} de {formatDateBR(compra.data)} · {formatQtd(compra.qtd)} {unidade}</p>
+      </ModalHeader>
+      <ModalBody className="space-y-4 text-xs text-slate-700 dark:text-slate-200">
+        <section className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+            <p className="text-[10px] text-slate-500">Gross do pedido</p>
+            <p className="text-sm font-bold tabular-nums">{gross != null ? `${formatBRL(gross)}/${unidade}` : '—'}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+            <p className="text-[10px] text-slate-500">Líquido do pedido</p>
+            <p className="text-sm font-bold tabular-nums">{formatBRL(compra.preco)}/{unidade}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+            <p className="text-[10px] text-slate-500">Custo de aquisição (NF)</p>
+            <p className="text-sm font-bold tabular-nums">{compraNf ? `${formatBRL(compraNf.custoUnitario)}/${unidade}` : '—'}</p>
+          </div>
+        </section>
+
+        <section className="space-y-1.5">
+          <h3 className="font-bold">Notas fiscais do pedido</h3>
+          {notas.length === 0 ? (
+            <p className="text-slate-500">Nenhuma nota deste pedido na ZL0136 (ainda não entrou, ou seu acesso não inclui notas fiscais).</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+              <table className="w-full text-[11px] tabular-nums">
+                <thead className="bg-slate-50 text-left text-[10px] text-slate-500 dark:bg-slate-800">
+                  <tr>
+                    <th className="px-2 py-1.5">NF</th><th className="px-2 py-1.5">Tipo</th><th className="px-2 py-1.5">Data</th>
+                    <th className="px-2 py-1.5 text-right">Qtd</th><th className="px-2 py-1.5 text-right">Unitário</th>
+                    <th className="px-2 py-1.5 text-right">Total</th>
+                    <th className="px-2 py-1.5 text-right">ICMS</th><th className="px-2 py-1.5 text-right">IPI</th>
+                    <th className="px-2 py-1.5 text-right">PIS+COFINS</th><th className="px-2 py-1.5 text-right">DIFAL</th>
+                    <th className="px-2 py-1.5">CFOP</th><th className="px-2 py-1.5">CI</th><th className="px-2 py-1.5">UF</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {notas.map((n, i) => (
+                    <tr key={`${n.nota}-${i}`}>
+                      <td className="px-2 py-1.5 font-mono">{n.nota}{n.serie ? `-${n.serie}` : ''}</td>
+                      <td className="px-2 py-1.5">{n.modelo === '57' ? 'CT-e (frete)' : 'NF-e'}</td>
+                      <td className="px-2 py-1.5">{formatDateBR(n.data_documento)}</td>
+                      <td className="px-2 py-1.5 text-right">{formatQtd(num(n.quantidade))}</td>
+                      <td className="px-2 py-1.5 text-right font-semibold">
+                        {(num(n.quantidade) ?? 0) > 0 ? formatBRL((num(n.total) ?? 0) / num(n.quantidade)!) : '—'}
+                      </td>
+                      <td className="px-2 py-1.5 text-right">{formatBRL(num(n.total))}</td>
+                      <td className="px-2 py-1.5 text-right">{formatBRL(num(n.valor_icms))}</td>
+                      <td className="px-2 py-1.5 text-right">{formatBRL(num(n.valor_ipi))}</td>
+                      <td className="px-2 py-1.5 text-right">{formatBRL((num(n.valor_pis) ?? 0) + (num(n.valor_cofins) ?? 0))}</td>
+                      <td className="px-2 py-1.5 text-right">{formatBRL(num(n.valor_difal))}</td>
+                      <td className="px-2 py-1.5">{n.cfop ?? '—'}</td>
+                      <td className="px-2 py-1.5">{n.codigo_imposto ?? '—'}</td>
+                      <td className="px-2 py-1.5">{n.uf_origem ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {compraNf && (
+          <section className="space-y-1.5">
+            <h3 className="font-bold">Custo de aquisição da compra passada (por {unidade})</h3>
+            <pre className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-[11px] leading-relaxed dark:border-slate-700 dark:bg-slate-900">{memoriaPassado.join('\n')}</pre>
+          </section>
+        )}
+
+        <section className="space-y-1.5">
+          <h3 className="font-bold">Comparação com a melhor oferta atual</h3>
+          {melhorCelula ? (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+                <p className="text-[10px] text-slate-500">Melhor compra passada</p>
+                <p className="font-semibold">{nomeFornecedorCurto(compra.fornecedor)}</p>
+                <p className="tabular-nums">gross {gross != null ? formatBRL(gross) : '—'} · custo {compraNf ? formatBRL(compraNf.custoUnitario) : '—'}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+                <p className="text-[10px] text-slate-500">Melhor oferta atual</p>
+                <p className="font-semibold">{melhorFornecedor ? nomeFornecedorCurto(melhorFornecedor) : '—'}</p>
+                <p className="tabular-nums">preço {formatBRL(melhorCelula.custo.precoUnitario)} · custo {custoOferta ? formatBRL(custoOferta.unitario) : '—'}</p>
+              </div>
+            </div>
+          ) : <p className="text-slate-500">Nenhuma oferta com preço nesta linha.</p>}
+          {comparacao && (
+            <p className={`rounded-lg px-3 py-2 font-semibold ${comparacao.pct > 0.05 ? 'bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200' : 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200'}`}>
+              {tituloComparacao} Base: {ROTULO_BASE[comparacao.base]} ({formatBRL(comparacao.passado)} × {formatBRL(comparacao.atual)}/{unidade}).
+            </p>
+          )}
+          <p className="text-[11px] text-slate-500">
+            Base justa: os dois lados como compra para uso e consumo (código H*) — nota + IPI + DIFAL + frete − crédito de PIS/COFINS 9,25%; o ICMS não credita.
+            Sem NF, compara o gross do pedido com o preço cotado. Confira se a unidade da oferta é a mesma do pedido.
+          </p>
+        </section>
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" onClick={onClose} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white">Fechar</button>
+      </ModalFooter>
+    </Modal>
   );
 }
 
@@ -1009,6 +1228,11 @@ export default function MapaComparativo({
     () => menorPrecoPorMaterial(pedidosHistorico, genericos),
     [pedidosHistorico, genericos],
   );
+  // Gross da menor compra: fator valor efetivo ÷ líquido de cada pedido, lido
+  // da ZL0132 só para os pedidos que a coluna exibe (a view não traz o efetivo).
+  const [fatorGross, setFatorGross] = useState<Map<string, number> | null>(null);
+  // Notas fiscais da menor compra — por função (`sup_notas_dos_pedidos`), a ZL0136 não é legível por Suprimentos.
+  const [notasPedidos, setNotasPedidos] = useState<Map<string, NotaPedido[]> | null>(null);
 
   // Só proposta salva entra no mapa: a decisão é gravada no item cotado, que
   // só existe no banco depois de "Salvar proposta".
@@ -1203,6 +1427,33 @@ export default function MapaComparativo({
   }, [linhasExibidas, busca]);
 
   // Some com o que ninguém cotou — filtro por cima da busca, mesma ideia.
+  /** Código SAP da linha: o da RM; sem ele, o vínculo de qualquer item cotado. */
+  const codigoDaLinha = useCallback(
+    (linha: LinhaMapa) => chaveMaterialSap(linha.materialCode ?? linha.celulas.find(c => c.item.material_code)?.item.material_code),
+    [],
+  );
+  const pedidosExibidos = useMemo(() => {
+    const pedidos = new Set<string>();
+    for (const linha of linhas) {
+      const codigo = codigoDaLinha(linha);
+      const compra = codigo ? menorPrecoComprado.get(codigo) : undefined;
+      if (compra?.pedido) pedidos.add(compra.pedido);
+    }
+    return [...pedidos].sort().join(',');
+  }, [linhas, menorPrecoComprado, codigoDaLinha]);
+  useEffect(() => {
+    if (!pedidosExibidos) return;
+    let ativo = true;
+    const pedidos = pedidosExibidos.split(',');
+    buscarValoresPedidos(pedidos)
+      .then(linhasZl => { if (ativo) setFatorGross(fatorGrossPorPedido(linhasZl)); })
+      .catch(err => console.warn('[MapaComparativo] Gross da menor compra indisponível:', err));
+    buscarNotasDosPedidos(pedidos)
+      .then(notas => { if (ativo) setNotasPedidos(notasPorPedidoMaterial(notas)); })
+      .catch(err => console.warn('[MapaComparativo] NF da menor compra indisponível:', err));
+    return () => { ativo = false; };
+  }, [pedidosExibidos]);
+
   const linhasVisiveis = useMemo(
     () => (ocultarSemCotacao ? linhasFiltradas.filter(l => l.celulas.length > 0) : linhasFiltradas),
     [linhasFiltradas, ocultarSemCotacao],
@@ -1748,11 +1999,15 @@ export default function MapaComparativo({
 
                     <td className="overflow-hidden border-l border-slate-100 p-1 align-top dark:border-slate-800">
                       {(() => {
-                        // Código SAP da linha: o da RM; sem ele, o vínculo de qualquer item cotado.
-                        const codigo = chaveMaterialSap(linha.materialCode ?? linha.celulas.find(c => c.item.material_code)?.item.material_code);
+                        const codigo = codigoDaLinha(linha);
+                        const compra = codigo ? menorPrecoComprado.get(codigo) ?? null : null;
                         return (
                           <CelulaHistorico
-                            compra={codigo ? menorPrecoComprado.get(codigo) ?? null : null}
+                            compra={compra}
+                            fatorGross={compra && fatorGross ? fatorGross.get(chavePedidoMaterial(compra.pedido, codigo)) ?? null : null}
+                            notas={compra && notasPedidos ? notasPedidos.get(chavePedidoMaterial(compra.pedido, codigo)) ?? [] : []}
+                            melhorCelula={linha.celulas.find(c => c.melhor) ?? null}
+                            melhorFornecedor={resumos.find(r => r.propostaKey === linha.celulas.find(c => c.melhor)?.propostaKey)?.nome ?? null}
                             melhorOferta={linha.melhorCusto}
                             unidade={linha.unidade || 'un'}
                             carregando={carregandoHistorico}

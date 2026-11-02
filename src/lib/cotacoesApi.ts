@@ -9,7 +9,9 @@
  * compartilhado) e a Edge Function `extrair-cotacao`.
  */
 
+import type { LinhaValorPedido, NotaPedido } from './menorPrecoComprado';
 import { supabase } from '../db/supabaseClient';
+import { buscarTudo } from './buscarTudo';
 import { localDb } from '../db/localDb';
 import {
   normalizarCnpj,
@@ -854,6 +856,43 @@ function variantesMaterial(codigo: string): string[] {
  * Chave do mapa = código do material sem zeros à esquerda. Falha de leitura
  * devolve mapa vazio — a sugestão cai na regra pela cotação, não trava o export.
  */
+/**
+ * Valores líquido e efetivo (gross) dos itens dos pedidos pedidos, na ZL0132 —
+ * para mostrar o preço gross da "Menor compra" do mapa. Só os pedidos que o
+ * mapa exibe; a view do histórico não traz o valor efetivo.
+ */
+export async function buscarValoresPedidos(pedidos: string[]): Promise<LinhaValorPedido[]> {
+  const unicos = [...new Set(pedidos.map(p => p.trim()).filter(Boolean))];
+  const out: LinhaValorPedido[] = [];
+  const LOTE = 100;
+  for (let i = 0; i < unicos.length; i += LOTE) {
+    const lote = unicos.slice(i, i + LOTE);
+    // Pedido grande passa de 1.000 linhas por lote: o PostgREST cortaria em silêncio.
+    out.push(...await buscarTudo<LinhaValorPedido>((de, ate) => supabase
+      .from('sap_zl0132_po')
+      .select('doc_compra, material, valor_liquido, valor_efetivo')
+      .in('doc_compra', lote)
+      .order('id')
+      .range(de, ate)));
+  }
+  return out;
+}
+
+/**
+ * Número, série e data das NFs dos pedidos (função `sup_notas_dos_pedidos`):
+ * a ZL0136 não é legível por Suprimentos, a função só devolve o número.
+ */
+export async function buscarNotasDosPedidos(pedidos: string[]): Promise<NotaPedido[]> {
+  const unicos = [...new Set(pedidos.map(p => p.trim()).filter(Boolean))];
+  const out: NotaPedido[] = [];
+  for (let i = 0; i < unicos.length; i += 500) {
+    const { data, error } = await supabase.rpc('sup_notas_dos_pedidos' as any, { p_pedidos: unicos.slice(i, i + 500) } as any);
+    if (error) throw new Error(error.message);
+    out.push(...((data ?? []) as unknown as NotaPedido[]));
+  }
+  return out;
+}
+
 export async function buscarUsosCodigoImposto(materiais: string[]): Promise<Map<string, UsoCodigoImposto[]>> {
   const out = new Map<string, UsoCodigoImposto[]>();
   const unicos = [...new Set(materiais.map(m => m.trim()).filter(Boolean))];
