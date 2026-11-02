@@ -103,8 +103,8 @@ const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
   {
     target: 'novasol-item-generico',
     icon: CheckCircle2,
-    title: 'Item sem código no catálogo?',
-    description: 'Marque "Item Genérico" quando não encontrar o material no SAP. Ao marcar, o campo de Observação passa a ser obrigatório — descreva ali as especificações técnicas para o comprador entender o que comprar.',
+    title: 'Item genérico',
+    description: 'Marque "Item Genérico" quando o material do SAP for só a referência (ex.: código genérico de notebook) e descreva na Observação o que comprar. Todo item precisa de código SAP: se o material não existe no SAP, abra o cadastro do item antes da compra.',
   },
   {
     target: 'novasol-add-item',
@@ -314,6 +314,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [itemParaRemover, setItemParaRemover] = useState<{ index: number; item: PurchaseItemState } | null>(null);
   const [confirmLimparRascunho, setConfirmLimparRascunho] = useState(false);
   const [confirmSolicitarCadastro, setConfirmSolicitarCadastro] = useState(false);
+  // Item de compra sem código SAP: o envio para e pergunta se procura no catálogo ou abre o cadastro.
+  const [itemSemCodigoSap, setItemSemCodigoSap] = useState<number | null>(null);
   const [confirmItensObsoletosEnvio, setConfirmItensObsoletosEnvio] = useState(false);
   // Depois de criar a solicitação de Cadastro SAP, um aviso segura o fluxo até
   // o usuário confirmar — é ele quem precisa abrir e ENVIAR o e-mail no Outlook
@@ -1380,12 +1382,22 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         return;
       }
 
+      // Compra de material só com código SAP — inclusive item genérico, que usa
+      // o código de referência. Sem código: procurar no catálogo ou cadastrar.
+      if (!ehServico) {
+        const semCodigo = items.findIndex(it => !it.sap_code?.trim());
+        if (semCodigo !== -1) {
+          setItemSemCodigoSap(semCodigo);
+          return;
+        }
+      }
+
       const semDescricao = items.findIndex(it => !it.description.trim());
       if (semDescricao !== -1) {
         alert(
           ehServico
             ? `Serviço ${semDescricao + 1}: descreva o serviço antes de enviar.`
-            : `Item ${semDescricao + 1}: busque o material no catálogo SAP (ou marque "Item Genérico" e descreva) antes de enviar.`,
+            : `Item ${semDescricao + 1}: descreva o item genérico antes de enviar.`,
         );
         return;
       }
@@ -2278,18 +2290,26 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                 )}
                               </div>
                             ) : (
-                              <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-rose-50/50 dark:bg-rose-950/30 border border-dashed border-rose-300 dark:border-rose-800">
-                                <span className="text-[11px] font-medium text-rose-700 dark:text-rose-300">
-                                  Vincule o código SAP do material de referência:
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setBuscaModalIndex(index)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition cursor-pointer"
-                                >
-                                  <Search className="h-3.5 w-3.5" />
-                                  Buscar código SAP
-                                </button>
+                              <div className="space-y-1.5 p-2 rounded-lg bg-rose-50/50 dark:bg-rose-950/30 border border-dashed border-rose-300 dark:border-rose-800">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300">
+                                    Código SAP de referência obrigatório *
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setBuscaModalIndex(index)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition cursor-pointer"
+                                  >
+                                    <Search className="h-3.5 w-3.5" />
+                                    Buscar código SAP
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-rose-700 dark:text-rose-300">
+                                  Sem código SAP a solicitação não é enviada. Não existe no SAP?{' '}
+                                  <button type="button" onClick={() => solicitarCadastroSap(index)} className="font-bold underline cursor-pointer">
+                                    Abrir cadastro do item
+                                  </button>
+                                </p>
                               </div>
                             )}
 
@@ -3748,6 +3768,36 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           variante="perigo"
           onConfirmar={confirmarRemoverItem}
           onCancelar={() => setItemParaRemover(null)}
+        />
+      )}
+
+      {itemSemCodigoSap !== null && (
+        <ConfirmDialog
+          titulo={`Item ${itemSemCodigoSap + 1} sem código SAP`}
+          confirmarLabel="Abrir cadastro do item"
+          cancelarLabel="Voltar"
+          mensagem={
+            <div className="space-y-2 text-xs">
+              <p>
+                <strong>{items[itemSemCodigoSap]?.description || `Item ${itemSemCodigoSap + 1}`}</strong> está sem código SAP.
+                Solicitação de compra só é aberta com o material do catálogo SAP — inclusive item genérico, que usa o código de referência.
+              </p>
+              <p>
+                Procure o item no catálogo. Se ele não existir no SAP, abra o cadastro do item: os itens desta compra ficam guardados no rascunho.
+              </p>
+              <button
+                type="button"
+                onClick={() => { const i = itemSemCodigoSap; setItemSemCodigoSap(null); setBuscaModalIndex(i); }}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-bold cursor-pointer"
+                style={{ borderColor: 'var(--hairline)', color: 'var(--ink-primary)' }}
+              >
+                <Search className="h-3.5 w-3.5" />
+                Procurar no catálogo SAP
+              </button>
+            </div>
+          }
+          onConfirmar={() => { setItemSemCodigoSap(null); confirmarSolicitarCadastro(); }}
+          onCancelar={() => setItemSemCodigoSap(null)}
         />
       )}
 
