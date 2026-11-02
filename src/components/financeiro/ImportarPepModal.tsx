@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
-import ProgressoImportacao from '../ui/ProgressoImportacao';
+import ModalImportacaoSap from '../ui/ModalImportacaoSap';
 import { parseLinhasImportacaoPep, parseTextoColadoPep, type ResultadoParsePep } from '../../lib/finPepImportacao';
 import { importarPepEmLote } from '../../lib/finPepApi';
 import type { Profile } from '../../types';
@@ -126,6 +126,10 @@ export default function ImportarPepModal({ user, onClose, onImportado }: Props) 
       setSalvando(false);
     }
   };
+
+  if (salvando) {
+    return <ModalImportacaoSap sigla="Estrutura PEP" descricao="Elementos PEP / WBS SAP" ocupado progresso={progresso} />;
+  }
 
   return (
     <Modal isOpen onClose={onClose} size="xl">
@@ -337,12 +341,6 @@ export default function ImportarPepModal({ user, onClose, onImportado }: Props) 
               </div>
             </div>
 
-            {/* Barra de progresso */}
-            {salvando && (
-              <div className="pt-2">
-                <ProgressoImportacao pct={progresso} mensagem="Gravando no Supabase..." />
-              </div>
-            )}
           </div>
         )}
       </ModalBody>

@@ -29,6 +29,8 @@ interface ModalProps {
   zIndexClassName?: string;
   /** Quando true, desabilita fechar clicando fora do painel ou pressionando Esc — só fecha via botão explícito (X, Cancelar, Salvar). */
   disableOutsideClose?: boolean;
+  /** Caixa centralizada e com altura do conteúdo, inclusive no celular. */
+  layout?: 'sheet' | 'dialog';
 }
 
 export default function Modal({
@@ -37,7 +39,8 @@ export default function Modal({
   maxWidth = 'max-w-2xl',
   ariaLabel,
   zIndexClassName = 'z-[100]',
-  disableOutsideClose = false
+  disableOutsideClose = false,
+  layout = 'sheet',
 }: ModalProps) {
   useEffect(() => {
     if (disableOutsideClose) return;
@@ -60,7 +63,7 @@ export default function Modal({
 
   return (
     <div
-      className={`fixed inset-0 ${zIndexClassName} flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs p-0 sm:p-4 animate-fade-in`}
+      className={`fixed inset-0 ${zIndexClassName} flex ${layout === 'dialog' ? 'items-center p-4' : 'items-end sm:items-center p-0 sm:p-4'} justify-center bg-slate-950/60 backdrop-blur-xs animate-fade-in`}
       onMouseDown={marcarOrigem}
       onTouchStart={marcarOrigem}
       onClick={e => {
@@ -73,10 +76,10 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
-        className={`w-full ${maxWidth} bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 h-[92dvh] sm:h-auto max-h-[92dvh] sm:max-h-[88vh] flex flex-col overflow-hidden pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-0 [&>form]:flex [&>form]:flex-col [&>form]:flex-1 [&>form]:min-h-0 [&>form]:overflow-hidden`}
+        className={`w-full ${maxWidth} bg-white dark:bg-slate-900 ${layout === 'dialog' ? 'rounded-2xl h-auto' : 'rounded-t-3xl sm:rounded-2xl h-[92dvh] sm:h-auto pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-0'} shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[92dvh] sm:max-h-[88vh] flex flex-col overflow-hidden [&>form]:flex [&>form]:flex-col [&>form]:flex-1 [&>form]:min-h-0 [&>form]:overflow-hidden`}
       >
         {/* Mobile top pill indicator */}
-        <div className="sm:hidden mx-auto mt-2.5 mb-0.5 h-1.5 w-12 rounded-full bg-slate-300 dark:bg-slate-700 shrink-0" />
+        {layout === 'sheet' && <div className="sm:hidden mx-auto mt-2.5 mb-0.5 h-1.5 w-12 rounded-full bg-slate-300 dark:bg-slate-700 shrink-0" />}
         {children}
       </div>
     </div>

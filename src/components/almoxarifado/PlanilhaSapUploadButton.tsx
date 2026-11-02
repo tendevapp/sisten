@@ -14,10 +14,9 @@
 
 import React, { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { Upload, Loader2, CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { Upload, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { SAPImportLog } from '../../types';
-import Modal, { ModalBody, ModalFooter } from '../ui/Modal';
-import ProgressoImportacao from '../ui/ProgressoImportacao';
+import ModalImportacaoSap from '../ui/ModalImportacaoSap';
 
 interface Props {
   /** Rótulo curto da transação, ex.: "ZL0024". Aparece no botão e no título. */
@@ -137,33 +136,15 @@ export default function PlanilhaSapUploadButton({
       />
 
       {status !== 'idle' && (
-        <Modal onClose={fechar} maxWidth="max-w-md" ariaLabel={`Importação ${sigla}`} disableOutsideClose>
-          <div className="flex items-start gap-3 px-4 sm:px-6 pt-5 pb-3.5 border-b border-slate-100 dark:border-slate-800 shrink-0">
-            <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
-              <Upload className="h-6 w-6" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-                Importar {sigla}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{descricao}</p>
-            </div>
-            {!ocupado && (
-              <button type="button" onClick={fechar} className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer">
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
-          <ModalBody className="space-y-4">
-            {ocupado && (
-              <ProgressoImportacao
-                tamanho="compacto"
-                pct={status === 'lendo' ? 0 : progress}
-                mensagem={status === 'lendo' ? 'Lendo a planilha…' : 'Enviando os dados…'}
-              />
-            )}
-
+        <ModalImportacaoSap
+          sigla={sigla}
+          descricao={descricao}
+          ocupado={ocupado}
+          progresso={status === 'lendo' ? 0 : progress}
+          mensagem={status === 'lendo' ? 'Lendo a planilha…' : 'Enviando os dados…'}
+          onClose={fechar}
+          concluido={status === 'ok'}
+        >
             {status === 'ok' && log && (
               <div className="space-y-3">
                 <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
@@ -210,19 +191,7 @@ export default function PlanilhaSapUploadButton({
                 <span>{erro}</span>
               </div>
             )}
-          </ModalBody>
-
-          <ModalFooter>
-            <button
-              type="button"
-              onClick={fechar}
-              disabled={ocupado}
-              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 cursor-pointer"
-            >
-              {status === 'ok' ? 'Fechar' : 'Cancelar'}
-            </button>
-          </ModalFooter>
-        </Modal>
+        </ModalImportacaoSap>
       )}
     </>
   );

@@ -23,7 +23,7 @@ import { useToast } from '../components/ui/Toast';
 import { formatDateBR } from '../lib/format';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
-import ProgressoImportacao from '../components/ui/ProgressoImportacao';
+import ModalImportacaoSap from '../components/ui/ModalImportacaoSap';
 import PageAccessModal from '../components/admin/PageAccessModal';
 import NovoUsuarioSemEmailModal from '../components/admin/NovoUsuarioSemEmailModal';
 import { ehEmailInterno, rotuloIdentificador, ehNovoUsuario, DIAS_LIMITE_NOVO_USUARIO } from '../lib/loginSemEmail';
@@ -173,6 +173,15 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [sapProgress, setSapProgress] = useState(0);
   const [sapLogMessage, setSapLogMessage] = useState('');
   const [sapLogError, setSapLogError] = useState('');
+  const [importacaoSapAtual, setImportacaoSapAtual] = useState({ sigla: '', descricao: '' });
+  const iniciarImportacaoSap = (sigla: string, descricao: string) => {
+    setImportacaoSapAtual({ sigla, descricao });
+    setSapProgress(0);
+    setSapLogMessage('Lendo a planilha…');
+    setSapLogError('');
+    setLastUploadLog(null);
+    setSapLogStatus('saving');
+  };
   const [currentSapUploadType, setCurrentSapUploadType] = useState<'ME5A' | 'ZL0132'>('ME5A');
   const [sapCsvText, setSapCsvText] = useState('');
   const [mb51ImportMode, setMb51ImportMode] = useState<'upsert' | 'replace'>('upsert');
@@ -1262,6 +1271,21 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   return (
     <div className="space-y-6 text-left">
+      {sapLogStatus === 'saving' && (
+        <ModalImportacaoSap
+          sigla={importacaoSapAtual.sigla}
+          descricao={importacaoSapAtual.descricao}
+          ocupado
+          progresso={sapProgress}
+          mensagem={sapLogMessage}
+        />
+      )}
+      {zl0169Status === 'saving' && (
+        <ModalImportacaoSap sigla="ZL0169" descricao="Cadastro de materiais SAP" ocupado progresso={zl0169Progress} mensagem={zl0169ProgressMsg || 'Enviando os dados…'} />
+      )}
+      {zl0162Status === 'saving' && (
+        <ModalImportacaoSap sigla="ZL0162" descricao="Textos técnicos dos materiais SAP" ocupado progresso={zl0162Progress} mensagem={zl0162ProgressMsg || 'Enviando os dados…'} />
+      )}
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-slate-900">Painel de Administração</h2>
         <p className="mt-1 text-sm text-slate-500">Configurações globais, controle de privilégios de acesso, setores ativos e importação de materiais.</p>
@@ -2776,11 +2800,6 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     </div>
                   )}
 
-                  {zl0169Status === 'saving' && (
-                    <div className="rounded-lg bg-blue-50 p-3 border border-blue-100 dark:bg-slate-900 dark:border-slate-700">
-                      <ProgressoImportacao pct={zl0169Progress} mensagem={zl0169ProgressMsg || 'Salvando catálogo ZL0169 no Supabase...'} />
-                    </div>
-                  )}
 
                   {zl0169Status === 'success' && zl0169Summary && (
                     <div className={`rounded-lg p-3 text-xs font-semibold border flex items-center ${zl0169Summary.syncFailed > 0 ? 'bg-amber-50 text-amber-800 border-amber-100' : 'bg-emerald-50 text-emerald-800 border-emerald-100'}`}>
@@ -2851,11 +2870,6 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     </div>
                   )}
 
-                  {zl0162Status === 'saving' && (
-                    <div className="rounded-lg bg-blue-50 p-3 border border-blue-100 dark:bg-slate-900 dark:border-slate-700">
-                      <ProgressoImportacao pct={zl0162Progress} mensagem={zl0162ProgressMsg || 'Atualizando textos técnicos ZL0162 no Supabase...'} />
-                    </div>
-                  )}
 
                   {zl0162Status === 'success' && zl0162Summary && (
                     <div className={`rounded-lg p-3 text-xs font-semibold border flex items-center ${zl0162Summary.syncFailed > 0 ? 'bg-amber-50 text-amber-800 border-amber-100' : 'bg-emerald-50 text-emerald-800 border-emerald-100'}`}>
@@ -3035,11 +3049,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       if (e.target.files?.length) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setSapProgress(0);
-                        setLastUploadLog(null);
-                        setSapLogError('');
+                        iniciarImportacaoSap('ME5A', 'Requisições de compra SAP');
                         const r = new FileReader();
+                        r.onerror = () => {
+                          setSapLogError('Não foi possível ler o arquivo.');
+                          setSapLogStatus('error');
+                        };
 
                         r.onload = (ev) => {
                           try {
@@ -3058,6 +3073,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
+                            setSapLogMessage('Enviando os dados…');
                             localDb.importME5ARaw(rawRows, file.name, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
@@ -3100,11 +3116,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       if (e.target.files?.length) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setSapProgress(0);
-                        setLastUploadLog(null);
-                        setSapLogError('');
+                        iniciarImportacaoSap('ZL0024', 'Posição de estoque SAP — substituição total da carga atual');
                         const r = new FileReader();
+                        r.onerror = () => {
+                          setSapLogError('Não foi possível ler o arquivo.');
+                          setSapLogStatus('error');
+                        };
 
                         r.onload = (ev) => {
                           try {
@@ -3123,6 +3140,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
+                            setSapLogMessage('Enviando os dados…');
                             localDb.importZL0024Raw(rawRows, file.name, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
@@ -3165,10 +3183,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       if (e.target.files?.length) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setLastUploadLog(null);
-                        setSapLogError('');
+                        iniciarImportacaoSap('ZL0132', 'Histórico de pedidos e fornecedores SAP');
                         const r = new FileReader();
+                        r.onerror = () => {
+                          setSapLogError('Não foi possível ler o arquivo.');
+                          setSapLogStatus('error');
+                        };
                         
                         r.onload = (ev) => {
                           try {
@@ -3189,6 +3209,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                             
                             setSapProgress(0);
                             setSapLogMessage('Lendo dados...');
+                            setSapLogMessage('Enviando os dados…');
                             localDb.importPedidosForn(rawRows, file.name, (progress, message) => {
                               setSapProgress(progress);
                               if (message) setSapLogMessage(message);
@@ -3268,11 +3289,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       if (e.target.files?.length) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setSapProgress(0);
-                        setLastUploadLog(null);
-                        setSapLogError('');
+                        iniciarImportacaoSap('MB51', 'Movimentações de estoque SAP');
                         const r = new FileReader();
+                        r.onerror = () => {
+                          setSapLogError('Não foi possível ler o arquivo.');
+                          setSapLogStatus('error');
+                        };
 
                         r.onload = (ev) => {
                           try {
@@ -3291,6 +3313,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
+                            setSapLogMessage('Enviando os dados…');
                             localDb.importMB51Raw(rawRows, file.name, mb51ImportMode, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
@@ -3336,10 +3359,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       if (e.target.files?.length) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setLastUploadLog(null);
-                        setSapLogError('');
+                        iniciarImportacaoSap('CidadeForn', 'Cidades e endereços dos fornecedores');
                         const r = new FileReader();
+                        r.onerror = () => {
+                          setSapLogError('Não foi possível ler o arquivo.');
+                          setSapLogStatus('error');
+                        };
                         
                         r.onload = (ev) => {
                           try {
@@ -3358,6 +3383,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
                             
+                            setSapLogMessage('Enviando os dados…');
                             localDb.importCidadeForn(rawRows, file.name).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
@@ -3400,11 +3426,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       if (e.target.files?.length) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setSapProgress(0);
-                        setLastUploadLog(null);
-                        setSapLogError('');
+                        iniciarImportacaoSap('ME3N', 'Contratos de compra SAP');
                         const r = new FileReader();
+                        r.onerror = () => {
+                          setSapLogError('Não foi possível ler o arquivo.');
+                          setSapLogStatus('error');
+                        };
 
                         r.onload = (ev) => {
                           try {
@@ -3423,6 +3450,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
+                            setSapLogMessage('Enviando os dados…');
                             localDb.importME3NRaw(rawRows, file.name, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
@@ -3465,11 +3493,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       if (e.target.files?.length) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setSapProgress(0);
-                        setLastUploadLog(null);
-                        setSapLogError('');
+                        iniciarImportacaoSap('ME2L', 'Pedidos por fornecedor SAP');
                         const r = new FileReader();
+                        r.onerror = () => {
+                          setSapLogError('Não foi possível ler o arquivo.');
+                          setSapLogStatus('error');
+                        };
 
                         r.onload = (ev) => {
                           try {
@@ -3488,6 +3517,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
+                            setSapLogMessage('Enviando os dados…');
                             localDb.importME2LRaw(rawRows, file.name, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
@@ -3530,11 +3560,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       if (e.target.files?.length) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setSapProgress(0);
-                        setLastUploadLog(null);
-                        setSapLogError('');
+                        iniciarImportacaoSap('ZL0170', 'Reconciliação de pedidos, MIGO e MIRO SAP');
                         const r = new FileReader();
+                        r.onerror = () => {
+                          setSapLogError('Não foi possível ler o arquivo.');
+                          setSapLogStatus('error');
+                        };
 
                         r.onload = (ev) => {
                           try {
@@ -3553,6 +3584,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
+                            setSapLogMessage('Enviando os dados…');
                             localDb.importZL0170MiroRaw(rawRows, file.name, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
@@ -3595,11 +3627,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       if (e.target.files?.length) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setSapProgress(0);
-                        setLastUploadLog(null);
-                        setSapLogError('');
+                        iniciarImportacaoSap('Tabela de Frete', 'Tabela de valores de transporte');
                         const r = new FileReader();
+                        r.onerror = () => {
+                          setSapLogError('Não foi possível ler o arquivo.');
+                          setSapLogStatus('error');
+                        };
 
                         r.onload = (ev) => {
                           try {
@@ -3618,6 +3651,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
+                            setSapLogMessage('Enviando os dados…');
                             localDb.importTabelaFreteRaw(rawRows, file.name, (pct, msg) => {
                               setSapProgress(pct);
                               if (msg) setSapLogMessage(msg);
@@ -3663,10 +3697,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       if (e.target.files?.length) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setLastUploadLog(null);
-                        setSapLogError('');
+                        iniciarImportacaoSap('Contatos', 'Contatos dos fornecedores');
                         const r = new FileReader();
+                        r.onerror = () => {
+                          setSapLogError('Não foi possível ler o arquivo.');
+                          setSapLogStatus('error');
+                        };
 
                         r.onload = (ev) => {
                           try {
@@ -3685,6 +3721,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
+                            setSapLogMessage('Enviando os dados…');
                             localDb.importContatos(rawRows, file.name).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
@@ -3727,10 +3764,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       if (e.target.files?.length) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setLastUploadLog(null);
-                        setSapLogError('');
+                        iniciarImportacaoSap('Bahia Sul', 'Entregas e conhecimentos de transporte');
                         const r = new FileReader();
+                        r.onerror = () => {
+                          setSapLogError('Não foi possível ler o arquivo.');
+                          setSapLogStatus('error');
+                        };
 
                         r.onload = (ev) => {
                           try {
@@ -3751,6 +3790,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
                             setSapProgress(0);
                             setSapLogMessage('Processando dados da transportadora Bahia Sul...');
+                            setSapLogMessage('Enviando os dados…');
                             localDb.importBahiaSulRaw(rawRows, file.name, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
@@ -3797,12 +3837,6 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               </div>
             </div>
 
-
-            {sapLogStatus === 'saving' && (
-              <div className="py-2">
-                <ProgressoImportacao pct={sapProgress} mensagem={sapLogMessage || 'Processando carga do SAP e recalculando metas de entrega...'} />
-              </div>
-            )}
 
             {sapLogError && (
               <div className="rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-600 border border-red-100 flex items-center">
@@ -3971,11 +4005,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   if (e.target.files?.length) {
                     const file = e.target.files[0];
                     const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                    setSapLogStatus('saving');
-                    setSapProgress(0);
-                    setLastUploadLog(null);
-                    setSapLogError('');
+                    iniciarImportacaoSap('FBL1N', 'Contas a pagar SAP — substituição total da carga atual');
                     const r = new FileReader();
+                    r.onerror = () => {
+                      setSapLogError('Não foi possível ler o arquivo.');
+                      setSapLogStatus('error');
+                    };
 
                     r.onload = (ev) => {
                       try {
@@ -3994,6 +4029,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                           rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                         }
 
+                        setSapLogMessage('Enviando os dados…');
                         localDb.importFBL1NRaw(rawRows, file.name, setSapProgress).then(log => {
                           setLastUploadLog(log);
                           setSapLogStatus('success');
