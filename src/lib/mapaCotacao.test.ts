@@ -3,7 +3,7 @@ import {
   tokensDescricao, similaridadeDescricao, similaridadeItens, LIMIAR_SIMILARIDADE_PADRAO,
   calcularCustoItem, brutoDoItem, OPCOES_CUSTO_PADRAO, agruparLinhasMapa,
   resumirFornecedores, cenarioMenorPreco, cenarioFornecedorUnico, cenarioSelecao,
-  diasAteValidade, opcoesDaBase, ordenarLinhas,
+  diasAteValidade, opcoesDaBase, ordenarLinhas, custoAquisicao,
 } from './mapaCotacao';
 import type { PropostaMapa } from './mapaCotacao';
 import type { CotacaoProcessoItem, CotacaoPropostaDraft, CotacaoPropostaItemDraft } from '../types';
@@ -695,5 +695,33 @@ describe('ordenarLinhas', () => {
     const ord = ordenarLinhas(linhas, 'alfabetica');
     expect(ord).toHaveLength(linhas.length);
     expect(new Set(ord.map(l => l.key))).toEqual(new Set(linhas.map(l => l.key)));
+  });
+});
+
+describe('custoAquisicao', () => {
+  const comImpostos = item({
+    descricao_produto: 'X', quantidade: 10, preco_unitario: 100, preco_total_item: 1000,
+    aliquota_ipi_pct: 5, aliquota_icms_pct: 12,
+  });
+
+  it('uso e consumo: soma IPI, DIFAL e frete e abate só o crédito de PIS/COFINS', () => {
+    const c = calcularCustoItem(comImpostos, OPCOES_CUSTO_PADRAO, 40, 'SP');
+    const a = custoAquisicao(c)!;
+    const pis = c.creditosPossiveis!.pisCofins; // 9,25% × (1000 − 120)
+    expect(pis).toBeCloseTo(81.4, 2);
+    expect(a.total).toBeCloseTo(1000 + 50 + c.impostos.difal + 40 - pis, 6);
+    expect(c.impostos.difal).toBeGreaterThan(0);
+    expect(a.unitario).toBeCloseTo(a.total / 10, 6);
+  });
+
+  it('industrialização: credita ICMS e IPI e não tem DIFAL', () => {
+    const c = calcularCustoItem(comImpostos, OPCOES_CUSTO_PADRAO, 0, 'SP');
+    const a = custoAquisicao(c)!;
+    expect(a.unitarioIndustrializacao).toBeCloseTo((1000 - 120 - c.creditosPossiveis!.pisCofins) / 10, 6);
+    expect(a.unitarioIndustrializacao).toBeLessThan(a.unitario);
+  });
+
+  it('sem preço ou quantidade não há custo', () => {
+    expect(custoAquisicao(calcularCustoItem(item({ descricao_produto: 'X', preco_unitario: null, preco_total_item: null }), OPCOES_CUSTO_PADRAO))).toBeNull();
   });
 });

@@ -21,6 +21,7 @@
 
 import { normalizarDescricao } from './cotacoes';
 import { estimarCreditosPossiveis, estimarDifal } from './calcImpostos';
+import { formatBRL } from './format';
 import type { CreditosPossiveis, EstimativaDifal } from './calcImpostos';
 import type { CotacaoProcessoItem, CotacaoPropostaDraft, CotacaoPropostaItemDraft } from '../types';
 
@@ -322,6 +323,64 @@ export function calcularCustoItem(
     unitarioComparavel: comparavel != null && qtd != null && qtd !== 0 ? comparavel / qtd : null,
     incompleto,
   };
+}
+
+/**
+ * Custo total de aquisição por unidade (CPC 16: preço + tributos não
+ * recuperáveis + frete − tributos recuperáveis), para a finalidade da maior
+ * parte das compras da TEN — uso e consumo aplicado na produção (códigos H*):
+ * IPI e DIFAL viram custo, o ICMS destacado não credita (já está no preço) e
+ * o PIS/COFINS credita 9,25% (o mesmo crédito que a célula mostra).
+ *
+ * `unitarioIndustrializacao` é a mesma compra para industrialização (I*):
+ * credita ICMS, IPI e PIS/COFINS e não há DIFAL.
+ *
+ * Só informativo, como o DIFAL e os créditos: não muda `comparavel` nem o
+ * vencedor da linha. O frete entra quando a proposta informou (ou foi
+ * estimado); FOB sem valor fica de fora.
+ */
+export interface CustoAquisicao {
+  unitario: number;
+  total: number;
+  unitarioIndustrializacao: number;
+}
+
+export function custoAquisicao(custo: CustoItem): CustoAquisicao | null {
+  const qtd = custo.quantidade;
+  if (custo.incompleto || custo.bruto == null || qtd == null || qtd <= 0) return null;
+  const cred = custo.creditosPossiveis;
+  const pisCofins = cred?.pisCofins ?? 0;
+  const total = custo.bruto + custo.impostos.ipi + custo.impostos.difal + custo.freteRateado - pisCofins;
+  // Industrialização: o IPI pago volta como crédito, o ICMS credita e não há DIFAL.
+  const industrial = custo.bruto + custo.freteRateado - pisCofins - (cred?.icms ?? 0);
+  return { unitario: total / qtd, total, unitarioIndustrializacao: industrial / qtd };
+}
+
+/** Memória do custo de aquisição, por unidade, linha a linha — para conferir a conta. */
+export function memoriaCustoAquisicao(custo: CustoItem, unidade: string): string[] {
+  const a = custoAquisicao(custo);
+  if (!a) return ['Sem preço ou quantidade: não há custo de aquisição.'];
+  const qtd = custo.quantidade ?? 1;
+  const porUn = (v: number) => formatBRL(v / qtd);
+  const cred = custo.creditosPossiveis;
+  const pisCofins = cred?.pisCofins ?? 0;
+  return [
+    'Uso e consumo na produção (código de imposto H*):',
+    `  Preço ${porUn(custo.bruto ?? 0)}`,
+    custo.impostos.ipi > 0 ? `+ IPI ${porUn(custo.impostos.ipi)} (não recupera no consumo)` : null,
+    custo.impostos.difal > 0
+      ? `+ DIFAL ${porUn(custo.impostos.difal)} (encargo da TEN; ${custo.difal?.ufOrigem ?? ''}→BA, base única como o SAP recolhe)`
+      : null,
+    custo.freteRateado > 0 ? `+ Frete ${porUn(custo.freteRateado)}` : '  Frete: não informado na proposta (FOB sem valor fica de fora)',
+    pisCofins > 0 ? `− Crédito PIS/COFINS 9,25% sobre (preço − ICMS destacado) ${porUn(pisCofins)}` : null,
+    '  ICMS destacado não credita no consumo: já está no preço.',
+    `= ${formatBRL(a.unitario)}/${unidade}`,
+    '',
+    `Se for para industrialização (I*): ${formatBRL(a.unitarioIndustrializacao)}/${unidade}`,
+    `  credita ICMS ${porUn(cred?.icms ?? 0)}${cred?.icmsEstimado ? ' (estimado pela UF)' : ''}, IPI e PIS/COFINS; sem DIFAL.`,
+    '',
+    'Informativo: não muda o custo comparado nem o vencedor.',
+  ].filter((l): l is string => l != null);
 }
 
 // =====================================================================

@@ -22,6 +22,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft, AlertTriangle, Truck, CalendarClock, CreditCard, Sparkles,
   Scissors, Merge, Award, PackageX, RotateCcw, Link2, Ban, X, ShoppingCart, Plus, Check, SearchX, FileSearch,
@@ -38,6 +39,8 @@ import VerCotacaoOriginalModal from './VerCotacaoOriginalModal';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { construirLinhasSap } from '../../lib/exportSapCotacao';
 import { montarPlanilhaMapa } from '../../lib/exportMapaCotacao';
+import { calcularCustoCompraItem, type CustoCompraItem } from '../../lib/custoCompra';
+import { gerarTextoMemoriaCalculo, presetPorCodigo } from '../../lib/calcImpostos';
 import type { LinhaSapExport } from '../../lib/exportSapCotacao';
 import { useToast } from '../ui/Toast';
 import { formatBRL, formatDateBR, formatQtd } from '../../lib/format';
@@ -55,7 +58,7 @@ import {
 import type { RegimeFornecedor } from '../../lib/regimeFornecedor';
 import {
   agruparLinhasMapa, resumirFornecedores, cenarioMenorPreco, cenarioFornecedorUnico,
-  cenarioSelecao, opcoesDaBase, ordenarLinhas, LIMIAR_SIMILARIDADE_PADRAO,
+  cenarioSelecao, opcoesDaBase, ordenarLinhas, LIMIAR_SIMILARIDADE_PADRAO, custoAquisicao, memoriaCustoAquisicao,
 } from '../../lib/mapaCotacao';
 import type {
   BaseComparacao, CreditosHabilitados, LinhaMapa, CelulaMapa, PropostaMapa, ResumoFornecedor, Cenario, OrdenacaoMapa,
@@ -272,6 +275,103 @@ function ChipsCreditos({ celula }: { celula: CelulaMapa }) {
         </span>
       ))}
     </div>
+  );
+}
+
+/**
+ * Rodapé da célula, pequeno: custo total de aquisição (uso e consumo) e o
+ * preço líquido que vai para o SAP — o mesmo `calcularCustoCompraItem` da
+ * coluna "Preço Líq." do Exportar SAP. "memória" abre a conta das duas.
+ */
+function RodapeCustos({ celula, precoSap, onMemoria }: {
+  celula: CelulaMapa;
+  precoSap: CustoCompraItem | null;
+  onMemoria: () => void;
+}) {
+  const { item, custo } = celula;
+  const a = custoAquisicao(custo);
+  if (!a && (!precoSap || precoSap.incompleto)) return null;
+  const un = item.unidade_medida || 'un';
+  return (
+    <div className="mt-0.5 space-y-0.5 border-t border-dashed pt-0.5 text-[10px] tabular-nums text-slate-500 dark:border-slate-700 dark:text-slate-400">
+      {a && (
+        <div title={memoriaCustoAquisicao(custo, un).join('\n')}>
+          Custo de aquisição <span className="font-semibold text-slate-700 dark:text-slate-200">{formatBRL(a.unitario)}</span>
+          <span className="text-slate-400">/{un}</span>
+        </div>
+      )}
+      <div className="flex flex-wrap items-baseline gap-x-1.5">
+        {precoSap && !precoSap.incompleto && (
+          <span title={`Preço Líq. do Exportar SAP — preset ${precoSap.codigoFiscal}`}>
+            Preço líquido (SAP) <span className="font-semibold text-slate-700 dark:text-slate-200">{formatBRL(precoSap.impostos.precoLiquidoUnitario)}</span>
+            <span className="text-slate-400">/{un}</span>
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); onMemoria(); }}
+          className="font-semibold text-indigo-600 underline decoration-dotted hover:text-indigo-800 dark:text-indigo-400"
+        >
+          memória
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Memória de cálculo do preço líquido (como no Exportar SAP) e do custo de aquisição de um item. */
+function MemoriaCalculoItemModal({ celula, precoSap, fornecedorUf, onClose }: {
+  celula: CelulaMapa;
+  precoSap: CustoCompraItem | null;
+  fornecedorUf: string | null;
+  onClose: () => void;
+}) {
+  const { item, custo } = celula;
+  const un = item.unidade_medida || 'un';
+  const preset = precoSap ? presetPorCodigo(precoSap.codigoFiscal) : null;
+  const origemPreset = item.codigo_fiscal
+    ? 'gravado no item'
+    : `inferido pela UF do fornecedor (${fornecedorUf || 'UF não informada'} → BA)`;
+  const textoSap = precoSap && !precoSap.incompleto
+    ? [
+      `Preset fiscal ${precoSap.codigoFiscal}${preset ? ` — ${preset.titulo}` : ''} (${origemPreset}).`,
+      'Alíquota destacada na proposta vale sobre o preset; o IPI só entra se a proposta destacar.',
+      '',
+      gerarTextoMemoriaCalculo(precoSap.inputs, precoSap.impostos),
+    ].join('\n')
+    : 'Sem preço: o Exportar SAP não calcula preço líquido para este item.';
+  const textoCusto = memoriaCustoAquisicao(custo, un).join('\n');
+  const copiar = () => {
+    void navigator.clipboard?.writeText(`PREÇO LÍQUIDO (EXPORTAR SAP)\n${textoSap}\n\nCUSTO DE AQUISIÇÃO\n${textoCusto}`);
+  };
+  return (
+    <Modal onClose={onClose} maxWidth="max-w-2xl" ariaLabel="Memória de cálculo do item">
+      <ModalHeader onClose={onClose}>
+        <h2 className="text-sm font-extrabold text-slate-800 dark:text-slate-100">Memória de cálculo</h2>
+        <p className="line-clamp-2 text-xs text-slate-500">{item.descricao_produto || 'Item sem descrição'}</p>
+      </ModalHeader>
+      <ModalBody className="space-y-4">
+        <section className="space-y-1.5">
+          <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200">
+            Preço líquido — {precoSap && !precoSap.incompleto ? `${formatBRL(precoSap.impostos.precoLiquidoUnitario)}/${un}` : '—'}
+          </h3>
+          <p className="text-[11px] text-slate-500">O mesmo cálculo da coluna "Preço Líq." do Exportar SAP (motor da Calc Impostos).</p>
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-[11px] leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{textoSap}</pre>
+        </section>
+        <section className="space-y-1.5">
+          <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200">Custo de aquisição</h3>
+          <pre className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-[11px] leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{textoCusto}</pre>
+        </section>
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" onClick={copiar} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 dark:border-slate-700 dark:text-slate-300">
+          Copiar memória
+        </button>
+        <button type="button" onClick={onClose} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white">
+          Fechar
+        </button>
+      </ModalFooter>
+    </Modal>
   );
 }
 
@@ -571,10 +671,12 @@ function CabecalhoFornecedor({
 // =====================================================================
 
 function Celula({
-  celula, freteEhTeorico, marcado, onMarcar, selecionadoAgrupamento, onToggleAgrupamento,
+  celula, freteEhTeorico, fornecedorUf, marcado, onMarcar, selecionadoAgrupamento, onToggleAgrupamento,
 }: {
   celula: CelulaMapa;
   freteEhTeorico: boolean;
+  /** UF do fornecedor — a mesma que o Exportar SAP usa para o preço líquido. */
+  fornecedorUf: string | null;
   marcado: boolean;
   onMarcar: (v: boolean) => void;
   /** Selecionado para a ação flutuante de juntar/separar linhas — independente da decisão de compra. */
@@ -583,6 +685,12 @@ function Celula({
 }) {
   const { item, custo } = celula;
   const delta = celula.deltaPct;
+  const [memoriaAberta, setMemoriaAberta] = useState(false);
+  // Mesma chamada do Exportar SAP (`exportSapCotacao`): preço líquido pela Calc Impostos.
+  const precoSap = useMemo(
+    () => (custo.incompleto ? null : calcularCustoCompraItem(item, { fornecedor_uf: fornecedorUf })),
+    [item, custo.incompleto, fornecedorUf],
+  );
 
   return (
     <div
@@ -664,7 +772,17 @@ function Celula({
       <div className="pl-[18px]">
         <ChipsImpostos celula={celula} freteEhTeorico={freteEhTeorico} />
         <ChipsCreditos celula={celula} />
+        <RodapeCustos celula={celula} precoSap={precoSap} onMemoria={() => setMemoriaAberta(true)} />
       </div>
+      {/* No body: dentro da tabela a janela ficaria sob os cabeçalhos fixos. O
+          clique ainda sobe pela árvore do React até a célula — sem o
+          stopPropagation, clicar na janela marcaria o item para compra. */}
+      {memoriaAberta && createPortal(
+        <div onClick={e => e.stopPropagation()}>
+          <MemoriaCalculoItemModal celula={celula} precoSap={precoSap} fornecedorUf={fornecedorUf} onClose={() => setMemoriaAberta(false)} />
+        </div>,
+        document.body,
+      )}
 
       {celula.score < 1 && (
         <span
@@ -1652,6 +1770,7 @@ export default function MapaComparativo({
                             <Celula
                               celula={celula}
                               freteEhTeorico={r.freteEhTeorico}
+                              fornecedorUf={propostasPorKey.get(r.propostaKey)?.fornecedor_uf ?? null}
                               marcado={selecionados.has(celula.item._key)}
                               onMarcar={v => alternarSelecao(celula, linha, v)}
                               selecionadoAgrupamento={selecaoAgrupamento.has(celula.item._key)}
