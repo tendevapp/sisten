@@ -40,6 +40,7 @@ const SapDashboards = lazy(() => import('./views/SapDashboards'));
 const Helpdesk = lazy(() => import('./views/Helpdesk'));
 const AdminPanel = lazy(() => import('./views/AdminPanel'));
 const UsageDashboard = lazy(() => import('./views/UsageDashboard'));
+const EquipesAdmin = lazy(() => import('./views/admin/Equipes'));
 const ProfileView = lazy(() => import('./views/ProfileView'));
 const CadastrosSap = lazy(() => import('./views/CadastrosSap'));
 const CatalogosSuprimentos = lazy(() => import('./views/CatalogosSuprimentos'));
@@ -1608,6 +1609,12 @@ export default function App() {
       case '/admin/uso':
         if (canAccessPage(user, 'admin_uso')) {
           return <UsageDashboard />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/admin/equipes':
+        if (canAccessPage(user, 'admin_equipes')) {
+          return <EquipesAdmin user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

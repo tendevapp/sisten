@@ -51,6 +51,7 @@ const PATH_LABELS: Record<string, string> = {
   '/admin/importacao-materiais': 'Admin: Importação Materiais',
   '/admin/helpdesk': 'Admin: Config. Helpdesk',
   '/admin/uso': 'Admin: Uso do App',
+  '/admin/equipes': 'Admin: Equipes',
   '/admin/sincronizacao': 'Admin: Central de Sincronização',
 };
 

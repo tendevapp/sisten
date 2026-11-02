@@ -195,6 +195,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
     },
     cardDescriptions: {
       admin_uso: 'Telemetria de acessos e uso das telas.',
+      admin_equipes: 'Volume, tempos e indicadores por equipe, com PDF da equipe e de feedback individual.',
       admin_usuarios: 'Perfis, papéis e status dos usuários.',
       admin_cadastros: 'Tabelas mestre, listas suspensas e gatilhos de e-mail.',
       admin_setores: 'Setores da fábrica e ajustes de helpdesk por setor.',
