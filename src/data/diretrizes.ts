@@ -37,6 +37,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { data: '2026-11-03', resumo: 'Suprimentos > Ava. Fornecedor (nova, só admin até liberar): lançamento de ocorrências por fornecimento (OCF-DDMMYY-NN) com várias ocorrências no mesmo registro — categoria (prazo, entrega, qualidade, nota fiscal, custo, atendimento, SMS, meio ambiente, RS, conduta) e tipo por clique, gravidade, onde foi detectado, estrelas, impacto, tratativa e recado para o próximo comprador; POs com pendência de recebimento ou de NF aparecem prontos para registrar (ou dispensar). Avaliação anual FRM.SUP-0005 (AVF-DDMMYY-NN) com os pesos da planilha oficial, respostas sugeridas pelas ocorrências do período e PDF. Painel por fornecedor: pedidos e itens da ZL0132 × ocorrências, OTD, nota média e última avaliação; ficha do fornecedor com histórico e relatório em PDF para enviar ao fornecedor.' },
+  { data: '2026-11-03', resumo: 'Pendências de Recebimento: o fornecedor da pendência passa a vir do PO na ZL0132, não do cabeçalho da conferência (que cobre vários POs). 21 de 32 pendências estavam com o fornecedor de outro PO e foram corrigidas.' },
+  { data: '2026-11-03', resumo: 'Admin > Referência de Códigos SAP: terceiro cartão com o maior código de ativo (5 dígitos iniciados em 4) para o filtro incremental da extração.' },
+  { data: '2026-11-03', resumo: 'Suprimentos > Central de Compras: após o número da solicitação do SISTEN vinculada à RM (SISTEN #...), exibe o nome do usuário que abriu a solicitação e permite clicar no número para abrir os detalhes da solicitação de compra em modal.' },
   { data: '2026-11-02', resumo: 'Admin > Equipes (nova, só admin): volumetria, cronoanálise (ritmo entre ações, tempos de ciclo, ações por hora) e indicadores de Almoxarifado (recebimento, cadastro, inventário, balcão, extraordinária, projetos) e Suprimentos (itens de RM em pedido, valor, lead time RM-pedido, tempo para assumir, cotações, propostas, mapa, chamados, diligenciamento e carteira de hoje), por dia, semana, mês ou período. Compara com o histórico (período anterior equivalente e média dos anteriores), nunca entre colegas. PDF da equipe (gestor) e individual (entregue ao colaborador) com gráficos de evolução, plano de ação e assinaturas. Dados pela função adm_equipes_eventos.' },
   { data: '2026-11-02', resumo: 'Mapa de cotação > Menor compra: preço gross do pedido em destaque (valor efetivo da ZL0132) e líquido embaixo; número da NF e, com as notas da ZL0136 (NF-e e CT-e de frete), o custo de aquisição da compra passada na mesma base da oferta (nota + DIFAL + frete − crédito PIS/COFINS). A comparação com a melhor oferta usa custo × custo (sem NF, gross × preço cotado) e mostra se a oferta está melhor ou pior; botão ver detalhes com notas, memória e comparação. Notas lidas pela função sup_notas_dos_pedidos (Suprimentos, Financeiro, Contabilidade, Controladoria e admin).' },
   { data: '2026-11-02', resumo: 'Mapa de cotação: cada célula ganha, pequeno no fim, o custo total de aquisição por unidade (uso e consumo: preço + IPI + DIFAL + frete − crédito PIS/COFINS; no detalhe, o valor para industrialização) e o preço líquido do Exportar SAP (mesmo cálculo da coluna Preço Líq., motor da Calc Impostos), com botão "memória" que mostra e copia a memória de cálculo dos dois. Só informativo: não muda o vencedor.' },
@@ -1634,6 +1638,35 @@ export const DIRETRIZES: DiretrizesDominio[] = [
         ]
       },
       {
+        id: 'sup-avaliacao-fornecedores',
+        nome: 'Ava. Fornecedor',
+        arquivo: 'src/views/AvaliacaoFornecedores.tsx',
+        secoes: [
+          {
+            titulo: 'Visão geral',
+            itens: [
+              'Três abas: Ocorrências (rotina do comprador), Avaliação FRM.SUP-0005 (ao menos uma por ano por fornecedor) e Painel de fornecedores (pedidos/itens da ZL0132 × ocorrências).',
+              'Página nasce só para admin (regra 4); o acesso dos compradores é liberado na Gestão de Acessos (`sup_avaliacao_fornecedores`).'
+            ]
+          },
+          {
+            titulo: 'Regras de negócio',
+            itens: [
+              'Ocorrência: um lançamento OCF-DDMMYY-NN (índice por mês, gerado no banco) por fornecimento, com N ocorrências em `ocorrencias` (jsonb). Cada tipo pertence a uma categoria e alimenta uma pergunta do FRM (`TIPOS_OCORRENCIA` em `lib/avaliacaoFornecedores.ts`).',
+              'Sugestões: POs com pendência de recebimento (não cancelada) ou de NF (causas ligadas ao fornecedor) dos últimos 120 dias que ainda não estão em `origem_refs` de um registro nem foram dispensados (`sup_aval_sugestoes_dispensadas`). Pendências do mesmo tipo no PO viram uma ocorrência só.',
+              'FRM.SUP-0005: pesos da planilha oficial (Custo 10, Prazo 20, Atendimento 10, Qualidade 20, MA/SMS/RS/Ética 10 cada). Faixas da avaliação final (padrão SISTEN até o procedimento definir): ≥ 80% Positiva/Manter, ≥ 60% Regular/Desenvolver, abaixo Negativa/Desqualificar — `FAIXAS_FRM`.',
+              'Respostas sugeridas: ocorrência do tipo ligado à pergunta marca a resposta negativa; 4.1 compara POs com não conformidade de item/NF com os POs do período (até 5% = Médio, acima = Alto); MA/SMS sem ocorrência sugerem "Não aplicável".',
+              'Edição e exclusão só do autor ou admin (RLS `form_pode_editar`); leitura para comprador, coordenador de Suprimentos, admin e quem tem a página liberada.',
+              'FMEA (futuro): gravidade (S) e onde foi detectado (D) já ficam por ocorrência; `vw_sup_aval_ocorrencias_itens` abre uma linha por ocorrência para contar a frequência (O).'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`sup_aval_ocorrencias`, `sup_aval_frm`, `sup_aval_sugestoes_dispensadas`; view `vw_sup_aval_ocorrencias_itens`; RPCs `sup_aval_buscar_fornecedores`, `sup_aval_pedidos`, `sup_aval_sugestoes`, `sup_aval_painel` (lê `sap_zl0132_po`, `sup_pend_recebimento`, `sup_pend_processamento_nf`).']
+          }
+        ]
+      },
+      {
         id: 'contratos-demandas',
         nome: 'Contratos — sub-página Demandas (Kanban Jurídico)',
         arquivo: 'src/components/contratos/TabDemandas.tsx',
@@ -2083,7 +2116,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           {
             titulo: 'Regras de negócio',
             itens: [
-              'Painel "Referência de Códigos SAP" mostra o maior código já cadastrado (7 dígitos e 18 dígitos/prefixo 100000) e sugere o próximo código de corte para a próxima extração incremental no SAP.',
+              'Painel "Referência de Códigos SAP" mostra o maior código já cadastrado (7 dígitos, 18 dígitos/prefixo 100000 e ativos de 5 dígitos iniciados em 4) e sugere o próximo código de corte para a próxima extração incremental no SAP.',
               'Ver detalhamento completo em Materiais & Almoxarifado → Importação de Materiais (ZL0169/ZL0162).'
             ]
           }

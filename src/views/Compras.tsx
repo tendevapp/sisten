@@ -63,6 +63,8 @@ import { listarValidacoesTecnicas } from '../lib/validacaoTecnicaApi';
 import type { CotacaoProcessoItemDraft } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
 import NovidadesModal from '../components/NovidadesModal';
+import RequestDetailPanel from '../components/solicitacoes/RequestDetailPanel';
+import { TIPO_VISUAL } from '../components/solicitacoes/tipoVisual';
 import DiligenciamentoSemMigoTable from '../components/suprimentos/DiligenciamentoSemMigoTable';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import Modal, { ModalHeader, ModalBody } from '../components/ui/Modal';
@@ -753,6 +755,14 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const abrirDetalheSap = useCallback((r: EnrichedSAPRecord, vinculo: VinculoSistenRm | null) => {
     setSelectedRecordForModal(r);
     setSelectedVinculoForModal(vinculo);
+  }, []);
+  // Solicitação de compra do SISTEN aberta ao clicar em "SISTEN #..."
+  const [solicitacaoSistenAbertaId, setSolicitacaoSistenAbertaId] = useState<string | null>(null);
+  const abrirSolicitacaoSisten = useCallback((vinculo: VinculoSistenRm) => {
+    const req = vinculo.requestId
+      ? localDb.getRequests().find(r => r.id === vinculo.requestId)
+      : localDb.getRequests().find(r => r.number === vinculo.requestNumber);
+    if (req) setSolicitacaoSistenAbertaId(req.id);
   }, []);
   const [showNovidades, setShowNovidades] = useState(false);
 
@@ -2045,6 +2055,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         if (poFilter !== 'Sem MIGO' && !matchesPromessaFilter(r.ri, r)) return false;
         if (tokens.length > 0) {
           const cotacoesItem = obterCotacoesDoItem(r);
+          const vinculoSisten = buscarVinculoSistenRm(vinculosSistenPorRm, g.rm, r.material_code);
           const alvos: (string | undefined | null)[] = [
             g.rm,
             r.material_code,
@@ -2053,6 +2064,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             r.fornecedor_name,
             r.fornecedor_code,
             r.documento_compra,
+            vinculoSisten?.requestNumber,
+            vinculoSisten?.solicitanteName,
           ];
           for (const f of it.fornecedores) {
             alvos.push(f.fornecedor, f.nome_fantasia, f.cnpj, f.cod_forn);
@@ -2068,7 +2081,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, itemStatusFilter, compradoFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, estoqueFilter, tagEstoqueDe, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem, mlItens]);
+  }, [rmGroups, searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, itemStatusFilter, compradoFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, estoqueFilter, tagEstoqueDe, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem, mlItens, vinculosSistenPorRm]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -2419,19 +2432,19 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               </span>
             </span>
           ) : (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
-            title={`PO ${docCompra || '—'} emitida em ${formatDateBR(r.data_pedido)}`}
-          >
-            <Check className="h-3 w-3 shrink-0" />
-            <span className="flex flex-col leading-tight select-text">
-              <span className="inline-flex items-center gap-1">
-                <span>PO {docCompra || '—'}</span>
-                {docCompra && <ClipboardCopyButton text={docCompra} label="PO" size="xs" />}
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
+              title={`PO ${docCompra || '—'} emitida em ${formatDateBR(r.data_pedido)}`}
+            >
+              <Check className="h-3 w-3 shrink-0" />
+              <span className="flex flex-col leading-tight select-text">
+                <span className="inline-flex items-center gap-1">
+                  <span>PO {docCompra || '—'}</span>
+                  {docCompra && <ClipboardCopyButton text={docCompra} label="PO" size="xs" />}
+                </span>
+                {r.data_pedido && <span>{formatDateBR(r.data_pedido)}</span>}
               </span>
-              {r.data_pedido && <span>{formatDateBR(r.data_pedido)}</span>}
             </span>
-          </span>
           )}
           {/* PO criado por referência a contrato guarda-chuva (EKPO-KONNR).
               Diferente de `is_contrato` (categoria D no ME5A): aqui existe
@@ -2504,59 +2517,59 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             </span>
           )}
         </div>
-      <p className="text-slate-700 dark:text-slate-300 font-bold break-words">
-        {r.fornecedor_name || poForn?.fornecedor || 'Fornecedor não identificado'}
-        {r.fornecedor_code && <span className="text-slate-450 dark:text-slate-500 font-semibold"> ({r.fornecedor_code})</span>}
-        {poForn?.nome_fantasia && poForn.nome_fantasia !== '—' && (
-          <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">
-            Fantasia: {poForn.nome_fantasia}
-          </span>
+        <p className="text-slate-700 dark:text-slate-300 font-bold break-words">
+          {r.fornecedor_name || poForn?.fornecedor || 'Fornecedor não identificado'}
+          {r.fornecedor_code && <span className="text-slate-450 dark:text-slate-500 font-semibold"> ({r.fornecedor_code})</span>}
+          {poForn?.nome_fantasia && poForn.nome_fantasia !== '—' && (
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">
+              Fantasia: {poForn.nome_fantasia}
+            </span>
+          )}
+        </p>
+        {/* Contato do fornecedor do PO: é com ele que o comprador cobra a entrega/MIGO. */}
+        {!compact && poForn && (poForn.telefone !== '—' || poForn.email !== '—') && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {poForn.telefone !== '—' && poForn.telefone.split(';').map(t => t.trim()).filter(Boolean).map((tel, telIdx) => (
+              <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
+                <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                <a href={`tel:${tel}`} className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold font-mono" title={`Ligar: ${tel}`}>{tel}</a>
+                <ClipboardCopyButton text={tel} label="telefone" />
+              </div>
+            ))}
+            {poForn.email !== '—' && (
+              <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] min-w-0 max-w-full">
+                <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                <a href={`mailto:${poForn.email}`} className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[155px]" title={poForn.email}>{poForn.email}</a>
+                <ClipboardCopyButton text={poForn.email} label="e-mail" />
+              </div>
+            )}
+          </div>
         )}
-      </p>
-      {/* Contato do fornecedor do PO: é com ele que o comprador cobra a entrega/MIGO. */}
-      {!compact && poForn && (poForn.telefone !== '—' || poForn.email !== '—') && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {poForn.telefone !== '—' && poForn.telefone.split(';').map(t => t.trim()).filter(Boolean).map((tel, telIdx) => (
-            <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
-              <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-              <a href={`tel:${tel}`} className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold font-mono" title={`Ligar: ${tel}`}>{tel}</a>
-              <ClipboardCopyButton text={tel} label="telefone" />
-            </div>
-          ))}
-          {poForn.email !== '—' && (
-            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] min-w-0 max-w-full">
-              <Mail className="h-3 w-3 text-slate-400 shrink-0" />
-              <a href={`mailto:${poForn.email}`} className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[155px]" title={poForn.email}>{poForn.email}</a>
-              <ClipboardCopyButton text={poForn.email} label="e-mail" />
-            </div>
+        {numeroContratoPO(r) && (
+          <p className="text-violet-700 dark:text-violet-400 font-bold">
+            Contrato {numeroContratoPO(r)}{itemContratoPO(r) ? ` · item ${itemContratoPO(r)}` : ''}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500 dark:text-slate-450 font-semibold">
+          <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Pedido: {formatDateBR(r.data_pedido)}</span>
+          <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Entrega SAP: {formatDateBR(r.data_entrega_sap)}</span>
+        </div>
+        {(r.preco_unitario !== undefined || r.valor_total !== undefined) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-bold">
+            <span className="text-slate-500 dark:text-slate-450">Unit.: <span className="text-slate-700 dark:text-slate-300">{formatPreco(r.preco_unitario)}</span></span>
+            <span className="text-slate-500 dark:text-slate-450">Total: <span className="text-emerald-600 dark:text-emerald-450">{formatPreco(r.valor_total)}</span></span>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-150/50 dark:border-slate-750">
+          {/* Contrato não tem carga a chegar, então não cobra MIGO. */}
+          {r.is_contrato ? <span /> : renderMigoInfo(r.data_migo || undefined)}
+          {r.criado_por_pedido && (
+            <span className="text-slate-400 dark:text-slate-500 font-semibold">Comprador: {r.criado_por_pedido}</span>
           )}
         </div>
-      )}
-      {numeroContratoPO(r) && (
-        <p className="text-violet-700 dark:text-violet-400 font-bold">
-          Contrato {numeroContratoPO(r)}{itemContratoPO(r) ? ` · item ${itemContratoPO(r)}` : ''}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500 dark:text-slate-450 font-semibold">
-        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Pedido: {formatDateBR(r.data_pedido)}</span>
-        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Entrega SAP: {formatDateBR(r.data_entrega_sap)}</span>
       </div>
-      {(r.preco_unitario !== undefined || r.valor_total !== undefined) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-bold">
-          <span className="text-slate-500 dark:text-slate-450">Unit.: <span className="text-slate-700 dark:text-slate-300">{formatPreco(r.preco_unitario)}</span></span>
-          <span className="text-slate-500 dark:text-slate-450">Total: <span className="text-emerald-600 dark:text-emerald-450">{formatPreco(r.valor_total)}</span></span>
-        </div>
-      )}
-      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-150/50 dark:border-slate-750">
-        {/* Contrato não tem carga a chegar, então não cobra MIGO. */}
-        {r.is_contrato ? <span /> : renderMigoInfo(r.data_migo || undefined)}
-        {r.criado_por_pedido && (
-          <span className="text-slate-400 dark:text-slate-500 font-semibold">Comprador: {r.criado_por_pedido}</span>
-        )}
-      </div>
-    </div>
-  );
-};
+    );
+  };
 
   const worstLevel = (items: ItemNode[]): 'critico' | 'atencao' | 'monitorar' | 'ok' => {
     const order = ['ok', 'monitorar', 'atencao', 'critico'];
@@ -2780,11 +2793,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           {viewMode === 'table' && filteredItemCount > 0 && (
             <button
               onClick={() => handleTableShowSupplierFirstChange(!tableShowSupplierFirst)}
-              className={`flex items-center gap-2 px-3 py-2 border rounded-xl text-xs font-bold transition-all h-9 cursor-pointer active:scale-95 active:translate-y-[1px] ${
-                tableShowSupplierFirst
+              className={`flex items-center gap-2 px-3 py-2 border rounded-xl text-xs font-bold transition-all h-9 cursor-pointer active:scale-95 active:translate-y-[1px] ${tableShowSupplierFirst
                   ? 'bg-blue-50 dark:bg-blue-950/40 text-[#0056c6] dark:text-[#0056c6] border-blue-250 dark:border-blue-900/60 shadow-2xs'
                   : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-855/40 text-slate-700 dark:text-slate-300'
-              }`}
+                }`}
               title="Mostrar fornecedor como primeira coluna e ordenar por fornecedor"
             >
               <Users className="h-4 w-4" />
@@ -2845,11 +2857,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           {/* Card 2: Itens Sem PO (Filtra 'Todos') */}
           <div
             onClick={() => setKpiFilter('Todos')}
-            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${
-              kpiFilter === 'Todos'
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Todos'
                 ? 'border-[#0056c6] ring-1 ring-[#0056c6]/20'
                 : 'border-slate-200/80 dark:border-slate-850'
-            }`}
+              }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-[#0056c6]" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
@@ -2864,11 +2875,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           {/* Card 3: Com Fornecedor */}
           <div
             onClick={() => setKpiFilter('Com Fornecedor')}
-            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${
-              kpiFilter === 'Com Fornecedor'
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Com Fornecedor'
                 ? 'border-emerald-500 ring-1 ring-emerald-500/20'
                 : 'border-slate-200/80 dark:border-slate-850'
-            }`}
+              }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 dark:bg-emerald-600" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Com Fornecedor</span>
@@ -2881,11 +2891,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           {/* Card 4: Sem Histórico */}
           <div
             onClick={() => setKpiFilter('Sem Histórico')}
-            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${
-              kpiFilter === 'Sem Histórico'
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Sem Histórico'
                 ? 'border-rose-500 ring-1 ring-rose-500/20'
                 : 'border-slate-200/80 dark:border-slate-850'
-            }`}
+              }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-rose-500 dark:bg-rose-600" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Sem Histórico</span>
@@ -2898,11 +2907,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           {/* Card 5: Críticos / Em Atraso */}
           <div
             onClick={() => setKpiFilter('Críticos')}
-            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden col-span-2 lg:col-span-1 cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${
-              kpiFilter === 'Críticos'
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden col-span-2 lg:col-span-1 cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Críticos'
                 ? 'border-amber-500 ring-1 ring-amber-500/20'
                 : 'border-slate-200/80 dark:border-slate-850'
-            }`}
+              }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 dark:bg-amber-600" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Críticos / Em Atraso</span>
@@ -2916,11 +2924,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               menos (ou mais) do que a RM pediu. É o recorte de cobrança de saldo. */}
           <div
             onClick={() => setKpiFilter('Parciais')}
-            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden col-span-2 lg:col-span-1 cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${
-              kpiFilter === 'Parciais'
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden col-span-2 lg:col-span-1 cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Parciais'
                 ? 'border-orange-500 ring-1 ring-orange-500/20'
                 : 'border-slate-200/80 dark:border-slate-850'
-            }`}
+              }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-500 dark:bg-orange-600" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Itens Parciais</span>
@@ -3239,743 +3246,760 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               onCountChange={setSemMigoCount}
             />
           ) : (
-          <>
-          {/* VIEW: CARDS (Default) */}
-          {viewMode === 'cards' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredFlatItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores, poFornecedor } }) => {
-                const ilvl = alertLevel(r.alerta || '');
-                const alertStyle = ALERT_STYLE[ilvl];
-                const itemSaveStatus = saveStatus[r.ri] || 'idle';
-                const vinculoSisten = buscarVinculoSistenRm(vinculosSistenPorRm, rm, r.material_code);
-                const cotacoesVinculadas = obterCotacoesDoItem(r);
-                return (
-                  <div key={r.ri_po} className={`border border-slate-200 dark:border-slate-800 rounded-3xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-200 relative ${isModified(r.ri, r) ? 'border-l-4 border-l-amber-500 ring-1 ring-amber-500/10' : encontrado ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-rose-500'}`}>
-                    {/* Card Top */}
-                    <div className="p-4 space-y-3 flex-1">
-                      {/* Meta header */}
-                      <div className="flex items-center justify-between flex-wrap gap-1.5">
-                        <div className="flex items-center gap-1.5 select-text">
-                          <input
-                            type="checkbox"
-                            checked={selectedRis.has(r.ri_po)}
-                            onChange={() => toggleSelectRi(r.ri_po)}
-                            className="cursor-pointer"
-                            aria-label={`Selecionar item ${r.item_reqc}`}
-                          />
-                          <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 dark:text-slate-500">RM {rm}</span>
-                          <ClipboardCopyButton text={rm} label="RM" size="xs" />
-                          <span className="text-[10px] text-slate-350">•</span>
-                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Item {r.item_reqc}</span>
-                          {/* RM vinculada em Abrir RM > Abertas a uma solicitação do SISTEN. */}
-                          {vinculoSisten && (
-                            <>
-                              <span className="text-[10px] text-slate-350">•</span>
-                              <span
-                                className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400"
-                                title="Solicitação do SISTEN que abriu esta RM"
-                              >
-                                SISTEN #{vinculoSisten.requestNumber}
-                              </span>
-                            </>
-                          )}
-                          {validacaoPorRi.get(r.ri) && (
-                            <ValidacaoTag v={validacaoPorRi.get(r.ri)!} onClick={() => abrirValidacao(r, rm, vinculoSisten)} />
-                          )}
-                          {cotacoesVinculadas.length > 0 && (
-                            <>
-                              <span className="text-[10px] text-slate-350">•</span>
-                              <div className="inline-flex items-center gap-1 flex-wrap">
-                                <MercadoLivreTag cotacoes={cotacoesVinculadas} />
-                                {cotacoesVinculadas.map(c => (
-                                  <a
-                                    key={c.processoId}
-                                    href={`/#/suprimentos/cotacoes?processoId=${encodeURIComponent(c.processoId)}&fase=mapa`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800 transition-all cursor-pointer shadow-xs active:scale-95 group no-underline"
-                                    title={`Abrir Mapa Comparativo de ${c.numero} em nova janela (${c.status})`}
-                                  >
-                                    <FileSpreadsheet className="h-3 w-3 text-indigo-500 group-hover:scale-110 transition-transform" />
-                                    <span>{c.numero}</span>
-                                    <ExternalLink className="h-2.5 w-2.5 text-indigo-400 opacity-60 group-hover:opacity-100 transition-opacity" />
-                                  </a>
-                                ))}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => abrirDetalheSap(r, vinculoSisten)}
-                            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-450 dark:text-slate-500 hover:text-[#0056c6] dark:hover:text-emerald-450 cursor-pointer"
-                            title="Ver detalhes SAP"
-                          >
-                            <Info className="h-4.5 w-4.5" />
-                          </button>
-                          {renderPOBadge(r)}
-                          {renderEntregaParcialBadge(r)}
-                          <EstoqueTagBadge situacao={situacaoEstoqueDe(r)} />
-                          {r.status_requisicao !== 'Processado' && r.alerta && (
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-black tracking-wide uppercase ${alertStyle.chip}`}>
-                              {r.alerta}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Title & Desc (Clickable to modal) */}
-                      <div className="cursor-pointer group" onClick={() => abrirDetalheSap(r, vinculoSisten)}>
-                        <h4 className="text-[13px] font-mono font-bold text-slate-800 dark:text-slate-200 group-hover:text-[#0056c6] dark:group-hover:text-emerald-450 group-hover:underline leading-tight flex items-center gap-1">
-                          {r.material_code || '—'}
-                          <ArrowUpRight className="h-3 w-3 opacity-60 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity" />
-                        </h4>
-                        <p className="text-sm text-slate-700 dark:text-slate-250 mt-1 font-semibold leading-relaxed line-clamp-2">
-                          {r.texto_breve || 'Descrição não cadastrada'}
-                        </p>
-                        {/* Item genérico: o material do catálogo é um código
-                            guarda-chuva — a observação do SISTEN é que diz o
-                            que é de fato (ver `lib/centralComprasSisten.ts`). */}
-                        {vinculoSisten?.item.is_generic && (
-                          <div className="mt-1.5">
-                            <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                              <Tag className="h-2.5 w-2.5" />
-                              Item Genérico
-                            </span>
-                            {vinculoSisten.item.observation && (
-                              <p className="text-[11px] text-slate-600 dark:text-slate-400 italic mt-1 leading-relaxed">
-                                {vinculoSisten.item.observation}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Technical Specs Tags */}
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-450 dark:text-slate-500 font-bold bg-slate-55 dark:bg-slate-955 p-2 rounded-xl border border-slate-150 dark:border-slate-900">
-                        <span>Qtd: {qtdDaLinha(r).qtd} {qtdDaLinha(r).un}</span>
-                        {r.status_requisicao === 'Processado' && r.qtd_fornecida_po !== undefined && (
-                          <>
-                            <span>•</span>
-                            <span>Fornecido: {formatInt(r.qtd_fornecida_po)} {qtdDaLinha(r).un}</span>
-                          </>
-                        )}
-                        <span>•</span>
-                        <span>Comprador: Grupo {r.grupo_comprador || '—'}</span>
-                        <span>•</span>
-                        <span>Natureza: {r.natureza}</span>
-                        <span>•</span>
-                        <span>Requisitante: {r.requisitante_name || '—'}</span>
-                        {r.status_requisicao !== 'Processado' && (
-                          <>
-                            <span>•</span>
-                            <span className={r.dias_em_aberto > 15 ? 'text-amber-600 dark:text-amber-500' : ''}>
-                              Aberto há {r.dias_em_aberto}d
-                            </span>
-                          </>
-                        )}
-                        <span>•</span>
-                        <span>{isProjetoItem(r.material_code) ? 'Projeto' : 'Consumo'}</span>
-                        {grupoMercDe(r) && (
-                          <>
-                            <span>•</span>
-                            <span>Grupo: {grupoMercDe(r)}</span>
-                          </>
-                        )}
-                      </div>
-
-                      {/* Informações do Pedido de Compra (PO) já emitido */}
-                      {r.status_requisicao === 'Processado' && (
-                        <div className="space-y-1.5 pt-1">
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                            Informações do Pedido de Compra (PO)
-                          </span>
-                          {renderPOInfoBlock(r, poFornecedor)}
-                        </div>
-                      )}
-
-                      {/* Fornecedores Históricos — só interessa enquanto o item não tem PO.
-                          Com o pedido fechado, o fornecedor relevante é o do PO acima. */}
-                      {r.status_requisicao !== 'Processado' && (
-                      <div className="space-y-1.5 pt-1">
-                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                          Fornecedores sugeridos ({fornecedores.length})
-                        </span>
-
-                        {!encontrado ? (
-                          <div className="flex items-center gap-2 p-3 rounded-xl border border-dashed border-rose-150 dark:border-rose-900/40 bg-rose-50/20 dark:bg-rose-955/5 text-rose-800 dark:text-rose-455 text-xs">
-                            <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
-                            <span>Sem PO, cotação ou catálogo anterior para este material.</span>
-                          </div>
-                        ) : (
-                          <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                            {fornecedores.map((f, fIdx) => (
-                              <FornecedorHistoricoCard key={fIdx} f={f} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      )}
-                    </div>
-
-                    {/* Card Actions — edição inline de status/previsão/observação do item. */}
-                    <div className="border-t border-slate-150 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40 p-4 space-y-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
-                            Status do Item
-                          </label>
-                          {renderStatusSelect(r.ri, r.item_status || 'Aguardando Cotação')}
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
-                            Previsão de Entrega
-                          </label>
-                          {renderPromessaInput(r)}
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
-                              Observações
-                            </label>
-                            <button
-                              onClick={() => handleViewHistory(r.ri)}
-                              className="text-[9px] font-bold text-slate-400 hover:text-[#0056c6] dark:text-slate-500 dark:hover:text-emerald-450 flex items-center gap-0.5 cursor-pointer"
-                              title="Histórico de alterações"
-                            >
-                              <History className="h-3 w-3" /> Histórico
-                            </button>
-                          </div>
-                          <textarea
-                            value={obsInputState[r.ri] || ''}
-                            onChange={(e) => setObsInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
-                            placeholder="Notas de compra..."
-                            rows={2}
-                            className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all resize-y leading-snug"
-                          />
-                        </div>
-                      </div>
-
-                      {mlItens.get(r.ri) && (
-                        <div className="flex items-start gap-2 p-2.5 rounded-xl border border-yellow-300 dark:border-yellow-900/60 bg-yellow-50/70 dark:bg-yellow-950/10">
-                          <span className="px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[9px] font-black tracking-wide uppercase whitespace-nowrap">
-                            Mercado Livre
-                          </span>
-                          <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} />
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 font-semibold">
-                        {isModified(r.ri, r) ? (
-                          <span className="text-[10px] text-amber-650 dark:text-amber-450 font-black flex items-center gap-1.5 animate-pulse">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            Pendente de salvar
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
-                            {r.item_status_updated_at 
-                              ? `Alt: ${new Date(r.item_status_updated_at).toLocaleDateString('pt-BR')} por ${r.item_status_updated_by || 'Sistema'}`
-                              : r.obs_updated_at
-                              ? `Alt: ${new Date(r.obs_updated_at).toLocaleDateString('pt-BR')} por ${r.obs_updated_by || 'Sistema'}`
-                              : 'Ainda não editado'}
-                          </span>
-                        )}
-
-                        <div className="flex flex-wrap items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleSaveFields(r.ri)}
-                            disabled={itemSaveStatus === 'saving'}
-                            type="button"
-                            className={`${BOTAO_ACAO_CARD} ${corBotaoSalvar(itemSaveStatus, isModified(r.ri, r))}`}
-                          >
-                            {itemSaveStatus === 'saving' && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
-                            {itemSaveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
-                            {itemSaveStatus === 'idle' && <Save className="h-3.5 w-3.5" />}
-                            <span>
-                              {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
-                            </span>
-                          </button>
-                          {encontrado && (
-                            <button
-                              onClick={() => handleSendItemQuoteToAllSuppliers(r, rm, fornecedores)}
-                              type="button"
-                              title="Enviar cotação por e-mail para todos os fornecedores deste item (em cópia oculta)"
-                              className={`${BOTAO_ACAO_CARD} ${COR_BOTAO_COTACAO}`}
-                            >
-                              <Send className="h-3.5 w-3.5" />
-                              <span>Cotação</span>
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setMlLinkModal({ record: r, rm })}
-                            type="button"
-                            title={mlItens.has(r.ri) ? 'Item no Mercado Livre — ver ou trocar o link' : 'Comprar pelo Mercado Livre: gravar o link do anúncio'}
-                            className={`${BOTAO_ACAO_CARD} ${COR_BOTAO_ML}`}
-                          >
-                            {mlItens.has(r.ri) ? <Check className="h-3.5 w-3.5" /> : <ShoppingCart className="h-3.5 w-3.5" />}
-                            <span>M. Livre</span>
-                          </button>
-                          <button
-                            onClick={() => abrirValidacao(r, rm, vinculoSisten)}
-                            type="button"
-                            title="Pedir validação técnica do item ao gestor da área (fotos, ficha técnica, links)"
-                            className={`${BOTAO_ACAO_CARD} ${COR_BOTAO_VALIDACAO}`}
-                          >
-                            <ShieldCheck className="h-3.5 w-3.5" />
-                            <span>Validação</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-
-          {/* VIEW: TABLE (Flat spreadsheet mode) */}
-          {(() => {
-            const visibleTableRis = Array.from(new Set(flatTableItems.map(x => x.item.record.ri_po)));
-            const allTableRisSelected = visibleTableRis.length > 0 && visibleTableRis.every(ri => selectedRis.has(ri));
-            const someTableRisSelected = visibleTableRis.some(ri => selectedRis.has(ri));
-            const toggleSelectAllTable = () => {
-              setSelectedRis(prev => {
-                const next = new Set(prev);
-                if (allTableRisSelected) {
-                  visibleTableRis.forEach(ri => next.delete(ri));
-                } else {
-                  visibleTableRis.forEach(ri => next.add(ri));
-                }
-                return next;
-              });
-            };
-            return (
-          viewMode === 'table' && (
-            <TableShell>
-              <table className="min-w-full text-left text-xs">
-                {/* Cabeçalho fixo: esta lista chega a centenas de itens com
-                    células editáveis, e o cabeçalho rolava para fora da tela —
-                    quem editava a 40ª linha não sabia mais qual era a coluna. */}
-                <TableHeadRow>
-                  <Th width="w-8">
-                    <input
-                      type="checkbox"
-                      checked={allTableRisSelected}
-                      ref={el => { if (el) el.indeterminate = someTableRisSelected && !allTableRisSelected; }}
-                      onChange={toggleSelectAllTable}
-                      className="cursor-pointer"
-                      aria-label="Selecionar todos os itens visíveis"
-                    />
-                  </Th>
-                  {tableShowSupplierFirst && <Th label="Fornecedor" />}
-                  <Th label="RM / Item" />
-                  {/* Cotação/PO/Material são código curto — largura reduzida
-                      de propósito pra sobrar espaço pra Descrição, que é o
-                      campo que a pessoa realmente lê pra identificar o item. */}
-                  <Th label="Cotação" width="w-[130px]" />
-                  {poFilter === 'M Livre' && <Th label="Mercado Livre" width="w-[200px]" />}
-                  <Th label="PO" width="w-[90px]" />
-                  <Th label="Material" width="w-[100px]" />
-                  <Th label="Descrição" />
-                  <Th label="Qtd / Un" />
-                  <Th label="Qtd Fornecida" />
-                  {/* "Informações do PO" (Sem MIGO) saiu daqui — essa visão agora é a
-                      tabela de Diligenciamento, renderizada antes deste bloco. */}
-                  {!tableShowSupplierFirst && <Th label="Histórico Fornecedores" />}
-                  <Th label="Status" width="w-[170px]" />
-                  <Th label="Promessa Entrega" />
-                  <Th label="Observação" width="w-[220px]" />
-                  <Th label="Ações" align="center" />
-                </TableHeadRow>
-                <tbody className="divide-y" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
-                  {flatTableItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores, poFornecedor }, selectedSupplier }) => {
+            <>
+              {/* VIEW: CARDS (Default) */}
+              {viewMode === 'cards' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredFlatItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores, poFornecedor } }) => {
+                    const ilvl = alertLevel(r.alerta || '');
+                    const alertStyle = ALERT_STYLE[ilvl];
                     const itemSaveStatus = saveStatus[r.ri] || 'idle';
-                    // Solicitação do SISTEN que abriu esta RM, se a RM já
-                    // estiver vinculada em Abrir RM > Abertas — casada pela RM
-                    // e pelo código do material (ver `lib/centralComprasSisten.ts`).
                     const vinculoSisten = buscarVinculoSistenRm(vinculosSistenPorRm, rm, r.material_code);
                     const cotacoesVinculadas = obterCotacoesDoItem(r);
                     return (
-                      // Linha alterada e ainda não salva ganha uma faixa na
-                      // borda esquerda além do fundo: o tingimento sozinho era
-                      // fraco demais para achar a alteração numa lista longa.
-                      <tr
-                        key={`${r.ri_po}-${selectedSupplier ? selectedSupplier.cod_forn : 'none'}`}
-                        className="align-top transition-colors duration-150 hover:bg-[var(--surface-raised)]"
-                        style={{
-                          borderColor: 'var(--hairline)',
-                          ...(isModified(r.ri, r)
-                            ? {
-                                background: 'color-mix(in srgb, var(--status-warning) 7%, transparent)',
-                                boxShadow: 'inset 3px 0 0 0 var(--status-warning)',
-                              }
-                            : null),
-                        }}
-                      >
-                        <td className="py-3 px-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedRis.has(r.ri_po)}
-                            onChange={() => toggleSelectRi(r.ri_po)}
-                            className="cursor-pointer"
-                            aria-label={`Selecionar item ${r.item_reqc}`}
-                          />
-                        </td>
-                        {/* Column 1: Fornecedor (when focused) */}
-                        {tableShowSupplierFirst && (
-                          <td className="py-3 px-3 min-w-[280px] lg:min-w-[320px] max-w-[320px]">
-                            {/* Item já comprado: mostra o fornecedor do PO, não o histórico. */}
-                            {!selectedSupplier && r.status_requisicao === 'Processado' ? (
-                              renderPOInfoBlock(r, poFornecedor, true)
-                            ) : !selectedSupplier ? (
-                              <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
-                                Sem fornecedor
-                              </span>
-                            ) : (
-                              <div className="p-2 rounded bg-slate-50/60 dark:bg-slate-800/20 border border-slate-200/60 dark:border-slate-800/40 text-[10px] space-y-1 text-left">
-                                <div className="flex items-center justify-between gap-1">
-                                  <span className="font-bold text-slate-800 dark:text-slate-200 break-words" title={selectedSupplier.fornecedor}>
-                                    {selectedSupplier.fornecedor}
-                                    {selectedSupplier.nome_fantasia && selectedSupplier.nome_fantasia !== '—' && (
-                                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-medium">
-                                        Fantasia: {selectedSupplier.nome_fantasia}
-                                      </span>
-                                    )}
-                                  </span>
-                                  <span className="px-1 py-0.2 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-semibold text-slate-500">
-                                    {selectedSupplier.regiao_uf}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold">
-                                  <span>Preço: <span className="text-emerald-600 dark:text-emerald-450">{formatPreco(selectedSupplier.preco_liquido)}</span></span>
-                                  <span className="flex items-center gap-0.5">
-                                    <Calendar className="h-2.5 w-2.5 text-slate-400" />
-                                    {selectedSupplier.ultima_data !== '—' ? (isNaN(Date.parse(selectedSupplier.ultima_data)) ? selectedSupplier.ultima_data : new Date(selectedSupplier.ultima_data).toLocaleDateString('pt-BR')) : '—'}
-                                  </span>
-                                </div>
-                                <div className="text-[9px] font-bold">
-                                  {renderMigoInfo(selectedSupplier.data_migo)}
-                                </div>
-                                <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-150/50 dark:border-slate-750">
-                                  {selectedSupplier.telefone !== '—' && selectedSupplier.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
-                                    <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
-                                      <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                                      <a href={`tel:${singleTel}`} className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold font-mono" title={`Ligar: ${singleTel}`}>
-                                        {singleTel}
-                                      </a>
-                                      <ClipboardCopyButton text={singleTel} label="telefone" />
-                                    </div>
-                                  ))}
-                                  {selectedSupplier.email !== '—' && (
-                                    <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] min-w-0 max-w-full">
-                                      <Mail className="h-3 w-3 text-slate-400 shrink-0" />
-                                      <a href={`mailto:${selectedSupplier.email}`} className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[155px]" title={selectedSupplier.email}>
-                                        {selectedSupplier.email}
-                                      </a>
-                                      <ClipboardCopyButton text={selectedSupplier.email} label="e-mail" />
-                                    </div>
+                      <div key={r.ri_po} className={`border border-slate-200 dark:border-slate-800 rounded-3xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-200 relative ${isModified(r.ri, r) ? 'border-l-4 border-l-amber-500 ring-1 ring-amber-500/10' : encontrado ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-rose-500'}`}>
+                        {/* Card Top */}
+                        <div className="p-4 space-y-3 flex-1">
+                          {/* Meta header */}
+                          <div className="flex items-center justify-between flex-wrap gap-1.5">
+                            <div className="flex items-center gap-1.5 select-text">
+                              <input
+                                type="checkbox"
+                                checked={selectedRis.has(r.ri_po)}
+                                onChange={() => toggleSelectRi(r.ri_po)}
+                                className="cursor-pointer"
+                                aria-label={`Selecionar item ${r.item_reqc}`}
+                              />
+                              <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 dark:text-slate-500">RM {rm}</span>
+                              <ClipboardCopyButton text={rm} label="RM" size="xs" />
+                              <span className="text-[10px] text-slate-350">•</span>
+                              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Item {r.item_reqc}</span>
+                              {/* RM vinculada em Abrir RM > Abertas a uma solicitação do SISTEN. */}
+                              {vinculoSisten && (
+                                <>
+                                  <span className="text-[10px] text-slate-350">•</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => abrirSolicitacaoSisten(vinculoSisten)}
+                                    className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                                    title={`Abrir solicitação de compra #${vinculoSisten.requestNumber}`}
+                                  >
+                                    SISTEN #{vinculoSisten.requestNumber}
+                                  </button>
+                                  {vinculoSisten.solicitanteName && (
+                                    <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                      · {vinculoSisten.solicitanteName}
+                                    </span>
                                   )}
-                                </div>
+                                </>
+                              )}
+                              {validacaoPorRi.get(r.ri) && (
+                                <ValidacaoTag v={validacaoPorRi.get(r.ri)!} onClick={() => abrirValidacao(r, rm, vinculoSisten)} />
+                              )}
+                              {cotacoesVinculadas.length > 0 && (
+                                <>
+                                  <span className="text-[10px] text-slate-350">•</span>
+                                  <div className="inline-flex items-center gap-1 flex-wrap">
+                                    <MercadoLivreTag cotacoes={cotacoesVinculadas} />
+                                    {cotacoesVinculadas.map(c => (
+                                      <a
+                                        key={c.processoId}
+                                        href={`/#/suprimentos/cotacoes?processoId=${encodeURIComponent(c.processoId)}&fase=mapa`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800 transition-all cursor-pointer shadow-xs active:scale-95 group no-underline"
+                                        title={`Abrir Mapa Comparativo de ${c.numero} em nova janela (${c.status})`}
+                                      >
+                                        <FileSpreadsheet className="h-3 w-3 text-indigo-500 group-hover:scale-110 transition-transform" />
+                                        <span>{c.numero}</span>
+                                        <ExternalLink className="h-2.5 w-2.5 text-indigo-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                      </a>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => abrirDetalheSap(r, vinculoSisten)}
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-450 dark:text-slate-500 hover:text-[#0056c6] dark:hover:text-emerald-450 cursor-pointer"
+                                title="Ver detalhes SAP"
+                              >
+                                <Info className="h-4.5 w-4.5" />
+                              </button>
+                              {renderPOBadge(r)}
+                              {renderEntregaParcialBadge(r)}
+                              <EstoqueTagBadge situacao={situacaoEstoqueDe(r)} />
+                              {r.status_requisicao !== 'Processado' && r.alerta && (
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-black tracking-wide uppercase ${alertStyle.chip}`}>
+                                  {r.alerta}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Title & Desc (Clickable to modal) */}
+                          <div className="cursor-pointer group" onClick={() => abrirDetalheSap(r, vinculoSisten)}>
+                            <h4 className="text-[13px] font-mono font-bold text-slate-800 dark:text-slate-200 group-hover:text-[#0056c6] dark:group-hover:text-emerald-450 group-hover:underline leading-tight flex items-center gap-1">
+                              {r.material_code || '—'}
+                              <ArrowUpRight className="h-3 w-3 opacity-60 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity" />
+                            </h4>
+                            <p className="text-sm text-slate-700 dark:text-slate-250 mt-1 font-semibold leading-relaxed line-clamp-2">
+                              {r.texto_breve || 'Descrição não cadastrada'}
+                            </p>
+                            {/* Item genérico: o material do catálogo é um código
+                            guarda-chuva — a observação do SISTEN é que diz o
+                            que é de fato (ver `lib/centralComprasSisten.ts`). */}
+                            {vinculoSisten?.item.is_generic && (
+                              <div className="mt-1.5">
+                                <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                  <Tag className="h-2.5 w-2.5" />
+                                  Item Genérico
+                                </span>
+                                {vinculoSisten.item.observation && (
+                                  <p className="text-[11px] text-slate-600 dark:text-slate-400 italic mt-1 leading-relaxed">
+                                    {vinculoSisten.item.observation}
+                                  </p>
+                                )}
                               </div>
                             )}
-                          </td>
-                        )}
-
-                        {/* RM / Item */}
-                        <td className="py-3 px-3 whitespace-nowrap select-text">
-                          <div className="flex items-center gap-1">
-                            <span className="font-mono font-bold block text-slate-850 dark:text-slate-100">RM {rm}</span>
-                            <ClipboardCopyButton text={rm} label="RM" size="xs" />
                           </div>
-                          <span className="text-[10px] text-slate-400 font-semibold">Item {r.item_reqc}</span>
-                          {/* RM vinculada em Abrir RM > Abertas a uma solicitação do SISTEN. */}
-                          {vinculoSisten && (
-                            <span
-                              className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block"
-                              title="Solicitação do SISTEN que abriu esta RM"
-                            >
-                              SISTEN #{vinculoSisten.requestNumber}
-                            </span>
-                          )}
-                          {validacaoPorRi.get(r.ri) && (
-                            <div className="mt-1">
-                              <ValidacaoTag v={validacaoPorRi.get(r.ri)!} onClick={() => abrirValidacao(r, rm, vinculoSisten)} />
+
+                          {/* Technical Specs Tags */}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-450 dark:text-slate-500 font-bold bg-slate-55 dark:bg-slate-955 p-2 rounded-xl border border-slate-150 dark:border-slate-900">
+                            <span>Qtd: {qtdDaLinha(r).qtd} {qtdDaLinha(r).un}</span>
+                            {r.status_requisicao === 'Processado' && r.qtd_fornecida_po !== undefined && (
+                              <>
+                                <span>•</span>
+                                <span>Fornecido: {formatInt(r.qtd_fornecida_po)} {qtdDaLinha(r).un}</span>
+                              </>
+                            )}
+                            <span>•</span>
+                            <span>Comprador: Grupo {r.grupo_comprador || '—'}</span>
+                            <span>•</span>
+                            <span>Natureza: {r.natureza}</span>
+                            <span>•</span>
+                            <span>Requisitante: {r.requisitante_name || '—'}</span>
+                            {r.status_requisicao !== 'Processado' && (
+                              <>
+                                <span>•</span>
+                                <span className={r.dias_em_aberto > 15 ? 'text-amber-600 dark:text-amber-500' : ''}>
+                                  Aberto há {r.dias_em_aberto}d
+                                </span>
+                              </>
+                            )}
+                            <span>•</span>
+                            <span>{isProjetoItem(r.material_code) ? 'Projeto' : 'Consumo'}</span>
+                            {grupoMercDe(r) && (
+                              <>
+                                <span>•</span>
+                                <span>Grupo: {grupoMercDe(r)}</span>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Informações do Pedido de Compra (PO) já emitido */}
+                          {r.status_requisicao === 'Processado' && (
+                            <div className="space-y-1.5 pt-1">
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                                Informações do Pedido de Compra (PO)
+                              </span>
+                              {renderPOInfoBlock(r, poFornecedor)}
                             </div>
                           )}
-                        </td>
 
-                        {/* Cotação */}
-                        <td className="py-3 px-3 w-[130px] whitespace-nowrap">
-                          {cotacoesVinculadas.length > 0 ? (
-                            <div className="flex flex-col gap-1 items-start">
-                              <MercadoLivreTag cotacoes={cotacoesVinculadas} />
-                              {cotacoesVinculadas.map(c => (
-                                <a
-                                  key={c.processoId}
-                                  href={`/#/suprimentos/cotacoes?processoId=${encodeURIComponent(c.processoId)}&fase=mapa`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800 transition-all cursor-pointer shadow-xs active:scale-95 group no-underline"
-                                  title={`Abrir Mapa Comparativo de ${c.numero} em nova janela (${c.status})`}
+                          {/* Fornecedores Históricos — só interessa enquanto o item não tem PO.
+                          Com o pedido fechado, o fornecedor relevante é o do PO acima. */}
+                          {r.status_requisicao !== 'Processado' && (
+                            <div className="space-y-1.5 pt-1">
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                                Fornecedores sugeridos ({fornecedores.length})
+                              </span>
+
+                              {!encontrado ? (
+                                <div className="flex items-center gap-2 p-3 rounded-xl border border-dashed border-rose-150 dark:border-rose-900/40 bg-rose-50/20 dark:bg-rose-955/5 text-rose-800 dark:text-rose-455 text-xs">
+                                  <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
+                                  <span>Sem PO, cotação ou catálogo anterior para este material.</span>
+                                </div>
+                              ) : (
+                                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                                  {fornecedores.map((f, fIdx) => (
+                                    <FornecedorHistoricoCard key={fIdx} f={f} />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Card Actions — edição inline de status/previsão/observação do item. */}
+                        <div className="border-t border-slate-150 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40 p-4 space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
+                                Status do Item
+                              </label>
+                              {renderStatusSelect(r.ri, r.item_status || 'Aguardando Cotação')}
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
+                                Previsão de Entrega
+                              </label>
+                              {renderPromessaInput(r)}
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
+                                  Observações
+                                </label>
+                                <button
+                                  onClick={() => handleViewHistory(r.ri)}
+                                  className="text-[9px] font-bold text-slate-400 hover:text-[#0056c6] dark:text-slate-500 dark:hover:text-emerald-450 flex items-center gap-0.5 cursor-pointer"
+                                  title="Histórico de alterações"
                                 >
-                                  <FileSpreadsheet className="h-3.5 w-3.5 text-indigo-500 group-hover:scale-110 transition-transform" />
-                                  <span>{c.numero}</span>
-                                  <ExternalLink className="h-3 w-3 text-indigo-400 opacity-60 group-hover:opacity-100 transition-opacity" />
-                                </a>
-                              ))}
+                                  <History className="h-3 w-3" /> Histórico
+                                </button>
+                              </div>
+                              <textarea
+                                value={obsInputState[r.ri] || ''}
+                                onChange={(e) => setObsInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
+                                placeholder="Notas de compra..."
+                                rows={2}
+                                className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all resize-y leading-snug"
+                              />
                             </div>
-                          ) : (
-                            <span className="text-slate-350 dark:text-slate-600 font-mono text-xs pl-2" title="Sem processo de cotação vinculado">—</span>
+                          </div>
+
+                          {mlItens.get(r.ri) && (
+                            <div className="flex items-start gap-2 p-2.5 rounded-xl border border-yellow-300 dark:border-yellow-900/60 bg-yellow-50/70 dark:bg-yellow-950/10">
+                              <span className="px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[9px] font-black tracking-wide uppercase whitespace-nowrap">
+                                Mercado Livre
+                              </span>
+                              <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} />
+                            </div>
                           )}
-                        </td>
 
-                        {poFilter === 'M Livre' && (
-                          <td className="py-3 px-3 w-[200px]">
-                            {mlItens.get(r.ri) && <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} />}
-                          </td>
-                        )}
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 font-semibold">
+                            {isModified(r.ri, r) ? (
+                              <span className="text-[10px] text-amber-650 dark:text-amber-450 font-black flex items-center gap-1.5 animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                Pendente de salvar
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
+                                {r.item_status_updated_at
+                                  ? `Alt: ${new Date(r.item_status_updated_at).toLocaleDateString('pt-BR')} por ${r.item_status_updated_by || 'Sistema'}`
+                                  : r.obs_updated_at
+                                    ? `Alt: ${new Date(r.obs_updated_at).toLocaleDateString('pt-BR')} por ${r.obs_updated_by || 'Sistema'}`
+                                    : 'Ainda não editado'}
+                              </span>
+                            )}
 
-                        {/* PO Status */}
-                        <td className="py-3 px-3 w-[90px] whitespace-nowrap">
-                          {renderPOBadge(r)}
-                        </td>
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleSaveFields(r.ri)}
+                                disabled={itemSaveStatus === 'saving'}
+                                type="button"
+                                className={`${BOTAO_ACAO_CARD} ${corBotaoSalvar(itemSaveStatus, isModified(r.ri, r))}`}
+                              >
+                                {itemSaveStatus === 'saving' && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                                {itemSaveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
+                                {itemSaveStatus === 'idle' && <Save className="h-3.5 w-3.5" />}
+                                <span>
+                                  {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
+                                </span>
+                              </button>
+                              {encontrado && (
+                                <button
+                                  onClick={() => handleSendItemQuoteToAllSuppliers(r, rm, fornecedores)}
+                                  type="button"
+                                  title="Enviar cotação por e-mail para todos os fornecedores deste item (em cópia oculta)"
+                                  className={`${BOTAO_ACAO_CARD} ${COR_BOTAO_COTACAO}`}
+                                >
+                                  <Send className="h-3.5 w-3.5" />
+                                  <span>Cotação</span>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setMlLinkModal({ record: r, rm })}
+                                type="button"
+                                title={mlItens.has(r.ri) ? 'Item no Mercado Livre — ver ou trocar o link' : 'Comprar pelo Mercado Livre: gravar o link do anúncio'}
+                                className={`${BOTAO_ACAO_CARD} ${COR_BOTAO_ML}`}
+                              >
+                                {mlItens.has(r.ri) ? <Check className="h-3.5 w-3.5" /> : <ShoppingCart className="h-3.5 w-3.5" />}
+                                <span>M. Livre</span>
+                              </button>
+                              <button
+                                onClick={() => abrirValidacao(r, rm, vinculoSisten)}
+                                type="button"
+                                title="Pedir validação técnica do item ao gestor da área (fotos, ficha técnica, links)"
+                                className={`${BOTAO_ACAO_CARD} ${COR_BOTAO_VALIDACAO}`}
+                              >
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                                <span>Validação</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
-                        {/* Material Code (Clickable) */}
-                        <td className="py-3 px-3 w-[100px] font-mono font-semibold whitespace-nowrap">
-                          <button
-                            onClick={() => abrirDetalheSap(r, vinculoSisten)}
-                            className="hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 cursor-pointer flex items-center gap-1 focus:outline-none"
-                          >
-                            {r.material_code}
-                            <ArrowUpRight className="h-3.5 w-3.5" />
-                          </button>
-                          {situacaoEstoqueDe(r)?.tag && (
-                            <div className="mt-1 font-sans"><EstoqueTagBadge situacao={situacaoEstoqueDe(r)} /></div>
-                          )}
-                        </td>
 
-                        {/* Description (Clickable) — ganha o espaço tirado de
+              {/* VIEW: TABLE (Flat spreadsheet mode) */}
+              {(() => {
+                const visibleTableRis = Array.from(new Set(flatTableItems.map(x => x.item.record.ri_po)));
+                const allTableRisSelected = visibleTableRis.length > 0 && visibleTableRis.every(ri => selectedRis.has(ri));
+                const someTableRisSelected = visibleTableRis.some(ri => selectedRis.has(ri));
+                const toggleSelectAllTable = () => {
+                  setSelectedRis(prev => {
+                    const next = new Set(prev);
+                    if (allTableRisSelected) {
+                      visibleTableRis.forEach(ri => next.delete(ri));
+                    } else {
+                      visibleTableRis.forEach(ri => next.add(ri));
+                    }
+                    return next;
+                  });
+                };
+                return (
+                  viewMode === 'table' && (
+                    <TableShell>
+                      <table className="min-w-full text-left text-xs">
+                        {/* Cabeçalho fixo: esta lista chega a centenas de itens com
+                    células editáveis, e o cabeçalho rolava para fora da tela —
+                    quem editava a 40ª linha não sabia mais qual era a coluna. */}
+                        <TableHeadRow>
+                          <Th width="w-8">
+                            <input
+                              type="checkbox"
+                              checked={allTableRisSelected}
+                              ref={el => { if (el) el.indeterminate = someTableRisSelected && !allTableRisSelected; }}
+                              onChange={toggleSelectAllTable}
+                              className="cursor-pointer"
+                              aria-label="Selecionar todos os itens visíveis"
+                            />
+                          </Th>
+                          {tableShowSupplierFirst && <Th label="Fornecedor" />}
+                          <Th label="RM / Item" />
+                          {/* Cotação/PO/Material são código curto — largura reduzida
+                      de propósito pra sobrar espaço pra Descrição, que é o
+                      campo que a pessoa realmente lê pra identificar o item. */}
+                          <Th label="Cotação" width="w-[130px]" />
+                          {poFilter === 'M Livre' && <Th label="Mercado Livre" width="w-[200px]" />}
+                          <Th label="PO" width="w-[90px]" />
+                          <Th label="Material" width="w-[100px]" />
+                          <Th label="Descrição" />
+                          <Th label="Qtd / Un" />
+                          <Th label="Qtd Fornecida" />
+                          {/* "Informações do PO" (Sem MIGO) saiu daqui — essa visão agora é a
+                      tabela de Diligenciamento, renderizada antes deste bloco. */}
+                          {!tableShowSupplierFirst && <Th label="Histórico Fornecedores" />}
+                          <Th label="Status" width="w-[170px]" />
+                          <Th label="Promessa Entrega" />
+                          <Th label="Observação" width="w-[220px]" />
+                          <Th label="Ações" align="center" />
+                        </TableHeadRow>
+                        <tbody className="divide-y" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+                          {flatTableItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores, poFornecedor }, selectedSupplier }) => {
+                            const itemSaveStatus = saveStatus[r.ri] || 'idle';
+                            // Solicitação do SISTEN que abriu esta RM, se a RM já
+                            // estiver vinculada em Abrir RM > Abertas — casada pela RM
+                            // e pelo código do material (ver `lib/centralComprasSisten.ts`).
+                            const vinculoSisten = buscarVinculoSistenRm(vinculosSistenPorRm, rm, r.material_code);
+                            const cotacoesVinculadas = obterCotacoesDoItem(r);
+                            return (
+                              // Linha alterada e ainda não salva ganha uma faixa na
+                              // borda esquerda além do fundo: o tingimento sozinho era
+                              // fraco demais para achar a alteração numa lista longa.
+                              <tr
+                                key={`${r.ri_po}-${selectedSupplier ? selectedSupplier.cod_forn : 'none'}`}
+                                className="align-top transition-colors duration-150 hover:bg-[var(--surface-raised)]"
+                                style={{
+                                  borderColor: 'var(--hairline)',
+                                  ...(isModified(r.ri, r)
+                                    ? {
+                                      background: 'color-mix(in srgb, var(--status-warning) 7%, transparent)',
+                                      boxShadow: 'inset 3px 0 0 0 var(--status-warning)',
+                                    }
+                                    : null),
+                                }}
+                              >
+                                <td className="py-3 px-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedRis.has(r.ri_po)}
+                                    onChange={() => toggleSelectRi(r.ri_po)}
+                                    className="cursor-pointer"
+                                    aria-label={`Selecionar item ${r.item_reqc}`}
+                                  />
+                                </td>
+                                {/* Column 1: Fornecedor (when focused) */}
+                                {tableShowSupplierFirst && (
+                                  <td className="py-3 px-3 min-w-[280px] lg:min-w-[320px] max-w-[320px]">
+                                    {/* Item já comprado: mostra o fornecedor do PO, não o histórico. */}
+                                    {!selectedSupplier && r.status_requisicao === 'Processado' ? (
+                                      renderPOInfoBlock(r, poFornecedor, true)
+                                    ) : !selectedSupplier ? (
+                                      <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
+                                        Sem fornecedor
+                                      </span>
+                                    ) : (
+                                      <div className="p-2 rounded bg-slate-50/60 dark:bg-slate-800/20 border border-slate-200/60 dark:border-slate-800/40 text-[10px] space-y-1 text-left">
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="font-bold text-slate-800 dark:text-slate-200 break-words" title={selectedSupplier.fornecedor}>
+                                            {selectedSupplier.fornecedor}
+                                            {selectedSupplier.nome_fantasia && selectedSupplier.nome_fantasia !== '—' && (
+                                              <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-medium">
+                                                Fantasia: {selectedSupplier.nome_fantasia}
+                                              </span>
+                                            )}
+                                          </span>
+                                          <span className="px-1 py-0.2 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-semibold text-slate-500">
+                                            {selectedSupplier.regiao_uf}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold">
+                                          <span>Preço: <span className="text-emerald-600 dark:text-emerald-450">{formatPreco(selectedSupplier.preco_liquido)}</span></span>
+                                          <span className="flex items-center gap-0.5">
+                                            <Calendar className="h-2.5 w-2.5 text-slate-400" />
+                                            {selectedSupplier.ultima_data !== '—' ? (isNaN(Date.parse(selectedSupplier.ultima_data)) ? selectedSupplier.ultima_data : new Date(selectedSupplier.ultima_data).toLocaleDateString('pt-BR')) : '—'}
+                                          </span>
+                                        </div>
+                                        <div className="text-[9px] font-bold">
+                                          {renderMigoInfo(selectedSupplier.data_migo)}
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-150/50 dark:border-slate-750">
+                                          {selectedSupplier.telefone !== '—' && selectedSupplier.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
+                                            <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
+                                              <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                                              <a href={`tel:${singleTel}`} className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold font-mono" title={`Ligar: ${singleTel}`}>
+                                                {singleTel}
+                                              </a>
+                                              <ClipboardCopyButton text={singleTel} label="telefone" />
+                                            </div>
+                                          ))}
+                                          {selectedSupplier.email !== '—' && (
+                                            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] min-w-0 max-w-full">
+                                              <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                                              <a href={`mailto:${selectedSupplier.email}`} className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[155px]" title={selectedSupplier.email}>
+                                                {selectedSupplier.email}
+                                              </a>
+                                              <ClipboardCopyButton text={selectedSupplier.email} label="e-mail" />
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </td>
+                                )}
+
+                                {/* RM / Item */}
+                                <td className="py-3 px-3 whitespace-nowrap select-text">
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-mono font-bold block text-slate-850 dark:text-slate-100">RM {rm}</span>
+                                    <ClipboardCopyButton text={rm} label="RM" size="xs" />
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-semibold">Item {r.item_reqc}</span>
+                                  {/* RM vinculada em Abrir RM > Abertas a uma solicitação do SISTEN. */}
+                                  {vinculoSisten && (
+                                    <div className="text-[10px] flex items-center gap-1 flex-wrap">
+                                      <button
+                                        type="button"
+                                        onClick={() => abrirSolicitacaoSisten(vinculoSisten)}
+                                        className="font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                                        title={`Abrir solicitação de compra #${vinculoSisten.requestNumber}`}
+                                      >
+                                        SISTEN #{vinculoSisten.requestNumber}
+                                      </button>
+                                      {vinculoSisten.solicitanteName && (
+                                        <span className="font-semibold text-slate-500 dark:text-slate-400">
+                                          · {vinculoSisten.solicitanteName}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {validacaoPorRi.get(r.ri) && (
+                                    <div className="mt-1">
+                                      <ValidacaoTag v={validacaoPorRi.get(r.ri)!} onClick={() => abrirValidacao(r, rm, vinculoSisten)} />
+                                    </div>
+                                  )}
+                                </td>
+
+                                {/* Cotação */}
+                                <td className="py-3 px-3 w-[130px] whitespace-nowrap">
+                                  {cotacoesVinculadas.length > 0 ? (
+                                    <div className="flex flex-col gap-1 items-start">
+                                      <MercadoLivreTag cotacoes={cotacoesVinculadas} />
+                                      {cotacoesVinculadas.map(c => (
+                                        <a
+                                          key={c.processoId}
+                                          href={`/#/suprimentos/cotacoes?processoId=${encodeURIComponent(c.processoId)}&fase=mapa`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800 transition-all cursor-pointer shadow-xs active:scale-95 group no-underline"
+                                          title={`Abrir Mapa Comparativo de ${c.numero} em nova janela (${c.status})`}
+                                        >
+                                          <FileSpreadsheet className="h-3.5 w-3.5 text-indigo-500 group-hover:scale-110 transition-transform" />
+                                          <span>{c.numero}</span>
+                                          <ExternalLink className="h-3 w-3 text-indigo-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-350 dark:text-slate-600 font-mono text-xs pl-2" title="Sem processo de cotação vinculado">—</span>
+                                  )}
+                                </td>
+
+                                {poFilter === 'M Livre' && (
+                                  <td className="py-3 px-3 w-[200px]">
+                                    {mlItens.get(r.ri) && <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} />}
+                                  </td>
+                                )}
+
+                                {/* PO Status */}
+                                <td className="py-3 px-3 w-[90px] whitespace-nowrap">
+                                  {renderPOBadge(r)}
+                                </td>
+
+                                {/* Material Code (Clickable) */}
+                                <td className="py-3 px-3 w-[100px] font-mono font-semibold whitespace-nowrap">
+                                  <button
+                                    onClick={() => abrirDetalheSap(r, vinculoSisten)}
+                                    className="hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 cursor-pointer flex items-center gap-1 focus:outline-none"
+                                  >
+                                    {r.material_code}
+                                    <ArrowUpRight className="h-3.5 w-3.5" />
+                                  </button>
+                                  {situacaoEstoqueDe(r)?.tag && (
+                                    <div className="mt-1 font-sans"><EstoqueTagBadge situacao={situacaoEstoqueDe(r)} /></div>
+                                  )}
+                                </td>
+
+                                {/* Description (Clickable) — ganha o espaço tirado de
                             Cotação/PO/Material, que são código curto. */}
-                        <td className="py-3 px-3 min-w-[340px] max-w-[640px] break-words font-medium text-slate-800 dark:text-slate-200">
-                          <button
-                            onClick={() => abrirDetalheSap(r, vinculoSisten)}
-                            className="text-left font-bold hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 focus:outline-none"
-                          >
-                            {r.texto_breve}
-                          </button>
-                          {/* Item genérico: o material do catálogo é um código
+                                <td className="py-3 px-3 min-w-[340px] max-w-[640px] break-words font-medium text-slate-800 dark:text-slate-200">
+                                  <button
+                                    onClick={() => abrirDetalheSap(r, vinculoSisten)}
+                                    className="text-left font-bold hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 focus:outline-none"
+                                  >
+                                    {r.texto_breve}
+                                  </button>
+                                  {/* Item genérico: o material do catálogo é um código
                               guarda-chuva, não descreve a compra — a observação
                               que o solicitante escreveu no SISTEN é que diz o
                               que é de fato (ver `lib/centralComprasSisten.ts`,
                               também usada no texto técnico da cotação). */}
-                          {vinculoSisten?.item.is_generic && (
-                            <div className="mt-1">
-                              <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                                <Tag className="h-2.5 w-2.5" />
-                                Item Genérico
-                              </span>
-                              {vinculoSisten.item.observation && (
-                                <p className="text-[10px] text-slate-600 dark:text-slate-400 italic mt-1">
-                                  {vinculoSisten.item.observation}
-                                </p>
-                              )}
-                            </div>
-                          )}
-                          <div className="flex gap-2 items-center mt-1 text-[10px] text-slate-700 dark:text-slate-300 font-semibold flex-wrap">
-                            {r.status_requisicao !== 'Processado' && (
-                              <>
-                                <span>Aberto {r.dias_em_aberto}d</span>
-                                <span>•</span>
-                              </>
-                            )}
-                            <span className="font-bold">G: {r.grupo_comprador}</span>
-                            {/* Grupo de materiais: 8% dos itens não têm código
+                                  {vinculoSisten?.item.is_generic && (
+                                    <div className="mt-1">
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                        <Tag className="h-2.5 w-2.5" />
+                                        Item Genérico
+                                      </span>
+                                      {vinculoSisten.item.observation && (
+                                        <p className="text-[10px] text-slate-600 dark:text-slate-400 italic mt-1">
+                                          {vinculoSisten.item.observation}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                  <div className="flex gap-2 items-center mt-1 text-[10px] text-slate-700 dark:text-slate-300 font-semibold flex-wrap">
+                                    {r.status_requisicao !== 'Processado' && (
+                                      <>
+                                        <span>Aberto {r.dias_em_aberto}d</span>
+                                        <span>•</span>
+                                      </>
+                                    )}
+                                    <span className="font-bold">G: {r.grupo_comprador}</span>
+                                    {/* Grupo de materiais: 8% dos itens não têm código
                                 de grupo no SAP, e nesses casos o rótulo some em
                                 vez de ocupar espaço com um travessão. */}
-                            {grupoMercDe(r) && (
-                              <>
-                                <span>•</span>
-                                <span className="text-slate-700 dark:text-slate-300">{grupoMercDe(r)}</span>
-                              </>
-                            )}
-                            <span>•</span>
-                            <span>Requisitante: {r.requisitante_name || '—'}</span>
-                            {r.status_requisicao !== 'Processado' && r.alerta && (
-                              <>
-                                <span>•</span>
-                                <span className="text-amber-600 dark:text-amber-400 font-bold">{r.alerta}</span>
-                              </>
-                            )}
-                          </div>
-                        </td>
+                                    {grupoMercDe(r) && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="text-slate-700 dark:text-slate-300">{grupoMercDe(r)}</span>
+                                      </>
+                                    )}
+                                    <span>•</span>
+                                    <span>Requisitante: {r.requisitante_name || '—'}</span>
+                                    {r.status_requisicao !== 'Processado' && r.alerta && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="text-amber-600 dark:text-amber-400 font-bold">{r.alerta}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
 
-                        {/* Qtd */}
-                        <td className="py-3 px-3 whitespace-nowrap font-bold">
-                          {qtdDaLinha(r).qtd} {qtdDaLinha(r).un}
-                        </td>
+                                {/* Qtd */}
+                                <td className="py-3 px-3 whitespace-nowrap font-bold">
+                                  {qtdDaLinha(r).qtd} {qtdDaLinha(r).un}
+                                </td>
 
-                        {/* Qtd fornecida (ZL0132) — só faz sentido com pedido
+                                {/* Qtd fornecida (ZL0132) — só faz sentido com pedido
                             colocado; o selo aparece quando não fecha com a RM. */}
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          {r.status_requisicao === 'Processado' && r.qtd_fornecida_po !== undefined ? (
-                            <div className="flex flex-col gap-1 items-start">
-                              <span className="font-bold">{formatInt(r.qtd_fornecida_po)} {qtdDaLinha(r).un}</span>
-                              {renderEntregaParcialBadge(r)}
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 dark:text-slate-600">—</span>
-                          )}
-                        </td>
+                                <td className="py-3 px-3 whitespace-nowrap">
+                                  {r.status_requisicao === 'Processado' && r.qtd_fornecida_po !== undefined ? (
+                                    <div className="flex flex-col gap-1 items-start">
+                                      <span className="font-bold">{formatInt(r.qtd_fornecida_po)} {qtdDaLinha(r).un}</span>
+                                      {renderEntregaParcialBadge(r)}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400 dark:text-slate-600">—</span>
+                                  )}
+                                </td>
 
-                        {/* Column 6: Informações do PO (itens já comprados) ou Histórico Fornecedores (Sem PO) —
+                                {/* Column 6: Informações do PO (itens já comprados) ou Histórico Fornecedores (Sem PO) —
                             recolhido: só o destaque aparece na linha, o resto abre em janela suspensa
                             (ver `HistoricoFornecedoresModal`) — a lista de até N cards empilhados
                             inflava a altura da linha numa tabela com centenas de itens. */}
-                        {!tableShowSupplierFirst && (
-                          <td className="py-3 px-3 min-w-[180px] max-w-[200px]">
-                            {r.status_requisicao === 'Processado' ? (
-                              renderPOInfoBlock(r, poFornecedor, true)
-                            ) : !encontrado ? (
-                              <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
-                                Sem fornecedor
-                              </span>
-                            ) : (
-                              <div className="space-y-1">
-                                <div className="p-1.5 rounded bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-[10px]">
-                                  <span className="font-bold text-slate-800 dark:text-slate-200 truncate block" title={fornecedores[0].fornecedor}>
-                                    {fornecedores[0].fornecedor}
-                                  </span>
-                                  <span className="flex gap-1 flex-wrap my-0.5"><OrigemFornecedorBadges f={fornecedores[0]} /></span>
-                                  <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold mt-0.5">
-                                    <span className="text-emerald-600 dark:text-emerald-455">{formatPreco(fornecedores[0].preco_liquido)}</span>
-                                    <MigoBadge dataMigo={fornecedores[0].data_migo} />
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => setHistoricoFornecedoresModal({ record: r, fornecedores })}
-                                  className="w-full flex items-center justify-center gap-1 text-[10px] font-bold text-[#0056c6] dark:text-emerald-450 hover:underline py-0.5 cursor-pointer"
-                                  title="Ver histórico completo de fornecedores em janela suspensa"
-                                >
-                                  <History className="h-3 w-3" />
-                                  {fornecedores.length > 1 ? `Ver ${fornecedores.length} fornecedores` : 'Ver histórico'}
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        )}
+                                {!tableShowSupplierFirst && (
+                                  <td className="py-3 px-3 min-w-[180px] max-w-[200px]">
+                                    {r.status_requisicao === 'Processado' ? (
+                                      renderPOInfoBlock(r, poFornecedor, true)
+                                    ) : !encontrado ? (
+                                      <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
+                                        Sem fornecedor
+                                      </span>
+                                    ) : (
+                                      <div className="space-y-1">
+                                        <div className="p-1.5 rounded bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-[10px]">
+                                          <span className="font-bold text-slate-800 dark:text-slate-200 truncate block" title={fornecedores[0].fornecedor}>
+                                            {fornecedores[0].fornecedor}
+                                          </span>
+                                          <span className="flex gap-1 flex-wrap my-0.5"><OrigemFornecedorBadges f={fornecedores[0]} /></span>
+                                          <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold mt-0.5">
+                                            <span className="text-emerald-600 dark:text-emerald-455">{formatPreco(fornecedores[0].preco_liquido)}</span>
+                                            <MigoBadge dataMigo={fornecedores[0].data_migo} />
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => setHistoricoFornecedoresModal({ record: r, fornecedores })}
+                                          className="w-full flex items-center justify-center gap-1 text-[10px] font-bold text-[#0056c6] dark:text-emerald-450 hover:underline py-0.5 cursor-pointer"
+                                          title="Ver histórico completo de fornecedores em janela suspensa"
+                                        >
+                                          <History className="h-3 w-3" />
+                                          {fornecedores.length > 1 ? `Ver ${fornecedores.length} fornecedores` : 'Ver histórico'}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
+                                )}
 
-                        {/* Status Select */}
-                        <td className="py-2.5 px-3 min-w-[170px]">
-                          {renderStatusSelect(r.ri, r.item_status || 'Aguardando Cotação')}
-                        </td>
+                                {/* Status Select */}
+                                <td className="py-2.5 px-3 min-w-[170px]">
+                                  {renderStatusSelect(r.ri, r.item_status || 'Aguardando Cotação')}
+                                </td>
 
-                        {/* Delivery Date */}
-                        <td className="py-2.5 px-3">
-                          {renderPromessaInput(r, true)}
-                        </td>
+                                {/* Delivery Date */}
+                                <td className="py-2.5 px-3">
+                                  {renderPromessaInput(r, true)}
+                                </td>
 
-                        {/* Buyer Observation — textarea (não input) para o texto
+                                {/* Buyer Observation — textarea (não input) para o texto
                             quebrar linha em vez de cortar; a nota do comprador
                             às vezes é mais longa que uma linha só (ex.: número
                             de rastreio + observação). */}
-                        <td className="py-2.5 px-3 min-w-[200px]">
-                          <div className="relative">
-                            <textarea
-                              value={obsInputState[r.ri] || ''}
-                              onChange={(e) => setObsInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
-                              placeholder="Notas..."
-                              rows={2}
-                              className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 pr-7 pl-2 focus:border-[#0056c6] focus:outline-none transition-all resize-y leading-snug"
-                            />
-                            <button
-                              onClick={() => handleViewHistory(r.ri)}
-                              className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-655 cursor-pointer"
-                              title="Ver histórico de alterações"
-                            >
-                              <History className="h-3 w-3" />
-                            </button>
-                          </div>
-                        </td>
+                                <td className="py-2.5 px-3 min-w-[200px]">
+                                  <div className="relative">
+                                    <textarea
+                                      value={obsInputState[r.ri] || ''}
+                                      onChange={(e) => setObsInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
+                                      placeholder="Notas..."
+                                      rows={2}
+                                      className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 pr-7 pl-2 focus:border-[#0056c6] focus:outline-none transition-all resize-y leading-snug"
+                                    />
+                                    <button
+                                      onClick={() => handleViewHistory(r.ri)}
+                                      className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-655 cursor-pointer"
+                                      title="Ver histórico de alterações"
+                                    >
+                                      <History className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </td>
 
-                        {/* Save Action */}
-                        <td className="py-2.5 px-2 text-center">
-                          <div className="grid grid-cols-2 gap-1 w-max mx-auto">
-                            <button
-                              onClick={() => handleSaveFields(r.ri)}
-                              disabled={itemSaveStatus === 'saving'}
-                              className={`${BOTAO_ACAO_TABELA} ${corBotaoSalvar(itemSaveStatus, isModified(r.ri, r))}`}
-                            >
-                              {itemSaveStatus === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
-                              {itemSaveStatus === 'saved' && <Check className="h-3 w-3" />}
-                              {itemSaveStatus === 'idle' && <Save className="h-3 w-3" />}
-                              <span>
-                                {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
-                              </span>
-                            </button>
-                            {tableShowSupplierFirst && selectedSupplier && (
-                              <button
-                                onClick={() => setQuoteChoicePending({ supplier: selectedSupplier, record: r, rm })}
-                                className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_COTACAO}`}
-                                title="Enviar cotação para este fornecedor"
-                              >
-                                <Send className="h-3 w-3" />
-                                <span>Cotação</span>
-                              </button>
-                            )}
-                            {!tableShowSupplierFirst && encontrado && fornecedores.length > 0 && (
-                              <button
-                                onClick={() => handleSendItemQuoteToAllSuppliers(r, rm, fornecedores)}
-                                className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_COTACAO}`}
-                                title="Enviar cotação por e-mail para todos os fornecedores deste item (em cópia oculta)"
-                              >
-                                <Send className="h-3 w-3" />
-                                <span>Cotação</span>
-                              </button>
-                            )}
-                            <button
-                              onClick={() => setMlLinkModal({ record: r, rm })}
-                              className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_ML}`}
-                              title={mlItens.has(r.ri) ? 'Item no Mercado Livre — ver ou trocar o link' : 'Comprar pelo Mercado Livre: gravar o link do anúncio'}
-                            >
-                              {mlItens.has(r.ri) ? <Check className="h-3 w-3" /> : <ShoppingCart className="h-3 w-3" />}
-                              <span>M. Livre</span>
-                            </button>
-                            <button
-                              onClick={() => abrirValidacao(r, rm, vinculoSisten)}
-                              className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_VALIDACAO}`}
-                              title="Pedir validação técnica do item ao gestor da área (fotos, ficha técnica, links)"
-                            >
-                              <ShieldCheck className="h-3 w-3" />
-                              <span>Validação</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </TableShell>
-          ));})()}
+                                {/* Save Action */}
+                                <td className="py-2.5 px-2 text-center">
+                                  <div className="grid grid-cols-2 gap-1 w-max mx-auto">
+                                    <button
+                                      onClick={() => handleSaveFields(r.ri)}
+                                      disabled={itemSaveStatus === 'saving'}
+                                      className={`${BOTAO_ACAO_TABELA} ${corBotaoSalvar(itemSaveStatus, isModified(r.ri, r))}`}
+                                    >
+                                      {itemSaveStatus === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
+                                      {itemSaveStatus === 'saved' && <Check className="h-3 w-3" />}
+                                      {itemSaveStatus === 'idle' && <Save className="h-3 w-3" />}
+                                      <span>
+                                        {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
+                                      </span>
+                                    </button>
+                                    {tableShowSupplierFirst && selectedSupplier && (
+                                      <button
+                                        onClick={() => setQuoteChoicePending({ supplier: selectedSupplier, record: r, rm })}
+                                        className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_COTACAO}`}
+                                        title="Enviar cotação para este fornecedor"
+                                      >
+                                        <Send className="h-3 w-3" />
+                                        <span>Cotação</span>
+                                      </button>
+                                    )}
+                                    {!tableShowSupplierFirst && encontrado && fornecedores.length > 0 && (
+                                      <button
+                                        onClick={() => handleSendItemQuoteToAllSuppliers(r, rm, fornecedores)}
+                                        className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_COTACAO}`}
+                                        title="Enviar cotação por e-mail para todos os fornecedores deste item (em cópia oculta)"
+                                      >
+                                        <Send className="h-3 w-3" />
+                                        <span>Cotação</span>
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => setMlLinkModal({ record: r, rm })}
+                                      className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_ML}`}
+                                      title={mlItens.has(r.ri) ? 'Item no Mercado Livre — ver ou trocar o link' : 'Comprar pelo Mercado Livre: gravar o link do anúncio'}
+                                    >
+                                      {mlItens.has(r.ri) ? <Check className="h-3 w-3" /> : <ShoppingCart className="h-3 w-3" />}
+                                      <span>M. Livre</span>
+                                    </button>
+                                    <button
+                                      onClick={() => abrirValidacao(r, rm, vinculoSisten)}
+                                      className={`${BOTAO_ACAO_TABELA} ${COR_BOTAO_VALIDACAO}`}
+                                      title="Pedir validação técnica do item ao gestor da área (fotos, ficha técnica, links)"
+                                    >
+                                      <ShieldCheck className="h-3 w-3" />
+                                      <span>Validação</span>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </TableShell>
+                  ));
+              })()}
 
-          {/* Sem MIGO não passa por este bloco — sua tabela (Diligenciamento) mostra tudo de uma vez, sem `visibleCount`. */}
-          {totalFilteredCount > visibleCount && (
-            <div className="flex flex-col items-center justify-center pt-6 pb-2 border-t border-slate-100 dark:border-slate-850 mt-6 space-y-2">
-              <span className="text-xs text-slate-500 dark:text-slate-450 font-bold">
-                Exibindo {visibleCount} de {totalFilteredCount} itens localizados
-              </span>
-              <button
-                onClick={() => setVisibleCount(prev => prev + 40)}
-                className="px-5 py-2 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 flex items-center gap-1.5"
-              >
-                <span>Carregar mais itens</span>
-                <ChevronDown className="h-4 w-4 text-slate-400" />
-              </button>
-            </div>
-          )}
-          </>
+              {/* Sem MIGO não passa por este bloco — sua tabela (Diligenciamento) mostra tudo de uma vez, sem `visibleCount`. */}
+              {totalFilteredCount > visibleCount && (
+                <div className="flex flex-col items-center justify-center pt-6 pb-2 border-t border-slate-100 dark:border-slate-850 mt-6 space-y-2">
+                  <span className="text-xs text-slate-500 dark:text-slate-450 font-bold">
+                    Exibindo {visibleCount} de {totalFilteredCount} itens localizados
+                  </span>
+                  <button
+                    onClick={() => setVisibleCount(prev => prev + 40)}
+                    className="px-5 py-2 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 flex items-center gap-1.5"
+                  >
+                    <span>Carregar mais itens</span>
+                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -4078,7 +4102,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                   {historyData.map((h, idx) => (
                     <div key={h.id || idx} className="relative pl-4 border-l-2 border-slate-200 dark:border-slate-850">
                       <div className="absolute -left-[5.5px] top-1.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 shadow-2xs" />
-                      
+
                       <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 font-semibold mb-1">
                         <span>{h.user_name || 'Comprador'}</span>
                         <span>{new Date(h.created_at).toLocaleString('pt-BR')}</span>
@@ -4214,142 +4238,142 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           });
         });
         return (
-        <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-805 rounded-2xl w-full max-w-3xl shadow-xl overflow-hidden animate-scale-up flex flex-col max-h-[85vh]">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <Send className="h-4.5 w-4.5 text-emerald-600 shrink-0" />
-                <h3 className="font-bold text-slate-850 dark:text-slate-50 text-sm truncate">
-                  {quoteModal.title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setQuoteModal(null)}
-                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 transition-colors cursor-pointer shrink-0"
-                aria-label="Fechar janela"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {warnings.length > 0 && (
-              <div className="mx-5 mt-4 p-3 rounded-xl border border-amber-250 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 text-xs space-y-1">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                  <span>Cotação já enviada anteriormente para {warnings.length === 1 ? 'este item/fornecedor' : 'estes itens/fornecedores'}:</span>
+          <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-805 rounded-2xl w-full max-w-3xl shadow-xl overflow-hidden animate-scale-up flex flex-col max-h-[85vh]">
+              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Send className="h-4.5 w-4.5 text-emerald-600 shrink-0" />
+                  <h3 className="font-bold text-slate-850 dark:text-slate-50 text-sm truncate">
+                    {quoteModal.title}
+                  </h3>
                 </div>
-                <ul className="pl-5 list-disc space-y-0.5">
-                  {warnings.slice(0, 5).map((w, idx) => (
-                    <li key={idx}>
-                      RM {w.rm} / {w.itemLabel} → {w.fornecedor} — enviado por {w.userName} em {new Date(w.createdAt).toLocaleString('pt-BR')}
-                    </li>
-                  ))}
-                </ul>
-                {warnings.length > 5 && (
-                  <p className="pl-5 italic">+ {warnings.length - 5} outras</p>
-                )}
+                <button
+                  onClick={() => setQuoteModal(null)}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 transition-colors cursor-pointer shrink-0"
+                  aria-label="Fechar janela"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-            )}
 
-            <div className="p-5 overflow-y-auto flex-1">
-              <textarea
-                value={quoteModal.text}
-                onChange={(e) => setQuoteModal(prev => prev ? { ...prev, text: e.target.value } : prev)}
-                className="w-full h-[50vh] font-mono text-xs leading-relaxed rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 p-3 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all resize-y"
-                spellCheck={false}
-              />
-            </div>
+              {warnings.length > 0 && (
+                <div className="mx-5 mt-4 p-3 rounded-xl border border-amber-250 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span>Cotação já enviada anteriormente para {warnings.length === 1 ? 'este item/fornecedor' : 'estes itens/fornecedores'}:</span>
+                  </div>
+                  <ul className="pl-5 list-disc space-y-0.5">
+                    {warnings.slice(0, 5).map((w, idx) => (
+                      <li key={idx}>
+                        RM {w.rm} / {w.itemLabel} → {w.fornecedor} — enviado por {w.userName} em {new Date(w.createdAt).toLocaleString('pt-BR')}
+                      </li>
+                    ))}
+                  </ul>
+                  {warnings.length > 5 && (
+                    <p className="pl-5 italic">+ {warnings.length - 5} outras</p>
+                  )}
+                </div>
+              )}
 
-            <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2 shrink-0">
-              <button
-                onClick={() => setQuoteModal(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold transition-all cursor-pointer"
-              >
-                Fechar
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(quoteModal.text);
-                  } catch (err) {
-                    console.error('Falha ao copiar texto da cotação:', err);
-                  }
-                }}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
-              >
-                <Copy className="h-3.5 w-3.5" />
-                <span>Copiar Texto</span>
-              </button>
-              <button
-                onClick={() => {
-                  const subject = `Cotação RM ${quoteModal.rms.join(', ')}`;
-                  let mailtoUrl: string;
-                  const suppliersSent = quoteModal.toSupplier ? [quoteModal.toSupplier] : quoteModal.bccSuppliers;
-                  if (quoteModal.toSupplier) {
-                    const supplierEmail = quoteModal.toSupplier.email !== '—' ? quoteModal.toSupplier.email : '';
-                    mailtoUrl = `mailto:${encodeURIComponent(supplierEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(quoteModal.text)}`;
-                  } else {
-                    const bccEmails = quoteModal.bccSuppliers.map(f => f.email).filter(e => e && e !== '—');
-                    mailtoUrl = `mailto:?bcc=${encodeURIComponent(bccEmails.join(','))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(quoteModal.text)}`;
-                  }
-                  window.location.href = mailtoUrl;
+              <div className="p-5 overflow-y-auto flex-1">
+                <textarea
+                  value={quoteModal.text}
+                  onChange={(e) => setQuoteModal(prev => prev ? { ...prev, text: e.target.value } : prev)}
+                  className="w-full h-[50vh] font-mono text-xs leading-relaxed rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 p-3 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all resize-y"
+                  spellCheck={false}
+                />
+              </div>
 
-                  const historyEntries = quoteModal.items.flatMap(({ record, rm }) =>
-                    suppliersSent
-                      .filter(f => f.cod_forn && f.cod_forn !== '—')
-                      .map(f => ({ ri: record.ri, rm, codForn: f.cod_forn, fornecedorNome: f.fornecedor }))
-                  );
-                  if (historyEntries.length > 0) {
-                    localDb.logCotacaoEnviada(historyEntries);
-                    setCotacaoHistoricoByKey(prev => {
-                      const next = new Map(prev);
-                      const nowIso = new Date().toISOString();
-                      const userName = user?.name || 'Sistema';
-                      historyEntries.forEach(e => {
-                        const key = historicoKey(e.ri, e.codForn);
-                        const list = next.get(key) ? [...next.get(key)!] : [];
-                        list.unshift({ id: 'local', ri: e.ri, rm: e.rm, cod_forn: e.codForn, fornecedor_nome: e.fornecedorNome, user_name: userName, created_at: nowIso });
-                        next.set(key, list);
+              <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2 shrink-0">
+                <button
+                  onClick={() => setQuoteModal(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                >
+                  Fechar
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(quoteModal.text);
+                    } catch (err) {
+                      console.error('Falha ao copiar texto da cotação:', err);
+                    }
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>Copiar Texto</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const subject = `Cotação RM ${quoteModal.rms.join(', ')}`;
+                    let mailtoUrl: string;
+                    const suppliersSent = quoteModal.toSupplier ? [quoteModal.toSupplier] : quoteModal.bccSuppliers;
+                    if (quoteModal.toSupplier) {
+                      const supplierEmail = quoteModal.toSupplier.email !== '—' ? quoteModal.toSupplier.email : '';
+                      mailtoUrl = `mailto:${encodeURIComponent(supplierEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(quoteModal.text)}`;
+                    } else {
+                      const bccEmails = quoteModal.bccSuppliers.map(f => f.email).filter(e => e && e !== '—');
+                      mailtoUrl = `mailto:?bcc=${encodeURIComponent(bccEmails.join(','))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(quoteModal.text)}`;
+                    }
+                    window.location.href = mailtoUrl;
+
+                    const historyEntries = quoteModal.items.flatMap(({ record, rm }) =>
+                      suppliersSent
+                        .filter(f => f.cod_forn && f.cod_forn !== '—')
+                        .map(f => ({ ri: record.ri, rm, codForn: f.cod_forn, fornecedorNome: f.fornecedor }))
+                    );
+                    if (historyEntries.length > 0) {
+                      localDb.logCotacaoEnviada(historyEntries);
+                      setCotacaoHistoricoByKey(prev => {
+                        const next = new Map(prev);
+                        const nowIso = new Date().toISOString();
+                        const userName = user?.name || 'Sistema';
+                        historyEntries.forEach(e => {
+                          const key = historicoKey(e.ri, e.codForn);
+                          const list = next.get(key) ? [...next.get(key)!] : [];
+                          list.unshift({ id: 'local', ri: e.ri, rm: e.rm, cod_forn: e.codForn, fornecedor_nome: e.fornecedorNome, user_name: userName, created_at: nowIso });
+                          next.set(key, list);
+                        });
+                        return next;
                       });
-                      return next;
-                    });
-                  }
+                    }
 
-                  setQuoteModal(null);
-                  clearSelection();
-                }}
-                title="Abre o cliente de e-mail padrão (ex: Outlook) com o texto preenchido. Cotações muito longas podem ser truncadas pelo limite de tamanho do mailto."
-                className="px-4 py-2 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
-              >
-                <Mail className="h-3.5 w-3.5" />
-                <span>Abrir no Outlook</span>
-              </button>
-              {(() => {
-                const waNumber = quoteModal.toSupplier ? extractWhatsAppNumber(quoteModal.toSupplier.telefone) : null;
-                return (
-                  <button
-                    onClick={() => {
-                      if (!waNumber) return;
-                      const waText = buildWhatsAppText(quoteModal.items, quoteModal.rms, techTextByCode, vinculosSistenPorRm);
-                      window.open(`https://api.whatsapp.com/send?phone=${waNumber}&text=${encodeURIComponent(waText)}`, '_blank', 'noopener,noreferrer');
-                    }}
-                    disabled={!waNumber}
-                    title={waNumber ? 'Abre o WhatsApp Web/App com a mensagem preenchida para o fornecedor' : 'Fornecedor sem telefone cadastrado'}
-                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 ${
-                      waNumber
-                        ? 'bg-[#25D366] hover:bg-[#1fbd59] text-white cursor-pointer'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
-                    }`}
-                  >
-                    <MessageCircle className="h-3.5 w-3.5" />
-                    <span>WhatsApp</span>
-                  </button>
-                );
-              })()}
+                    setQuoteModal(null);
+                    clearSelection();
+                  }}
+                  title="Abre o cliente de e-mail padrão (ex: Outlook) com o texto preenchido. Cotações muito longas podem ser truncadas pelo limite de tamanho do mailto."
+                  className="px-4 py-2 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  <span>Abrir no Outlook</span>
+                </button>
+                {(() => {
+                  const waNumber = quoteModal.toSupplier ? extractWhatsAppNumber(quoteModal.toSupplier.telefone) : null;
+                  return (
+                    <button
+                      onClick={() => {
+                        if (!waNumber) return;
+                        const waText = buildWhatsAppText(quoteModal.items, quoteModal.rms, techTextByCode, vinculosSistenPorRm);
+                        window.open(`https://api.whatsapp.com/send?phone=${waNumber}&text=${encodeURIComponent(waText)}`, '_blank', 'noopener,noreferrer');
+                      }}
+                      disabled={!waNumber}
+                      title={waNumber ? 'Abre o WhatsApp Web/App com a mensagem preenchida para o fornecedor' : 'Fornecedor sem telefone cadastrado'}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 ${waNumber
+                          ? 'bg-[#25D366] hover:bg-[#1fbd59] text-white cursor-pointer'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                        }`}
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      <span>WhatsApp</span>
+                    </button>
+                  );
+                })()}
+              </div>
             </div>
           </div>
-        </div>
-      );})()}
+        );
+      })()}
 
       {showNovidades && (
         <NovidadesModal user={user} onClose={() => setShowNovidades(false)} />
@@ -4360,6 +4384,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         <SapDetailModal
           record={selectedRecordForModal}
           vinculoSisten={selectedVinculoForModal}
+          onOpenSolicitacao={abrirSolicitacaoSisten}
           fornecedores={
             rmGroups
               .flatMap(g => g.items)
@@ -4369,6 +4394,52 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           onUpdate={buildSuppliersData}
         />
       )}
+
+      {/* Modal de Solicitação de Compra do SISTEN */}
+      {solicitacaoSistenAbertaId && (() => {
+        const solicitacaoAberta = localDb.getRequests().find(r => r.id === solicitacaoSistenAbertaId);
+        if (!solicitacaoAberta) return null;
+        const visual = TIPO_VISUAL[solicitacaoAberta.type];
+        const Icone = visual.icone;
+        return (
+          <Modal
+            onClose={() => setSolicitacaoSistenAbertaId(null)}
+            maxWidth="max-w-4xl"
+            ariaLabel={`Solicitação ${solicitacaoAberta.number}`}
+          >
+            <ModalHeader onClose={() => setSolicitacaoSistenAbertaId(null)}>
+              <div className="flex flex-1 items-center justify-between gap-3 mr-6">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: visual.fundo, color: visual.cor }}
+                  >
+                    <Icone className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="font-mono text-base font-bold text-slate-900 dark:text-slate-100">
+                      #{solicitacaoAberta.number}
+                    </h3>
+                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                      {visual.rotulo} · aberta em {formatDateBR(solicitacaoAberta.created_at)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </ModalHeader>
+            <ModalBody>
+              <RequestDetailPanel
+                request={solicitacaoAberta}
+                user={user}
+                sectors={localDb.getSectors()}
+                pendencia={null}
+                onNavigate={onNavigate}
+                onChanged={() => {}}
+              />
+            </ModalBody>
+          </Modal>
+        );
+      })()}
 
       {/* Histórico de fornecedores em janela suspensa — acionado pelo botão
           "Ver histórico" da coluna recolhida na tabela (visão Sem PO). */}

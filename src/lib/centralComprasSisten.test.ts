@@ -37,12 +37,17 @@ function item(over: Partial<RequestItem> = {}): RequestItem {
 }
 
 describe('indexarVinculosSistenPorRm', () => {
-  it('indexa pela RM e pelo material do item', () => {
+  it('indexa pela RM e pelo material do item, trazendo id e solicitante da solicitação', () => {
     const r = req();
     const it1 = item({ id: 'i1', sap_code: '1456972' });
     const indice = indexarVinculosSistenPorRm([r], new Map([[r.id, [it1]]]));
 
-    expect(indice.get('4500001234::1456972')).toEqual({ requestNumber: '2001004', item: it1 });
+    expect(indice.get('4500001234::1456972')).toEqual({
+      requestId: 'r1',
+      requestNumber: '2001004',
+      solicitanteName: 'Jamille Souza',
+      item: it1,
+    });
   });
 
   it('ignora solicitação sem RM vinculada', () => {

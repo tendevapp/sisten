@@ -21,7 +21,9 @@ import { desformatarObservacaoItemGenerico } from './solicitacoes';
 import { sanitizeTechnicalText } from './materiais';
 
 export interface VinculoSistenRm {
+  requestId?: string;
   requestNumber: string;
+  solicitanteName?: string;
   item: RequestItem;
 }
 
@@ -59,7 +61,12 @@ export function indexarVinculosSistenPorRm(
 
       const chave = chaveVinculo(request.linked_rm_number, item.sap_code);
       if (!indice.has(chave)) {
-        indice.set(chave, { requestNumber: request.number, item });
+        indice.set(chave, {
+          requestId: request.id,
+          requestNumber: request.number,
+          solicitanteName: request.solicitante_name,
+          item,
+        });
       }
     }
   }

@@ -26,6 +26,7 @@ interface SapDetailModalProps {
    * `lib/centralComprasSisten.ts`).
    */
   vinculoSisten?: VinculoSistenRm | null;
+  onOpenSolicitacao?: (vinculo: VinculoSistenRm) => void;
   onClose: () => void;
   onUpdate?: () => void;
 }
@@ -45,7 +46,7 @@ const itemStatusOptions: ItemStatus[] = [
   'Aguardando Solicitante'
 ];
 
-export default function SapDetailModal({ record, fornecedores, vinculoSisten, onClose, onUpdate }: SapDetailModalProps) {
+export default function SapDetailModal({ record, fornecedores, vinculoSisten, onOpenSolicitacao, onClose, onUpdate }: SapDetailModalProps) {
   const [techText, setTechText] = useState<string>('');
   const [isLoadingTechText, setIsLoadingTechText] = useState(false);
   const [auditHistory, setAuditHistory] = useState<any[]>([]);
@@ -445,7 +446,20 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                   Observação do Solicitante
                   {vinculoSisten?.requestNumber && (
                     <span className="ml-1.5 font-bold text-rose-500/70 dark:text-rose-400/60">
-                      · SISTEN #{vinculoSisten.requestNumber}
+                      ·{' '}
+                      {onOpenSolicitacao ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenSolicitacao(vinculoSisten)}
+                          className="hover:underline cursor-pointer uppercase"
+                          title={`Abrir solicitação de compra #${vinculoSisten.requestNumber}`}
+                        >
+                          SISTEN #{vinculoSisten.requestNumber}
+                        </button>
+                      ) : (
+                        `SISTEN #${vinculoSisten.requestNumber}`
+                      )}
+                      {vinculoSisten.solicitanteName ? ` · ${vinculoSisten.solicitanteName}` : ''}
                     </span>
                   )}
                 </span>
@@ -469,7 +483,20 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                   Observação do Solicitante
                   {vinculoSisten?.requestNumber && (
                     <span className="ml-1.5 font-bold text-amber-600/70 dark:text-amber-400/60">
-                      · SISTEN #{vinculoSisten.requestNumber}
+                      ·{' '}
+                      {onOpenSolicitacao ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenSolicitacao(vinculoSisten)}
+                          className="hover:underline cursor-pointer uppercase"
+                          title={`Abrir solicitação de compra #${vinculoSisten.requestNumber}`}
+                        >
+                          SISTEN #{vinculoSisten.requestNumber}
+                        </button>
+                      ) : (
+                        `SISTEN #${vinculoSisten.requestNumber}`
+                      )}
+                      {vinculoSisten.solicitanteName ? ` · ${vinculoSisten.solicitanteName}` : ''}
                     </span>
                   )}
                 </span>
