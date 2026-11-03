@@ -131,6 +131,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [catalogCodeStats, setCatalogCodeStats] = useState<{
     maxStandard7d: string | null;
     maxLong18d: string | null;
+    maxAsset4: string | null;
     totalMaterials: number;
     lastCreatedAt: string | null;
   } | null>(null);
@@ -2566,7 +2567,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     Referência de Códigos SAP para Nova Importação
                   </h3>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    2 Consultas Distintas
+                    3 Consultas Distintas
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
@@ -2585,8 +2586,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               </button>
             </div>
 
-            {/* Cards das 2 Consultas Distintas */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Cards das 3 Consultas Distintas */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {/* Card 1: Faixa Padrão (7 dígitos) */}
               <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4.5 shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between">
                 <div className="space-y-3">
@@ -2708,6 +2709,67 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   <span>Consulta SAP específica para a série estendida de 18 dígitos com prefixo 100000.</span>
                 </div>
               </div>
+
+              {/* Card 3: Ativos (5 dígitos iniciados em 4) */}
+              <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4.5 shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200/60">
+                      <Building2 className="h-3.5 w-3.5 text-amber-700" /> Consulta 3: Ativos (5 dígitos)
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">Faixa 40.000 a 49.999</span>
+                  </div>
+
+                  <div className="space-y-1 pt-1">
+                    <span className="text-[11px] font-semibold text-slate-500 block">
+                      Maior código atual no SISTEN:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-2xl font-black text-slate-900 tracking-tight">
+                        {loadingCatalogStats ? (
+                          <span className="inline-block w-20 h-7 bg-slate-100 rounded animate-pulse" />
+                        ) : (
+                          catalogCodeStats?.maxAsset4 || '—'
+                        )}
+                      </span>
+                      {catalogCodeStats?.maxAsset4 && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCode(catalogCodeStats.maxAsset4!, 'Ativos')}
+                          title="Copiar maior código"
+                          className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-800 cursor-pointer transition-colors"
+                        >
+                          {copiedCode === catalogCodeStats.maxAsset4 ? (
+                            <Check className="h-4 w-4 text-emerald-600 font-bold" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Próxima exportação a partir de */}
+                  <div className="rounded-lg bg-amber-50/80 border border-amber-200/80 p-2.5 space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-amber-900 flex items-center gap-1">
+                        <ArrowRight className="h-3.5 w-3.5 text-amber-700" /> Nova importação a partir de:
+                      </span>
+                      <span className="font-mono font-black text-amber-800 text-sm">
+                        {loadingCatalogStats ? '...' : calcNextCode(catalogCodeStats?.maxAsset4)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-700 leading-tight">
+                      Filtro no SAP: <code className="bg-amber-100/70 px-1 py-0.5 rounded font-mono text-amber-900">&gt; {catalogCodeStats?.maxAsset4 || '46110'}</code> ou <code className="bg-amber-100/70 px-1 py-0.5 rounded font-mono text-amber-900">&gt;= {calcNextCode(catalogCodeStats?.maxAsset4)}</code>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center gap-1.5">
+                  <Info className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <span>Itens de ativo (equipamentos, ferramentas, mobiliário), cadastrados no SAP com 5 dígitos iniciados em 4.</span>
+                </div>
+              </div>
             </div>
 
             {/* Rodapé informativo */}
@@ -2723,7 +2785,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 )}
               </div>
               <span className="text-[11px] text-slate-400 italic">
-                Dica: Realize as duas extrações no SAP separadamente e importe as planilhas aqui.
+                Dica: Realize as três extrações no SAP separadamente e importe as planilhas aqui.
               </span>
             </div>
           </div>

@@ -16,6 +16,7 @@ import {
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
   ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay, Scale, RefreshCcwDot, PackageX, ShieldAlert, Warehouse, GraduationCap, ListTodo, ShoppingCart,
+  Award,
 } from 'lucide-react';
 import { Profile, Role, Sector } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
@@ -108,6 +109,9 @@ export const PAGES: PageDef[] = [
   // só liberava admin/comprador. Padrão alinhado ao menu (permissão sap.fornecedores).
   { id: 'sup_fornecedores', group: 'SUPRIMENTOS', label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Fretes', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador'] },
+  // Ocorrências por fornecimento (OCF) + avaliação anual FRM.SUP-0005 (AVF).
+  // Nasce restrito (regra 4); o admin libera para os compradores na Gestão de Acessos.
+  { id: 'sup_avaliacao_fornecedores', group: 'SUPRIMENTOS', label: 'Ava. Fornecedor', path: '/suprimentos/avaliacao-fornecedores', icon: Award, defaultRoles: ['admin'] },
   { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
   { id: 'sup_historico_cotacoes', group: 'SUPRIMENTOS', label: 'Histórico de Cotações', path: '/suprimentos/cotacoes/historico', icon: History, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_vinculos_cotacoes', group: 'SUPRIMENTOS', label: 'Vínculos & Auditoria de Cotações', path: '/suprimentos/cotacoes/vinculos', icon: Link2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },

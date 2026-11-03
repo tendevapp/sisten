@@ -2180,15 +2180,25 @@ class LocalDatabase {
   public async getCatalogCodeStats(): Promise<{
     maxStandard7d: string | null;
     maxLong18d: string | null;
+    maxAsset4: string | null;
     totalMaterials: number;
     lastCreatedAt: string | null;
   }> {
     try {
-      const { data, error } = await supabase.rpc('obter_maiores_codigos_catalogo');
+      const { data: bruto, error } = await supabase.rpc('obter_maiores_codigos_catalogo');
+      // A RPC devolve json; o tipo gerado é Json genérico.
+      const data = bruto as {
+        max_padrao_7d?: string | null;
+        max_longo_18d?: string | null;
+        max_ativo_4?: string | null;
+        total_materiais?: number;
+        ultimo_cadastro?: string | null;
+      } | null;
       if (!error && data) {
         return {
           maxStandard7d: data.max_padrao_7d || null,
           maxLong18d: data.max_longo_18d || null,
+          maxAsset4: data.max_ativo_4 || null,
           totalMaterials: data.total_materiais || 0,
           lastCreatedAt: data.ultimo_cadastro || null,
         };
@@ -2202,7 +2212,7 @@ class LocalDatabase {
 
     // Fallback caso a RPC não esteja disponível
     try {
-      const [standardRes, longRes, countRes] = await Promise.all([
+      const [standardRes, longRes, assetRes, countRes] = await Promise.all([
         supabase
           .from('sap_zl0169_162_catalogo')
           .select('material_code')
@@ -2219,6 +2229,16 @@ class LocalDatabase {
           .order('material_code', { ascending: false })
           .limit(1)
           .maybeSingle(),
+        // Ativos: 5 dígitos começando em 4 (40000–49999)
+        supabase
+          .from('sap_zl0169_162_catalogo')
+          .select('material_code')
+          .gte('material_code', '40000')
+          .lt('material_code', '50000')
+          .like('material_code', '_____')
+          .order('material_code', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
         supabase
           .from('sap_zl0169_162_catalogo')
           .select('id', { count: 'exact', head: true }),
@@ -2227,6 +2247,7 @@ class LocalDatabase {
       return {
         maxStandard7d: standardRes.data?.material_code || null,
         maxLong18d: longRes.data?.material_code || null,
+        maxAsset4: assetRes.data?.material_code || null,
         totalMaterials: countRes.count || 0,
         lastCreatedAt: null,
       };
@@ -2235,6 +2256,7 @@ class LocalDatabase {
       return {
         maxStandard7d: null,
         maxLong18d: null,
+        maxAsset4: null,
         totalMaterials: 0,
         lastCreatedAt: null,
       };

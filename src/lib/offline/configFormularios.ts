@@ -185,6 +185,10 @@ const TABELAS: Record<string, ConfigTabela> = {
   alm_receb_nc: { rotulo: 'Recebimento — não conformidade', resumo: campos('codigo') },
   // O código SEM sai do trigger no banco, no envio. A regularização (doc SAP) não entra: é de escritório.
   alm_solicitacao_extra: { rotulo: 'Solicitação extraordinária de materiais', resumo: campos('codigo', 'tramo', 'projeto') },
+
+  // Suprimentos — Ava. Fornecedor. Códigos OCF/AVF saem do trigger no banco, no envio.
+  sup_aval_ocorrencias: { rotulo: 'Ocorrência de fornecedor', resumo: campos('codigo', 'fornecedor_nome', 'nro_pedido') },
+  sup_aval_frm: { rotulo: 'Avaliação de fornecedor (FRM.SUP-0005)', resumo: campos('codigo', 'fornecedor_nome') },
 };
 
 // ---------------------------------------------------------------------
