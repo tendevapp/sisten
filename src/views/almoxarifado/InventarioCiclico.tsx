@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
+import { useLightbox } from '../../components/ui/Lightbox';
 import { localDb } from '../../db/localDb';
 import { formatDeposito, ordenarDepositos } from '../../lib/almoxarifado';
 import { formatDateBR, formatDateTimeBR, formatQtd } from '../../lib/format';
@@ -985,7 +986,12 @@ function VistaInventario({
 
   // Mapa de fotos do catálogo e Book de EPIs vinculadas aos materiais deste inventário
   const [mapaFotos, setMapaFotos] = useState<Map<string, CatalogoItem>>(new Map());
-  const [imagemZoom, setImagemZoom] = useState<{ url: string; titulo: string; codigo: string } | null>(null);
+  // Visualizador padrão (z acima de qualquer Modal, Esc só fecha ele): o
+  // overlay próprio que havia aqui abria atrás do modal de contagem.
+  const lightbox = useLightbox();
+  const setImagemZoom = useCallback((z: { url: string; titulo: string; codigo: string }) => {
+    lightbox.abrir([{ url: z.url, legenda: `SAP ${z.codigo} · ${z.titulo}` }], 0, { copiar: true });
+  }, [lightbox.abrir]);
 
   const codigosMateriais = useMemo(() => {
     return Array.from(new Set(inv.itens.map((i) => i.material))).filter(Boolean);
@@ -1201,45 +1207,7 @@ function VistaInventario({
         />
       )}
 
-      {/* Modal: Zoom da foto do material */}
-      {imagemZoom && (
-        <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in"
-          onClick={() => setImagemZoom(null)}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="max-w-4xl max-h-[90vh] bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-4 py-3 bg-slate-950 flex items-center justify-between border-b border-slate-800">
-              <div>
-                <span className="font-mono text-xs text-amber-400 font-bold mr-2">
-                  SAP {imagemZoom.codigo}
-                </span>
-                <span className="text-sm font-semibold text-white">
-                  {imagemZoom.titulo}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setImagemZoom(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="p-2 flex items-center justify-center bg-black/50 overflow-auto max-h-[75vh]">
-              <img
-                src={imagemZoom.url}
-                alt={imagemZoom.titulo}
-                className="max-h-[70vh] w-auto object-contain rounded-lg shadow-lg"
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {lightbox.elemento}
       {pdfPreview && (
         <PdfPreviewModal
           gerar={pdfPreview.gerar}

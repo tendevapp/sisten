@@ -56,6 +56,7 @@ import {
 } from '../../lib/ssmaApi';
 import { canEditDesvioRid, canDeleteDesvioRid } from '../../lib/pages';
 import { useToast } from '../ui/Toast';
+import { useLightbox } from '../ui/Lightbox';
 import ConfirmDialog from '../ui/ConfirmDialog';
 
 interface SsmaRidDetalhesModalProps {
@@ -85,7 +86,6 @@ export default function SsmaRidDetalhesModal({
   onVerPlanosAcao,
 }: SsmaRidDetalhesModalProps) {
   const toast = useToast();
-  const [fotoAmpliada, setFotoAmpliada] = useState<{ url: string; tipo?: 'antes' | 'depois' } | null>(null);
   const [salvandoStatus, setSalvandoStatus] = useState(false);
 
   const [novoStatus, setNovoStatus] = useState<SsmaRidStatus>(desvio.status);
@@ -320,6 +320,20 @@ export default function SsmaRidDetalhesModal({
     () => [...(desvio.fotos || []), ...fotosLocais],
     [desvio.fotos, fotosLocais],
   );
+
+  // Visualizador padrão do SISTEN: a foto inteira cabe na tela (o overlay
+  // próprio cortava foto em pé), navega entre todas as fotos do RID e copia.
+  const lightbox = useLightbox();
+  const rotuloFoto = (tipo?: string) => (tipo === 'depois' ? 'Depois da Ação' : 'Antes da Intervenção');
+  const setFotoAmpliada = (alvo: { url: string; tipo?: string }) => {
+    const lista = fotos.filter((f) => !!f.preview_url);
+    const idx = lista.findIndex((f) => f.preview_url === alvo.url);
+    if (idx < 0) {
+      lightbox.abrir([{ url: alvo.url, legenda: rotuloFoto(alvo.tipo) }], 0, { copiar: true });
+      return;
+    }
+    lightbox.abrir(lista.map((f) => ({ url: f.preview_url!, legenda: rotuloFoto(f.tipo) })), idx, { copiar: true });
+  };
 
   useEffect(() => {
     if (!emAcompanhamento) return;
@@ -1400,31 +1414,7 @@ export default function SsmaRidDetalhesModal({
         </div>
       </div>
 
-      {/* Modal de Foto Ampliada */}
-      {fotoAmpliada && (
-        <div
-          className="fixed inset-0 z-60 flex items-center justify-center bg-black/85 p-4"
-          onClick={() => setFotoAmpliada(null)}
-        >
-          <div className="relative max-h-[90vh] max-w-4xl overflow-hidden rounded-2xl">
-            <img src={fotoAmpliada.url} alt="Foto Ampliada" className="h-full w-full object-contain" />
-            <span
-              className={`absolute top-3 left-3 rounded-lg px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-md ${
-                fotoAmpliada.tipo === 'depois' ? 'bg-emerald-600' : 'bg-amber-600'
-              }`}
-            >
-              {fotoAmpliada.tipo === 'depois' ? 'Depois da Ação' : 'Antes da Intervenção'}
-            </span>
-            <button
-              onClick={() => setFotoAmpliada(null)}
-              className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black cursor-pointer"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-      )}
-
+      {lightbox.elemento}
 
       {/* Confirmação de Exclusão */}
       {confirmarExclusao && (
