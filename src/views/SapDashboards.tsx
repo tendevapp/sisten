@@ -42,11 +42,12 @@ export type AbaSuprimentos = 'geral' | 'demandas' | 'carteira' | 'fornecedores' 
 
 interface SapDashboardsProps {
   onNavigate: (path: string) => void;
-  /** Aba de entrada. /suprimentos/demandas abre direto em 'demandas'. */
+  /** Aba de entrada (padrão: Apresentação). /suprimentos/demandas abre direto em 'demandas'. */
   abaInicial?: AbaSuprimentos;
 }
 
 const ABAS: { id: AbaSuprimentos; rotulo: string; icone: typeof Activity; pergunta: string }[] = [
+  { id: 'apresentacao', rotulo: 'Apresentação', icone: Presentation, pergunta: 'Os indicadores do período em slides 16:9 — para o print no PPT ou para apresentar em tela cheia.' },
   { id: 'geral', rotulo: 'Visão Geral', icone: Activity, pergunta: 'Como está o setor — melhorou ou piorou?' },
   { id: 'demandas', rotulo: 'Demandas', icone: TrendingUp, pergunta: 'O fluxo da requisição até o pedido está fluindo?' },
   { id: 'carteira', rotulo: 'Carteira & Compradores', icone: Users, pergunta: 'Quem está sobrecarregado e quem está entregando?' },
@@ -54,7 +55,6 @@ const ABAS: { id: AbaSuprimentos; rotulo: string; icone: typeof Activity; pergun
   { id: 'compras', rotulo: 'Análise de Compras', icone: BarChart3, pergunta: 'No que já foi comprado: onde está concentrado o gasto e de onde ele vem?' },
   { id: 'recorrencia', rotulo: 'Recorrência de Compras', icone: Repeat, pergunta: 'Estamos comprando o mesmo material demais vezes, ou fracionando por falta de planejamento?' },
   { id: 'preco', rotulo: 'Preço Médio', icone: Tags, pergunta: 'Quanto custa, em média, cada item — nos pedidos e nas cotações — e como o preço evoluiu?' },
-  { id: 'apresentacao', rotulo: 'Apresentação', icone: Presentation, pergunta: 'Os indicadores do período em slides 16:9 — para o print no PPT ou para apresentar em tela cheia.' },
 ];
 
 /**
@@ -85,7 +85,7 @@ function filtrosIniciais(): EstadoFiltros {
   };
 }
 
-export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapDashboardsProps) {
+export default function SapDashboards({ onNavigate, abaInicial = 'apresentacao' }: SapDashboardsProps) {
   const [records, setRecords] = useState<EnrichedSAPRecord[]>([]);
   const [compradores, setCompradores] = useState<CompradorInfo[]>([]);
   const [lastSync, setLastSync] = useState<Date | null>(null);

@@ -8,7 +8,7 @@
  * slide bater com o que está na tela.
  */
 
-import type { EnrichedSAPRecord } from '../types';
+import type { EnrichedSAPRecord, Request, RequestItem } from '../types';
 import {
   bucketDate, classifyCriticidade, classifyCriticidadeNatureza, classifyTipoDemanda, CRITICIDADE_LABEL, type Criticidade,
 } from './demandas';
@@ -329,4 +329,60 @@ export function itensDoPonto(
 export function rotuloDoIntervalo(data: string | null | undefined, granularidade: GranularidadeGrafico): string {
   if (!data) return 'Sem data';
   return bucketDate(data.slice(0, 10), granularidade)?.label ?? 'Sem data';
+}
+
+/* ── Solicitações de compra do SISTEN ─────────────────────────────────────── */
+
+export interface ResumoSolicitacoesSisten {
+  /** Solicitações de compra abertas (criadas) no período, sem rascunho. */
+  abertas: number;
+  /** Das abertas, canceladas ou rejeitadas depois. */
+  canceladasOuRejeitadas: number;
+  /** Já com RM do SAP vinculada. */
+  comRm: number;
+  /** Com pelo menos um item genérico. */
+  comItemGenerico: number;
+  itens: number;
+  itensGenericos: number;
+}
+
+/** Item genérico: a marca do formulário ou a observação no formato "ITEM GENÉRICO: ...". */
+export function ehItemGenerico(item: Pick<RequestItem, 'is_generic' | 'observation'>): boolean {
+  return Boolean(item.is_generic || /^\s*item\s+gen[eé]rico\s*:/i.test(item.observation || ''));
+}
+
+/** Data local (YYYY-MM-DD) de um timestamp — a solicitação criada às 22h de 31/10 é de 31/10. */
+function dataLocal(ts: string): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts.slice(0, 10);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * Solicitações de compra abertas no SISTEN no período (pela data de criação)
+ * e quantas usaram item genérico. Só o período vale aqui: área, comprador e
+ * os demais recortes do painel são do SAP.
+ */
+export function resumoSolicitacoesSisten(
+  requests: Pick<Request, 'id' | 'type' | 'status' | 'created_at' | 'linked_rm_number'>[],
+  itensDe: (requestId: string) => Pick<RequestItem, 'is_generic' | 'observation'>[],
+  de: string,
+  ate: string,
+): ResumoSolicitacoesSisten {
+  const r: ResumoSolicitacoesSisten = { abertas: 0, canceladasOuRejeitadas: 0, comRm: 0, comItemGenerico: 0, itens: 0, itensGenericos: 0 };
+  for (const req of requests) {
+    if (req.type !== 'compra' || req.status === 'rascunho' || !req.created_at) continue;
+    const dia = dataLocal(req.created_at);
+    if ((de && dia < de) || (ate && dia > ate)) continue;
+    r.abertas += 1;
+    if (req.status === 'cancelada' || req.status === 'rejeitada') r.canceladasOuRejeitadas += 1;
+    if (req.linked_rm_number?.trim()) r.comRm += 1;
+    const itens = itensDe(req.id);
+    const genericos = itens.filter(ehItemGenerico).length;
+    r.itens += itens.length;
+    r.itensGenericos += genericos;
+    if (genericos > 0) r.comItemGenerico += 1;
+  }
+  return r;
 }

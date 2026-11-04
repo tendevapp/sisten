@@ -102,3 +102,23 @@ describe('itensDoPonto', () => {
     expect(itensDoPonto(recs, 'semana', chave, 'semPo').map(r => r.ri)).toEqual(['novo']);
   });
 });
+
+describe('resumoSolicitacoesSisten', () => {
+  it('conta compras do período (sem rascunho), com RM e com item genérico', async () => {
+    const { resumoSolicitacoesSisten } = await import('./suprimentosApresentacao');
+    const reqs = [
+      { id: '1', type: 'compra', status: 'aprovada', created_at: '2026-10-10T12:00:00', linked_rm_number: '1100001' },
+      { id: '2', type: 'compra', status: 'cancelada', created_at: '2026-10-11T12:00:00', linked_rm_number: '' },
+      { id: '3', type: 'compra', status: 'rascunho', created_at: '2026-10-12T12:00:00' },
+      { id: '4', type: 'chamado', status: 'aberto', created_at: '2026-10-12T12:00:00' },
+      { id: '5', type: 'compra', status: 'pendente', created_at: '2026-09-30T12:00:00' },
+    ] as any[];
+    const itens: Record<string, any[]> = {
+      '1': [{ is_generic: true }, { is_generic: false }],
+      '2': [{ observation: 'ITEM GENÉRICO: luva de raspa' }],
+      '5': [{ is_generic: true }],
+    };
+    const r = resumoSolicitacoesSisten(reqs, id => itens[id] ?? [], '2026-10-01', '2026-10-31');
+    expect(r).toEqual({ abertas: 2, canceladasOuRejeitadas: 1, comRm: 1, comItemGenerico: 2, itens: 3, itensGenericos: 2 });
+  });
+});

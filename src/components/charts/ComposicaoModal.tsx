@@ -29,8 +29,17 @@ export interface ComposicaoColuna<T> {
 export interface ComposicaoFiltro<T> {
   key: string;
   label: string;
-  valueOf: (item: T) => string;
+  /**
+   * Valor do item para o filtro. Uma lista põe o item em mais de uma opção —
+   * ex.: "Sem PO" e "Sem PO — crítico", sem perder a opção geral.
+   */
+  valueOf: (item: T) => string | string[];
 }
+
+const valoresDoFiltro = <T,>(f: ComposicaoFiltro<T>, item: T): string[] => {
+  const v = f.valueOf(item);
+  return Array.isArray(v) ? v : v ? [v] : [];
+};
 
 export interface ComposicaoModalConfig<T> {
   title: string;
@@ -89,8 +98,7 @@ export default function ComposicaoModal<T>({ config, onClose }: ComposicaoModalP
     return config.filters.map(f => {
       const valores = new Set<string>();
       config.items.forEach(item => {
-        const v = f.valueOf(item);
-        if (v) valores.add(v);
+        valoresDoFiltro(f, item).forEach(v => valores.add(v));
       });
       return { key: f.key, label: f.label, opcoes: Array.from(valores).sort((a, b) => a.localeCompare(b, 'pt-BR')) };
     });
@@ -103,7 +111,7 @@ export default function ComposicaoModal<T>({ config, onClose }: ComposicaoModalP
       for (const f of config.filters) {
         const selecionado = filterValues[f.key];
         if (selecionado && selecionado !== 'todos') {
-          itens = itens.filter(item => f.valueOf(item) === selecionado);
+          itens = itens.filter(item => valoresDoFiltro(f, item).includes(selecionado));
         }
       }
     }

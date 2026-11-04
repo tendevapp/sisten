@@ -13,6 +13,7 @@ import React from 'react';
 import { EnrichedSAPRecord } from '../types';
 import { CompradorInfo, resolveComprador, isProjetoItem } from './demandas';
 import { formatBRL, formatDateBR } from './format';
+import { DIAS_CRITICO } from './suprimentos';
 import { ComposicaoColuna, ComposicaoFiltro } from '../components/charts/ComposicaoModal';
 
 /** Colunas de detalhe padrão para um item de RI/pedido dentro do modal. */
@@ -35,10 +36,23 @@ export function colunasEnrichedSAPRecord(compradores: CompradorInfo[]): Composic
   ];
 }
 
+export const STATUS_SEM_PO_ATE_CRITICO = `Sem PO — até ${DIAS_CRITICO} d`;
+export const STATUS_SEM_PO_CRITICO = `Sem PO — crítico (+ de ${DIAS_CRITICO} d)`;
+
+/**
+ * Status do item para o filtro: o do SAP e, para quem está sem PO, também a
+ * faixa — crítico é aberto há mais de DIAS_CRITICO dias, mesmo corte da
+ * coluna "Críticos" da carteira. O item fica nas duas opções ("Sem PO" e a faixa).
+ */
+export function statusFiltroEnrichedSAPRecord(r: EnrichedSAPRecord): string[] {
+  if (r.status_requisicao !== 'Sem PO') return [r.status_requisicao];
+  return [r.status_requisicao, (r.dias_em_aberto || 0) > DIAS_CRITICO ? STATUS_SEM_PO_CRITICO : STATUS_SEM_PO_ATE_CRITICO];
+}
+
 /** Filtros de Status, Natureza e Comprador exibidos no modal de composição. */
 export function filtrosEnrichedSAPRecord(compradores: CompradorInfo[]): ComposicaoFiltro<EnrichedSAPRecord>[] {
   return [
-    { key: 'status', label: 'Status', valueOf: r => r.status_requisicao },
+    { key: 'status', label: 'Status', valueOf: statusFiltroEnrichedSAPRecord },
     { key: 'tipo_item', label: 'Natureza', valueOf: r => (isProjetoItem(r.material_code) ? 'Projeto' : 'Consumo') },
     { key: 'comprador', label: 'Comprador', valueOf: r => resolveComprador(r, compradores) },
   ];

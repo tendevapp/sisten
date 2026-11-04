@@ -12,19 +12,20 @@
  * `lib/suprimentosApresentacao.ts`.
  */
 
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ComposedChart, LabelList, Line, XAxis, YAxis } from 'recharts';
 import { LayoutDashboard } from 'lucide-react';
 import type { EnrichedSAPRecord } from '../../types';
+import { localDb } from '../../db/localDb';
 import {
-  calcAging, calcCarteiraPorComprador, calcFornecedores, calcOtd, calcResumoSetor, concentracaoTop, delta, faixaAgingDoRegistro,
+  calcAging, calcCarteiraPorComprador, calcFornecedores, calcLeadTimeRmPo, calcOtd, calcResumoSetor, concentracaoTop, delta, faixaAgingDoRegistro,
   temPO, umRegistroPorItem,
 } from '../../lib/suprimentos';
 import { CRITICIDADE_LABEL, resolveComprador, TIPO_DEMANDA_LABEL, type CompradorInfo, type Criticidade } from '../../lib/demandas';
 import {
   demandaPorArea, evolucaoRequisitadoPedido, janelaDoGrafico, materialServico, MAX_COLUNAS, META_LEAD_TIME_PADRAO,
   porCriticidade, criticidadeDoItem, itensDoPonto, rotuloDoIntervalo,
-  type GranularidadeGrafico, type PontoEvolucao, type SerieEvolucao,
+  resumoSolicitacoesSisten, type GranularidadeGrafico, type PontoEvolucao, type ResumoSolicitacoesSisten, type SerieEvolucao,
 } from '../../lib/suprimentosApresentacao';
 import { formatBRLCompacto, formatInt, formatPctInt } from '../../lib/format';
 import {
@@ -208,6 +209,15 @@ export default function TabApresentacao({
     });
   }, [onAbrirComposicao, colunas, filtrosModal]);
 
+  // Solicitações do SISTEN vêm do localDb (não do SAP); recalcula quando ele muda.
+  const [versaoLocal, setVersaoLocal] = useState(0);
+  useEffect(() => localDb.subscribe(() => setVersaoLocal(v => v + 1)), []);
+  const sisten = useMemo(
+    () => resumoSolicitacoesSisten(localDb.getRequests(), id => localDb.getRequestItems(id), filtros.dateFrom, filtros.dateTo),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtros.dateFrom, filtros.dateTo, versaoLocal],
+  );
+
   const detalhamento = useMemo<Detalhamento | null>(
     () => (onAbrirComposicao ? { records, granularidade, abrir } : null),
     [onAbrirComposicao, records, granularidade, abrir],
@@ -223,7 +233,7 @@ export default function TabApresentacao({
   const slides = [
     { id: 'resumo', titulo: 'Resumo do setor', conteudo: <SlideResumo {...comum} numero={`1 / ${total}`} records={records} recordsAnterior={recordsAnterior} temComparacao={temComparacao} filtros={filtros} granularidade={granularidade} vazio={vazio} /> },
     { id: 'sem-po', titulo: 'Itens sem pedido por período', conteudo: <SlideSemPo {...comum} numero={`2 / ${total}`} records={records} filtros={filtros} granularidade={granularidade} vazio={vazio} /> },
-    { id: 'demandas', titulo: 'Demandas', conteudo: <SlideDemandas {...comum} numero={`3 / ${total}`} records={records} vazio={vazio} /> },
+    { id: 'demandas', titulo: 'Demandas', conteudo: <SlideDemandas {...comum} numero={`3 / ${total}`} records={records} sisten={sisten} vazio={vazio} /> },
     { id: 'carteira', titulo: 'Carteira & Compradores', conteudo: <SlideCarteira {...comum} numero={`4 / ${total}`} records={records} compradores={compradores} vazio={vazio} /> },
     { id: 'fornecedores', titulo: 'Fornecedores & Spend', conteudo: <SlideFornecedores {...comum} numero={`5 / ${total}`} records={records} vazio={vazio} /> },
   ];
@@ -339,9 +349,6 @@ function barraDoTotal(pilha: string, campoTotal: keyof PontoEvolucao, pequeno: b
   );
 }
 
-/** Cor do % na meta: verde a partir de 80%, âmbar a partir de 60%. */
-const corMeta = (v: number | null) => (v === null ? COR_SLIDE.suave : v >= 80 ? '#059669' : v >= 60 ? '#b45309' : '#e11d48');
-
 function corDaCriticidade(c: string): string {
   return c === 'maquina_parada' ? COR.maqParada : c === 'urgente' ? COR.urgente : c === 'normal' ? COR.normal : COR.semCriticidade;
 }
@@ -374,6 +381,7 @@ function SlideResumo({ periodo, subtitulo, numero, vazio, records, recordsAnteri
   );
   const aging = useMemo(() => calcAging(records), [records]);
   const criticidades = useMemo(() => porCriticidade(records), [records]);
+  const totalAbertosCrit = Math.max(1, criticidades.reduce((s, c) => s + c.abertos, 0));
   const temMaqParada = evolucao.some(p => p.maquinaParada > 0);
   const temSemCriticidade = evolucao.some(p => p.semCriticidade > 0);
   const muitos = evolucao.length > 16;
@@ -393,7 +401,7 @@ function SlideResumo({ periodo, subtitulo, numero, vazio, records, recordsAnteri
       ladoDireito={periodo}
       subtituloDireito={subtitulo}
       numero={numero}
-      rodape={`${temComparacao ? 'Variações vs período anterior de mesma duração · ' : ''}Requisitado = data da RM · Com pedido = data do 1º PO (o item pode ter sido requisitado antes) · Lead time = pedido − solicitação · Meta: normal ${META_LEAD_TIME_PADRAO.normal} d, urgente ${META_LEAD_TIME_PADRAO.urgente} d, máq. parada ${META_LEAD_TIME_PADRAO.maquina_parada} d`}
+      rodape={`${temComparacao ? 'Variações vs período anterior de mesma duração · ' : ''}Requisitado = data da RM · Com pedido = data do 1º PO (o item pode ter sido requisitado antes) · Lead time = pedido − solicitação · Criticidade pela natureza da RM`}
     >
       <div className="grid grid-cols-6" style={{ gap: 14, height: 124 }}>
         <KpiSlide rotulo="Itens no período" valor={formatInt(atual.total)} variacao={variacao(atual.total, anterior.total, 'cima', temComparacao)} detalhe="linhas de RM" />
@@ -479,36 +487,29 @@ function SlideResumo({ periodo, subtitulo, numero, vazio, records, recordsAnteri
               />
             </PainelSlide>
 
-            {/* Prazo de compra × meta por criticidade: urgência atendida no prazo é o que mais pesa. */}
-            <PainelSlide titulo="Prazo de compra × meta" style={{ flex: 1 }}>
+            {/* Do que está aberto, quanto é urgente e quanto é normal. */}
+            <PainelSlide titulo="Carteira aberta por criticidade" style={{ flex: 1 }}>
               <div className="flex flex-1 flex-col justify-around">
-                {criticidades.filter(c => c.itens > 0).map(c => (
+                {criticidades.filter(c => c.abertos > 0).map(c => (
                   <div
                     key={c.chave}
                     className={`flex items-center ${det ? 'cursor-pointer rounded-md hover:bg-slate-50' : ''}`}
                     style={{ gap: 14, borderTop: `1px solid ${COR_SLIDE.linha}`, paddingTop: 8 }}
                     onClick={det ? () => det.abrir(
-                      `Prazo de compra — ${c.rotulo}`, c.rotulo,
-                      umRegistroPorItem(records).filter(r => criticidadeDoItem(r) === c.chave),
-                      { cabecalho: 'Situação', chave: r => (temPO(r) ? 'Com pedido' : 'Sem pedido') },
+                      `Carteira aberta — ${c.rotulo}`, c.rotulo,
+                      umRegistroPorItem(records).filter(r => !temPO(r) && criticidadeDoItem(r) === c.chave),
                     ) : undefined}
                   >
                     <span style={{ width: 12, height: 12, borderRadius: 3, background: corDaCriticidade(c.chave), flexShrink: 0 }} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <p style={{ fontSize: 16, fontWeight: 800 }}>{c.rotulo}</p>
                       <p className="truncate" style={{ fontSize: 12.5, color: COR_SLIDE.tinta2 }}>
-                        média {c.medidos ? `${um(c.leadTime)} d` : '—'} · meta {c.meta} d
-                        {c.abertosForaDaMeta > 0 && (
-                          <strong style={{ color: '#e11d48' }}> · {formatInt(c.abertosForaDaMeta)} em aberto fora da meta</strong>
-                        )}
+                        {formatInt(c.abertos)} de {formatInt(totalAbertosCrit)} itens em aberto
                       </p>
                     </div>
-                    <div className="text-right" style={{ flexShrink: 0 }}>
-                      <p className="font-display tabular-nums" style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: corMeta(c.pctNaMeta) }}>
-                        {c.pctNaMeta === null ? '—' : formatPctInt(c.pctNaMeta)}
-                      </p>
-                      <p style={{ fontSize: 11, color: COR_SLIDE.suave }}>na meta · {formatInt(c.medidos)} PO</p>
-                    </div>
+                    <p className="font-display tabular-nums" style={{ flexShrink: 0, fontSize: 30, fontWeight: 800, lineHeight: 1, color: corDaCriticidade(c.chave) }}>
+                      {formatPctInt((c.abertos / totalAbertosCrit) * 100)}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -629,6 +630,16 @@ function SlideSemPo({ periodo, subtitulo, numero, vazio, records, filtros, granu
   );
 }
 
+function BlocoSisten({ rotulo, valor, detalhe, cor, fundo }: { rotulo: string; valor: string; detalhe: string; cor?: string; fundo?: string }) {
+  return (
+    <div className="flex flex-col justify-center rounded-xl" style={{ background: fundo ?? '#f8fafc', padding: '10px 16px', minWidth: 0 }}>
+      <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: COR_SLIDE.tinta2 }}>{rotulo}</span>
+      <span className="font-display tabular-nums" style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.1, color: cor ?? COR_SLIDE.tinta }}>{valor}</span>
+      <span className="truncate" style={{ fontSize: 12.5, color: COR_SLIDE.tinta2 }}>{detalhe}</span>
+    </div>
+  );
+}
+
 /** Valor pedido não tem direção "boa": a seta fica, a cor sai. */
 function neutra(v: { texto: string; bom: boolean } | null) {
   return v ? { ...v, bom: true } : null;
@@ -636,7 +647,10 @@ function neutra(v: { texto: string; bom: boolean } | null) {
 
 /* ─────────────────────────────── 2. Demandas ─────────────────────────────── */
 
-function SlideDemandas({ periodo, subtitulo, numero, vazio, records }: BaseSlide & { records: EnrichedSAPRecord[] }) {
+function SlideDemandas({ periodo, subtitulo, numero, vazio, records, sisten }: BaseSlide & {
+  records: EnrichedSAPRecord[];
+  sisten: ResumoSolicitacoesSisten;
+}) {
   const det = useContext(DetalharCtx);
   const itens = useMemo(() => umRegistroPorItem(records), [records]);
   const areas = useMemo(() => demandaPorArea(records, 12), [records]);
@@ -664,7 +678,7 @@ function SlideDemandas({ periodo, subtitulo, numero, vazio, records }: BaseSlide
       ladoDireito={periodo}
       subtituloDireito={subtitulo}
       numero={numero}
-      rodape="Itens de RM contados uma vez (item comprado em vários pedidos conta 1) · Criticidade pela natureza da RM · Lead time = pedido − solicitação"
+      rodape="Itens de RM contados uma vez (item comprado em vários pedidos conta 1) · Criticidade pela natureza da RM · Lead time = pedido − solicitação · Solicitações SISTEN: compras criadas no período (sem rascunho); só o período vale para elas"
     >
       <div className="grid grid-cols-5" style={{ gap: 14, height: 118 }}>
         <KpiSlide rotulo="Itens de RM" valor={formatInt(itens.length)} detalhe={`${formatInt(comPO)} já com pedido`} />
@@ -697,15 +711,16 @@ function SlideDemandas({ periodo, subtitulo, numero, vazio, records }: BaseSlide
             </BarChart>
           </PainelSlide>
 
-          <PainelSlide titulo="Por criticidade" style={{ flex: 1 }}>
-            <table data-no-cards className="w-full" style={{ fontSize: 15, borderCollapse: 'separate', borderSpacing: 0 }}>
+          <div className="flex flex-col" style={{ flex: 1, gap: 18, minWidth: 0 }}>
+          <PainelSlide titulo="Por criticidade" style={{ flexShrink: 0 }}>
+            <table data-no-cards className="w-full" style={{ fontSize: 14, borderCollapse: 'separate', borderSpacing: 0 }}>
               <thead>
                 <tr style={{ color: COR_SLIDE.tinta2, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <th className="text-left" style={{ padding: '8px 6px' }}>Criticidade</th>
-                  <th className="text-right" style={{ padding: '8px 6px' }}>Itens</th>
-                  <th className="text-right" style={{ padding: '8px 6px' }}>Com PO</th>
-                  <th className="text-right" style={{ padding: '8px 6px' }}>Conversão</th>
-                  <th className="text-right" style={{ padding: '8px 6px' }}>Lead time</th>
+                  <th className="text-left" style={{ padding: '4px 6px' }}>Criticidade</th>
+                  <th className="text-right" style={{ padding: '4px 6px' }}>Itens</th>
+                  <th className="text-right" style={{ padding: '4px 6px' }}>Com PO</th>
+                  <th className="text-right" style={{ padding: '4px 6px' }}>Conversão</th>
+                  <th className="text-right" style={{ padding: '4px 6px' }}>Lead time</th>
                 </tr>
               </thead>
               <tbody>
@@ -720,22 +735,53 @@ function SlideDemandas({ periodo, subtitulo, numero, vazio, records }: BaseSlide
                       { cabecalho: 'Situação', chave: r => (temPO(r) ? 'Com pedido' : 'Sem pedido') },
                     ) : undefined}
                   >
-                    <td style={{ padding: '14px 6px', fontWeight: 700, borderTop: `1px solid ${COR_SLIDE.linha}` }}>
+                    <td style={{ padding: '8px 6px', fontWeight: 700, borderTop: `1px solid ${COR_SLIDE.linha}` }}>
                       <span style={{
                         display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 8,
-                        background: c.chave === 'maquina_parada' ? '#e11d48' : c.chave === 'urgente' ? COR_SLIDE.ambar : c.chave === 'normal' ? COR_SLIDE.verde : COR_SLIDE.suave,
+                        background: corDaCriticidade(c.chave),
                       }} />
                       {c.rotulo}
                     </td>
-                    <td className="text-right tabular-nums" style={{ padding: '14px 6px', borderTop: `1px solid ${COR_SLIDE.linha}` }}>{formatInt(c.itens)}</td>
-                    <td className="text-right tabular-nums" style={{ padding: '14px 6px', borderTop: `1px solid ${COR_SLIDE.linha}` }}>{formatInt(c.comPO)}</td>
-                    <td className="text-right tabular-nums" style={{ padding: '14px 6px', fontWeight: 800, borderTop: `1px solid ${COR_SLIDE.linha}` }}>{formatPctInt(c.conversao)}</td>
-                    <td className="text-right tabular-nums" style={{ padding: '14px 6px', borderTop: `1px solid ${COR_SLIDE.linha}` }}>{c.comPO ? `${um(c.leadTime)} d` : '—'}</td>
+                    <td className="text-right tabular-nums" style={{ padding: '8px 6px', borderTop: `1px solid ${COR_SLIDE.linha}` }}>{formatInt(c.itens)}</td>
+                    <td className="text-right tabular-nums" style={{ padding: '8px 6px', borderTop: `1px solid ${COR_SLIDE.linha}` }}>{formatInt(c.comPO)}</td>
+                    <td className="text-right tabular-nums" style={{ padding: '8px 6px', fontWeight: 800, borderTop: `1px solid ${COR_SLIDE.linha}` }}>{formatPctInt(c.conversao)}</td>
+                    <td className="text-right tabular-nums" style={{ padding: '8px 6px', borderTop: `1px solid ${COR_SLIDE.linha}` }}>{c.comPO ? `${um(c.leadTime)} d` : '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </PainelSlide>
+
+          <PainelSlide titulo="Solicitações de compra no SISTEN" style={{ flex: 1 }}>
+            <div className="grid grid-cols-2" style={{ gap: 12, flex: 1 }}>
+              <BlocoSisten
+                rotulo="Abertas no período"
+                valor={formatInt(sisten.abertas)}
+                detalhe={sisten.canceladasOuRejeitadas ? `${formatInt(sisten.canceladasOuRejeitadas)} canceladas/rejeitadas` : 'nenhuma cancelada'}
+              />
+              <BlocoSisten
+                rotulo="Já com RM no SAP"
+                valor={formatInt(sisten.comRm)}
+                detalhe={sisten.abertas ? `${formatPctInt((sisten.comRm / sisten.abertas) * 100)} das abertas` : '—'}
+                cor="#0369a1"
+                fundo="#f0f9ff"
+              />
+              <BlocoSisten
+                rotulo="Com item genérico"
+                valor={formatInt(sisten.comItemGenerico)}
+                detalhe={sisten.abertas ? `${formatPctInt((sisten.comItemGenerico / sisten.abertas) * 100)} das solicitações` : '—'}
+                cor="#b45309"
+                fundo="#fffbeb"
+              />
+              <BlocoSisten
+                rotulo="Itens genéricos"
+                valor={formatInt(sisten.itensGenericos)}
+                detalhe={sisten.itens ? `de ${formatInt(sisten.itens)} itens (${formatPctInt((sisten.itensGenericos / sisten.itens) * 100)})` : '—'}
+                cor="#b45309"
+              />
+            </div>
+          </PainelSlide>
+          </div>
         </div>
       )}
     </Slide>
@@ -755,13 +801,11 @@ function SlideCarteira({ periodo, subtitulo, numero, vazio, records, compradores
   const totais = useMemo(() => {
     const abertos = linhas.reduce((s, l) => s + l.abertos, 0);
     const processados = linhas.reduce((s, l) => s + l.processados, 0);
-    const somaAging = linhas.reduce((s, l) => s + l.agingMedio * l.abertos, 0);
     return {
       abertos,
       processados,
       total: abertos + processados,
       conversao: abertos + processados ? (processados / (abertos + processados)) * 100 : 0,
-      agingMedio: abertos ? somaAging / abertos : 0,
       criticos: linhas.reduce((s, l) => s + l.criticos, 0),
       spend: linhas.reduce((s, l) => s + l.spend, 0),
     };
@@ -769,6 +813,21 @@ function SlideCarteira({ periodo, subtitulo, numero, vazio, records, compradores
   const otdForn = useMemo(() => calcOtd(records, 'fornecedor'), [records]);
   const visiveis = linhas.slice(0, MAX_COMPRADORES);
   const maiorAberto = Math.max(1, ...visiveis.map(l => l.abertos));
+  // Idade média = data do PO − data da solicitação, de todos os POs colocados no
+  // período (mesma conta do lead time RM → PO), cada PO no comprador que o lançou.
+  const idadePO = useMemo(() => {
+    const porComprador = new Map<string, EnrichedSAPRecord[]>();
+    for (const r of records) {
+      if (!temPO(r)) continue;
+      const nome = resolveComprador(r, compradores);
+      const lista = porComprador.get(nome);
+      if (lista) lista.push(r); else porComprador.set(nome, [r]);
+    }
+    return {
+      total: calcLeadTimeRmPo(records),
+      de: (comprador: string) => calcLeadTimeRmPo(porComprador.get(comprador) ?? []),
+    };
+  }, [records, compradores]);
 
   const celula: React.CSSProperties = { padding: '10px 10px', borderTop: `1px solid ${COR_SLIDE.linha}` };
 
@@ -779,12 +838,12 @@ function SlideCarteira({ periodo, subtitulo, numero, vazio, records, compradores
       ladoDireito={periodo}
       subtituloDireito={subtitulo}
       numero={numero}
-      rodape={`Comprador = quem lançou o PO (ou o grupo da RM, sem PO) · Itens de RM contados uma vez · Crítico = aberto há + de 30 dias · OTD = recebido até a data do pedido${linhas.length > MAX_COMPRADORES ? ` · ${MAX_COMPRADORES} maiores carteiras de ${linhas.length}` : ''}`}
+      rodape={`Comprador = quem lançou o PO (ou o grupo da RM, sem PO) · Itens de RM contados uma vez · Idade média do PO = data do PO − data da solicitação, todos os POs do período · Crítico = aberto há + de 30 dias · OTD = recebido até a data do pedido${linhas.length > MAX_COMPRADORES ? ` · ${MAX_COMPRADORES} maiores carteiras de ${linhas.length}` : ''}`}
     >
       <div className="grid grid-cols-5" style={{ gap: 14, height: 118 }}>
         <KpiSlide rotulo="Carteira aberta" valor={formatInt(totais.abertos)} cor="#e11d48" fundo="#fff1f2" detalhe={`${formatInt(totais.criticos)} críticos`} />
         <KpiSlide rotulo="Itens com pedido" valor={formatInt(totais.processados)} cor="#059669" fundo="#ecfdf5" detalhe={`${formatPctInt(totais.conversao)} de conversão`} />
-        <KpiSlide rotulo="Idade média da carteira" valor={`${um(totais.agingMedio)} d`} detalhe="itens ainda sem pedido" />
+        <KpiSlide rotulo="Idade média do PO" valor={idadePO.total.base ? `${um(idadePO.total.valor)} d` : '—'} detalhe={`PO − solicitação · ${formatInt(idadePO.total.base)} POs`} />
         <KpiSlide rotulo="Valor pedido" valor={formatBRLCompacto(totais.spend)} cor="#0369a1" fundo="#f0f9ff" detalhe={`${formatInt(linhas.length)} compradores`} />
         <KpiSlide rotulo="OTD fornecedor" valor={otdForn.base ? formatPctInt(otdForn.valor) : '—'} detalhe={`${formatInt(otdForn.base)} entregas medidas`} />
       </div>
@@ -798,7 +857,7 @@ function SlideCarteira({ periodo, subtitulo, numero, vazio, records, compradores
                 <th className="text-left" style={{ padding: '6px 10px' }}>Carteira aberta</th>
                 <th className="text-right" style={{ padding: '6px 10px' }}>Com pedido</th>
                 <th className="text-right" style={{ padding: '6px 10px' }}>Conversão</th>
-                <th className="text-right" style={{ padding: '6px 10px' }}>Idade média</th>
+                <th className="text-right" style={{ padding: '6px 10px' }}>Idade média do PO</th>
                 <th className="text-right" style={{ padding: '6px 10px' }}>Críticos</th>
                 <th className="text-right" style={{ padding: '6px 10px' }}>Valor pedido</th>
                 <th className="text-right" style={{ padding: '6px 10px' }}>OTD</th>
@@ -826,7 +885,7 @@ function SlideCarteira({ periodo, subtitulo, numero, vazio, records, compradores
                   </td>
                   <td className="text-right tabular-nums" style={celula}>{formatInt(l.processados)}</td>
                   <td className="text-right tabular-nums" style={{ ...celula, fontWeight: 700 }}>{formatPctInt(l.conversao)}</td>
-                  <td className="text-right tabular-nums" style={celula}>{l.abertos ? `${um(l.agingMedio)} d` : '—'}</td>
+                  <td className="text-right tabular-nums" style={celula}>{(() => { const m = idadePO.de(l.comprador); return m.base ? `${um(m.valor)} d` : '—'; })()}</td>
                   <td className="text-right tabular-nums" style={{ ...celula, fontWeight: 800, color: l.criticos ? '#e11d48' : COR_SLIDE.suave }}>{formatInt(l.criticos)}</td>
                   <td className="text-right tabular-nums" style={celula}>{formatBRLCompacto(l.spend)}</td>
                   <td className="text-right tabular-nums" style={celula}>{l.otd === null ? '—' : formatPctInt(l.otd)}</td>
@@ -837,7 +896,7 @@ function SlideCarteira({ periodo, subtitulo, numero, vazio, records, compradores
                 <td className="tabular-nums" style={{ ...celula, fontWeight: 800, borderTop: `2px solid ${COR_SLIDE.tinta2}` }}>{formatInt(totais.abertos)}</td>
                 <td className="text-right tabular-nums" style={{ ...celula, fontWeight: 800, borderTop: `2px solid ${COR_SLIDE.tinta2}` }}>{formatInt(totais.processados)}</td>
                 <td className="text-right tabular-nums" style={{ ...celula, fontWeight: 800, borderTop: `2px solid ${COR_SLIDE.tinta2}` }}>{formatPctInt(totais.conversao)}</td>
-                <td className="text-right tabular-nums" style={{ ...celula, fontWeight: 800, borderTop: `2px solid ${COR_SLIDE.tinta2}` }}>{totais.abertos ? `${um(totais.agingMedio)} d` : '—'}</td>
+                <td className="text-right tabular-nums" style={{ ...celula, fontWeight: 800, borderTop: `2px solid ${COR_SLIDE.tinta2}` }}>{idadePO.total.base ? `${um(idadePO.total.valor)} d` : '—'}</td>
                 <td className="text-right tabular-nums" style={{ ...celula, fontWeight: 800, borderTop: `2px solid ${COR_SLIDE.tinta2}` }}>{formatInt(totais.criticos)}</td>
                 <td className="text-right tabular-nums" style={{ ...celula, fontWeight: 800, borderTop: `2px solid ${COR_SLIDE.tinta2}` }}>{formatBRLCompacto(totais.spend)}</td>
                 <td className="text-right tabular-nums" style={{ ...celula, fontWeight: 800, borderTop: `2px solid ${COR_SLIDE.tinta2}` }}>{otdForn.base ? formatPctInt(otdForn.valor) : '—'}</td>
