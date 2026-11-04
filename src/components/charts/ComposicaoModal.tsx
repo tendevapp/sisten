@@ -364,7 +364,10 @@ export default function ComposicaoModal<T>({ config, onClose }: ComposicaoModalP
                                     </thead>
                                     <tbody className="divide-y" style={{ borderColor: 'var(--hairline)' }}>
                                       {grupo.itens.map((item, idx) => (
-                                        <tr key={config.itemKey(item, idx)} className="transition-colors duration-150 hover:bg-[var(--surface-raised)]">
+                                        // A mesma RI aparece uma vez por linha de PO; chave
+                                        // repetida faz o React deixar linhas antigas na tela
+                                        // ao trocar o filtro. O índice garante unicidade.
+                                        <tr key={`${config.itemKey(item, idx)}#${idx}`} className="transition-colors duration-150 hover:bg-[var(--surface-raised)]">
                                           {config.detailColumns.map(col => (
                                             <td
                                               key={col.header}
