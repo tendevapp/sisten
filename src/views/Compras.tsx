@@ -16,7 +16,7 @@ import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import {
-  Profile, EnrichedSAPRecord, HistoricoPedidoView, ContatoFornecedor, CidadeForn,
+  Profile, EnrichedSAPRecord, RequestAttachment, HistoricoPedidoView, ContatoFornecedor, CidadeForn,
   FornecedorMaterialRow, SAPObsHistory, ItemStatus, RastreioPrioridade,
   CotacaoHistoricoEntry
 } from '../types';
@@ -62,6 +62,11 @@ import { STATUS_ITEM_VALIDACAO, ultimaValidacaoPorRi, type ValidacaoTecnica } fr
 import { listarValidacoesTecnicas } from '../lib/validacaoTecnicaApi';
 import type { CotacaoProcessoItemDraft } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
+import FotoItemMiniatura from '../components/suprimentos/FotoItemMiniatura';
+import {
+  carregarFotosCadastroPorMaterial, chaveMaterialFoto, indexarFotosSolicitacaoPorItem, montarFotosDoItem,
+  type FotoItemCompra,
+} from '../lib/fotosItemCompra';
 import NovidadesModal from '../components/NovidadesModal';
 import RequestDetailPanel from '../components/solicitacoes/RequestDetailPanel';
 import { TIPO_VISUAL } from '../components/solicitacoes/tipoVisual';
@@ -742,6 +747,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // Local (não a base SAP inteira), então atualiza sozinho a cada mudança no
   // localDb — vincular uma RM lá reflete aqui sem precisar de "Atualizar".
   const [vinculosSistenPorRm, setVinculosSistenPorRm] = useState<Map<string, VinculoSistenRm>>(new Map());
+  // Fotos ao lado da descrição: anexos do item da solicitação vinculada e,
+  // na falta ou além deles, o Cadastro de Itens (ver `lib/fotosItemCompra.ts`).
+  const [fotosSolicitacaoPorItem, setFotosSolicitacaoPorItem] = useState<Map<string, RequestAttachment[]>>(new Map());
+  const [fotosCadastroPorMaterial, setFotosCadastroPorMaterial] = useState<Map<string, FotoItemCompra[]>>(new Map());
   const [expandedRMs, setExpandedRMs] = useState<Record<string, boolean>>({});
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
@@ -1689,11 +1698,25 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       const compras = localDb.getRequests().filter(r => r.type === 'compra' && r.linked_rm_number);
       const itensPorRequest = new Map(compras.map(r => [r.id, localDb.getRequestItems(r.id)]));
       setVinculosSistenPorRm(indexarVinculosSistenPorRm(compras, itensPorRequest));
+      setFotosSolicitacaoPorItem(indexarFotosSolicitacaoPorItem(compras.flatMap(r => localDb.getAttachments(r.id))));
     };
     recalcularVinculos();
     const unsubscribe = localDb.subscribe(recalcularVinculos);
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    let ativo = true;
+    carregarFotosCadastroPorMaterial().then(mapa => { if (ativo) setFotosCadastroPorMaterial(mapa); });
+    return () => { ativo = false; };
+  }, []);
+
+  const fotosDoItem = useCallback((r: EnrichedSAPRecord, vinculo: VinculoSistenRm | null): FotoItemCompra[] =>
+    montarFotosDoItem({
+      anexosSolicitacao: vinculo ? fotosSolicitacaoPorItem.get(vinculo.item.id) : null,
+      fotosCadastro: fotosCadastroPorMaterial.get(chaveMaterialFoto(r.material_code)),
+      ehGenerico: !!vinculo?.item.is_generic,
+    }), [fotosSolicitacaoPorItem, fotosCadastroPorMaterial]);
 
   // Função para salvar observações, data prevista e status
   const handleSaveFields = async (ri: string) => {
@@ -3338,8 +3361,14 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             </div>
                           </div>
 
-                          {/* Title & Desc (Clickable to modal) */}
-                          <div className="cursor-pointer group" onClick={() => abrirDetalheSap(r, vinculoSisten)}>
+                          {/* Title & Desc (Clickable to modal) + foto do item */}
+                          <div className="flex items-start gap-3">
+                          <FotoItemMiniatura
+                            fotos={fotosDoItem(r, vinculoSisten)}
+                            titulo={`${r.material_code || '—'} — ${r.texto_breve || 'Sem descrição'}`}
+                            tamanho="md"
+                          />
+                          <div className="cursor-pointer group min-w-0 flex-1" onClick={() => abrirDetalheSap(r, vinculoSisten)}>
                             <h4 className="text-[13px] font-mono font-bold text-slate-800 dark:text-slate-200 group-hover:text-[#0056c6] dark:group-hover:text-emerald-450 group-hover:underline leading-tight flex items-center gap-1">
                               {r.material_code || '—'}
                               <ArrowUpRight className="h-3 w-3 opacity-60 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity" />
@@ -3363,6 +3392,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                 )}
                               </div>
                             )}
+                          </div>
                           </div>
 
                           {/* Technical Specs Tags */}
@@ -3781,6 +3811,12 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                 {/* Description (Clickable) — ganha o espaço tirado de
                             Cotação/PO/Material, que são código curto. */}
                                 <td className="py-3 px-3 min-w-[340px] max-w-[640px] break-words font-medium text-slate-800 dark:text-slate-200">
+                                  <div className="flex items-start gap-2.5">
+                                  <FotoItemMiniatura
+                                    fotos={fotosDoItem(r, vinculoSisten)}
+                                    titulo={`${r.material_code || '—'} — ${r.texto_breve || 'Sem descrição'}`}
+                                  />
+                                  <div className="min-w-0 flex-1">
                                   <button
                                     onClick={() => abrirDetalheSap(r, vinculoSisten)}
                                     className="text-left font-bold hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 focus:outline-none"
@@ -3830,6 +3866,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                         <span className="text-amber-600 dark:text-amber-400 font-bold">{r.alerta}</span>
                                       </>
                                     )}
+                                  </div>
+                                  </div>
                                   </div>
                                 </td>
 

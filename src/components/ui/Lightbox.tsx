@@ -11,22 +11,31 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Copy, X } from 'lucide-react';
+import { copiarImagemParaAreaDeTransferencia } from '../../lib/copiarImagem';
 
 export interface LightboxImagem {
   url: string;
   legenda?: string;
 }
 
+export interface LightboxOpcoes {
+  /** Mostra o botão "Copiar imagem" (área de transferência, como PNG). */
+  copiar?: boolean;
+}
+
 function Lightbox({
-  imagens, indice, onIndice, onClose,
+  imagens, indice, onIndice, onClose, copiar = false,
 }: {
   imagens: LightboxImagem[];
   indice: number;
   onIndice: (i: number) => void;
   onClose: () => void;
+  copiar?: boolean;
 }) {
   const total = imagens.length;
+  const [copia, setCopia] = useState<'idle' | 'copiando' | 'ok' | 'erro'>('idle');
+  useEffect(() => { setCopia('idle'); }, [indice]);
   const ir = useCallback((delta: number) => onIndice((indice + delta + total) % total), [indice, total, onIndice]);
 
   useEffect(() => {
@@ -47,6 +56,17 @@ function Lightbox({
 
   const atual = imagens[indice];
   if (!atual) return null;
+
+  const copiarAtual = async () => {
+    setCopia('copiando');
+    try {
+      await copiarImagemParaAreaDeTransferencia(atual.url);
+      setCopia('ok');
+    } catch (err) {
+      console.error('Falha ao copiar imagem:', err);
+      setCopia('erro');
+    }
+  };
 
   return (
     <div
@@ -94,6 +114,18 @@ function Lightbox({
       <div className="mt-3 flex items-center gap-3 text-xs text-white/80" onClick={(e) => e.stopPropagation()}>
         {total > 1 && <span className="tabular-nums">{indice + 1} / {total}</span>}
         {atual.legenda && <span className="max-w-[70vw] truncate">{atual.legenda}</span>}
+        {copiar && (
+          <button
+            onClick={copiarAtual}
+            disabled={copia === 'copiando'}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+              copia === 'ok' ? 'bg-emerald-500/20 text-emerald-300' : copia === 'erro' ? 'bg-rose-500/20 text-rose-200' : 'bg-white/10 text-white hover:bg-white/20'
+            }`}
+          >
+            {copia === 'ok' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copia === 'ok' ? 'Copiada!' : copia === 'erro' ? 'Não foi possível copiar' : copia === 'copiando' ? 'Copiando...' : 'Copiar imagem'}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -104,13 +136,13 @@ function Lightbox({
  * e chame `lightbox.abrir(imagens, indice)` no clique de uma miniatura.
  */
 export function useLightbox() {
-  const [estado, setEstado] = useState<{ imagens: LightboxImagem[]; indice: number } | null>(null);
+  const [estado, setEstado] = useState<{ imagens: LightboxImagem[]; indice: number; opcoes?: LightboxOpcoes } | null>(null);
 
-  const abrir = useCallback((imagens: (LightboxImagem | string)[], indice = 0) => {
+  const abrir = useCallback((imagens: (LightboxImagem | string)[], indice = 0, opcoes?: LightboxOpcoes) => {
     const norm = imagens
       .map((x) => (typeof x === 'string' ? { url: x } : x))
       .filter((x) => !!x.url);
-    if (norm.length) setEstado({ imagens: norm, indice: Math.min(Math.max(0, indice), norm.length - 1) });
+    if (norm.length) setEstado({ imagens: norm, indice: Math.min(Math.max(0, indice), norm.length - 1), opcoes });
   }, []);
 
   const fechar = useCallback(() => setEstado(null), []);
@@ -121,6 +153,7 @@ export function useLightbox() {
       indice={estado.indice}
       onIndice={(i) => setEstado((e) => (e ? { ...e, indice: i } : e))}
       onClose={fechar}
+      copiar={estado.opcoes?.copiar}
     />
   ) : null;
 

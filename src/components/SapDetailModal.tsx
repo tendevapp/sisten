@@ -12,6 +12,7 @@ import { sanitizeTechnicalText } from '../lib/materiais';
 import { desformatarObservacaoItemGenerico } from '../lib/solicitacoes';
 import type { VinculoSistenRm } from '../lib/centralComprasSisten';
 import { listarImagensCatalogoPorCodigoSap, obterUrlFotoCatalogo } from '../lib/almoxCatalogoApi';
+import { copiarImagemParaAreaDeTransferencia } from '../lib/copiarImagem';
 import { listarConferenciasDoItemPO, type ConferenciaRow } from '../lib/recebimentoAlmoxApi';
 import { useToast } from './ui/Toast';
 import PdfPreviewModal, { type PdfGerado } from './ui/PdfPreviewModal';
@@ -204,31 +205,9 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
     });
   };
 
-  /** Converte para PNG antes de escrever na área de transferência — o clipboard
-   *  só aceita `image/png` de forma confiável e a foto vem comprimida em JPEG. */
-  const converterParaPng = (blob: Blob): Promise<Blob> =>
-    new Promise((resolve, reject) => {
-      const img = new Image();
-      const objUrl = URL.createObjectURL(blob);
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d');
-        URL.revokeObjectURL(objUrl);
-        if (!ctx) { reject(new Error('sem contexto 2d')); return; }
-        ctx.drawImage(img, 0, 0);
-        canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob falhou'))), 'image/png');
-      };
-      img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('falha ao decodificar imagem')); };
-      img.src = objUrl;
-    });
-
   const handleCopyImagem = async (url: string, id: string) => {
     try {
-      const blob = await (await fetch(url)).blob();
-      const png = blob.type === 'image/png' ? blob : await converterParaPng(blob);
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+      await copiarImagemParaAreaDeTransferencia(url);
       setImagemCopiada(id);
       setTimeout(() => setImagemCopiada(null), 2000);
     } catch (err) {
