@@ -16,7 +16,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LayoutDashboard, RefreshCw, TrendingUp, Users, Building2, Activity, BarChart3, Clock, Repeat, Tags } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, TrendingUp, Users, Building2, Activity, BarChart3, Clock, Repeat, Tags, Presentation } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { EnrichedSAPRecord } from '../types';
@@ -35,9 +35,10 @@ import TabFornecedores from '../components/suprimentos/TabFornecedores';
 import TabAnaliseCompras from '../components/suprimentos/TabAnaliseCompras';
 import TabRecorrenciaCompras from '../components/suprimentos/TabRecorrenciaCompras';
 import TabPrecoMedio from '../components/suprimentos/TabPrecoMedio';
+import TabApresentacao from '../components/suprimentos/TabApresentacao';
 import ComposicaoModal, { ComposicaoModalConfig } from '../components/charts/ComposicaoModal';
 
-export type AbaSuprimentos = 'geral' | 'demandas' | 'carteira' | 'fornecedores' | 'compras' | 'recorrencia' | 'preco';
+export type AbaSuprimentos = 'geral' | 'demandas' | 'carteira' | 'fornecedores' | 'compras' | 'recorrencia' | 'preco' | 'apresentacao';
 
 interface SapDashboardsProps {
   onNavigate: (path: string) => void;
@@ -53,6 +54,7 @@ const ABAS: { id: AbaSuprimentos; rotulo: string; icone: typeof Activity; pergun
   { id: 'compras', rotulo: 'Análise de Compras', icone: BarChart3, pergunta: 'No que já foi comprado: onde está concentrado o gasto e de onde ele vem?' },
   { id: 'recorrencia', rotulo: 'Recorrência de Compras', icone: Repeat, pergunta: 'Estamos comprando o mesmo material demais vezes, ou fracionando por falta de planejamento?' },
   { id: 'preco', rotulo: 'Preço Médio', icone: Tags, pergunta: 'Quanto custa, em média, cada item — nos pedidos e nas cotações — e como o preço evoluiu?' },
+  { id: 'apresentacao', rotulo: 'Apresentação', icone: Presentation, pergunta: 'Os indicadores do período em slides 16:9 — para o print no PPT ou para apresentar em tela cheia.' },
 ];
 
 /**
@@ -62,7 +64,7 @@ const ABAS: { id: AbaSuprimentos; rotulo: string; icone: typeof Activity; pergun
  * aplicar-lhes criticidade de requisição ou comprador atribuído não faria
  * sentido.
  */
-const ABAS_COM_FILTRO_GLOBAL = new Set<AbaSuprimentos>(['geral', 'demandas', 'carteira', 'fornecedores']);
+const ABAS_COM_FILTRO_GLOBAL = new Set<AbaSuprimentos>(['geral', 'demandas', 'carteira', 'fornecedores', 'apresentacao']);
 
 /** Janela padrão: últimos 90 dias — larga o bastante para o ciclo RM→PO fechar. */
 const DIAS_PADRAO = 90;
@@ -373,6 +375,18 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
 
       {aba === 'recorrencia' && <TabRecorrenciaCompras onNavigate={onNavigate} />}
       {aba === 'preco' && <TabPrecoMedio />}
+
+      {aba === 'apresentacao' && (
+        <TabApresentacao
+          records={filtrados}
+          recordsAnterior={filtradosAnterior}
+          temComparacao={temComparacao}
+          compradores={compradores}
+          filtros={filtros}
+          posicaoSap={lastSapImport}
+          onAbrirComposicao={abrirComposicao}
+        />
+      )}
 
       <ComposicaoModal config={composicao} onClose={fecharComposicao} />
     </div>
