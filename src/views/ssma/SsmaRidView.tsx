@@ -26,6 +26,7 @@ import {
   Bug,
   Lightbulb,
   Target,
+  BarChart3,
 } from 'lucide-react';
 import TourSpotlight from '../../components/help/TourSpotlight';
 import { usePageTour } from '../../components/help/TourRegistryContext';
@@ -54,6 +55,7 @@ import SsmaFormEditorModal from '../../components/ssma/SsmaFormEditorModal';
 import SsmaRidPlanosAcaoView from '../../components/ssma/SsmaRidPlanosAcaoView';
 import { MostrarExcluidosToggle } from '../../components/ui/ExcluidosControls';
 import { useToast } from '../../components/ui/Toast';
+import { canAccessPage } from '../../lib/pages';
 
 interface SsmaRidViewProps {
   user: Profile;
@@ -319,6 +321,17 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
 
         {/* Controles do Cabeçalho: Botão Admin + Alternador de Abas */}
         <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-center">
+          {canAccessPage(user, 'ssma_rid_relatorio') && (
+            <button
+              type="button"
+              onClick={() => onNavigate('/formularios/ssma-rid/relatorio')}
+              className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-3.5 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-300 transition-colors shadow-2xs"
+              title="Abertos × fechados por setor e período — quadro para apresentação"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Relatório
+            </button>
+          )}
           {ehAdmin && (
             <button
               type="button"

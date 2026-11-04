@@ -772,6 +772,14 @@ export const FEATURE_FLAGS: PageDef[] = [
     label: 'RID: Editar todos os desvios (se desmarcado, edita apenas os criados pelo próprio usuário)',
     defaultRoles: ['admin'],
   },
+  // Relatório do RID (indicadores por setor e período, para apresentação).
+  // Nasce só para admin (regra 4); o SSMA recebe pela Gestão de Acessos.
+  {
+    id: 'ssma_rid_relatorio',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'RID: Relatório de indicadores (abertos × fechados por setor e período)',
+    defaultRoles: ['admin'],
+  },
 ];
 
 export interface FormularioSubpermissaoDef {
