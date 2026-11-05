@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizarHoraAse, validarPeriodoAse } from './aseHorarios';
+import { diaSeguinteAse, formatarPeriodoAse, normalizarHoraAse, validarPeriodoAse, viraDiaAse } from './aseHorarios';
 import { calcularHorasASE } from './rhApi';
 
 describe('digitação de horários na ASE', () => {
@@ -22,8 +22,28 @@ describe('digitação de horários na ASE', () => {
 });
 
 describe('ordem dos horários da ASE', () => {
-  it.each([['19:00', '17:00'], ['23:00', '01:00'], ['1730', '700']])('bloqueia entrada %s maior que saída %s', (entrada, saida) => {
-    expect(validarPeriodoAse(entrada, saida)).toBe('A entrada não pode ser posterior à saída.');
+  it.each([['19:00', '17:00'], ['1730', '700'], ['07:00', '06:00']])('bloqueia virada de dia longa demais (provável troca): %s - %s', (entrada, saida) => {
+    expect(validarPeriodoAse(entrada, saida)).toMatch(/mais de 12h/);
+  });
+
+  it.each([['17:00', '00:45'], ['23:00', '01:00'], ['16:00', '0400'], ['22:00', '00:00']])('aceita 2º turno com saída no dia seguinte: %s - %s', (entrada, saida) => {
+    expect(validarPeriodoAse(entrada, saida)).toBeNull();
+    expect(viraDiaAse(entrada, saida)).toBe(true);
+  });
+
+  it('17:00 às 00:45 com 1h de intervalo dá 6h45 + adicional noturno', () => {
+    const r = calcularHorasASE('17:00', '00:45', 60);
+    expect(r.minutosDiurnos).toBe(240);
+    expect(r.minutosNoturnos).toBe(165);
+  });
+
+  it('marca o período e o dia seguinte para o PDF e a tela', () => {
+    expect(formatarPeriodoAse('17:00', '00:45')).toBe('17:00 - 00:45 (+1 dia)');
+    expect(formatarPeriodoAse('07:00', '16:00')).toBe('07:00 - 16:00');
+    expect(formatarPeriodoAse('', '16:00')).toBe('');
+    expect(viraDiaAse('07:00', '16:00')).toBe(false);
+    expect(diaSeguinteAse('2026-11-07')).toBe('08/11');
+    expect(diaSeguinteAse('2026-12-31')).toBe('01/01');
   });
 
   it.each([['07:00', '16:00'], ['17:00', '19:00'], ['00:00', '23:59'], ['17:00', '17:00'], ['', '19:00'], ['17:00', ''], ['', '']])('aceita período %s - %s ou rascunho incompleto', (entrada, saida) => {

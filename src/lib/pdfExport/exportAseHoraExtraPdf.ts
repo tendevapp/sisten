@@ -12,6 +12,7 @@ import { createDoc, PdfTextWriter, downloadPdf, docToPdfGerado, baixarPdfGerado,
 export type { PdfGerado };
 import { diaDaSemana } from '../rhApi';
 import type { GrupoAse, LinhaAreaSubsetor, LinhaColaboradorAse, PontoDiario, ResumoAse } from '../aseRelatorio';
+import { formatarPeriodoAse } from '../aseHorarios';
 import {
   AUTOR_NAO_REGISTRADO, CABECALHO_ASES, CABECALHO_COLABORADORES, CABECALHO_EVENTOS, type AuditoriaAse,
 } from '../aseAuditoria';
@@ -226,9 +227,7 @@ function drawTableRow(writer: PdfTextWriter, item: AseHoraExtraItem, index: numb
         color: item.refeicao ? rgb(0.12, 0.20, 0.32) : rgb(0.65, 0.7, 0.75),
       });
     } else if (col.key === 'horario') {
-      const text = (item.hora_entrada && item.hora_saida)
-        ? `${item.hora_entrada} - ${item.hora_saida}`
-        : '-';
+      const text = (item.hora_entrada && item.hora_saida) ? formatarPeriodoAse(item.hora_entrada, item.hora_saida, ' - ', ' (+1)') : '-';
       const textWidth = font.widthOfTextAtSize(text, 7);
       page.drawText(text, {
         x: curX + (col.width - textWidth) / 2,
@@ -543,13 +542,14 @@ export async function gerarAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraComple
 
   writer.spacer(14);
 
-  // Definição padronizada de colunas exclusivas para Transporte (45 + 115 + 155 + 70 + 54 + 60 = 499 pt)
+  // Definição padronizada de colunas exclusivas para Transporte (45 + 115 + 145 + 70 + 64 + 60 = 499 pt)
+  // HORÁRIO HE com 64 pt para caber "17:00 - 00:45 (+1)" do 2º turno.
   const COLS_TRANSP: ColumnDef[] = [
     { key: 'registro', label: 'MATRÍCULA', width: 45, align: 'center' },
     { key: 'colaborador_contato', label: 'COLABORADOR / CONTATO', width: 115, align: 'left' },
-    { key: 'rota_ponto', label: 'ROTA / PONTO DE EMBARQUE', width: 155, align: 'left' },
+    { key: 'rota_ponto', label: 'ROTA / PONTO DE EMBARQUE', width: 145, align: 'left' },
     { key: 'setor_turno', label: 'SETOR / TURNO', width: 70, align: 'left' },
-    { key: 'horario', label: 'HORÁRIO HE', width: 54, align: 'center' },
+    { key: 'horario', label: 'HORÁRIO HE', width: 64, align: 'center' },
     { key: 'protocolo', label: 'ASE', width: 60, align: 'center' },
   ];
 
@@ -735,7 +735,7 @@ export async function gerarAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraComple
             color: rgb(0.45, 0.5, 0.58),
           });
         } else if (col.key === 'horario') {
-          const text = (it.hora_entrada && it.hora_saida) ? `${it.hora_entrada} - ${it.hora_saida}` : '-';
+          const text = (it.hora_entrada && it.hora_saida) ? formatarPeriodoAse(it.hora_entrada, it.hora_saida, ' - ', ' (+1)') : '-';
           const textWidth = font.widthOfTextAtSize(text, 7);
           page.drawText(text, {
             x: Math.max(curX + 2, curX + (col.width - textWidth) / 2),
@@ -926,7 +926,7 @@ export async function gerarAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraComple
             color: rgb(0.2, 0.25, 0.35),
           });
         } else if (col.key === 'horario') {
-          const text = (it.hora_entrada && it.hora_saida) ? `${it.hora_entrada} - ${it.hora_saida}` : '-';
+          const text = (it.hora_entrada && it.hora_saida) ? formatarPeriodoAse(it.hora_entrada, it.hora_saida, ' - ', ' (+1)') : '-';
           const textWidth = font.widthOfTextAtSize(text, 7.5);
           page.drawText(text, {
             x: Math.max(curX + 2, curX + (col.width - textWidth) / 2),
@@ -1140,7 +1140,7 @@ export async function gerarAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraComple
           color: it.refeicao ? rgb(0.12, 0.20, 0.32) : rgb(0.65, 0.7, 0.75),
         });
       } else if (col.key === 'horario') {
-        const text = (it.hora_entrada && it.hora_saida) ? `${it.hora_entrada} - ${it.hora_saida}` : '-';
+        const text = (it.hora_entrada && it.hora_saida) ? formatarPeriodoAse(it.hora_entrada, it.hora_saida, ' - ', ' (+1)') : '-';
         const textWidth = font.widthOfTextAtSize(text, 6.5);
         page.drawText(text, {
           x: Math.max(curX + 1, curX + (col.width - textWidth) / 2),
@@ -1360,7 +1360,7 @@ export function exportAseConsolidadoDiaExcel(solicitacoes: AseHoraExtraCompleta[
       it.cargo || '',
       it.setor_nome,
       it.turno_nome,
-      (it.hora_entrada && it.hora_saida) ? `${it.hora_entrada} - ${it.hora_saida}` : '',
+      (it.hora_entrada && it.hora_saida) ? formatarPeriodoAse(it.hora_entrada, it.hora_saida, ' - ', ' (+1)') : '',
       it.protocolo_ase,
       it.solicitante_nome,
       it.observacao || '',
@@ -1388,7 +1388,7 @@ export function exportAseConsolidadoDiaExcel(solicitacoes: AseHoraExtraCompleta[
       it.cargo || '',
       it.setor_nome,
       it.turno_nome,
-      (it.hora_entrada && it.hora_saida) ? `${it.hora_entrada} - ${it.hora_saida}` : '',
+      (it.hora_entrada && it.hora_saida) ? formatarPeriodoAse(it.hora_entrada, it.hora_saida, ' - ', ' (+1)') : '',
       it.protocolo_ase,
       it.solicitante_nome,
       it.observacao || '',

@@ -60,7 +60,7 @@ import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import SeletorColaboradoresModal from '../components/rh/SeletorColaboradoresModal';
 import CampoHorarioAse from '../components/rh/CampoHorarioAse';
-import { ATALHOS_ENTRADA_ASE, ATALHOS_SAIDA_ASE, validarPeriodoAse } from '../lib/aseHorarios';
+import { ATALHOS_ENTRADA_ASE, ATALHOS_SAIDA_ASE, diaSeguinteAse, formatarPeriodoAse, validarPeriodoAse, viraDiaAse } from '../lib/aseHorarios';
 
 // Carregado sob demanda: o relatorio traz o Recharts junto, e quem só vai
 // preencher uma ASE não deveria pagar esse download.
@@ -161,9 +161,7 @@ function buildAseHoraExtraEmail(params: {
   const colabRefeicao = solicitacao.itens.filter(it => it.refeicao);
 
   const linhasColaboradores = solicitacao.itens.map((it, idx) => {
-    const horarioStr = (it.hora_entrada && it.hora_saida)
-      ? `${it.hora_entrada} às ${it.hora_saida}`
-      : 'Horário a definir';
+    const horarioStr = formatarPeriodoAse(it.hora_entrada, it.hora_saida, ' às ') || 'Horário a definir';
     const intervStr = it.intervalo_minutos ? ` (Intervalo: ${it.intervalo_minutos}min)` : ' (Sem intervalo)';
     const heStr = it.percentual_he != null ? ` | %HE: ${it.percentual_he}%` : '';
     const totalStr = it.total_horas != null ? ` | Total: ${it.total_horas.toFixed(2)}h` : '';
@@ -184,7 +182,7 @@ function buildAseHoraExtraEmail(params: {
         const rotaStr = it.rota_transporte ? ` [ROTA: ${it.rota_transporte}${it.horario_embarque_transporte ? ` - ${it.horario_embarque_transporte}` : ''}]` : '';
         const pontoStr = it.ponto_embarque_transporte ? ` [PONTO: ${it.ponto_embarque_transporte}]` : '';
         const contatoStr = it.contato_transporte ? ` [TEL: ${it.contato_transporte}]` : '';
-        const horStr = (it.hora_entrada && it.hora_saida) ? ` [HORÁRIO HE: ${it.hora_entrada} às ${it.hora_saida}]` : '';
+        const horStr = (it.hora_entrada && it.hora_saida) ? ` [HORÁRIO HE: ${formatarPeriodoAse(it.hora_entrada, it.hora_saida, ' às ')}]` : '';
         return `- ${it.registro} - ${it.nome}${it.cargo ? ` (${it.cargo})` : ''}${rotaStr}${pontoStr}${contatoStr}${horStr}`;
       }).join('\r\n')
     : '(Nenhum colaborador necessita de transporte)';
@@ -1740,6 +1738,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                   key={it.id}
                   item={it}
                   somenteLeitura={somenteLeitura}
+                  dataExecucao={dados.data_execucao}
                   onChange={patch => alterarItem(it.id, patch)}
                   onRemover={() => removerItem(it)}
                 />
@@ -1929,6 +1928,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                       key={it.id}
                       item={it}
                       somenteLeitura={somenteLeitura}
+                      dataExecucao={dados.data_execucao}
                       onChange={patch => alterarItem(it.id, patch)}
                       onRemover={() => removerItem(it)}
                     />
@@ -2189,14 +2189,18 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
 // =====================================================================
 
 function CardColaboradorMobile({
-  item, somenteLeitura, onChange, onRemover,
+  item, somenteLeitura, dataExecucao, onChange, onRemover,
 }: {
   item: AseHoraExtraItem;
   somenteLeitura: boolean;
+  dataExecucao?: string | null;
   onChange: (patch: Partial<AseHoraExtraItem>) => void;
   onRemover: () => void;
 }) {
   const erroHorario = validarPeriodoAse(item.hora_entrada, item.hora_saida);
+  const avisoDiaSeguinte = !erroHorario && viraDiaAse(item.hora_entrada, item.hora_saida)
+    ? `Saída ${diaSeguinteAse(dataExecucao) ? `em ${diaSeguinteAse(dataExecucao)} ` : ''}(dia seguinte)`
+    : null;
   const excedeLimiteClt = (item.total_horas || 0) > LIMITE_DIARIO_CLT_HORAS;
   const inputStyle = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50';
   const manual = item.pessoa_id === null;
@@ -2314,6 +2318,9 @@ function CardColaboradorMobile({
       {erroHorario && (
         <p role="alert" className="text-xs font-semibold text-rose-600 dark:text-rose-400">{erroHorario}</p>
       )}
+      {avisoDiaSeguinte && (
+        <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-300">🌙 {avisoDiaSeguinte}</p>
+      )}
 
       {/* Intervalo, % HE e Total */}
       <div className="grid grid-cols-3 gap-2 items-end">
@@ -2375,14 +2382,18 @@ function CardColaboradorMobile({
 // =====================================================================
 
 function LinhaColaborador({
-  item, somenteLeitura, onChange, onRemover,
+  item, somenteLeitura, dataExecucao, onChange, onRemover,
 }: {
   item: AseHoraExtraItem;
   somenteLeitura: boolean;
+  dataExecucao?: string | null;
   onChange: (patch: Partial<AseHoraExtraItem>) => void;
   onRemover: () => void;
 }) {
   const erroHorario = validarPeriodoAse(item.hora_entrada, item.hora_saida);
+  const avisoDiaSeguinte = !erroHorario && viraDiaAse(item.hora_entrada, item.hora_saida)
+    ? `Saída ${diaSeguinteAse(dataExecucao) ? `em ${diaSeguinteAse(dataExecucao)} ` : ''}(dia seguinte)`
+    : null;
   const excedeLimiteClt = (item.total_horas || 0) > LIMITE_DIARIO_CLT_HORAS;
   const cellInput = 'h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50';
   const manual = item.pessoa_id === null;
@@ -2448,6 +2459,9 @@ function LinhaColaborador({
         <input type="time" value={item.hora_saida} disabled={somenteLeitura} onChange={e => onChange({ hora_saida: e.target.value })} className={cellInput} />
         {erroHorario && (
           <p role="alert" className="mt-1 text-[10px] font-semibold text-rose-600 dark:text-rose-400">{erroHorario}</p>
+        )}
+        {avisoDiaSeguinte && (
+          <p className="mt-1 whitespace-nowrap text-[10px] font-semibold text-indigo-600 dark:text-indigo-300">🌙 {avisoDiaSeguinte}</p>
         )}
       </td>
       <td className="px-2 py-2">
