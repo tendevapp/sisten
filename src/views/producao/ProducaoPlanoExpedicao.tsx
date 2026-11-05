@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, CircleCheck, ClipboardList, FileText, Loader2, RefreshCw, Save, Truck } from 'lucide-react';
+import { ChevronRight, CircleCheck, ClipboardList, FileSpreadsheet, FileText, Loader2, RefreshCw, Save, Truck } from 'lucide-react';
 import { getISOWeek } from 'date-fns';
 import type { Profile } from '../../types';
 import { ordenarPlanoExpedicao, resumirPlanoExpedicao, type StatusPlanoExpedicao } from '../../lib/producao';
@@ -8,7 +8,14 @@ import {
   listarPlanoExpedicao,
   type PlanoExpedicaoProducao,
 } from '../../lib/producaoApi';
+import {
+  exportarPlanilhaPlanoExpedicao,
+  filtrarPlanoPorPeriodo,
+  rotuloArquivoPeriodo,
+  type PeriodoExportacao,
+} from '../../lib/producaoPlanoExpedicaoExportar';
 import { useToast } from '../../components/ui/Toast';
+import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
 
 type ModoPlano = 'relatorio' | 'dados';
 
@@ -248,6 +255,25 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
 
   const tituloTorres = torresSelecionadas.length ? `TORRES ${torresSelecionadas.join(' E ')}` : 'TODAS AS TORRES';
 
+  /** O que a tela mostra agora: semana/torres do Relatório, ou os filtros da aba Dados. */
+  const linhasDaTela = modo === 'relatorio' ? porTorre.flatMap(([, itens]) => itens) : linhasDados;
+  const rotuloDaTela = modo === 'relatorio'
+    ? `W${semanaRelatorio}${torresSelecionadas.length ? `_Torres_${torresSelecionadas.join('-')}` : ''}`
+    : `Dados${semanaDados !== 'todas' ? `_W${semanaDados}` : ''}${torreDados !== 'todas' ? `_Torre_${torreDados}` : ''}`;
+  const descricaoDaTela = modo === 'relatorio'
+    ? `W${semanaRelatorio} · ${torresSelecionadas.length ? `Torres ${torresSelecionadas.join(', ')}` : 'todas as torres'}`
+    : `Aba Dados · ${semanaDados === 'todas' ? 'todas as semanas' : `W${semanaDados}`} · ${torreDados === 'todas' ? 'todas as torres' : `Torre ${torreDados}`}${busca.trim() ? ` · busca "${busca.trim()}"` : ''}`;
+  const [dialogoExportar, setDialogoExportar] = useState(false);
+
+  const exportar = (alvo: PlanoExpedicaoProducao[], recorte: string) => {
+    if (!alvo.length) { toast.error('Nenhum tramo para exportar nesse período.'); return; }
+    const hoje = new Date();
+    const carimbo = `${String(hoje.getDate()).padStart(2, '0')}${String(hoje.getMonth() + 1).padStart(2, '0')}${String(hoje.getFullYear()).slice(2)}`;
+    exportarPlanilhaPlanoExpedicao(alvo, `Plano_Expedicao_GW_${recorte}_${carimbo}.xlsx`);
+    toast.success(`Planilha exportada com ${alvo.length} tramo${alvo.length === 1 ? '' : 's'}.`);
+    setDialogoExportar(false);
+  };
+
   return <div className="mx-auto max-w-[1500px] space-y-5 pb-12">
     <header className="border-b border-slate-200 pb-4 dark:border-slate-800">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -255,7 +281,10 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
           <span className="rounded-xl bg-blue-50 p-2.5 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"><Truck className="h-5 w-5" /></span>
           <div><h1 className="font-display text-xl font-bold text-slate-900 dark:text-slate-50">Plano de Expedição GW</h1><p className="text-xs text-slate-500 dark:text-slate-400">Programação, faturamento e saída dos tramos.</p></div>
         </div>
-        <button type="button" onClick={() => void carregar()} disabled={carregando} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><RefreshCw className={`h-4 w-4 ${carregando ? 'animate-spin' : ''}`} />Atualizar</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setDialogoExportar(true)} disabled={carregando || !!erro} title="Escolher o período e baixar a planilha" className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-emerald-950/30"><FileSpreadsheet className="h-4 w-4" />Exportar planilha</button>
+          <button type="button" onClick={() => void carregar()} disabled={carregando} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><RefreshCw className={`h-4 w-4 ${carregando ? 'animate-spin' : ''}`} />Atualizar</button>
+        </div>
       </div>
       <nav className="mt-4 flex gap-1 border-b border-slate-200 dark:border-slate-800" aria-label="Navegação do plano de expedição">
         <button type="button" onClick={() => onNavigate('/producao/expedicao')} className={`inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-semibold transition-colors ${modo === 'relatorio' ? 'border-blue-600 text-blue-700 dark:text-blue-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}><ClipboardList className="h-4 w-4" />Relatório</button>
@@ -307,5 +336,89 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
             {!linhasDados.length && <p className="p-8 text-center text-sm text-slate-500">Nenhum tramo encontrado para esse filtro.</p>}
           </section>
         </>}
+    {dialogoExportar && <DialogoExportar
+      linhas={linhas}
+      semanas={semanas}
+      semanaInicial={modo === 'relatorio' ? semanaRelatorio : (semanaDados === 'todas' ? semanaRelatorio : Number(semanaDados))}
+      linhasDaTela={linhasDaTela}
+      descricaoDaTela={descricaoDaTela}
+      onExportar={(alvo, recorte) => exportar(alvo, recorte ?? rotuloDaTela)}
+      onFechar={() => setDialogoExportar(false)}
+    />}
   </div>;
+}
+
+type OpcaoPeriodo = 'tela' | PeriodoExportacao['tipo'];
+
+const CLASSE_CAMPO = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-800 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
+
+function DialogoExportar({
+  linhas, semanas, semanaInicial, linhasDaTela, descricaoDaTela, onExportar, onFechar,
+}: {
+  linhas: PlanoExpedicaoProducao[]; semanas: number[]; semanaInicial: number;
+  linhasDaTela: PlanoExpedicaoProducao[]; descricaoDaTela: string;
+  onExportar: (alvo: PlanoExpedicaoProducao[], recorte: string | null) => void; onFechar: () => void;
+}) {
+  const hoje = new Date();
+  const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+  const [opcao, setOpcao] = useState<OpcaoPeriodo>('tela');
+  const [semanaDe, setSemanaDe] = useState(semanaInicial);
+  const [semanaAte, setSemanaAte] = useState(semanaInicial);
+  const [dataDe, setDataDe] = useState(`${hojeIso.slice(0, 8)}01`);
+  const [dataAte, setDataAte] = useState(hojeIso);
+  const [campoData, setCampoData] = useState<'data_expedicao' | 'data_carregamento'>('data_expedicao');
+  const [torre, setTorre] = useState('todas');
+  const torres = useMemo(() => [...new Set(linhas.map(linha => linha.torre_numero))].sort((a, b) => a - b), [linhas]);
+
+  const periodo: PeriodoExportacao | null = opcao === 'semanas' ? { tipo: 'semanas', de: semanaDe, ate: semanaAte }
+    : opcao === 'datas' ? { tipo: 'datas', de: dataDe, ate: dataAte, campo: campoData }
+      : opcao === 'tudo' ? { tipo: 'tudo' } : null;
+  const datasOk = opcao !== 'datas' || (dataValida(dataDe) && dataValida(dataAte));
+  const torreNum = torre === 'todas' ? null : Number(torre);
+  const alvo = !periodo ? linhasDaTela : datasOk ? filtrarPlanoPorPeriodo(linhas, periodo, torreNum) : [];
+
+  const opcoes: Array<{ valor: OpcaoPeriodo; titulo: string; detalhe: string }> = [
+    { valor: 'tela', titulo: 'Filtro da tela', detalhe: descricaoDaTela },
+    { valor: 'semanas', titulo: 'Intervalo de semanas', detalhe: 'Pela semana de programação' },
+    { valor: 'datas', titulo: 'Intervalo de datas', detalhe: 'Pela data de expedição ou de carregamento' },
+    { valor: 'tudo', titulo: 'Plano completo', detalhe: 'Todas as semanas' },
+  ];
+
+  return <Modal onClose={onFechar} ariaLabel="Exportar planilha" maxWidth="max-w-lg" layout="dialog">
+    <ModalHeader onClose={onFechar}>
+      <p className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Exportar planilha</p>
+      <p className="text-xs text-slate-500">Escolha o período que vai para o Excel.</p>
+    </ModalHeader>
+    <ModalBody className="space-y-4">
+      <fieldset className="grid gap-2">
+        <legend className="mb-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">Período</legend>
+        {opcoes.map(item => <label key={item.valor} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors ${opcao === item.valor ? 'border-blue-500 bg-blue-50/60 dark:border-blue-700 dark:bg-blue-950/30' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/60'}`}>
+          <input type="radio" name="periodo-exportacao" checked={opcao === item.valor} onChange={() => setOpcao(item.valor)} className="mt-0.5 h-4 w-4 text-blue-600 focus:ring-blue-500" />
+          <span className="min-w-0"><span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">{item.titulo}</span><span className="block truncate text-xs text-slate-500">{item.detalhe}</span></span>
+        </label>)}
+      </fieldset>
+
+      {opcao === 'semanas' && <div className="grid grid-cols-2 gap-3">
+        <label className="grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300"><span>De</span><select value={semanaDe} onChange={e => setSemanaDe(Number(e.target.value))} className={CLASSE_CAMPO}>{semanas.map(s => <option key={s} value={s}>W{s}</option>)}</select></label>
+        <label className="grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300"><span>Até</span><select value={semanaAte} onChange={e => setSemanaAte(Number(e.target.value))} className={CLASSE_CAMPO}>{semanas.map(s => <option key={s} value={s}>W{s}</option>)}</select></label>
+      </div>}
+
+      {opcao === 'datas' && <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300"><span>De</span><input type="date" min={`${ANO_MIN}-01-01`} max={`${ANO_MAX}-12-31`} value={dataDe} onChange={e => setDataDe(e.target.value)} className={CLASSE_CAMPO} /></label>
+          <label className="grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300"><span>Até</span><input type="date" min={`${ANO_MIN}-01-01`} max={`${ANO_MAX}-12-31`} value={dataAte} onChange={e => setDataAte(e.target.value)} className={CLASSE_CAMPO} /></label>
+        </div>
+        <label className="grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300"><span>Considerar a data de</span><select value={campoData} onChange={e => setCampoData(e.target.value as typeof campoData)} className={CLASSE_CAMPO}><option value="data_expedicao">Expedição</option><option value="data_carregamento">Carregamento</option></select></label>
+        <p className="text-xs text-slate-500">Tramos sem essa data preenchida ficam de fora.</p>
+        {!datasOk && <p className="text-xs font-semibold text-rose-600">Informe as duas datas com o ano em quatro dígitos.</p>}
+      </div>}
+
+      {opcao !== 'tela' && <label className="grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300"><span>Torre</span><select value={torre} onChange={e => setTorre(e.target.value)} className={CLASSE_CAMPO}><option value="todas">Todas</option>{torres.map(t => <option key={t} value={t}>Torre {t}</option>)}</select></label>}
+    </ModalBody>
+    <ModalFooter>
+      <p className="mr-auto text-xs font-semibold text-slate-600 dark:text-slate-300">{alvo.length} tramo{alvo.length === 1 ? '' : 's'}</p>
+      <button type="button" onClick={onFechar} className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">Cancelar</button>
+      <button type="button" disabled={!alvo.length || !datasOk} onClick={() => onExportar(alvo, periodo ? rotuloArquivoPeriodo(periodo, torreNum) : null)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"><FileSpreadsheet className="h-4 w-4" />Exportar</button>
+    </ModalFooter>
+  </Modal>;
 }
