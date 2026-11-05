@@ -18,7 +18,7 @@
  * Eixos do mundo 3D: x = x da planta, z = y da planta (para baixo = sul), y = altura.
  */
 
-import { doisDigitos, type Endereco } from './gembaEndereco';
+import { doisDigitos, interpretarPosicao, type Endereco } from './gembaEndereco';
 
 export type Vec2 = [number, number];
 export type Vec3 = [number, number, number];
@@ -542,4 +542,16 @@ export function vistaPlanta(): Vista {
   const largura = (GALPAO[2] - GALPAO[0]) * METROS_POR_PX;
   const profundidade = (GALPAO[3] - GALPAO[1]) * METROS_POR_PX;
   return { alvo: [x, 0, z], camera: [x, largura * 1.05, z + 0.01], enquadrar: [largura, profundidade] };
+}
+
+/**
+ * Onde a posição fica no galpão, em texto, como no painel do Gemba:
+ * `104.230209` → "Anexo 0004 › Estante 2 › Bloco 23 › Andar 02 › Apto 09".
+ * `null` quando a posição está vazia ou não tem lugar no mapa (externo, virtual, fora do padrão).
+ */
+export function descreverPosicao(bruto: string | null | undefined): string | null {
+  const endereco = interpretarPosicao(bruto);
+  const loc = endereco ? localizar(endereco) : null;
+  // Posição só com depósito (101.ARAMES) repete "Depósito 0001" na trilha.
+  return loc ? [...new Set(loc.trilha)].join(' › ') : null;
 }

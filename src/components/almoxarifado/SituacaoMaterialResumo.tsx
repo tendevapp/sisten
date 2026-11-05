@@ -16,6 +16,8 @@ import { AlertTriangle, Boxes, ClipboardList, Eye, EyeOff, History, Loader2, Map
 import { formatQtd } from '../../lib/format';
 import { hojeISO } from '../../lib/fichaEpi';
 import { formatDeposito } from '../../lib/almoxarifado';
+import { separarPosicoes } from '../../lib/gembaEndereco';
+import { descreverPosicao } from '../../lib/gembaLayout';
 import {
   ROTULO_SITUACAO_PEDIDO, abaixoDoMinimo, aguardandoMigo, buscarSituacaoMaterial, documentoComItem, situacaoPedido,
   type ChegadaSituacao, type SituacaoMaterial, type SituacaoPedido,
@@ -113,7 +115,7 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
 
   const hoje = hojeISO();
   const umb = dados.umb || '';
-  const posicoes = [...new Set([dados.posicao_cadastro, ...dados.depositos.map(d => d.posicao)].filter((p): p is string => !!p?.trim()))];
+  const posicoes = [...new Set([dados.posicao_cadastro, ...dados.depositos.map(d => d.posicao)].flatMap(p => separarPosicoes(p)))];
   const abaixo = abaixoDoMinimo(dados);
   // RM que já virou pedido aparece no pedido; aqui fica só a que ainda espera compra.
   const rmsSemPedido = dados.rms.filter(r => r.situacao === 'sem_pedido');
@@ -187,10 +189,22 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
             ))}
           </ul>
         )}
+        {/* Código da posição + onde fica no galpão, como no Gemba, para achar o item. */}
         {posicoes.length > 0 && (
-          <p className="mt-2 flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300">
-            <MapPin className="h-3.5 w-3.5 shrink-0" /> {posicoes.join(' · ')}
-          </p>
+          <ul className="mt-2 space-y-1">
+            {posicoes.map(p => {
+              const lugar = descreverPosicao(p);
+              return (
+                <li key={p} className="flex items-start gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                  <span className="min-w-0">
+                    <span className="font-mono">{p}</span>
+                    {lugar && <span className="block font-semibold text-slate-800 dark:text-slate-100">{lugar}</span>}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
 

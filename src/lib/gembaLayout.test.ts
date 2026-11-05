@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { interpretarPosicao } from './gembaEndereco';
 import {
   ESTANTES,
+  descreverPosicao,
   GALPAO,
   METROS_POR_PX,
   ZONAS,
@@ -215,5 +216,21 @@ describe('gembaLayout - vista 2D', () => {
     // Depósito 0001: face norte, corre para oeste → de frente a numeração cresce para a direita.
     expect(numeracaoInvertidaDeFrente(dep)).toBe(false);
     expect(vaosDaVistaDeFrente(dep, 5)).toEqual([4, 5, 6]);
+  });
+});
+
+describe('gembaLayout - descreverPosicao', () => {
+  it('descreve a posição como a trilha do Gemba', () => {
+    expect(descreverPosicao('104.230209')).toBe('Anexo 0004 › Estante 2 › Bloco 23 › Andar 02 › Apto 09');
+    expect(descreverPosicao('101.040100')).toBe('Depósito 0001 › Bloco 04 › Andar 01');
+    expect(descreverPosicao('102.ANEXO')).toBe('Material Apoio Manutenção');
+  });
+
+  it('não repete o depósito quando a posição só tem depósito', () => {
+    expect(descreverPosicao('101.ARAMES')).toBe('Depósito 0001');
+  });
+
+  it('sem lugar no mapa ou vazio → null', () => {
+    for (const p of ['DEPVIRTUAL', '200.0101', '', null, undefined]) expect(descreverPosicao(p)).toBeNull();
   });
 });
