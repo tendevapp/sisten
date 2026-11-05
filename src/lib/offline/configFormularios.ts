@@ -303,6 +303,7 @@ const BUCKETS: Record<string, ConfigBucket> = {
   'plan-kaizen': { rotulo: 'Aqui TEN Melhoria! — foto' },
   'qua-rnc-evidencias': { rotulo: 'RNC — anexo' },
   'alm-recebimento': { rotulo: 'Recebimento — foto' },
+  'port-alcoolemia': { rotulo: 'Teste de alcoolemia — foto' },
 };
 
 /** RPCs que só leem (POST por protocolo): a resposta fica guardada como as leituras comuns. */

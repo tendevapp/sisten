@@ -12,8 +12,10 @@
 
 import { supabase } from '../db/supabaseClient';
 import { buscarTudo } from './buscarTudo';
+import { comprimirImagemUpload } from './imageCompression';
 import type {
   PortAlcoolemiaResultado,
+  PortAlcoolemiaFoto,
   PortAlcoolemiaTeste,
   PortAlcoolemiaVinculo,
   PortBriefingParticipante,
@@ -716,6 +718,62 @@ export async function adicionarOcorrencia(
   } as PortRelatorioOcorrencia;
 }
 
+/** Tipos de lançamento que entram e precisam de saída registrada (o que chega tem que sair). */
+export const TIPOS_COM_SAIDA = ['ENTRADA_VEICULO', 'VEICULO_LEVE', 'ENTRADA_VISITANTE'] as const;
+
+export function precisaDeSaida(o: Pick<PortRelatorioOcorrencia, 'tipo_registro' | 'hora_saida' | 'status_permanencia'>): boolean {
+  if (o.hora_saida) return false;
+  if (o.status_permanencia === 'NO_PATIO') return true;
+  return (TIPOS_COM_SAIDA as readonly string[]).includes(o.tipo_registro || '');
+}
+
+/**
+ * Permanência entre entrada e saída (`HH:MM` ou `HH:MM:SS`), em minutos.
+ * Saída menor que a entrada = saiu depois da meia-noite. `null` sem os dois horários.
+ */
+export function minutosDePermanencia(entrada?: string | null, saida?: string | null): number | null {
+  const min = (h?: string | null) => {
+    const m = /^(\d{1,2}):(\d{2})/.exec(h || '');
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const e = min(entrada);
+  const s = min(saida);
+  if (e == null || s == null) return null;
+  return s >= e ? s - e : s + 24 * 60 - e;
+}
+
+/** "45 min", "2h05". */
+export function formatarPermanencia(minutos: number | null): string {
+  if (minutos == null) return '';
+  if (minutos < 60) return `${minutos} min`;
+  return `${Math.floor(minutos / 60)}h${String(minutos % 60).padStart(2, '0')}`;
+}
+
+export interface OcorrenciaSemSaida extends PortRelatorioOcorrencia {
+  relatorio: { id: string; data: string; turno: string; numero_protocolo: string };
+}
+
+/**
+ * Veículos e visitantes que entraram e ainda não têm saída, de QUALQUER plantão
+ * (o carro que entra num turno costuma sair no outro). Últimos 90 dias.
+ */
+export async function listarSemSaidaPortaria(): Promise<OcorrenciaSemSaida[]> {
+  const desde = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await (supabase as any)
+    .from('port_relatorio_ocorrencias')
+    .select('*, relatorio:port_relatorio_portaria!inner (id, data, turno, numero_protocolo, excluido_em)')
+    .in('tipo_registro', TIPOS_COM_SAIDA as unknown as string[])
+    .is('hora_saida', null)
+    .is('excluido_em', null)
+    .is('relatorio.excluido_em', null)
+    .gte('created_at', desde)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return ((data || []) as OcorrenciaSemSaida[])
+    .filter(o => o.relatorio)
+    .sort((a, b) => `${a.relatorio.data} ${a.horario}`.localeCompare(`${b.relatorio.data} ${b.horario}`));
+}
+
 export async function atualizarOcorrencia(
   id: string,
   dados: Partial<PortRelatorioOcorrencia>
@@ -940,6 +998,8 @@ export async function criarSessaoBriefingParaOcorrencia(params: {
   autorizado_por?: string;
   motivo?: string;
   horario?: string;
+  /** Vigilante que lançou a entrada: vira o autor da turma (editar/excluir é do autor ou admin). */
+  criado_por?: string | null;
 }): Promise<PortBriefingSessao | null> {
   const hoje = hojeISO();
   try {
@@ -955,6 +1015,7 @@ export async function criarSessaoBriefingParaOcorrencia(params: {
       instrutor_responsavel: 'VÍDEO INSTITUCIONAL',
       tema_treinamento: `INTEGRAÇÃO E BRIEFING DE SEGURANÇA — ${empFormatada}`,
       observacoes: `Sessão exclusiva gerada no acesso da portaria às ${params.horario || horaAgora()}. Visitantes: ${nomesFormatados}${params.autorizado_por ? ` (Autorizado por: ${params.autorizado_por.trim().toUpperCase()})` : ''}`,
+      criado_por: params.criado_por || null,
     });
 
     for (const p of listaValida) {
@@ -1779,6 +1840,64 @@ export async function obterTesteAlcoolemia(id: string): Promise<PortAlcoolemiaTe
   return (data as unknown as PortAlcoolemiaTeste) || null;
 }
 
+// ---------------------------------------------------------------------
+// Fotos do teste de alcoolemia (bucket port-alcoolemia, comprimidas antes)
+// ---------------------------------------------------------------------
+
+const BUCKET_ALCOOLEMIA = 'port-alcoolemia';
+
+/** Tira a URL assinada (expira) antes de gravar a lista no banco. */
+function semUrlFotos(fotos?: PortAlcoolemiaFoto[] | null): PortAlcoolemiaFoto[] {
+  return (fotos || []).map(({ preview_url: _url, ...f }) => f);
+}
+
+/**
+ * Comprime e sobe as fotos para `<testeId>/...`. Foto que falha não derruba o
+ * teste: volta em `falhas` para a tela avisar.
+ */
+export async function subirFotosAlcoolemia(testeId: string, arquivos: File[]): Promise<{ ok: PortAlcoolemiaFoto[]; falhas: number }> {
+  const ok: PortAlcoolemiaFoto[] = [];
+  let falhas = 0;
+  for (const file of arquivos) {
+    try {
+      const blob = await comprimirImagemUpload(file);
+      const ehJpeg = blob !== file;
+      const extensao = ehJpeg ? 'jpg' : (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const fotoId = Math.random().toString(36).substring(2, 9);
+      const path = `${testeId}/${fotoId}.${extensao}`;
+      const mime = ehJpeg ? 'image/jpeg' : file.type;
+      const { error } = await supabase.storage.from(BUCKET_ALCOOLEMIA).upload(path, blob, { contentType: mime, upsert: false });
+      if (error) throw new Error(error.message);
+      ok.push({ id: fotoId, path, name: file.name, size: blob.size, mime_type: mime, created_at: new Date().toISOString() });
+    } catch (err) {
+      console.warn('Falha no upload de foto do teste de alcoolemia:', err);
+      falhas++;
+    }
+  }
+  return { ok, falhas };
+}
+
+/** URLs novas (24 h) para as miniaturas; só pede para os testes que têm foto. */
+export async function assinarFotosAlcoolemia(testes: PortAlcoolemiaTeste[]): Promise<PortAlcoolemiaTeste[]> {
+  const paths = testes.flatMap(t => (t.fotos || []).map(f => f.path)).filter(Boolean);
+  if (paths.length === 0) return testes;
+  const urls: Record<string, string> = {};
+  try {
+    const { data } = await supabase.storage.from(BUCKET_ALCOOLEMIA).createSignedUrls(paths, 60 * 60 * 24);
+    (data || []).forEach(item => { if (item.path && item.signedUrl) urls[item.path] = item.signedUrl; });
+  } catch (err) {
+    console.warn('Erro ao assinar fotos da alcoolemia:', err);
+  }
+  return testes.map(t => (t.fotos?.length ? { ...t, fotos: t.fotos.map(f => ({ ...f, preview_url: urls[f.path] || '' })) } : t));
+}
+
+/** Apaga do Storage as fotos tiradas do teste na edição (falha só avisa no console). */
+export async function removerFotosAlcoolemia(paths: string[]): Promise<void> {
+  if (!paths.length) return;
+  const { error } = await supabase.storage.from(BUCKET_ALCOOLEMIA).remove(paths);
+  if (error) console.warn('Fotos removidas do teste ficaram no Storage:', error.message);
+}
+
 export async function criarTesteAlcoolemia(
   dados: Partial<PortAlcoolemiaTeste>
 ): Promise<PortAlcoolemiaTeste> {
@@ -1788,6 +1907,9 @@ export async function criarTesteAlcoolemia(
   const turno = dados.turno || sugerirTurno();
 
   const payload = {
+    // Id gerado na tela quando há foto: a foto sobe antes, na pasta do teste.
+    ...(dados.id ? { id: dados.id } : {}),
+    fotos: semUrlFotos(dados.fotos),
     codigo_formulario: codigo,
     numero_protocolo: dados.numero_protocolo || gerarProtocolo('ALC', dataTeste),
     data: dataTeste,
@@ -1845,6 +1967,7 @@ export async function atualizarTesteAlcoolemia(
     .from('port_alcoolemia_testes')
     .update({
       ...dados,
+      ...(dados.fotos ? { fotos: semUrlFotos(dados.fotos) } : {}),
       updated_at: new Date().toISOString(),
     } as any)
     .eq('id', id)

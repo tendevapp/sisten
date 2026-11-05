@@ -9,7 +9,7 @@
  * consolidado (com cada sessão em uma página e assinaturas digitais renderizadas).
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft, Search, FileDown, CheckCircle2,
   Trash2, Loader2, ShieldCheck, UserCheck, Check, AlertCircle, Clock,
@@ -108,8 +108,25 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
   const [sessaoAtiva, setSessaoAtiva] = useState<PortBriefingSessao | null>(null);
   const [sessoesSelecionadasIds, setSessoesSelecionadasIds] = useState<string[]>([]);
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
-  // Só o autor da sessão (ou admin) altera a lista de presença / assinaturas.
+  // Excluir turma, remover participante e refazer assinatura: só autor ou admin.
+  // Colher a assinatura que falta é de qualquer vigilante de plantão — as turmas
+  // nascem da entrada na portaria e quem está no tablet quase nunca é o autor
+  // (até 05/11/2026 elas nem gravavam autor, e ninguém conseguia assinar).
   const podeEditarSessao = podeEditarFormulario(user, sessaoAtiva);
+  const podeColetarAssinatura = !!sessaoAtiva && !sessaoAtiva.excluido_em;
+  // Celular/tablet em pé: lista OU detalhe da turma (no computador, os dois lado a lado).
+  const [detalheAberto, setDetalheAberto] = useState(false);
+  const detalheRef = useRef<HTMLDivElement | null>(null);
+  const abrirSessao = (s: PortBriefingSessao) => {
+    setSessaoAtiva(s);
+    setDetalheAberto(true);
+    // Abaixo do lg o detalhe substitui a lista: leva a tela para o topo dele.
+    requestAnimationFrame(() => detalheRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+  };
+  const coletarAssinatura = (p: PortBriefingParticipante) => {
+    setParticipanteParaAssinar(p);
+    setModalAssinaturaAberto(true);
+  };
 
   // CPF Quick Check
   const [cpfConsulta, setCpfConsulta] = useState('');
@@ -227,7 +244,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
     const item = itemParaExcluir;
     try {
       await api.excluirSessaoBriefing(item.id, user.id);
-      if (sessaoAtiva?.id === item.id) setSessaoAtiva(null);
+      if (sessaoAtiva?.id === item.id) { setSessaoAtiva(null); setDetalheAberto(false); }
       setSessoesSelecionadasIds((prev) => prev.filter((id) => id !== item.id));
       setItemParaExcluir(null);
       carregarSessoes();
@@ -360,7 +377,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
       </div>
 
       {/* Instant CPF Validator Box for Portaria */}
-      <div data-tour="briefing-consulta-cpf" className="rounded-2xl border border-slate-200 bg-linear-to-r from-blue-50/50 to-indigo-50/40 p-4 dark:border-slate-800 dark:from-slate-900 dark:to-slate-900/60">
+      <div data-tour="briefing-consulta-cpf" className={`${detalheAberto ? 'hidden lg:block' : ''} rounded-2xl border border-slate-200 bg-linear-to-r from-blue-50/50 to-indigo-50/40 p-4 dark:border-slate-800 dark:from-slate-900 dark:to-slate-900/60`}>
         <form onSubmit={handleConsultarCpf} className="flex flex-col sm:flex-row items-center gap-3">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 shrink-0">
             <UserCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
@@ -412,7 +429,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
       {/* Main Grid: Left = Sessions / Right = Session Details & Attendance Sheet */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Left Column: Sessions list */}
-        <div data-tour="briefing-sessoes" className="space-y-3 lg:col-span-4">
+        <div data-tour="briefing-sessoes" className={`space-y-3 lg:col-span-4 ${detalheAberto ? 'hidden lg:block' : ''}`}>
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <button
@@ -445,7 +462,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
               </p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[700px] overflow-y-auto pr-1">
+            <div className="space-y-2 lg:max-h-[700px] lg:overflow-y-auto lg:pr-1">
               {sessoes.map((s) => {
                 const isSelected = sessaoAtiva?.id === s.id;
                 const isChecked = sessoesSelecionadasIds.includes(s.id);
@@ -456,7 +473,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                 return (
                   <div
                     key={s.id}
-                    onClick={() => setSessaoAtiva(s)}
+                    onClick={() => abrirSessao(s)}
                     className={`cursor-pointer rounded-xl border p-4 transition-all relative ${
                       isSelected
                         ? 'border-blue-500 bg-blue-50/40 ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/20'
@@ -503,15 +520,22 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
         </div>
 
         {/* Right Column: Attendance List for Active Session */}
-        <div data-tour="briefing-participantes" className="lg:col-span-8">
+        <div ref={detalheRef} data-tour="briefing-participantes" className={`scroll-mt-4 lg:col-span-8 ${detalheAberto ? '' : 'hidden lg:block'}`}>
+          <button
+            type="button"
+            onClick={() => setDetalheAberto(false)}
+            className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-xs active:scale-95 lg:hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <ArrowLeft className="h-4 w-4" /> Voltar às turmas
+          </button>
           {sessaoAtiva ? (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900 flex flex-col">
               {/* Header Box */}
               <div className="border-b border-slate-100 p-5 dark:border-slate-800">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-base font-bold text-slate-900 sm:text-lg dark:text-slate-100">
                         {sessaoAtiva.tema_treinamento} ({sessaoAtiva.tipo})
                       </h2>
                       <StatusPortariaBadge status={todosAssinaram ? 'CONCLUIDA' : sessaoAtiva.status} />
@@ -527,7 +551,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {podeEditarSessao ? (
+                    {podeEditarSessao && (
                       <button
                         type="button"
                         onClick={() => setItemParaExcluir(sessaoAtiva)}
@@ -536,16 +560,12 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
-                    ) : (
-                      <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                        Somente leitura — sessão de outro usuário
-                      </span>
                     )}
                   </div>
                 </div>
 
                 {/* Status Bar */}
-                <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-950/50 border border-slate-100 dark:border-slate-800">
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-950/50 border border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-2">
                     {todosAssinaram ? (
                       <CheckCheck className="h-4 w-4 text-emerald-600" />
@@ -580,7 +600,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
               </div>
 
               {/* Attendance Table */}
-              <div className="p-5">
+              <div className="p-4 sm:p-5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
                   Lista de Participantes ({ participantes.length })
                 </h3>
@@ -592,8 +612,60 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                     </p>
                   </div>
                 ) : (
-                  <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
-                    <table className="w-full text-left text-xs">
+                  <>
+                  {/* Celular/tablet em pé: um cartão por participante, botão de assinar grande */}
+                  <ul className="space-y-2.5 md:hidden">
+                    {participantes.map((p) => (
+                      <li key={p.id} className={`rounded-xl border p-3.5 ${p.assinatura_digital ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/20' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{p.nome}</p>
+                            <p className="mt-0.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">CPF: {p.cpf}</p>
+                            <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                              {p.empresa}{p.funcao ? ` · ${p.funcao}` : ''}
+                            </p>
+                          </div>
+                          {podeEditarSessao && (
+                            <button
+                              type="button"
+                              onClick={() => setParticipanteParaRemover(p)}
+                              className="-m-1 rounded-lg p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
+                              aria-label={`Remover ${p.nome}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="mt-3">
+                          {p.assinatura_digital ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                <Check className="h-3.5 w-3.5" /> Assinada
+                              </span>
+                              <img src={p.assinatura_digital} alt={`Assinatura de ${p.nome}`} className="h-10 max-w-[160px] rounded border border-slate-200 bg-white object-contain dark:border-slate-700" />
+                              {podeEditarSessao && (
+                                <button type="button" onClick={() => coletarAssinatura(p)} className="min-h-9 px-1 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400">
+                                  Alterar
+                                </button>
+                              )}
+                            </div>
+                          ) : podeColetarAssinatura ? (
+                            <button
+                              type="button"
+                              onClick={() => coletarAssinatura(p)}
+                              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-sm active:scale-[0.98] hover:bg-blue-500"
+                            >
+                              <PenTool className="h-4 w-4" /> Coletar assinatura
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-400">Pendente</span>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="hidden overflow-hidden rounded-xl border border-slate-200 md:block dark:border-slate-800">
+                    <table data-no-cards className="w-full text-left text-xs">
                       <thead className="border-b border-slate-100 bg-slate-50/75 font-bold uppercase text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400">
                         <tr>
                           <th className="px-3.5 py-3">Nome / CPF</th>
@@ -627,10 +699,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                                   {podeEditarSessao && (
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setParticipanteParaAssinar(p);
-                                        setModalAssinaturaAberto(true);
-                                      }}
+                                      onClick={() => coletarAssinatura(p)}
                                       className="text-[10px] text-blue-600 hover:underline dark:text-blue-400"
                                       title="Refazer assinatura"
                                     >
@@ -638,13 +707,10 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                                     </button>
                                   )}
                                 </div>
-                              ) : podeEditarSessao ? (
+                              ) : podeColetarAssinatura ? (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setParticipanteParaAssinar(p);
-                                    setModalAssinaturaAberto(true);
-                                  }}
+                                  onClick={() => coletarAssinatura(p)}
                                   className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 shadow-2xs dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
                                 >
                                   <PenTool className="h-3.5 w-3.5" />
@@ -671,6 +737,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                       </tbody>
                     </table>
                   </div>
+                  </>
                 )}
               </div>
             </div>

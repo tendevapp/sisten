@@ -2349,12 +2349,25 @@ export interface PortAlcoolemiaTeste {
   examinador_cargo?: string | null;
   termo_assinado_fisicamente?: boolean;
   termo_impresso_em?: string | null;
+  /** Fotos do teste (visor do etilômetro, termo…) no bucket `port-alcoolemia`. */
+  fotos?: PortAlcoolemiaFoto[];
   criado_por?: string | null;
   criado_por_nome?: string | null;
   created_at: string;
   updated_at: string;
   excluido_em?: string | null;
   excluido_por?: string | null;
+}
+
+export interface PortAlcoolemiaFoto {
+  id: string;
+  path: string;
+  name: string;
+  size: number;
+  mime_type: string;
+  created_at: string;
+  /** URL assinada de leitura; expira — sempre reassinar a partir do `path`. */
+  preview_url?: string;
 }
 
 // 7. Gestão de Envios de E-mails (Outlook / mailto)

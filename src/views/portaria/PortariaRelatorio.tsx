@@ -298,6 +298,20 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   // Só o autor do livro de plantão (ou um admin) altera lançamentos; os
   // demais só consultam. Espelha a RLS em `form_pode_editar`.
   const podeEditarAtivo = podeEditarFormulario(user, relatorioAtivo);
+  // O que chega tem que sair: veículos/visitantes sem saída de QUALQUER plantão.
+  // Registrar a saída é de qualquer vigilante (o carro entra num turno e sai no
+  // outro); editar/excluir o lançamento segue só do autor ou admin.
+  const [semSaida, setSemSaida] = useState<api.OcorrenciaSemSaida[]>([]);
+  const [semSaidaAberto, setSemSaidaAberto] = useState(true);
+  const carregarSemSaida = useCallback(async () => {
+    try {
+      setSemSaida(await api.listarSemSaidaPortaria());
+    } catch (e) {
+      console.warn('Erro ao listar entradas sem saída:', e);
+    }
+  }, []);
+  // Recarrega quando o plantão aberto muda (novo lançamento, edição, exclusão, saída).
+  useEffect(() => { void carregarSemSaida(); }, [carregarSemSaida, relatorioAtivo]);
 
   // Modais
   const [modalNovaOcorrencia, setModalNovaOcorrencia] = useState(false);
@@ -761,7 +775,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
   const handleSalvarSaidaRapida = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ocorrenciaParaSaida || !relatorioAtivo) return;
+    if (!ocorrenciaParaSaida) return;
 
     setSalvando(true);
     try {
@@ -797,9 +811,12 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       setModalRegistrarSaida(false);
       setOcorrenciaParaSaida(null);
 
-      const relAtualizado = await api.obterRelatorio(relatorioAtivo.id);
-      if (relAtualizado) setRelatorioAtivo(relAtualizado);
-      carregarRelatorios(relatorioAtivo.id);
+      void carregarSemSaida();
+      if (relatorioAtivo) {
+        const relAtualizado = await api.obterRelatorio(relatorioAtivo.id);
+        if (relAtualizado) setRelatorioAtivo(relAtualizado);
+        carregarRelatorios(relatorioAtivo.id);
+      }
     } catch (err: any) {
       toast.error('Erro ao registrar saída: ' + (err.message || ''));
     } finally {
@@ -927,6 +944,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
           autorizado_por: formOcorrencia.autorizado_por,
           motivo: formOcorrencia.motivo_observacao,
           horario: formOcorrencia.horario,
+          criado_por: user.id,
         });
         toast.success(`Sessão de Briefing criada para ${pessoasValidas.length} participante(s)!`);
       }
@@ -1127,6 +1145,57 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
           </button>
         </div>
       </div>
+
+      {/* O que chegou e ainda não saiu, de qualquer plantão */}
+      {semSaida.length > 0 && (
+        <section className="rounded-2xl border border-amber-300 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/20">
+          <button
+            type="button"
+            onClick={() => setSemSaidaAberto((v) => !v)}
+            aria-expanded={semSaidaAberto}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+          >
+            <span className="flex items-center gap-2 text-sm font-bold text-amber-900 dark:text-amber-200">
+              <Car className="h-4 w-4" />
+              Sem saída registrada ({semSaida.length})
+              <span className="hidden text-xs font-medium text-amber-700 sm:inline dark:text-amber-300">
+                · o que chega tem que sair: registre a saída quando o veículo ou visitante deixar a fábrica
+              </span>
+            </span>
+            <ChevronRight className={`h-4 w-4 shrink-0 text-amber-700 transition-transform ${semSaidaAberto ? 'rotate-90' : ''}`} />
+          </button>
+          {semSaidaAberto && (
+            <ul className="grid gap-2 px-3 pb-3 sm:grid-cols-2 xl:grid-cols-3">
+              {semSaida.map((oc) => {
+                const tipo = TIPOS_REGISTRO.find((t) => t.id === oc.tipo_registro);
+                const outroDia = oc.relatorio.data !== api.hojeISO();
+                return (
+                  <li key={oc.id} className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-900/50 dark:bg-slate-900">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
+                        {oc.placa ? <span className="font-mono">{oc.placa}</span> : (oc.nome_pessoa || oc.empresa || tipo?.label || 'Entrada')}
+                        {oc.placa && oc.empresa && <span className="font-normal text-slate-500"> · {oc.empresa}</span>}
+                      </p>
+                      <p className={`mt-0.5 text-xs ${outroDia ? 'font-semibold text-rose-600 dark:text-rose-400' : 'text-slate-500'}`}>
+                        <LogIn className="mr-1 inline h-3 w-3" />
+                        Entrada {outroDia ? `${oc.relatorio.data.slice(8, 10)}/${oc.relatorio.data.slice(5, 7)} ` : ''}às {String(oc.horario).slice(0, 5)}
+                        {tipo && <span className="text-slate-400"> · {tipo.label}</span>}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => abrirModalDarSaida(oc)}
+                      className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 active:scale-95"
+                    >
+                      <LogOut className="h-3.5 w-3.5" /> Saída
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
 
       {/* Main Grid: Left = Shifts / Right = Occurrence Timeline */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -1360,6 +1429,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                       const temSaidaPendente =
                         (oc.tipo_registro === 'ENTRADA_VEICULO' || oc.tipo_registro === 'VEICULO_LEVE' || oc.tipo_registro === 'ENTRADA_VISITANTE') &&
                         !oc.hora_saida;
+                      const controlaSaida = (api.TIPOS_COM_SAIDA as readonly string[]).includes(oc.tipo_registro || '');
+                      const permanencia = api.formatarPermanencia(api.minutosDePermanencia(oc.horario, oc.hora_saida));
 
                       return (
                         <div
@@ -1374,10 +1445,23 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                         >
                           <div className="flex items-start gap-3.5 min-w-0">
                             {/* Tag de Horário e Setor */}
-                            <div className="flex flex-col items-center justify-center rounded-xl bg-purple-100/70 px-2.5 py-1.5 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 shrink-0">
-                              <span className="font-mono text-xs font-bold">{oc.horario}</span>
-                              <span className="text-[10px] font-semibold uppercase">{oc.local_setor}</span>
-                            </div>
+                            {controlaSaida ? (
+                              <div className="grid shrink-0 grid-cols-1 overflow-hidden rounded-xl border border-purple-200 text-center dark:border-purple-900/60">
+                                <div className="bg-purple-100/70 px-2.5 py-1 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
+                                  <span className="block text-[9px] font-bold uppercase tracking-wide">Entrada</span>
+                                  <span className="font-mono text-xs font-bold">{String(oc.horario).slice(0, 5)}</span>
+                                </div>
+                                <div className={`px-2.5 py-1 ${oc.hora_saida ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'}`}>
+                                  <span className="block text-[9px] font-bold uppercase tracking-wide">Saída</span>
+                                  <span className="font-mono text-xs font-bold">{oc.hora_saida ? String(oc.hora_saida).slice(0, 5) : '--:--'}</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center rounded-xl bg-purple-100/70 px-2.5 py-1.5 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 shrink-0">
+                                <span className="font-mono text-xs font-bold">{oc.horario}</span>
+                                <span className="text-[10px] font-semibold uppercase">{oc.local_setor}</span>
+                              </div>
+                            )}
 
                             {/* Conteúdo formatado da Ocorrência */}
                             <div className="space-y-1.5 min-w-0">
@@ -1395,7 +1479,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                                 ) : oc.hora_saida ? (
                                   <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                                     <LogOut className="h-3 w-3 text-slate-500" />
-                                    Saída às {oc.hora_saida}
+                                    Saiu às {String(oc.hora_saida).slice(0, 5)}{permanencia && ` · ficou ${permanencia}`}
                                   </span>
                                 ) : null}
 
@@ -1445,7 +1529,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                             )}
 
                             {/* Botão Registrar Saída se estiver no pátio */}
-                            {temSaidaPendente && podeEditarAtivo && (
+                            {temSaidaPendente && (
                               <button
                                 type="button"
                                 onClick={() => abrirModalDarSaida(oc)}

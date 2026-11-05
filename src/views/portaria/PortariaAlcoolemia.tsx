@@ -17,9 +17,9 @@ import {
   FileDown, RefreshCw, CheckCircle2, AlertTriangle, XCircle,
   Clock3, Shield, User, Building2, Briefcase, Trash2, Edit2,
   Check, X, ChevronLeft, ChevronRight, AlertCircle, Loader2,
-  HelpCircle, Bug, Lightbulb, UserCheck, UserPlus, Gauge, RotateCcw
+  HelpCircle, Bug, Lightbulb, UserCheck, UserPlus, Gauge, RotateCcw, Camera
 } from 'lucide-react';
-import type { Profile, PortAlcoolemiaTeste, PortAlcoolemiaResultado, PortAlcoolemiaVinculo, RhPessoa } from '../../types';
+import type { Profile, PortAlcoolemiaFoto, PortAlcoolemiaTeste, PortAlcoolemiaResultado, PortAlcoolemiaVinculo, RhPessoa } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { listarRhPessoas } from '../../lib/rhApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
@@ -37,6 +37,8 @@ import {
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
+import { useLightbox } from '../../components/ui/Lightbox';
+import KaizenFotosCampo, { type FotoLocal } from '../../components/planejamento/KaizenFotosCampo';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import TourSpotlight from '../../components/help/TourSpotlight';
 import { usePageTour } from '../../components/help/TourRegistryContext';
@@ -97,7 +99,47 @@ function formatarDataBR(iso?: string | null): string {
   return `${d}/${m}/${y}`;
 }
 
+/** Miniaturas das fotos gravadas do teste; abrem no visualizador do app. Com `onRemover`, cada uma ganha um X. */
+function MiniaturasFotosTeste({
+  fotos, onAbrir, onRemover, tamanho = 'h-12 w-12',
+}: {
+  fotos?: PortAlcoolemiaFoto[];
+  onAbrir: (indice: number) => void;
+  onRemover?: (foto: PortAlcoolemiaFoto) => void;
+  tamanho?: string;
+}) {
+  if (!fotos?.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {fotos.map((foto, i) => (
+        <div key={foto.id} className={`relative ${tamanho} overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800`}>
+          <button type="button" onClick={() => onAbrir(i)} aria-label={`Abrir foto ${i + 1}`} className="flex h-full w-full items-center justify-center">
+            {foto.preview_url
+              ? <img src={foto.preview_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+              : <Camera className="h-4 w-4 text-slate-400" />}
+          </button>
+          {onRemover && (
+            <button
+              type="button"
+              onClick={() => onRemover(foto)}
+              aria-label="Remover foto"
+              className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white hover:bg-red-600"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const MAX_FOTOS_TESTE = 4;
+
 export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
+  const lightbox = useLightbox();
+  const abrirFotos = (fotos: PortAlcoolemiaFoto[] | undefined, indice: number) =>
+    lightbox.abrir((fotos || []).map((f, i, todas) => ({ url: f.preview_url || '', legenda: `Foto ${i + 1} de ${todas.length}` })), indice);
   const tour = usePageTour('portaria-alcoolemia', TOUR_STEPS.length);
   const toast = useToast();
 
@@ -158,6 +200,9 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   const [formVigilante, setFormVigilante] = useState<string>(user.name || '');
   const [formTestemunha, setFormTestemunha] = useState<string>('');
   const [formObservacoes, setFormObservacoes] = useState<string>('');
+  // Fotos: as já gravadas (edição) e as novas, que sobem comprimidas ao salvar.
+  const [formFotosMantidas, setFormFotosMantidas] = useState<PortAlcoolemiaFoto[]>([]);
+  const [formFotosNovas, setFormFotosNovas] = useState<FotoLocal[]>([]);
 
   // Modal Dedicado de Aferição (ao clicar no botão da tabela)
   const [modalAfericaoAberto, setModalAfericaoAberto] = useState<boolean>(false);
@@ -169,6 +214,8 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   const [afericaoVigilante, setAfericaoVigilante] = useState<string>(user.name || '');
   const [afericaoTestemunha, setAfericaoTestemunha] = useState<string>('');
   const [afericaoObservacoes, setAfericaoObservacoes] = useState<string>('');
+  const [afericaoFotosMantidas, setAfericaoFotosMantidas] = useState<PortAlcoolemiaFoto[]>([]);
+  const [afericaoFotosNovas, setAfericaoFotosNovas] = useState<FotoLocal[]>([]);
   const [salvandoAfericao, setSalvandoAfericao] = useState<boolean>(false);
 
   // Valores já digitados antes, por campo — vira opção de preenchimento
@@ -198,7 +245,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
         ...(intervalo.inicio === intervalo.fim ? { data: intervalo.inicio } : { dataInicio: intervalo.inicio, dataFim: intervalo.fim }),
         incluirExcluidos: true,
       });
-      setTestes(lista);
+      setTestes(await api.assinarFotosAlcoolemia(lista));
     } catch (err: any) {
       console.error('Erro ao listar testes:', err);
       toast.error('Não foi possível carregar o livro. Confira a conexão e toque em atualizar.');
@@ -298,6 +345,8 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setFormVigilante(user.name || '');
     setFormTestemunha('');
     setFormObservacoes('');
+    setFormFotosMantidas([]);
+    setFormFotosNovas([]);
     setModalAberto(true);
   };
 
@@ -323,6 +372,8 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setFormVigilante(teste.vigilante || user.name || '');
     setFormTestemunha(teste.testemunha || '');
     setFormObservacoes(teste.observacoes || '');
+    setFormFotosMantidas(teste.fotos || []);
+    setFormFotosNovas([]);
     setModalAberto(true);
   };
 
@@ -336,7 +387,23 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setAfericaoVigilante(teste.vigilante || user.name || '');
     setAfericaoTestemunha(teste.testemunha || '');
     setAfericaoObservacoes(teste.observacoes || '');
+    setAfericaoFotosMantidas(teste.fotos || []);
+    setAfericaoFotosNovas([]);
     setModalAfericaoAberto(true);
+  };
+
+  /**
+   * Sobe as fotos novas (comprimidas) e devolve a lista final do teste; apaga do
+   * Storage as gravadas que a pessoa tirou. Foto que falha só gera aviso.
+   */
+  const montarFotosDoTeste = async (
+    testeId: string, anteriores: PortAlcoolemiaFoto[], mantidas: PortAlcoolemiaFoto[], novas: FotoLocal[],
+  ): Promise<PortAlcoolemiaFoto[]> => {
+    const { ok, falhas } = await api.subirFotosAlcoolemia(testeId, novas.map((f) => f.file));
+    if (falhas) toast.warning(`${falhas} foto${falhas === 1 ? '' : 's'} não subi${falhas === 1 ? 'u' : 'ram'}. O teste foi salvo; tente anexar de novo.`);
+    const ficam = new Set(mantidas.map((f) => f.path));
+    void api.removerFotosAlcoolemia(anteriores.map((f) => f.path).filter((p) => !ficam.has(p)));
+    return [...mantidas, ...ok];
   };
 
   // Gravação da Aferição
@@ -345,7 +412,9 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setSalvandoAfericao(true);
     try {
       const valorNum = parseFloat(afericaoValorMedido.replace(',', '.')) || 0;
+      const fotos = await montarFotosDoTeste(testeParaAferir.id, testeParaAferir.fotos || [], afericaoFotosMantidas, afericaoFotosNovas);
       await api.atualizarTesteAlcoolemia(testeParaAferir.id, {
+        fotos,
         resultado: afericaoResultado,
         valor_medido: afericaoResultado === 'POSITIVO' ? valorNum : 0.0,
         etilometro_codigo: afericaoEtilometro.trim() || null,
@@ -408,9 +477,15 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
       };
 
       if (editandoTeste) {
+        payload.fotos = await montarFotosDoTeste(editandoTeste.id, editandoTeste.fotos || [], formFotosMantidas, formFotosNovas);
         await api.atualizarTesteAlcoolemia(editandoTeste.id, payload);
         toast.success(`Registro ${editandoTeste.codigo_formulario} atualizado com sucesso!`);
       } else {
+        // Id gerado aqui para a foto subir antes, já na pasta do teste.
+        if (formFotosNovas.length) {
+          payload.id = crypto.randomUUID();
+          payload.fotos = await montarFotosDoTeste(payload.id, [], [], formFotosNovas);
+        }
         const criado = await api.criarTesteAlcoolemia(payload);
         toast.success(`Sorteado inserido no livro: ${criado.codigo_formulario}`);
       }
@@ -430,6 +505,8 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
         setFormResultado('PENDENTE');
         setFormValorMedido('0.00');
         setRegistrarAfericaoImediata(false);
+        setFormFotosMantidas([]);
+        setFormFotosNovas([]);
         if (tipoVinculo === 'PJ') {
           setFormEmpresa('');
         }
@@ -699,7 +776,12 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                               <BotaoCartao rotulo="Excluir registro" icone={Trash2} tom="perigo" onClick={() => setTesteParaExcluir(item)} />
                             </>
                           )}
-                          rodape={<SeloQuemAferiu teste={item} />}
+                          rodape={
+                            <div className="space-y-2">
+                              <SeloQuemAferiu teste={item} />
+                              <MiniaturasFotosTeste fotos={item.fotos} onAbrir={(i) => abrirFotos(item.fotos, i)} />
+                            </div>
+                          }
                         />
                       );
                     })}
@@ -756,7 +838,14 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                         <td className="whitespace-nowrap px-4 py-3">
                           <div className="flex flex-col items-start gap-1"><SeloResultado teste={item} /><SeloExcluido teste={item} /></div>
                         </td>
-                        <td className="px-4 py-3"><SeloQuemAferiu teste={item} /></td>
+                        <td className="px-4 py-3">
+                          <SeloQuemAferiu teste={item} />
+                          {!!item.fotos?.length && (
+                            <div className="mt-1.5">
+                              <MiniaturasFotosTeste fotos={item.fotos} tamanho="h-9 w-9" onAbrir={(i) => abrirFotos(item.fotos, i)} />
+                            </div>
+                          )}
+                        </td>
                         <td className="whitespace-nowrap px-4 py-3 text-right">
                           {podeEditar && item.excluido_em ? (
                             <button
@@ -1276,6 +1365,29 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                 </div>
               )}
             </div>
+
+            {/* Fotos do teste (visor do etilômetro, termo…): comprimidas antes de subir */}
+            <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                <Camera className="h-3.5 w-3.5" /> Fotos do teste <span className="font-normal text-slate-400">(opcional)</span>
+              </label>
+              {formFotosMantidas.length > 0 && (
+                <div className="mb-2">
+                  <MiniaturasFotosTeste
+                    fotos={formFotosMantidas}
+                    tamanho="h-20 w-20"
+                    onAbrir={(i) => abrirFotos(formFotosMantidas, i)}
+                    onRemover={salvando ? undefined : (foto) => setFormFotosMantidas((atual) => atual.filter((f) => f.id !== foto.id))}
+                  />
+                </div>
+              )}
+              <KaizenFotosCampo
+                value={formFotosNovas}
+                onChange={setFormFotosNovas}
+                max={Math.max(0, MAX_FOTOS_TESTE - formFotosMantidas.length)}
+                disabled={salvando}
+              />
+            </div>
           </ModalBody>
 
           <ModalFooter className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 p-4 dark:border-slate-800">
@@ -1516,6 +1628,29 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
               />
             </div>
+
+            {/* Fotos do teste (visor do etilômetro, termo…): comprimidas antes de subir */}
+            <div>
+              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                <Camera className="h-3.5 w-3.5" /> Fotos do teste <span className="font-normal text-slate-400">(opcional)</span>
+              </label>
+              {afericaoFotosMantidas.length > 0 && (
+                <div className="mb-2">
+                  <MiniaturasFotosTeste
+                    fotos={afericaoFotosMantidas}
+                    tamanho="h-20 w-20"
+                    onAbrir={(i) => abrirFotos(afericaoFotosMantidas, i)}
+                    onRemover={salvandoAfericao ? undefined : (foto) => setAfericaoFotosMantidas((atual) => atual.filter((f) => f.id !== foto.id))}
+                  />
+                </div>
+              )}
+              <KaizenFotosCampo
+                value={afericaoFotosNovas}
+                onChange={setAfericaoFotosNovas}
+                max={Math.max(0, MAX_FOTOS_TESTE - afericaoFotosMantidas.length)}
+                disabled={salvandoAfericao}
+              />
+            </div>
           </ModalBody>
 
           <ModalFooter className="flex items-center justify-between border-t border-slate-200 p-4 dark:border-slate-800">
@@ -1553,6 +1688,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
           onCancelar={() => setTesteParaExcluir(null)}
         />
       )}
+      {lightbox.elemento}
       {pdfPreview && (
         <PdfPreviewModal
           gerar={pdfPreview.gerar}
