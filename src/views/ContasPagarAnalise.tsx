@@ -15,7 +15,11 @@ import ChartCard from '../components/charts/ChartCard';
 import ChartTooltip from '../components/charts/ChartTooltip';
 import KpiCard from '../components/charts/KpiCard';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
-import { TableShell, TableHeadRow, TableBody, Td } from '../components/ui/DataTable';
+import { TableShell, TableHeadRow, TableBody, Td, TableCards, TableDesktop } from '../components/ui/DataTable';
+import FiltrosSheet, { BotaoFiltros, CampoFiltro, classeCampoFiltro } from '../components/ui/FiltrosSheet';
+import { LinhaPartida } from '../components/financeiro/ContasPagarMobile';
+import { hojeISO, somarDias } from '../lib/contasPagar';
+import { useTelaEstreita } from '../lib/useTelaEstreita';
 
 interface ContasPagarAnaliseProps {
   user: Profile;
@@ -92,6 +96,19 @@ function exposicao(l: Fbl1nAnaliseLinha): number {
   return -(l.montante_moeda_doc || 0);
 }
 
+const ANO_ATUAL = hojeISO().slice(0, 4);
+
+/** Atalhos de período: ano corrente, semestres e sem limite. */
+const PRESETS_PERIODO: { rotulo: string; de: string; ate: string }[] = [
+  { rotulo: ANO_ATUAL, de: `${ANO_ATUAL}-01-01`, ate: `${ANO_ATUAL}-12-31` },
+  { rotulo: '1º Sem.', de: `${ANO_ATUAL}-01-01`, ate: `${ANO_ATUAL}-06-30` },
+  { rotulo: '2º Sem.', de: `${ANO_ATUAL}-07-01`, ate: `${ANO_ATUAL}-12-31` },
+  { rotulo: 'Todas', de: '', ate: '' },
+];
+
+/** Corta o rótulo de categoria do eixo para caber na coluna estreita do celular. */
+const cortarRotulo = (max: number) => (v: string) => (v && v.length > max ? `${v.slice(0, max - 1)}…` : v);
+
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 function getMonthKeyAndLabel(dateStr: string): { key: string; label: string } {
@@ -155,8 +172,10 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
   const [linhas, setLinhas] = useState<Fbl1nAnaliseLinha[]>([]);
   const [fornecedoresSelecionados, setFornecedoresSelecionados] = useState<Set<string>>(new Set());
   const [tipoDocFilter, setTipoDocFilter] = useState('Todos');
-  const [periodoDe, setPeriodoDe] = useState('2026-01-01');
-  const [periodoAte, setPeriodoAte] = useState('2026-12-31');
+  const [periodoDe, setPeriodoDe] = useState(`${ANO_ATUAL}-01-01`);
+  const [periodoAte, setPeriodoAte] = useState(`${ANO_ATUAL}-12-31`);
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const estreita = useTelaEstreita();
   const [periodoVisao, setPeriodoVisao] = useState<'mes' | 'semana'>('mes');
 
   const [selectedPeriodModal, setSelectedPeriodModal] = useState<SelectedPeriodModalData | null>(null);
@@ -283,9 +302,11 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
 
   const abertas = useMemo(() => filtradas.filter(estaAberta), [filtradas]);
 
-  const hoje = new Date().toISOString().split('T')[0];
-  const em7dias = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-  const em30dias = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+  // Data local: em UTC, depois das 21h o "hoje" já era amanhã e o que vencia
+  // hoje contava como vencido.
+  const hoje = hojeISO();
+  const em7dias = somarDias(hoje, 7);
+  const em30dias = somarDias(hoje, 30);
 
   const kpis = useMemo(() => {
     const totalAberto = abertas.reduce((sum, l) => sum + exposicao(l), 0);
@@ -757,33 +778,127 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
   const lastUpdated = useMemo(() => localDb.getDatasetUpdatedAt('fbl1n_c_pagar'), [linhas]);
 
   return (
-    <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
-      <div className="border-b border-slate-100 dark:border-slate-800 pb-5 flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
-            <BarChart3 className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
+    <div className="space-y-4 lg:space-y-6 select-text max-w-[1600px] mx-auto pb-12">
+      <div className="border-b border-slate-100 dark:border-slate-800 pb-3 lg:pb-5 flex items-start justify-between flex-wrap gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl lg:text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2 lg:gap-2.5">
+            <BarChart3 className="h-6 w-6 lg:h-7 lg:w-7 shrink-0 text-emerald-600 dark:text-emerald-500" />
             Análise de Contas a Pagar
           </h2>
-          <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
+          <p className="hidden sm:block text-sm text-slate-555 dark:text-slate-400 mt-1">
             Visão consolidada das partidas FBL1N deduplicadas por categoria de documento, fornecedor, evolução temporal e vencimento.
           </p>
+          {lastUpdated && (
+            <p className="lg:hidden mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
+              FBL1N · {localDb.getDatasetUpdateBadge('contas_pagar')}
+            </p>
+          )}
         </div>
         {lastUpdated && (
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
             <Clock className="h-3 w-3" />
             <span>{localDb.getDatasetUpdateBadge('contas_pagar')}</span>
           </div>
         )}
         <a
           href="#/financeiro/contas-pagar/analise/fornecedores-itens"
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 h-10 lg:h-auto lg:py-2 rounded-lg text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
         >
           <TrendingUp className="h-3.5 w-3.5" />
           Fornecedor × Item
         </a>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
+      {/* Filtros no celular: atalho de período à vista, o resto no painel. */}
+      <div className="lg:hidden space-y-2">
+        <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-200/70 p-1 dark:bg-[var(--surface-sunken)]" role="group" aria-label="Período">
+          {PRESETS_PERIODO.map(p => {
+            const on = periodoDe === p.de && periodoAte === p.ate;
+            return (
+              <button
+                key={p.rotulo}
+                type="button"
+                onClick={() => { setPeriodoDe(p.de); setPeriodoAte(p.ate); }}
+                aria-pressed={on}
+                className={`h-10 rounded-lg text-[13px] font-bold ${on ? 'bg-[var(--surface-card)] shadow-sm' : ''}`}
+                style={{ color: on ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
+              >
+                {p.rotulo}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex gap-2">
+          <MultiSelectFilter
+            label="Fornecedor"
+            icon={Building2}
+            allLabel="Todos"
+            searchable
+            options={fornecedorOptions}
+            selected={fornecedoresSelecionados}
+            onChange={setFornecedoresSelecionados}
+            renderOption={renderFornecedorOption}
+            className="min-w-0 flex-1"
+            panelClassName="w-80 max-h-80"
+          />
+          <BotaoFiltros
+            ativos={(tipoDocFilter !== 'Todos' ? 1 : 0) + (PRESETS_PERIODO.some(p => p.de === periodoDe && p.ate === periodoAte) ? 0 : 1)}
+            onClick={() => setFiltrosAbertos(true)}
+          />
+        </div>
+        {!PRESETS_PERIODO.some(p => p.de === periodoDe && p.ate === periodoAte) && (
+          <p className="px-1 text-xs" style={{ color: 'var(--ink-muted)' }}>Período: {periodoLabel}</p>
+        )}
+      </div>
+
+      {filtrosAbertos && (
+        <FiltrosSheet
+          onClose={() => setFiltrosAbertos(false)}
+          onLimpar={() => { setTipoDocFilter('Todos'); setPeriodoDe(PRESETS_PERIODO[0].de); setPeriodoAte(PRESETS_PERIODO[0].ate); }}
+          ativos={(tipoDocFilter !== 'Todos' ? 1 : 0) + (periodoDe === PRESETS_PERIODO[0].de && periodoAte === PRESETS_PERIODO[0].ate ? 0 : 1)}
+          rotuloAplicar={`Ver ${filtradas.length} partida(s)`}
+        >
+          <CampoFiltro rotulo="Mês específico">
+            <select
+              value={mesSelecionado}
+              onChange={e => {
+                if (!e.target.value) return;
+                const { de, ate } = mesParaPeriodo(e.target.value);
+                setPeriodoDe(de);
+                setPeriodoAte(ate);
+              }}
+              className={`${classeCampoFiltro} capitalize`}
+              disabled={mesesDisponiveis.length === 0}
+            >
+              <option value="">Escolher um mês…</option>
+              {mesesDisponiveis.map(ym => (
+                <option key={ym} value={ym}>{getMonthKeyAndLabel(ym).label}</option>
+              ))}
+            </select>
+          </CampoFiltro>
+          <div className="grid grid-cols-2 gap-3">
+            <CampoFiltro rotulo="De">
+              <input type="date" value={periodoDe} onChange={e => setPeriodoDe(e.target.value)} className={classeCampoFiltro} />
+            </CampoFiltro>
+            <CampoFiltro rotulo="Até">
+              <input type="date" value={periodoAte} onChange={e => setPeriodoAte(e.target.value)} className={classeCampoFiltro} />
+            </CampoFiltro>
+          </div>
+          <CampoFiltro rotulo="Tipo de documento">
+            <select value={tipoDocFilter} onChange={e => setTipoDocFilter(e.target.value)} className={classeCampoFiltro}>
+              <option value="Todos">Todos os tipos</option>
+              {tipoDocOptions.map(opt => (
+                <option key={opt.key} value={opt.key}>{opt.label}</option>
+              ))}
+            </select>
+          </CampoFiltro>
+          <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+            O período usa a data de pagamento; nas partidas em aberto, o vencimento.
+          </p>
+        </FiltrosSheet>
+      )}
+
+      <div className="hidden lg:flex items-center gap-2 flex-wrap">
         <MultiSelectFilter
           label="Fornecedor"
           icon={Building2}
@@ -845,46 +960,20 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
           ))}
         </select>
         <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg text-[11px] font-semibold shrink-0 whitespace-nowrap">
-          <button
-            onClick={() => { setPeriodoDe('2026-01-01'); setPeriodoAte('2026-12-31'); }}
-            className={`px-2 py-1 rounded-md transition-all cursor-pointer ${
-              periodoDe === '2026-01-01' && periodoAte === '2026-12-31'
-                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm font-bold'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            2026
-          </button>
-          <button
-            onClick={() => { setPeriodoDe('2026-01-01'); setPeriodoAte('2026-06-30'); }}
-            className={`px-2 py-1 rounded-md transition-all cursor-pointer ${
-              periodoDe === '2026-01-01' && periodoAte === '2026-06-30'
-                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm font-bold'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            1º Sem.
-          </button>
-          <button
-            onClick={() => { setPeriodoDe('2026-07-01'); setPeriodoAte('2026-12-31'); }}
-            className={`px-2 py-1 rounded-md transition-all cursor-pointer ${
-              periodoDe === '2026-07-01' && periodoAte === '2026-12-31'
-                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm font-bold'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            2º Sem.
-          </button>
-          <button
-            onClick={() => { setPeriodoDe(''); setPeriodoAte(''); }}
-            className={`px-2 py-1 rounded-md transition-all cursor-pointer ${
-              !periodoDe && !periodoAte
-                ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm font-bold'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            Todas Datas
-          </button>
+          {PRESETS_PERIODO.map(p => (
+            <button
+              key={p.rotulo}
+              onClick={() => { setPeriodoDe(p.de); setPeriodoAte(p.ate); }}
+              aria-pressed={periodoDe === p.de && periodoAte === p.ate}
+              className={`px-2 py-1 rounded-md transition-all cursor-pointer ${
+                periodoDe === p.de && periodoAte === p.ate
+                  ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm font-bold'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              {p.de ? p.rotulo : 'Todas Datas'}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -989,7 +1078,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
           <BarChart data={categoriaChartData} layout="vertical" margin={{ top: 4, right: 72, left: 0, bottom: 4 }}>
             <CartesianGrid {...c.grid} vertical horizontal={false} />
             <XAxis type="number" allowDecimals={false} tickFormatter={(v: number) => formatBRLCompacto(v)} {...c.yAxis} />
-            <YAxis type="category" dataKey="categoria" {...c.xAxis} width={180} />
+            <YAxis type="category" dataKey="categoria" {...c.xAxis} width={estreita ? 124 : 180} tickFormatter={estreita ? cortarRotulo(18) : undefined} />
             <Tooltip content={<CategoriaTooltip />} cursor={c.cursor} />
             <Bar
               dataKey="valor"
@@ -1010,16 +1099,16 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
         title="Maiores Fornecedores em Aberto"
         icon={Building2}
         description="Top 10 fornecedores por valor em aberto. (Clique na barra para detalhar)"
-        height={300}
+        height={estreita ? 400 : 300}
         loading={loading}
         empty={!loading && fornecedoresChartData.length === 0}
         emptyMessage="Nenhuma partida em aberto no filtro selecionado."
       >
-        <ResponsiveContainer width="100%" height={300}>
+        <ResponsiveContainer width="100%" height={estreita ? 400 : 300}>
           <BarChart data={fornecedoresChartData} layout="vertical" margin={{ top: 4, right: 72, left: 0, bottom: 4 }}>
             <CartesianGrid {...c.grid} vertical horizontal={false} />
             <XAxis type="number" allowDecimals={false} tickFormatter={(v: number) => formatBRLCompacto(v)} {...c.yAxis} />
-            <YAxis type="category" dataKey="fornecedor" {...c.xAxis} width={200} />
+            <YAxis type="category" dataKey="fornecedor" {...c.xAxis} width={estreita ? 124 : 200} tickFormatter={estreita ? cortarRotulo(18) : undefined} />
             <Tooltip content={<FornecedorTooltip />} cursor={c.cursor} />
             <Bar
               dataKey="valor"
@@ -1049,7 +1138,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
           <BarChart data={agingChartData} layout="vertical" margin={{ top: 4, right: 72, left: 0, bottom: 4 }}>
             <CartesianGrid {...c.grid} vertical horizontal={false} />
             <XAxis type="number" allowDecimals={false} tickFormatter={(v: number) => formatBRLCompacto(v)} {...c.yAxis} />
-            <YAxis type="category" dataKey="bucket" {...c.xAxis} width={180} />
+            <YAxis type="category" dataKey="bucket" {...c.xAxis} width={estreita ? 124 : 180} />
             <Tooltip content={<AgingTooltip />} cursor={c.cursor} />
             <Bar
               dataKey="valor"
@@ -1069,43 +1158,49 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       {/* Modal / Janela Suspensa ao Clicar no Gráfico de Evolução Temporal */}
       {selectedPeriodModal && (
         <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
           onClick={() => setSelectedPeriodModal(null)}
         >
+          {/* No celular sobe da base com a altura quase toda da tela (como o Modal do app). */}
           <div
-            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-[98vw] max-h-[95vh] flex flex-col overflow-hidden select-text"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Lançamentos — ${selectedPeriodModal.label}`}
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-[98vw] h-[92dvh] sm:h-auto max-h-[92dvh] sm:max-h-[95vh] flex flex-col overflow-hidden select-text"
             onClick={e => e.stopPropagation()}
           >
+            <div className="sm:hidden mx-auto mt-2.5 mb-0.5 h-1.5 w-12 rounded-full bg-slate-300 dark:bg-slate-700 shrink-0" aria-hidden="true" />
             {/* Cabeçalho do Modal */}
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-950/80">
-              <div>
-                <div className="flex items-center gap-2">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-start sm:items-center justify-between gap-3 bg-slate-50/80 dark:bg-slate-950/80">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
                   <span
                     className="w-3 h-3 rounded-full shrink-0"
                     style={{ backgroundColor: METRIC_META[selectedPeriodModal.metric].color }}
                   />
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50">
+                  <h3 className="text-base sm:text-lg font-bold leading-snug text-slate-900 dark:text-slate-50">
                     Lançamentos — {selectedPeriodModal.label}
                   </h3>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                     {METRIC_META[selectedPeriodModal.metric].label}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 mt-1">
                   Detalhamento por fornecedor dos lançamentos correspondentes à seleção no gráfico.
                 </p>
               </div>
               <button
                 onClick={() => setSelectedPeriodModal(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                className="shrink-0 p-2 -m-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Fechar janela"
+                aria-label="Fechar"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Corpo do Modal */}
-            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+            <div className="p-3 sm:p-6 overflow-y-auto overscroll-contain space-y-4 flex-1">
               {/* KPIs Resumidos */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
@@ -1138,7 +1233,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                     className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
                   >
                     <ChevronsUpDown className="h-3.5 w-3.5 text-slate-500" />
-                    Toggle Expandir
+                    {modalSupplierGroups.length > 0 && modalSupplierGroups.every(g => !!modalExpandedSuppliers[g.supplierName]) ? 'Recolher todos' : 'Expandir todos'}
                   </button>
                 </div>
               </div>
@@ -1173,7 +1268,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                     onClick={() => setModalSortDir(prev => (prev === 'desc' ? 'asc' : 'desc'))}
                     className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   >
-                    <span>Ordenar por Montante:</span>
+                    <span className="hidden sm:inline">Ordenar por Montante:</span>
                     {modalSortDir === 'desc' ? (
                       <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
                         Maior p/ Menor <ArrowDown className="h-3.5 w-3.5" />
@@ -1193,6 +1288,45 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                   {modalSearchQuery ? 'Nenhum lançamento encontrado para a pesquisa informada.' : 'Nenhum lançamento encontrado para esta barra.'}
                 </div>
               ) : (
+                <>
+                {/* Celular: um fornecedor por linha; tocar abre as partidas logo abaixo. */}
+                <TableCards>
+                  {modalSupplierGroups.map(group => {
+                    const aberto = !!modalExpandedSuppliers[group.supplierName];
+                    return (
+                      <div key={group.supplierName}>
+                        <button
+                          type="button"
+                          onClick={() => setModalExpandedSuppliers(prev => ({ ...prev, [group.supplierName]: !prev[group.supplierName] }))}
+                          aria-expanded={aberto}
+                          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-[var(--surface-raised)]"
+                        >
+                          {aberto
+                            ? <ChevronDown className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                            : <ChevronRight className="h-4 w-4 shrink-0" style={{ color: 'var(--ink-muted)' }} aria-hidden="true" />}
+                          <span className="min-w-0 flex-1">
+                            <span className="text-[14px] font-semibold leading-snug line-clamp-2" style={{ color: 'var(--ink-primary)' }}>{group.supplierName}</span>
+                            <span className="mt-0.5 block text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+                              {group.qtdVencidos > 0 && <span className="font-bold text-red-600 dark:text-red-400">{group.qtdVencidos} vencido(s) · </span>}
+                              {group.qtdLancamentos} doc. · {formatPct(modalGrossTotal > 0 ? (group.grossValor / modalGrossTotal) * 100 : 0)}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-[14px] font-bold tabular" style={{ color: 'var(--ink-primary)' }}>{formatBRL(group.totalValor)}</span>
+                        </button>
+                        {aberto && (
+                          <ul className="divide-y divide-[var(--hairline)] border-t" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+                            {group.items.map(l => (
+                              <li key={l.id || `${l.numero_documento}-${l.vencimento_liquido}`} className="py-2.5 pl-11 pr-4">
+                                <LinhaPartida l={l} hoje={hoje} />
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
+                </TableCards>
+                <TableDesktop>
                 <TableShell maxHeight="58vh" className="w-full">
                   <table className="w-full text-xs border-collapse">
                     <TableHeadRow>
@@ -1382,6 +1516,8 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                     </TableBody>
                   </table>
                 </TableShell>
+                </TableDesktop>
+                </>
               )}
             </div>
           </div>

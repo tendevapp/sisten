@@ -110,15 +110,17 @@ export default function ChartCard({
 
   return (
     <section
-      className={`rounded-xl border p-5 sm:p-6 transition-shadow duration-200 ${isCollapsed ? 'space-y-0' : 'space-y-4'} ${className}`}
+      className={`rounded-xl border p-4 sm:p-6 transition-shadow duration-200 ${isCollapsed ? 'space-y-0' : 'space-y-4'} ${className}`}
       style={{
         background: 'var(--surface-card)',
         borderColor: 'var(--hairline)',
         boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.04)',
       }}
     >
+      {/* No celular as ações descem para baixo do título: lado a lado, o título
+          e a descrição ficavam espremidos numa coluna de ~150px. */}
       <header
-        className={`flex items-start justify-between gap-4 ${collapsible ? 'cursor-pointer select-none group' : ''}`}
+        className={`flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 ${collapsible ? 'cursor-pointer select-none group' : ''}`}
         onClick={collapsible ? handleToggle : undefined}
       >
         <div className="min-w-0 flex items-start gap-2.5">
@@ -177,7 +179,7 @@ export default function ChartCard({
               {emptyMessage}
             </div>
           ) : minPlotWidth ? (
-            <div ref={scrollRef} className="overflow-x-auto custom-scrollbar -mx-5 sm:-mx-6 px-5 sm:px-6 pb-2.5 pt-1">
+            <div ref={scrollRef} className="overflow-x-auto custom-scrollbar -mx-4 sm:-mx-6 px-4 sm:px-6 pb-2.5 pt-1">
               <div style={{ minWidth: minPlotWidth, width: '100%' }}>{children}</div>
             </div>
           ) : (

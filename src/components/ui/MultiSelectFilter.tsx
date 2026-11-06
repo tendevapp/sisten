@@ -148,7 +148,7 @@ export default function MultiSelectFilter({
         <>
           {/* Backdrop mobile para fechar ao tocar fora e dar foco de overlay */}
           <div
-            className="fixed inset-0 z-40 bg-black/15 sm:bg-transparent"
+            className="fixed inset-0 z-[110] bg-black/15 sm:bg-transparent"
             onClick={() => setOpen(false)}
             aria-hidden="true"
           />
@@ -163,7 +163,7 @@ export default function MultiSelectFilter({
               width: coords.width,
               maxHeight: coords.maxHeight,
             }}
-            className={`fixed z-50 overflow-hidden flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl animate-fade-in ${
+            className={`fixed z-[120] overflow-hidden flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl animate-fade-in ${
               panelClassName || ''
             }`}
           >

@@ -90,8 +90,11 @@ export default function KpiCard({
         <span className="truncate">{label}</span>
       </span>
 
+      {/* Valor longo ("R$ 13.778.077,79") cortava em reticências no celular
+          (duas colunas) e no desktop estreito (quatro colunas): reduz o corpo
+          em vez de esconder os últimos algarismos. */}
       <p
-        className="text-lg lg:text-xl font-black mt-1.5 lg:mt-2 leading-tight tabular truncate"
+        className={`${texto.length > 13 ? 'text-[15px] sm:text-lg xl:text-xl' : 'text-lg lg:text-xl'} font-black mt-1.5 lg:mt-2 leading-tight tabular truncate`}
         style={{ color: emphasize ? accent : 'var(--ink-primary)' }}
         title={texto}
       >

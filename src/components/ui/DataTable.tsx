@@ -106,9 +106,13 @@ export function TableShell({ children, maxHeight = '70vh', minHeight, className 
           <div style={{ width: contentWidth, height: 8 }} />
         </div>
       )}
+      {/* `data-table-scroll`: no celular, quando a tabela vira cartões, o CSS
+          (index.css) solta esta caixa — a lista rola com a página em vez de
+          numa caixa de 70vh dentro dela. */}
       <div
         ref={mainScrollRef}
         onScroll={handleMainScroll}
+        data-table-scroll=""
         className="overflow-auto flex-1"
         style={{ maxHeight, minHeight }}
       >
@@ -304,7 +308,7 @@ export function Td({
 export function TableCards({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
     <div
-      className={`lg:hidden rounded-xl border overflow-hidden divide-y ${className}`}
+      className={`lg:hidden rounded-xl border overflow-hidden divide-y divide-[var(--hairline)] ${className}`}
       style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
     >
       {children}
