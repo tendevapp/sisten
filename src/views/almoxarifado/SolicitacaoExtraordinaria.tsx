@@ -48,6 +48,7 @@ import {
   excluirSolicitacaoExtra, listarSolicitacoesExtra, regularizarSolicitacoesExtra, type SolExtra,
 } from '../../lib/solicitacaoExtraApi';
 import { exportarPlanilhaSolExtra } from '../../lib/solicitacaoExtraPlanilha';
+import { BotaoRelatorioSolExtra } from '../../components/almoxarifado/RelatorioSolExtra';
 import { EVENTO_ITEM_QR_SOL_EXTRA, consumirItemSolExtraPendente } from '../../lib/etiquetaMaterial';
 import {
   FiltroSaldo, LegendaZl0024, SaldoChip, contarProntidao, useProntidaoSaldo, type FiltroProntidao,
@@ -325,6 +326,7 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
             >
               <FileSpreadsheet className="h-3.5 w-3.5" /> Exportar Excel
             </button>
+            <BotaoRelatorioSolExtra user={user} />
           </div>
 
           {filtroStatus !== 'REGULARIZADA' && pendentesNaTela.length > 0 && (

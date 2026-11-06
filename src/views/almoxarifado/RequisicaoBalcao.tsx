@@ -57,6 +57,7 @@ import { CHAVE_ABRIR_REQUISICAO_BALCAO } from '../../lib/fichaEpiRequisicao';
 import { EVENTO_ITEM_QR_BALCAO, codigoDoQr, consumirItemQrPendente, hashSemItem, itemDaRota } from '../../lib/etiquetaMaterial';
 import LeitorQrModal from '../../components/ui/LeitorQrModal';
 import SeletorColaborador from '../../components/almoxarifado/SeletorColaborador';
+import { BotaoRelatorioSolExtra } from '../../components/almoxarifado/RelatorioSolExtra';
 import type { EstoqueItem, Profile, RhPessoa, RhTurno } from '../../types';
 
 interface Props {
@@ -399,7 +400,11 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
             {importadoEm && <> Saldos importados em {formatDateTimeBR(importadoEm)}.</>}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <BotaoRelatorioSolExtra
+            user={user}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold cursor-pointer border-[var(--hairline)] text-[var(--ink-secondary)]"
+          />
           <button
             onClick={() => void recarregar(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold cursor-pointer"

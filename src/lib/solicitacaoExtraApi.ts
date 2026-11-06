@@ -25,6 +25,7 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import { buscarTudo } from './buscarTudo';
 import type { PreparedAttachment } from './imageCompression';
 import type {
   AprovacaoSolExtra, DadosSolExtra, FotoSolExtra, ItemSolExtra, MotivoSolExtra, StatusSolExtra, TipoSolExtra, TurnoSolExtra,
@@ -125,6 +126,20 @@ export async function listarSolicitacoesExtra(): Promise<SolExtra[]> {
     .limit(1000);
   if (error) throw new Error(error.message);
   return comTipo(data || []);
+}
+
+/**
+ * Todas as solicitações de um período (datas ISO inclusivas; null = sem
+ * limite), sem o teto de 1.000 do PostgREST — para o relatório consolidado.
+ */
+export async function listarSolicitacoesExtraPeriodo(de: string | null, ate: string | null): Promise<SolExtra[]> {
+  const linhas = await buscarTudo<SolExtra>((ini, fim) => {
+    let q = db().select('*').is('excluido_em', null);
+    if (de) q = q.gte('data', de);
+    if (ate) q = q.lte('data', ate);
+    return q.order('data', { ascending: true }).order('id', { ascending: true }).range(ini, fim);
+  });
+  return comTipo(linhas);
 }
 
 /**

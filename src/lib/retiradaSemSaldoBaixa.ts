@@ -122,6 +122,29 @@ export function prontidaoRegularizacao(
   estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
   depositoInativo: (dep: string) => boolean = isDepositoInativo,
 ): Map<string, SaldoParaRegularizar> {
+  const out = new Map<string, SaldoParaRegularizar>();
+  for (const [id, cobertos] of coberturaItensPendentes(registros, estoquePorDeposito, depositoInativo)) {
+    const itensComSaldo = cobertos.filter(Boolean).length;
+    const totalItens = cobertos.length;
+    out.set(id, {
+      prontidao: totalItens > 0 && itensComSaldo === totalItens ? 'pronta' : itensComSaldo > 0 ? 'parcial' : 'aguardando',
+      itensComSaldo,
+      totalItens,
+    });
+  }
+  return out;
+}
+
+/**
+ * Item a item, a regra de `prontidaoRegularizacao`: para cada saída pendente,
+ * na ordem dos itens, se o saldo de hoje já cobre aquele item. Usado pelo
+ * relatório, que precisa dizer qual material ainda espera a NF.
+ */
+export function coberturaItensPendentes(
+  registros: Pick<SolExtra, 'id' | 'status' | 'data' | 'created_at' | 'itens'>[],
+  estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
+  depositoInativo: (dep: string) => boolean = isDepositoInativo,
+): Map<string, boolean[]> {
   // Saldo que ainda resta por material e depósito, consumido conforme as saídas são cobertas.
   const restante = new Map<string, Map<string, number>>();
   for (const [mat, lista] of depositosPorMaterial(estoquePorDeposito, depositoInativo)) {
@@ -134,10 +157,9 @@ export function prontidaoRegularizacao(
     .filter(r => r.status === 'PENDENTE')
     .sort((a, b) => a.data.localeCompare(b.data) || (a.created_at || '').localeCompare(b.created_at || ''));
 
-  const out = new Map<string, SaldoParaRegularizar>();
+  const out = new Map<string, boolean[]>();
   for (const r of pendentes) {
-    let itensComSaldo = 0;
-    for (const it of r.itens) {
+    const cobertos = r.itens.map(it => {
       const qtd = Number(it.quantidade) || 0;
       const porDep = restante.get(normalizeCode(it.material));
       let escolhido: string | null = null;
@@ -145,17 +167,11 @@ export function prontidaoRegularizacao(
       for (const [dep, saldo] of porDep ?? []) {
         if (saldo >= qtd && saldo > maior) { escolhido = dep; maior = saldo; }
       }
-      if (escolhido && porDep) {
-        porDep.set(escolhido, maior - qtd);
-        itensComSaldo++;
-      }
-    }
-    const totalItens = r.itens.length;
-    out.set(r.id, {
-      prontidao: totalItens > 0 && itensComSaldo === totalItens ? 'pronta' : itensComSaldo > 0 ? 'parcial' : 'aguardando',
-      itensComSaldo,
-      totalItens,
+      if (!escolhido || !porDep) return false;
+      porDep.set(escolhido, maior - qtd);
+      return true;
     });
+    out.set(r.id, cobertos);
   }
   return out;
 }
