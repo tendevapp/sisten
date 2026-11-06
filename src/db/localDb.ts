@@ -210,6 +210,7 @@ class LocalDatabase {
       if (raw === null) continue;
       try {
         const parsed = JSON.parse(raw);
+        if (parsed === null) continue;
         this.cache.set(key, parsed);
         await idbSet(key, parsed);
       } catch {
@@ -582,8 +583,13 @@ class LocalDatabase {
     }
   }
 
+  // `null`/`undefined` guardado conta como ausente: aparelhos com dados de
+  // versões antigas têm chaves gravadas como `null` (ex.: localStorage com
+  // "null" migrado para o IndexedDB), e devolver esse `null` no lugar do
+  // padrão `[]` derrubava a inicialização (`.some` de null) e o app não abria.
   public getStorageItem<T>(key: string, defaultValue: T): T {
-    return this.cache.has(key) ? (this.cache.get(key) as T) : defaultValue;
+    const valor = this.cache.get(key);
+    return valor === null || valor === undefined ? defaultValue : (valor as T);
   }
 
   // Grava no cache em memória de forma síncrona (o chamador enxerga o valor
