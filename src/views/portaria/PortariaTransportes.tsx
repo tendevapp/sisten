@@ -27,6 +27,7 @@ import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { MostrarExcluidosToggle, BadgeExcluido, RestaurarButton, classeLinhaExcluida } from '../../components/ui/ExcluidosControls';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import NavegadorRegistros, { ListaRegistrosSheet, rotuloDiaCompleto } from '../../components/portaria/NavegadorRegistros';
 
 interface Props {
   user: Profile;
@@ -262,6 +263,8 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
   const [diaAtivo, setDiaAtivo] = useState<string>(() => api.hojeISO());
   const [termoBuscaDias, setTermoBuscaDias] = useState('');
+  /** Celular: lista completa de dias num painel (a coluna da esquerda fica só no desktop). */
+  const [listaDiasAberta, setListaDiasAberta] = useState(false);
 
   const carregarDados = useCallback(async () => {
     setLoading(true);
@@ -272,7 +275,10 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       setItens(data);
       if (data.length > 0) {
         setDiaAtivo((prev) => {
-          if (data.some((d) => d.data === prev)) return prev;
+          // Hoje fica escolhido mesmo sem registro: é o livro que o vigilante
+          // abre para lançar. Antes caía no último dia com registro e o
+          // "Lançar Chegada" já vinha com a data daquele dia.
+          if (prev === api.hojeISO() || data.some((d) => d.data === prev)) return prev;
           return data[0].data;
         });
       }
@@ -442,6 +448,20 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
     return gruposPorDia.find((g) => g.data === diaAtivo) || null;
   }, [gruposPorDia, diaAtivo]);
 
+  /* Navegação do celular: dias com registro + hoje, do mais novo para o mais antigo. */
+  const hoje = api.hojeISO();
+  const datasNavegacao = useMemo(
+    () => Array.from(new Set([hoje, ...gruposPorDia.map((g) => g.data)])).sort((a, b) => b.localeCompare(a)),
+    [gruposPorDia, hoje],
+  );
+  const diaAnterior = datasNavegacao.find((d) => d < diaAtivo) ?? null;
+  const diaSeguinte = [...datasNavegacao].reverse().find((d) => d > diaAtivo) ?? null;
+
+  const escolherDia = (data: string) => {
+    setDiaAtivo(data);
+    setListaDiasAberta(false);
+  };
+
   const handleExportarRelatorio = () => {
     const listaExportar = transportesDoDiaFiltrados.length > 0 ? transportesDoDiaFiltrados : itensDoDia;
     if (listaExportar.length === 0) {
@@ -455,86 +475,9 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
     });
   };
 
-  return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-12">
-      {/* Header */}
-      <div data-tour="transportes-header" className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <button
-            type="button"
-            onClick={() => onNavigate('/formularios/portaria')}
-            className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-600 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
-          >
-            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
-            <span>Voltar para o Painel da Portaria</span>
-          </button>
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
-              <Bus className="h-5 w-5" />
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
-                  Registro de Chegada de Transportes
-                </h1>
-                <span className="rounded-md bg-blue-50 px-2 py-0.5 font-mono text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
-                  FRM.SGP-0009
-                </span>
-              </div>
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Chegadas e Saídas de Ônibus, Vans e Veículos de Passageiros · Portaria TEN
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          {grupoAtivo && (
-            <button
-              type="button"
-              onClick={handleExportarRelatorio}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
-            >
-              <FileDown className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              Visualizar / Exportar Folha (PDF)
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => {
-              setItemEditando(null);
-              setFormNovo({ ...formTransporteVazio(), data: diaAtivo || api.hojeISO(), vigilante: user.name });
-              setSugestoesAtivas(true);
-              setRotaModoOutro(false);
-              setModalNovoAberto(true);
-            }}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-500 dark:bg-blue-500 dark:hover:bg-blue-400"
-          >
-            <Plus className="h-4 w-4" />
-            Lançar Chegada
-          </button>
-        </div>
-      </div>
-
-      {/* Main Grid: Left = Days List / Right = Transports Feed */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Left Column: Days List */}
-        <div data-tour="transportes-filtros" className="space-y-3 lg:col-span-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Registros por Dia
-              </h2>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                {gruposPorDia.length}
-              </span>
-            </div>
-            {podeVerExcluidos && (
-              <MostrarExcluidosToggle visivel={podeVerExcluidos} checked={mostrarExcluidos} onChange={setMostrarExcluidos} />
-            )}
-          </div>
-
+  /** Busca + lista da coluna da esquerda: no desktop fica na coluna, no celular abre num painel. */
+  const painelDias = (
+    <>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
@@ -567,7 +510,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
               </button>
             </div>
           ) : (
-            <div className="space-y-2.5 max-h-[700px] overflow-y-auto pr-1">
+            <div className="space-y-2.5 lg:max-h-[700px] lg:overflow-y-auto lg:pr-1">
               {diasFiltrados.map((g) => {
                 const isSelected = diaAtivo === g.data;
                 const ehHoje = g.data === api.hojeISO();
@@ -575,7 +518,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                 return (
                   <div
                     key={g.data}
-                    onClick={() => setDiaAtivo(g.data)}
+                    onClick={() => escolherDia(g.data)}
                     className={`cursor-pointer rounded-2xl border p-4 transition-all ${
                       isSelected
                         ? 'border-blue-500 bg-blue-50/40 ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/20'
@@ -624,15 +567,117 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
               })}
             </div>
           )}
+    </>
+  );
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-4 pb-12 lg:space-y-6">
+      {/* Header */}
+      <div data-tour="transportes-header" className="flex flex-wrap items-start justify-between gap-3 lg:gap-4">
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={() => onNavigate('/formularios/portaria')}
+            className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-600 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
+            <span className="hidden sm:inline">Voltar para o Painel da Portaria</span>
+            <span className="sm:hidden">Portaria</span>
+          </button>
+          <div className="flex items-center gap-2.5">
+            <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 sm:flex dark:bg-blue-950/60 dark:text-blue-400">
+              <Bus className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <h1 className="font-display text-xl font-bold text-slate-900 lg:text-2xl dark:text-slate-50">
+                  <span className="hidden lg:inline">Registro de </span>Chegada de Transportes
+                </h1>
+                <span className="rounded-md bg-blue-50 px-2 py-0.5 font-mono text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+                  FRM.SGP-0009
+                </span>
+              </div>
+              <span className="hidden text-xs font-medium text-slate-500 sm:block dark:text-slate-400">
+                Chegadas e Saídas de Ônibus, Vans e Veículos de Passageiros · Portaria TEN
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid w-full grid-cols-[1fr_auto] gap-2 sm:flex sm:w-auto sm:items-center sm:gap-2.5">
+          {grupoAtivo && (
+            <button
+              type="button"
+              onClick={handleExportarRelatorio}
+              aria-label="Visualizar / exportar folha do dia em PDF"
+              className="order-2 inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 sm:order-1 sm:h-auto sm:py-2 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+            >
+              <FileDown className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <span className="hidden sm:inline">Visualizar / Exportar Folha (PDF)</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setItemEditando(null);
+              setFormNovo({ ...formTransporteVazio(), data: diaAtivo || api.hojeISO(), vigilante: user.name });
+              setSugestoesAtivas(true);
+              setRotaModoOutro(false);
+              setModalNovoAberto(true);
+            }}
+            className="order-1 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-blue-500 sm:order-2 sm:h-auto sm:py-2 sm:text-xs dark:bg-blue-500 dark:hover:bg-blue-400"
+          >
+            <Plus className="h-4 w-4" />
+            Lançar Chegada
+          </button>
+        </div>
+      </div>
+
+      {/* Celular: o dia escolhido ocupa a tela; os outros dias ficam atrás das setas e da lista. */}
+      {!loading && (
+        <NavegadorRegistros
+          tom="blue"
+          rotulo={rotuloDiaCompleto(diaAtivo, hoje)}
+          detalhe={grupoAtivo
+            ? `${grupoAtivo.total} transporte${grupoAtivo.total === 1 ? '' : 's'} · ${grupoAtivo.noPatio} no pátio`
+            : 'Nenhum transporte neste dia'}
+          onAnterior={diaAnterior ? () => setDiaAtivo(diaAnterior) : undefined}
+          onProximo={diaSeguinte ? () => setDiaAtivo(diaSeguinte) : undefined}
+          onHoje={diaAtivo !== hoje ? () => setDiaAtivo(hoje) : undefined}
+          rotuloLista={`Todos os dias (${gruposPorDia.length})`}
+          onAbrirLista={() => setListaDiasAberta(true)}
+        />
+      )}
+
+      {/* Main Grid: Left = Days List / Right = Transports Feed */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Left Column: Days List (só desktop; no celular abre pelo navegador) */}
+        <div data-tour="transportes-filtros" className="hidden space-y-3 lg:col-span-4 lg:block">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Registros por Dia
+              </h2>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                {gruposPorDia.length}
+              </span>
+            </div>
+            {podeVerExcluidos && (
+              <MostrarExcluidosToggle visivel={podeVerExcluidos} checked={mostrarExcluidos} onChange={setMostrarExcluidos} />
+            )}
+          </div>
+
+          {painelDias}
         </div>
 
         {/* Right Column: Day Header & Transport Forms / Cards */}
         <div data-tour="transportes-tabela" className="lg:col-span-8">
           {grupoAtivo ? (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900 flex flex-col">
-              {/* Day Header Bar */}
-              <div className="border-b border-slate-100 p-5 dark:border-slate-800">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+              {/* Day Header Bar — no celular o título e as contagens já estão no navegador */}
+              <div className="border-b border-slate-100 p-3 sm:p-5 dark:border-slate-800">
+                <div className="hidden flex-wrap items-start justify-between gap-3 lg:flex">
                   <div>
                     <div className="flex items-center gap-2.5">
                       <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
@@ -675,7 +720,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                 </div>
 
                 {/* Sub-filtros por Turno, Status e Busca */}
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 [&>div:last-child]:col-span-2 sm:[&>div:last-child]:col-span-1 lg:mt-4 lg:border-t lg:border-slate-100 lg:pt-4 dark:lg:border-slate-800/80 [&_input]:h-10 [&_select]:h-10 lg:[&_input]:h-auto lg:[&_select]:h-auto">
                   <div>
                     <select
                       value={filtroTurno}
@@ -715,7 +760,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
               </div>
 
               {/* Transports Cards Feed */}
-              <div className="p-5 space-y-3.5">
+              <div className="p-3 sm:p-5 space-y-3.5">
                 {transportesDoDiaFiltrados.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-10 text-center dark:border-slate-800 dark:bg-slate-950/30">
                     <Bus className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
@@ -862,18 +907,48 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-12 text-center dark:border-slate-800 dark:bg-slate-900">
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center sm:p-12 dark:border-slate-800 dark:bg-slate-900">
               <Bus className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600" />
               <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                Selecione um dia à esquerda
+                {loading ? 'Carregando…' : `Nenhum transporte em ${rotuloDiaCompleto(diaAtivo, hoje).replace(/^(Hoje|Ontem)/, (m) => m.toLowerCase())}`}
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Escolha uma data na coluna da esquerda para visualizar as chegadas e saídas de transportes.
-              </p>
+              {!loading && (
+                <>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Lance a primeira chegada do dia ou escolha outro dia
+                    <span className="hidden lg:inline"> na coluna da esquerda</span>.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setItemEditando(null);
+                      setFormNovo({ ...formTransporteVazio(), data: diaAtivo || hoje, vigilante: user.name });
+                      setSugestoesAtivas(true);
+                      setRotaModoOutro(false);
+                      setModalNovoAberto(true);
+                    }}
+                    className="mt-4 inline-flex h-11 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-blue-500"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Lançar Chegada
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      {listaDiasAberta && (
+        <ListaRegistrosSheet titulo={`Dias com transporte (${gruposPorDia.length})`} onClose={() => setListaDiasAberta(false)}>
+          {podeVerExcluidos && (
+            <div className="flex justify-end">
+              <MostrarExcluidosToggle visivel={podeVerExcluidos} checked={mostrarExcluidos} onChange={setMostrarExcluidos} />
+            </div>
+          )}
+          {painelDias}
+        </ListaRegistrosSheet>
+      )}
 
       {/* Modal Novo Lançamento / Edição */}
       {modalNovoAberto && (

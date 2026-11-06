@@ -43,6 +43,7 @@ import VeiculoLeveFormFields from '../../components/portaria/VeiculoLeveFormFiel
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import NavegadorRegistros, { ListaRegistrosSheet, rotuloDiaCompleto, vizinhos } from '../../components/portaria/NavegadorRegistros';
 import {
   MostrarExcluidosToggle,
   BadgeExcluido,
@@ -294,6 +295,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const [relatorios, setRelatorios] = useState<PortRelatorioPortaria[]>([]);
   const [loading, setLoading] = useState(true);
   const [relatorioAtivo, setRelatorioAtivo] = useState<PortRelatorioPortaria | null>(null);
+  /** Celular: lista completa de livros num painel (a coluna da esquerda fica só no desktop). */
+  const [livrosAbertos, setLivrosAbertos] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   // Só o autor do livro de plantão (ou um admin) altera lançamentos; os
   // demais só consultam. Espelha a RLS em `form_pode_editar`.
@@ -1087,138 +1090,28 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     );
   }, [relatorios, termoBuscaPlantao]);
 
-  return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-12">
-      {/* Header */}
-      <div data-tour="relatorio-header" className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <button
-            type="button"
-            onClick={() => onNavigate('/formularios/portaria')}
-            className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-purple-400 hover:bg-purple-50/50 hover:text-purple-700 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-purple-500 dark:hover:bg-purple-950/40 dark:hover:text-purple-300"
-          >
-            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
-            <span>Voltar para o Painel da Portaria</span>
-          </button>
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-purple-600 text-white shadow-sm shadow-purple-500/20">
-              <ClipboardList className="h-6 w-6" />
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
-                  Relatório de Ocorrências
-                </h1>
-                <span className="rounded-md bg-purple-50 px-2 py-0.5 font-mono text-xs font-bold text-purple-700 dark:bg-purple-950/60 dark:text-purple-400">
-                  FRM.SGP-0010
-                </span>
-              </div>
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Livro Digital de Ocorrências · Entradas, Saídas, Permanência de Visitantes e Rondas com Registro Fotográfico
-              </span>
-            </div>
-          </div>
-        </div>
+  /* Navegação do celular entre livros, na ordem da lista (do mais novo para o mais antigo). */
+  const hojeLivro = api.hojeISO();
+  const { anterior: livroAnterior, proximo: livroSeguinte } = vizinhos(
+    relatorios,
+    relatorios.findIndex((r) => r.id === relatorioAtivo?.id),
+  );
+  const livroDeHoje = relatorios.find((r) => r.data === hojeLivro && !r.excluido_em) ?? null;
+  const contarNoPatio = (rel: PortRelatorioPortaria) =>
+    (rel.ocorrencias || []).filter(
+      (o) =>
+        o.status_permanencia === 'NO_PATIO' ||
+        (!o.hora_saida && (o.tipo_registro === 'ENTRADA_VEICULO' || o.tipo_registro === 'VEICULO_LEVE' || o.tipo_registro === 'ENTRADA_VISITANTE'))
+    ).length;
 
-        <div className="flex items-center gap-2.5">
-          {relatorioAtivo && (
-            <button
-              type="button"
-              onClick={() => setPdfPreview({
-                gerar: () => gerarRelatorioPortariaPdf(relatorioAtivo),
-                titulo: `Livro de Portaria - ${relatorioAtivo.numero_protocolo || relatorioAtivo.data}`,
-              })}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
-            >
-              <FileDown className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-              Visualizar / Exportar Livro (PDF)
-            </button>
-          )}
+  const escolherLivro = (rel: PortRelatorioPortaria) => {
+    setRelatorioAtivo(rel);
+    setLivrosAbertos(false);
+  };
 
-          <button
-            type="button"
-            onClick={abrirModalOcorrencia}
-            className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-purple-500"
-          >
-            <Plus className="h-4 w-4" />
-            Nova Ocorrência
-          </button>
-        </div>
-      </div>
-
-      {/* O que chegou e ainda não saiu, de qualquer plantão */}
-      {semSaida.length > 0 && (
-        <section className="rounded-2xl border border-amber-300 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/20">
-          <button
-            type="button"
-            onClick={() => setSemSaidaAberto((v) => !v)}
-            aria-expanded={semSaidaAberto}
-            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-          >
-            <span className="flex items-center gap-2 text-sm font-bold text-amber-900 dark:text-amber-200">
-              <Car className="h-4 w-4" />
-              Sem saída registrada ({semSaida.length})
-              <span className="hidden text-xs font-medium text-amber-700 sm:inline dark:text-amber-300">
-                · o que chega tem que sair: registre a saída quando o veículo ou visitante deixar a fábrica
-              </span>
-            </span>
-            <ChevronRight className={`h-4 w-4 shrink-0 text-amber-700 transition-transform ${semSaidaAberto ? 'rotate-90' : ''}`} />
-          </button>
-          {semSaidaAberto && (
-            <ul className="grid gap-2 px-3 pb-3 sm:grid-cols-2 xl:grid-cols-3">
-              {semSaida.map((oc) => {
-                const tipo = TIPOS_REGISTRO.find((t) => t.id === oc.tipo_registro);
-                const outroDia = oc.relatorio.data !== api.hojeISO();
-                return (
-                  <li key={oc.id} className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-900/50 dark:bg-slate-900">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
-                        {oc.placa ? <span className="font-mono">{oc.placa}</span> : (oc.nome_pessoa || oc.empresa || tipo?.label || 'Entrada')}
-                        {oc.placa && oc.empresa && <span className="font-normal text-slate-500"> · {oc.empresa}</span>}
-                      </p>
-                      <p className={`mt-0.5 text-xs ${outroDia ? 'font-semibold text-rose-600 dark:text-rose-400' : 'text-slate-500'}`}>
-                        <LogIn className="mr-1 inline h-3 w-3" />
-                        Entrada {outroDia ? `${oc.relatorio.data.slice(8, 10)}/${oc.relatorio.data.slice(5, 7)} ` : ''}às {String(oc.horario).slice(0, 5)}
-                        {tipo && <span className="text-slate-400"> · {tipo.label}</span>}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => abrirModalDarSaida(oc)}
-                      className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 active:scale-95"
-                    >
-                      <LogOut className="h-3.5 w-3.5" /> Saída
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {/* Main Grid: Left = Shifts / Right = Occurrence Timeline */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Left Column: Shifts List */}
-        <div data-tour="relatorio-livros" className="space-y-3 lg:col-span-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Livros por Data & Turno
-              </h2>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                {relatorios.length}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <MostrarExcluidosToggle
-                visivel={Boolean(user.roles?.includes('admin'))}
-                checked={mostrarExcluidos}
-                onChange={setMostrarExcluidos}
-              />
-            </div>
-          </div>
-
+  /** Busca + lista da coluna da esquerda: no desktop fica na coluna, no celular abre num painel. */
+  const painelLivros = (
+    <>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
@@ -1239,7 +1132,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
               <p className="text-xs text-slate-500 dark:text-slate-400">Nenhum plantão encontrado.</p>
             </div>
           ) : (
-            <div className="space-y-2.5 max-h-[700px] overflow-y-auto pr-1">
+            <div className="space-y-2.5 lg:max-h-[700px] lg:overflow-y-auto lg:pr-1">
               {plantoesFiltrados.map((rel) => {
                 const isSelected = relatorioAtivo?.id === rel.id;
                 const countOcorrencias = (rel.ocorrencias || []).length;
@@ -1252,7 +1145,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                 return (
                   <div
                     key={rel.id}
-                    onClick={() => setRelatorioAtivo(rel)}
+                    onClick={() => escolherLivro(rel)}
                     className={`cursor-pointer rounded-2xl border p-4 transition-all ${classeLinhaExcluida(rel.excluido_em)} ${
                       isSelected
                         ? 'border-purple-500 bg-purple-50/40 ring-2 ring-purple-500/20 dark:border-purple-500 dark:bg-purple-950/20'
@@ -1311,21 +1204,175 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
               })}
             </div>
           )}
+    </>
+  );
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-4 pb-12 lg:space-y-6">
+      {/* Header */}
+      <div data-tour="relatorio-header" className="flex flex-wrap items-start justify-between gap-3 lg:gap-4">
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={() => onNavigate('/formularios/portaria')}
+            className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-purple-400 hover:bg-purple-50/50 hover:text-purple-700 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-purple-500 dark:hover:bg-purple-950/40 dark:hover:text-purple-300"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
+            <span className="hidden sm:inline">Voltar para o Painel da Portaria</span>
+            <span className="sm:hidden">Portaria</span>
+          </button>
+          <div className="flex items-center gap-3">
+            <span className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-purple-600 text-white shadow-sm shadow-purple-500/20 sm:flex">
+              <ClipboardList className="h-6 w-6" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <h1 className="font-display text-xl font-bold text-slate-900 lg:text-2xl dark:text-slate-50">
+                  Relatório de Ocorrências
+                </h1>
+                <span className="rounded-md bg-purple-50 px-2 py-0.5 font-mono text-xs font-bold text-purple-700 dark:bg-purple-950/60 dark:text-purple-400">
+                  FRM.SGP-0010
+                </span>
+              </div>
+              <span className="hidden text-xs font-medium text-slate-500 sm:block dark:text-slate-400">
+                Livro Digital de Ocorrências · Entradas, Saídas, Permanência de Visitantes e Rondas com Registro Fotográfico
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid w-full grid-cols-[1fr_auto] gap-2 sm:flex sm:w-auto sm:items-center sm:gap-2.5">
+          {relatorioAtivo && (
+            <button
+              type="button"
+              onClick={() => setPdfPreview({
+                gerar: () => gerarRelatorioPortariaPdf(relatorioAtivo),
+                titulo: `Livro de Portaria - ${relatorioAtivo.numero_protocolo || relatorioAtivo.data}`,
+              })}
+              aria-label="Visualizar / exportar livro em PDF"
+              className="order-2 inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 sm:order-1 sm:h-auto sm:py-2 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+            >
+              <FileDown className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <span className="hidden sm:inline">Visualizar / Exportar Livro (PDF)</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={abrirModalOcorrencia}
+            className="order-1 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-purple-500 sm:order-2 sm:h-auto sm:py-2 sm:text-xs"
+          >
+            <Plus className="h-4 w-4" />
+            Nova Ocorrência
+          </button>
+        </div>
+      </div>
+
+      {/* O que chegou e ainda não saiu, de qualquer plantão */}
+      {semSaida.length > 0 && (
+        <section className="rounded-2xl border border-amber-300 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/20">
+          <button
+            type="button"
+            onClick={() => setSemSaidaAberto((v) => !v)}
+            aria-expanded={semSaidaAberto}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+          >
+            <span className="flex items-center gap-2 text-sm font-bold text-amber-900 dark:text-amber-200">
+              <Car className="h-4 w-4" />
+              Sem saída registrada ({semSaida.length})
+              <span className="hidden text-xs font-medium text-amber-700 sm:inline dark:text-amber-300">
+                · o que chega tem que sair: registre a saída quando o veículo ou visitante deixar a fábrica
+              </span>
+            </span>
+            <ChevronRight className={`h-4 w-4 shrink-0 text-amber-700 transition-transform ${semSaidaAberto ? 'rotate-90' : ''}`} />
+          </button>
+          {semSaidaAberto && (
+            <ul className="grid gap-2 px-3 pb-3 sm:grid-cols-2 xl:grid-cols-3">
+              {semSaida.map((oc) => {
+                const tipo = TIPOS_REGISTRO.find((t) => t.id === oc.tipo_registro);
+                const outroDia = oc.relatorio.data !== api.hojeISO();
+                return (
+                  <li key={oc.id} className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-900/50 dark:bg-slate-900">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
+                        {oc.placa ? <span className="font-mono">{oc.placa}</span> : (oc.nome_pessoa || oc.empresa || tipo?.label || 'Entrada')}
+                        {oc.placa && oc.empresa && <span className="font-normal text-slate-500"> · {oc.empresa}</span>}
+                      </p>
+                      <p className={`mt-0.5 text-xs ${outroDia ? 'font-semibold text-rose-600 dark:text-rose-400' : 'text-slate-500'}`}>
+                        <LogIn className="mr-1 inline h-3 w-3" />
+                        Entrada {outroDia ? `${oc.relatorio.data.slice(8, 10)}/${oc.relatorio.data.slice(5, 7)} ` : ''}às {String(oc.horario).slice(0, 5)}
+                        {tipo && <span className="text-slate-400"> · {tipo.label}</span>}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => abrirModalDarSaida(oc)}
+                      className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white shadow-xs hover:bg-emerald-500 active:scale-95"
+                    >
+                      <LogOut className="h-3.5 w-3.5" /> Saída
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {/* Celular: o livro escolhido ocupa a tela; os outros ficam atrás das setas e da lista. */}
+      {!loading && relatorioAtivo && (
+        <NavegadorRegistros
+          tom="purple"
+          rotulo={`${rotuloDiaCompleto(relatorioAtivo.data, hojeLivro)} · Turno ${relatorioAtivo.turno}`}
+          detalhe={`${(relatorioAtivo.ocorrencias || []).length} registro(s) · ${contarNoPatio(relatorioAtivo)} no pátio · ${relatorioAtivo.numero_protocolo}`}
+          onAnterior={livroAnterior ? () => setRelatorioAtivo(livroAnterior) : undefined}
+          onProximo={livroSeguinte ? () => setRelatorioAtivo(livroSeguinte) : undefined}
+          onHoje={livroDeHoje && relatorioAtivo.data !== hojeLivro ? () => setRelatorioAtivo(livroDeHoje) : undefined}
+          rotuloAnterior="Livro anterior"
+          rotuloProximo="Livro seguinte"
+          rotuloLista={`Todos os livros (${relatorios.length})`}
+          onAbrirLista={() => setLivrosAbertos(true)}
+        />
+      )}
+
+      {/* Main Grid: Left = Shifts / Right = Occurrence Timeline */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Left Column: Shifts List (só desktop; no celular abre pelo navegador) */}
+        <div data-tour="relatorio-livros" className="hidden space-y-3 lg:col-span-4 lg:block">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Livros por Data & Turno
+              </h2>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                {relatorios.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <MostrarExcluidosToggle
+                visivel={Boolean(user.roles?.includes('admin'))}
+                checked={mostrarExcluidos}
+                onChange={setMostrarExcluidos}
+              />
+            </div>
+          </div>
+
+          {painelLivros}
         </div>
 
         {/* Right Column: Selected Shift Timeline & Ocorrências */}
         <div data-tour="relatorio-ocorrencias-detalhe" className="lg:col-span-8">
           {relatorioAtivo ? (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900 flex flex-col">
-              {/* Shift Header Bar */}
-              <div className="border-b border-slate-100 p-5 dark:border-slate-800">
+              {/* Shift Header Bar — no celular data, turno e protocolo já estão no navegador */}
+              <div className="border-b border-slate-100 p-3 sm:p-5 dark:border-slate-800">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-mono text-xs font-bold text-purple-600 dark:text-purple-400">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <span className="hidden font-mono text-xs font-bold text-purple-600 lg:inline dark:text-purple-400">
                         {relatorioAtivo.numero_protocolo}
                       </span>
-                      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                      <h2 className="hidden text-lg font-bold text-slate-900 lg:block dark:text-slate-100">
                         Plantão {relatorioAtivo.data.split('-').reverse().join('/')} — Turno {relatorioAtivo.turno}
                       </h2>
                       <StatusPortariaBadge status={relatorioAtivo.status} />
@@ -1355,7 +1402,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                         <button
                           type="button"
                           onClick={abrirModalOcorrencia}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-purple-500"
+                          className="hidden items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-purple-500 lg:inline-flex"
                         >
                           <Plus className="h-3.5 w-3.5" />
                           Nova Ocorrência
@@ -1377,8 +1424,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   </div>
                 </div>
 
-                {/* Filtros de Categoria */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-4">
+                {/* Filtros de Categoria — no celular deslizam numa linha só */}
+                <div className="no-scrollbar -mx-3 flex min-w-0 items-center gap-1.5 overflow-x-auto px-3 pt-3 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pt-4 [&>button]:shrink-0 [&>button]:whitespace-nowrap [&>button]:py-2 sm:[&>button]:py-1">
                   {[
                     { id: 'TODAS', label: 'Todas as Ocorrências' },
                     { id: 'PATIO', label: '🟢 No Pátio (Sem Saída)' },
@@ -1404,7 +1451,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
               </div>
 
               {/* Occurrences Feed */}
-              <div className="p-5 space-y-3.5">
+              <div className="p-3 sm:p-5 space-y-3.5">
                 {ocorrenciasFiltradas.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-10 text-center dark:border-slate-800 dark:bg-slate-950/30">
                     <ClipboardList className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
@@ -1590,6 +1637,17 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
           )}
         </div>
       </div>
+
+      {livrosAbertos && (
+        <ListaRegistrosSheet titulo={`Livros por data e turno (${relatorios.length})`} onClose={() => setLivrosAbertos(false)}>
+          {Boolean(user.roles?.includes('admin')) && (
+            <div className="flex justify-end">
+              <MostrarExcluidosToggle visivel checked={mostrarExcluidos} onChange={setMostrarExcluidos} />
+            </div>
+          )}
+          {painelLivros}
+        </ListaRegistrosSheet>
+      )}
 
       {/* Input oculto para upload de arquivo e câmera */}
       <input
