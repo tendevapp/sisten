@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  normalizarCodigoFornecedorSap, statusAposFornecedorMl, statusAposRetirarFornecedorMl, itemAguardandoPoMl,
   ehLinkMercadoLivre, itemEntraEmSemPo, itemFoiComprado, normalizarLinkMl, statusAposCompraMl, normalizarNumeroCompraMl, observacaoComCompraMl,
   passaFiltroCompraMl, resumirComprasMl, tituloTagMercadoLivrePo, type ItemMercadoLivre,
   passaFiltroPedidoMl, observacaoSemCompraMl, statusAposRetirarCompraMl, ehNumeroPedidoSap,
@@ -200,5 +201,48 @@ describe('tituloTagMercadoLivrePo', () => {
     expect(tituloTagMercadoLivrePo(undefined, ['COT-010226-01'])).toBe(
       'Item com compra pelo Mercado Livre — COT-010226-01',
     );
+  });
+});
+
+describe('fornecedor cadastrado (Aguardando PO)', () => {
+  it('normaliza o código do fornecedor colado', () => {
+    expect(normalizarCodigoFornecedorSap('1000083593')).toBe('1000083593');
+    expect(normalizarCodigoFornecedorSap(' 0001000083593 ')).toBe('1000083593');
+    expect(normalizarCodigoFornecedorSap('Forn. 1000037521')).toBe('1000037521');
+  });
+
+  it('recusa PO do SAP, número da compra do ML e código curto', () => {
+    expect(normalizarCodigoFornecedorSap('4100475924')).toBeNull();
+    expect(normalizarCodigoFornecedorSap('2000015616071149')).toBeNull();
+    expect(normalizarCodigoFornecedorSap('123')).toBeNull();
+    expect(normalizarCodigoFornecedorSap('')).toBeNull();
+  });
+
+  it('gravar o fornecedor põe Aguardando PO sem voltar quem já andou', () => {
+    expect(statusAposFornecedorMl('Comprado')).toBe('Aguardando PO');
+    expect(statusAposFornecedorMl('')).toBe('Aguardando PO');
+    expect(statusAposFornecedorMl('Pedido Enviado')).toBe('Pedido Enviado');
+    expect(statusAposFornecedorMl('Entregue')).toBe('Entregue');
+  });
+
+  it('gravar a compra de novo não tira o Aguardando PO', () => {
+    expect(statusAposCompraMl('Aguardando PO')).toBe('Aguardando PO');
+  });
+
+  it('apagar o fornecedor devolve Aguardando PO a Comprado (ou vazio sem compra)', () => {
+    expect(statusAposRetirarFornecedorMl('Aguardando PO', true)).toBe('Comprado');
+    expect(statusAposRetirarFornecedorMl('Aguardando PO', false)).toBe('');
+    expect(statusAposRetirarFornecedorMl('Pedido Enviado', true)).toBe('Pedido Enviado');
+  });
+
+  it('card Aguardando PO: fornecedor colado e ainda sem PO', () => {
+    expect(itemAguardandoPoMl({ fornecedor_codigo: '1000083593' }, false)).toBe(true);
+    expect(itemAguardandoPoMl({ fornecedor_codigo: '1000083593' }, true)).toBe(false);
+    expect(itemAguardandoPoMl({ fornecedor_codigo: null }, false)).toBe(false);
+    expect(itemAguardandoPoMl(undefined, false)).toBe(false);
+  });
+
+  it('Aguardando PO conta como comprado', () => {
+    expect(itemFoiComprado({ temPo: false, itemStatus: 'Aguardando PO' })).toBe(true);
   });
 });

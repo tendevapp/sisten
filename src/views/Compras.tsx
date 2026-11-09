@@ -54,10 +54,12 @@ import {
   FILTRO_ML_SEM_COMPRA, FILTRO_ML_TODOS, itemEntraEmSemPo, itemFoiComprado, observacaoComCompraMl, passaFiltroCompraMl,
   resumirComprasMl, rotuloCompraMl, statusAposCompraMl, tituloTagMercadoLivrePo, type FiltroCompraMl, type ItemMercadoLivre,
   observacaoSemCompraMl, passaFiltroPedidoMl, statusAposRetirarCompraMl, type DadosCompraMl, type FiltroPedidoMl,
+  itemAguardandoPoMl, statusAposFornecedorMl, statusAposRetirarFornecedorMl,
 } from '../lib/compraMercadoLivre';
+import { BotaoNotasFiscaisMl, CampoFornecedorMl, NotasFiscaisMlModal } from '../components/suprimentos/MercadoLivreItemExtras';
 import {
   listarDadosComprasMl, listarItensMercadoLivre, obterDadosCompraMl, type DadosCompraMlGravados, registrarCompraMercadoLivre, registrarDetalheCompraMl, removerItemMercadoLivre, salvarLinkMercadoLivre,
-  type DadosCompraMlFinanceiro,
+  type DadosCompraMlFinanceiro, buscarNomeFornecedorSap, registrarFornecedorMercadoLivre,
 } from '../lib/compraMercadoLivreApi';
 import { AbrirValidacaoModal, ValidacaoTag } from '../components/suprimentos/ValidacaoTecnica';
 import { STATUS_ITEM_VALIDACAO, ultimaValidacaoPorRi, type ValidacaoTecnica } from '../lib/validacaoTecnica';
@@ -398,7 +400,14 @@ type PoFilter = 'Todos' | 'Sem PO' | 'Sem MIGO' | 'Contrato' | 'M Livre';
  * Link do anúncio (abrir + copiar) e número da compra de um item destinado
  * ao Mercado Livre — coluna da subpágina M Livre e bloco do card.
  */
-const MercadoLivreLinkInfo = ({ item, onEditarCompra }: { item: ItemMercadoLivre; onEditarCompra?: (numero: string) => void }) => (
+const MercadoLivreLinkInfo = ({ item, onEditarCompra, onFornecedor, onNotas }: {
+  item: ItemMercadoLivre;
+  onEditarCompra?: (numero: string) => void;
+  /** Grava (ou apaga, com null) o código do fornecedor SAP — põe "Aguardando PO". */
+  onFornecedor?: (codigo: string | null) => Promise<void>;
+  /** Abre as NFs do item. */
+  onNotas?: () => void;
+}) => (
   <div className="flex flex-col gap-1 items-start text-[11px]">
     <div className="inline-flex items-center gap-1 max-w-full">
       <a
@@ -435,6 +444,8 @@ const MercadoLivreLinkInfo = ({ item, onEditarCompra }: { item: ItemMercadoLivre
         Editar itens da compra
       </button>
     )}
+    {onFornecedor && <CampoFornecedorMl item={item} onSalvar={onFornecedor} />}
+    {onNotas && <BotaoNotasFiscaisMl item={item} onAbrir={onNotas} />}
   </div>
 );
 
@@ -637,7 +648,9 @@ const STATUS_ANTES_DO_PEDIDO = new Set<string>([
   'Cotação enviada',
   'Análise de Cotações',
   'Validação Técnica',
-  'Aguardando Aprovação PO'
+  'Aguardando Aprovação PO',
+  // Loja do ML cadastrada como fornecedor, esperando o PO: o PO saiu, anda.
+  'Aguardando PO'
 ]);
 
 // Promessa estimada = data de remessa do PO + lead time da rota. Retorna ''
@@ -860,6 +873,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const usuarioMl = useMemo(() => ({ id: user.id, nome: user.name }), [user.id, user.name]);
   const [mlPedido, setMlPedido] = useState<FiltroPedidoMl>('todos');
   const [editarCompraMl, setEditarCompraMl] = useState<string | null>(null);
+  // NFs de um item do ML (PDF ou imagem colada).
+  const [notasMlModal, setNotasMlModal] = useState<{ ri: string; titulo: string } | null>(null);
   // Edição dos dados da compra (texto colado + boleto) de uma compra já gravada.
   const [dadosCompraMlModal, setDadosCompraMlModal] = useState<{ numero: string; atual: DadosCompraMlGravados | null } | null>(null);
   // Item da RM com pedido no SAP (algum ri_po processado).
@@ -956,7 +971,14 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const [alertFilter, setAlertFilter] = useState<Set<string>>(new Set());
   const [grupoMercFilter, setGrupoMercFilter] = useState<Set<string>>(new Set());
   const [poFilter, setPoFilter] = useState<PoFilter>(poFilterInicial || 'Todos');
-  const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos' | 'Parciais'>('Todos');
+  const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos' | 'Parciais' | 'Aguardando PO'>('Todos');
+  // M Livre troca os cards "Com Fornecedor"/"Sem Histórico" por "Aguardando PO":
+  // filtro de um card que não existe na subpágina aberta volta a "Todos".
+  useEffect(() => {
+    const doMl = kpiFilter === 'Aguardando PO';
+    const foraDoMl = kpiFilter === 'Com Fornecedor' || kpiFilter === 'Sem Histórico';
+    if ((poFilter === 'M Livre' && foraDoMl) || (poFilter !== 'M Livre' && doMl)) setKpiFilter('Todos');
+  }, [poFilter, kpiFilter]);
   // Consumo x Projeto: item de projeto é o material que começa em 100000 (mesma
   // regra do Rastreio Compras, em `isProjetoItem`). Começa em "todos" — aqui,
   // diferente do Rastreio, o comprador cota os dois tipos no mesmo lugar.
@@ -1119,6 +1141,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     }
     return rawRmGroups;
   }, [rawRmGroups, poFilter, mlItens, mlFiltro, mlPedido]);
+
+  // Card "Aguardando PO" da aba M Livre: fornecedor colado e ainda sem PO.
+  const aguardandoPoMl = useMemo(() => {
+    let n = 0;
+    mlItens.forEach((it, ri) => { if (itemAguardandoPoMl(it, risComPedido.has(ri))) n++; });
+    return n;
+  }, [mlItens, risComPedido]);
 
   // Contagem com/sem pedido no recorte de compra escolhido (antes do filtro de pedido).
   const contagemPedidoMl = useMemo(() => {
@@ -1971,6 +2000,39 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     buildSuppliersData();
   };
 
+  // Loja do ML cadastrada como fornecedor no SAP: grava o código no item e
+  // passa o status para "Aguardando PO" (sem voltar quem já tem pedido,
+  // coleta, rota ou entrega). Apagar devolve o "Aguardando PO" a "Comprado".
+  const handleFornecedorMl = async (ri: string, codigo: string | null) => {
+    try {
+      await registrarFornecedorMercadoLivre(ri, codigo, usuarioMl);
+    } catch (e: any) {
+      toast.error(`Não foi possível gravar o fornecedor: ${e?.message || 'erro desconhecido'}`);
+      throw e;
+    }
+    const atual = statusInputState[ri] || recordByRi.get(ri)?.item_status;
+    const status = codigo
+      ? statusAposFornecedorMl<ItemStatus>(atual)
+      : statusAposRetirarFornecedorMl<ItemStatus>(atual, !!mlItens.get(ri)?.numero_compra);
+    const obs = obsInputState[ri] ?? recordByRi.get(ri)?.obs_comprador ?? '';
+    const ok = await localDb.updateBuyerFields(ri, obs, dateInputState[ri] || '', status);
+    if (ok) setStatusInputState(prev => { const n = { ...prev }; delete n[ri]; return n; });
+    carregarMlItens();
+    buildSuppliersData();
+    if (!codigo) {
+      if (ok) toast.success('Fornecedor apagado do item.');
+      else toast.error('Fornecedor apagado, mas o status não foi salvo. Ajuste o Status à mão.');
+      return;
+    }
+    if (!ok) {
+      toast.error(`Fornecedor ${codigo} gravado, mas o status não foi salvo. Escolha "Aguardando PO" à mão.`);
+      return;
+    }
+    const nome = await buscarNomeFornecedorSap(codigo).catch(() => null);
+    if (nome) toast.success(`Fornecedor ${codigo} — ${nome} gravado. Status: ${status}.`);
+    else toast.warning(`Fornecedor ${codigo} gravado (status: ${status}), mas o código ainda não está no cadastro importado do SAP — confira o número.`);
+  };
+
   const abrirDadosCompraMl = async (numero: string) => {
     try {
       setDadosCompraMlModal({ numero, atual: await obterDadosCompraMl(numero) });
@@ -2262,6 +2324,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           return lvl === 'critico' || lvl === 'atencao';
         }
         if (kpiFilter === 'Parciais' && !temDivergenciaDeEntrega(r)) return false;
+        if (kpiFilter === 'Aguardando PO' && !itemAguardandoPoMl(mlItens.get(r.ri), r.status_requisicao === 'Processado')) return false;
         return true;
       });
       if (items.length > 0) {
@@ -2272,7 +2335,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       }
     });
     return result;
-  }, [filteredGroupsWithoutKpi, kpiFilter]);
+  }, [filteredGroupsWithoutKpi, kpiFilter, mlItens]);
 
   // Lista plana de itens filtrados (Sem PO sempre antes dos que já possuem PO)
   const filteredFlatItems = useMemo(() => {
@@ -2774,6 +2837,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     'Validação Técnica',
     'Aguardando Aprovação PO',
     'Comprado',
+    'Aguardando PO',
     'Pedido Enviado',
     'Aguardando Coleta',
     'Em rota de entrega',
@@ -3114,7 +3178,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
       {/* KPIs Grid */}
       {!loading && !error && rmGroups.length > 0 && (
-        <div data-tour="compras-kpis" className="grid grid-cols-3 lg:grid-cols-6 gap-2 lg:gap-3.5">
+        <div data-tour="compras-kpis" className={`grid grid-cols-3 gap-2 lg:gap-3.5 ${poFilter === 'M Livre' ? 'lg:grid-cols-5' : 'lg:grid-cols-6'}`}>
           {/* Card 1: RMs em aberto / Total RMs (Info) */}
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-2.5 pl-3.5 lg:p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
@@ -3142,6 +3206,29 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             )}
           </div>
 
+          {poFilter === 'M Livre' ? (
+            /* Card 3 (M Livre): itens com o fornecedor cadastrado colado e ainda
+               sem PO. Conta todos os itens do ML, qualquer que seja a compra
+               escolhida no painel — clicar abre todos eles. */
+            <button
+              type="button"
+              onClick={() => { setKpiFilter('Aguardando PO'); setMlFiltro(FILTRO_ML_TODOS); setMlPedido('todos'); }}
+              aria-pressed={kpiFilter === 'Aguardando PO'}
+              className={`text-left rounded-xl border bg-white dark:bg-slate-900 p-2.5 pl-3.5 lg:p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-[box-shadow,transform] hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Aguardando PO'
+                  ? 'border-lime-500 ring-1 ring-lime-500/20'
+                  : 'border-slate-200/80 dark:border-slate-850'
+                }`}
+              title="Itens com o nº do fornecedor cadastrado e ainda sem pedido (PO) no SAP"
+            >
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-lime-500 dark:bg-lime-600" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 block leading-tight">Aguardando PO</span>
+              <p className="text-xl lg:text-3xl font-black text-lime-700 dark:text-lime-400 mt-1">{aguardandoPoMl}</p>
+              {kpiFilter === 'Aguardando PO' && (
+                <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-lime-50 text-lime-700 dark:bg-lime-950/40 dark:text-lime-400">Filtro Ativo</span>
+              )}
+            </button>
+          ) : (
+            <>
           {/* Card 3: Com Fornecedor */}
           <div
             onClick={() => setKpiFilter('Com Fornecedor')}
@@ -3173,6 +3260,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-rose-50 text-rose-600 dark:bg-rose-955/35">Filtro Ativo</span>
             )}
           </div>
+            </>
+          )}
 
           {/* Card 5: Críticos / Em Atraso */}
           <div
@@ -3662,7 +3751,12 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                               <span className="px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[10px] font-black tracking-wide uppercase whitespace-nowrap">
                                 Mercado Livre
                               </span>
-                              <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} onEditarCompra={setEditarCompraMl} />
+                              <MercadoLivreLinkInfo
+                                item={mlItens.get(r.ri)!}
+                                onEditarCompra={setEditarCompraMl}
+                                onFornecedor={codigo => handleFornecedorMl(r.ri, codigo)}
+                                onNotas={() => setNotasMlModal({ ri: r.ri, titulo: `RM ${r.requisicao_de_compra} / Item ${r.item_reqc} — ${r.texto_breve || r.material_code || ''}` })}
+                              />
                             </div>
                           )}
 
@@ -3942,7 +4036,12 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
                                 {poFilter === 'M Livre' && (
                                   <td className="py-3 px-3 w-[200px]">
-                                    {mlItens.get(r.ri) && <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} onEditarCompra={setEditarCompraMl} />}
+                                    {mlItens.get(r.ri) && <MercadoLivreLinkInfo
+                                item={mlItens.get(r.ri)!}
+                                onEditarCompra={setEditarCompraMl}
+                                onFornecedor={codigo => handleFornecedorMl(r.ri, codigo)}
+                                onNotas={() => setNotasMlModal({ ri: r.ri, titulo: `RM ${r.requisicao_de_compra} / Item ${r.item_reqc} — ${r.texto_breve || r.material_code || ''}` })}
+                              />}
                                   </td>
                                 )}
 
@@ -4197,6 +4296,16 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             </>
           )}
         </div>
+      )}
+
+      {notasMlModal && mlItens.get(notasMlModal.ri) && (
+        <NotasFiscaisMlModal
+          item={mlItens.get(notasMlModal.ri)!}
+          titulo={notasMlModal.titulo}
+          usuario={usuarioMl}
+          onAlterado={carregarMlItens}
+          onClose={() => setNotasMlModal(null)}
+        />
       )}
 
       {mlLinkModal && (

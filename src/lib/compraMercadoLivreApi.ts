@@ -9,7 +9,7 @@
  */
 
 import { supabase } from '../db/supabaseClient';
-import type { DadosCompraMl, ItemMercadoLivre } from './compraMercadoLivre';
+import type { DadosCompraMl, ItemMercadoLivre, NotaFiscalMl } from './compraMercadoLivre';
 import { comprimirImagemUpload } from './imageCompression';
 import type { DetalheCompraMl } from './detalheCompraMl';
 
@@ -134,6 +134,114 @@ export async function registrarCompraMercadoLivre(
     })
     .in('ri', ris);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Grava (ou apaga, com `codigo` null) o código do fornecedor SAP da loja que
+ * vendeu o item. O status do comprador é ajustado pela tela.
+ */
+export async function registrarFornecedorMercadoLivre(ri: string, codigo: string | null, usuario: Usuario): Promise<void> {
+  const agora = new Date().toISOString();
+  const { error } = await (supabase as any)
+    .from('sup_ml_itens')
+    .update({
+      fornecedor_codigo: codigo,
+      fornecedor_registrado_em: codigo ? agora : null,
+      fornecedor_registrado_por_nome: codigo ? usuario.nome : null,
+      atualizado_por_id: usuario.id,
+      atualizado_por_nome: usuario.nome,
+      updated_at: agora,
+    })
+    .eq('ri', ri);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Nome do fornecedor no cadastro importado do SAP (sup_fornecedores_cidades),
+ * para a tela confirmar o código colado. null quando o código ainda não está
+ * na base — fornecedor recém-cadastrado só aparece na próxima importação.
+ */
+export async function buscarNomeFornecedorSap(codigo: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('sup_fornecedores_cidades')
+    .select('forn_nome')
+    .eq('forn_codigo', codigo)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as { forn_nome?: string | null } | null)?.forn_nome ?? null;
+}
+
+const BUCKET_NF_ML = 'cotacoes-arquivos';
+export const TAMANHO_MAXIMO_NF_ML = 10 * 1024 * 1024;
+
+async function notasFiscaisAtuais(ri: string): Promise<NotaFiscalMl[]> {
+  const { data, error } = await (supabase as any).from('sup_ml_itens').select('notas_fiscais').eq('ri', ri).maybeSingle();
+  if (error) throw new Error(error.message);
+  return ((data?.notas_fiscais ?? []) as NotaFiscalMl[]);
+}
+
+async function gravarNotasFiscais(ri: string, notas: NotaFiscalMl[], usuario: Usuario): Promise<void> {
+  const { error } = await (supabase as any)
+    .from('sup_ml_itens')
+    .update({
+      notas_fiscais: notas,
+      atualizado_por_id: usuario.id,
+      atualizado_por_nome: usuario.nome,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('ri', ri);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Anexa a NF do item (PDF ou imagem). Imagem passa pela compressão padrão,
+ * com lado maior de 2400 px para o texto da nota continuar legível. Lê a
+ * lista do banco antes de gravar para não perder NF que outro comprador
+ * anexou nesse meio-tempo.
+ */
+export async function anexarNotaFiscalMl(ri: string, arquivo: File, usuario: Usuario): Promise<NotaFiscalMl[]> {
+  const ehPdf = arquivo.type === 'application/pdf' || /\.pdf$/i.test(arquivo.name);
+  const ehImagem = arquivo.type.startsWith('image/');
+  if (!ehPdf && !ehImagem) throw new Error('Envie a NF em PDF ou como imagem.');
+  if (arquivo.size > TAMANHO_MAXIMO_NF_ML) throw new Error('A NF deve ter até 10 MB.');
+  const blob: Blob = ehImagem ? await comprimirImagemUpload(arquivo, { maxDimensao: 2400, qualidade: 0.85 }) : arquivo;
+  const base = (arquivo.name || 'nota-fiscal').replace(/\.[^.]+$/, '') || 'nota-fiscal';
+  const nome = ehPdf ? `${base}.pdf` : blob === arquivo ? arquivo.name || `${base}.png` : `${base}.jpg`;
+  const mime = ehPdf ? 'application/pdf' : blob.type || arquivo.type;
+  const path = `mercado-livre/${encodeURIComponent(ri)}/nf/${crypto.randomUUID()}-${nome.replace(/[^\w.-]/g, '_').slice(-80)}`;
+  const { error: upErr } = await supabase.storage.from(BUCKET_NF_ML).upload(path, blob, { contentType: mime });
+  if (upErr) throw new Error(`Falha ao enviar a NF: ${upErr.message}`);
+  const nota: NotaFiscalMl = {
+    nome, path, mime_type: mime, tamanho_bytes: blob.size,
+    enviado_em: new Date().toISOString(), enviado_por_nome: usuario.nome,
+  };
+  try {
+    const notas = [...(await notasFiscaisAtuais(ri)), nota];
+    await gravarNotasFiscais(ri, notas, usuario);
+    return notas;
+  } catch (e) {
+    await supabase.storage.from(BUCKET_NF_ML).remove([path]);
+    throw e;
+  }
+}
+
+/** Tira a NF do item e apaga o arquivo do Storage. */
+export async function removerNotaFiscalMl(ri: string, path: string, usuario: Usuario): Promise<NotaFiscalMl[]> {
+  const notas = (await notasFiscaisAtuais(ri)).filter(n => n.path !== path);
+  await gravarNotasFiscais(ri, notas, usuario);
+  const { error } = await supabase.storage.from(BUCKET_NF_ML).remove([path]);
+  if (error) console.warn('NF retirada do item, mas o arquivo ficou no Storage:', error.message);
+  return notas;
+}
+
+/** Link temporário da NF: para ver (sem `baixarComo`) ou baixar com o nome do arquivo. */
+export async function urlNotaFiscalMl(path: string, baixarComo?: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from(BUCKET_NF_ML)
+    .createSignedUrl(path, 60 * 60, baixarComo ? { download: baixarComo } : undefined);
+  if (error || !data?.signedUrl) throw new Error(error?.message || 'Não foi possível abrir a NF.');
+  return data.signedUrl;
 }
 
 /**

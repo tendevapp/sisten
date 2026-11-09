@@ -377,6 +377,8 @@ export type ItemStatus =
   | 'Aguardando Aprovação PO'
   // Compra fechada fora do SAP (ex.: número da compra do Mercado Livre gravado).
   | 'Comprado'
+  // Compra do ML com a loja já cadastrada como fornecedor no SAP: falta o PO.
+  | 'Aguardando PO'
   | 'Pedido Enviado'
   | 'Aguardando Coleta'
   | 'Em rota de entrega'

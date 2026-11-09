@@ -39,6 +39,7 @@ const itemStatusOptions: ItemStatus[] = [
   'Validação Técnica',
   'Aguardando Aprovação PO',
   'Comprado',
+  'Aguardando PO',
   'Pedido Enviado',
   'Aguardando Coleta',
   'Em rota de entrega',

@@ -24,11 +24,23 @@ export interface ItemMercadoLivre {
   link: string;
   comprovante?: ArquivoOriginalCotacao | null;
   numero_compra: string | null;
+  /** Código SAP (LIFNR) da loja cadastrada como fornecedor — põe o item em "Aguardando PO". */
+  fornecedor_codigo?: string | null;
+  fornecedor_registrado_em?: string | null;
+  fornecedor_registrado_por_nome?: string | null;
+  /** NFs do item (PDF ou imagem) no bucket privado cotacoes-arquivos. */
+  notas_fiscais?: NotaFiscalMl[] | null;
   compra_registrada_em: string | null;
   compra_registrada_por_nome: string | null;
   criado_por_nome: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** NF de um item comprado no ML (cada loja manda a sua). */
+export interface NotaFiscalMl extends ArquivoOriginalCotacao {
+  enviado_em: string;
+  enviado_por_nome: string | null;
 }
 
 /** Filtro da subpágina M Livre: todos, só os que faltam comprar, ou uma compra. */
@@ -108,17 +120,61 @@ export const STATUS_COMPRADO = 'Comprado';
  * "Comprado", a não ser que o item já esteja mais adiante (pedido, coleta,
  * rota, entregue) — gravar a compra nunca faz o status andar para trás.
  */
-const STATUS_ALEM_DA_COMPRA = new Set(['Pedido Enviado', 'Aguardando Coleta', 'Em rota de entrega', 'Entregue']);
+const STATUS_ALEM_DA_COMPRA = new Set(['Aguardando PO', 'Pedido Enviado', 'Aguardando Coleta', 'Em rota de entrega', 'Entregue']);
 export function statusAposCompraMl<T extends string>(atual: T | '' | null | undefined): T | typeof STATUS_COMPRADO {
   return atual && STATUS_ALEM_DA_COMPRA.has(atual) ? atual : STATUS_COMPRADO;
 }
 
+export const STATUS_AGUARDANDO_PO = 'Aguardando PO';
+
+/**
+ * Código do fornecedor SAP (LIFNR) colado pelo comprador: só dígitos, sem
+ * zeros à esquerda (o SAP exporta "0001000083593" e o cadastro guarda
+ * "1000083593"). Devolve null quando não sobra um código plausível — de 4 a
+ * 10 dígitos — e recusa o que é claramente outra coisa: PO do SAP (4 + 9
+ * dígitos) ou número da compra do ML (16 dígitos).
+ */
+export function normalizarCodigoFornecedorSap(texto: string): string | null {
+  const digitos = (texto ?? '').replace(/\D/g, '').replace(/^0+/, '');
+  if (digitos.length < 4 || digitos.length > 10 || ehNumeroPedidoSap(digitos)) return null;
+  return digitos;
+}
+
+/**
+ * Status do comprador depois de gravar o fornecedor: "Aguardando PO", sem
+ * voltar quem já está em pedido, coleta, rota ou entregue.
+ */
+const STATUS_ALEM_DO_FORNECEDOR = new Set(['Pedido Enviado', 'Aguardando Coleta', 'Em rota de entrega', 'Entregue']);
+export function statusAposFornecedorMl<T extends string>(atual: T | '' | null | undefined): T | typeof STATUS_AGUARDANDO_PO {
+  return atual && STATUS_ALEM_DO_FORNECEDOR.has(atual) ? atual : STATUS_AGUARDANDO_PO;
+}
+
+/**
+ * Status quando o fornecedor é apagado: o "Aguardando PO" posto por ele volta
+ * a "Comprado" (se o item tem compra no ML) ou a vazio; outro status fica.
+ */
+export function statusAposRetirarFornecedorMl<T extends string>(
+  atual: T | '' | null | undefined,
+  temCompraMl: boolean,
+): T | typeof STATUS_COMPRADO | '' {
+  if (atual !== STATUS_AGUARDANDO_PO) return atual || '';
+  return temCompraMl ? STATUS_COMPRADO : '';
+}
+
+/**
+ * Card "Aguardando PO" da aba M Livre: item com o fornecedor cadastrado
+ * colado e ainda sem pedido no SAP. Quando o PO sai, o item deixa o card.
+ */
+export function itemAguardandoPoMl(item: Pick<ItemMercadoLivre, 'fornecedor_codigo'> | undefined, temPedido: boolean): boolean {
+  return !!item?.fornecedor_codigo && !temPedido;
+}
+
 /**
  * Filtro Comprado / Não comprado da Central: comprado é o item com PO emitido
- * no SAP, com número de compra do ML ou com status "Comprado".
+ * no SAP, com número de compra do ML ou com status "Comprado"/"Aguardando PO".
  */
 export function itemFoiComprado(dados: { temPo: boolean; numeroCompraMl?: string | null; itemStatus?: string | null }): boolean {
-  return dados.temPo || !!dados.numeroCompraMl || dados.itemStatus === STATUS_COMPRADO;
+  return dados.temPo || !!dados.numeroCompraMl || dados.itemStatus === STATUS_COMPRADO || dados.itemStatus === STATUS_AGUARDANDO_PO;
 }
 
 /**
