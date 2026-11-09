@@ -320,7 +320,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
             }}
             className="col-span-2 md:col-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all shadow-2xs cursor-pointer"
           >
-            <RefreshCw className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <RefreshCw className="h-3.5 w-3.5 text-slate-500 shrink-0" />
             <span>Resetar Simulador</span>
           </button>
 
@@ -384,7 +384,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                   <span>Busca Rápida de Rota (Digitação Inteligente)</span>
                 </label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400 pointer-events-none" />
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500 pointer-events-none" />
                   <input
                     type="text"
                     value={smartSearchQuery}
@@ -397,12 +397,12 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                     className="w-full rounded-xl border border-cyan-200 bg-cyan-50/20 pl-9 pr-9 py-2.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-cyan-600 focus:bg-white focus:ring-2 focus:ring-cyan-600/20 transition-all shadow-2xs"
                   />
                   {smartSearchQuery && (
-                    <button
+                    <button aria-label="Fechar"
                       onClick={() => {
                         setSmartSearchQuery('');
                         setIsSmartSearchOpen(false);
                       }}
-                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 cursor-pointer"
+                      className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 cursor-pointer"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -413,7 +413,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                 {isSmartSearchOpen && smartSearchQuery.trim() && (
                   <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-cyan-200 rounded-2xl shadow-xl z-30 max-h-72 overflow-y-auto divide-y divide-slate-100 p-1.5 animate-in fade-in slide-in-from-top-1">
                     {sugestoesInteligentes.length === 0 ? (
-                      <div className="p-4 text-center text-xs text-slate-400">
+                      <div className="p-4 text-center text-xs text-slate-500">
                         Nenhuma rota encontrada para "{smartSearchQuery}". Tente outro termo ou selecione nos campos abaixo.
                       </div>
                     ) : (
@@ -427,10 +427,10 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                             <div className="font-bold text-slate-800 flex items-center gap-1.5">
                               <Navigation className="h-3 w-3 text-cyan-600 shrink-0" />
                               <span>{item.origem}</span>
-                              <ArrowRight className="h-3 w-3 text-slate-400" />
+                              <ArrowRight className="h-3 w-3 text-slate-500" />
                               <span className="text-emerald-700">{item.destino}</span>
                             </div>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                            <div className="text-[10px] text-slate-500 flex items-center gap-2">
                               <span>UF: <strong>{item.uf}</strong></span>
                               {item.rotas && <span>• Rota: <strong>{item.rotas}</strong></span>}
                               {item.lead_time_entrega && <span>• Lead Time: <strong>{item.lead_time_entrega} dias</strong></span>}
@@ -455,7 +455,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5 text-cyan-600" /> Origem (Saída)
                     </span>
-                    <span className="text-[10px] text-slate-400 font-normal">{origensDisponiveis.length} disponíveis</span>
+                    <span className="text-[10px] text-slate-500 font-normal">{origensDisponiveis.length} disponíveis</span>
                   </label>
                   
                   <div className="relative">
@@ -473,13 +473,13 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                       placeholder="Filtrar origem..."
                       className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-cyan-600 focus:bg-white transition-all pr-8"
                     />
-                    <ChevronDown className="absolute right-3 top-3 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                    <ChevronDown className="absolute right-3 top-3 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
                   </div>
 
                   {isOrigemMenuOpen && (
                     <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-20 max-h-52 overflow-y-auto p-1 text-xs">
                       {origensFiltradas.length === 0 ? (
-                        <div className="p-2 text-slate-400 text-center">Sem origens correspondentes</div>
+                        <div className="p-2 text-slate-500 text-center">Sem origens correspondentes</div>
                       ) : (
                         origensFiltradas.map((origem) => (
                           <div
@@ -508,7 +508,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5 text-emerald-600" /> Destino / UF
                     </span>
-                    <span className="text-[10px] text-slate-400 font-normal">{destinosDisponiveis.length} nesta origem</span>
+                    <span className="text-[10px] text-slate-500 font-normal">{destinosDisponiveis.length} nesta origem</span>
                   </label>
 
                   <div className="relative">
@@ -526,13 +526,13 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                       placeholder="Filtrar destino ou UF..."
                       className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-cyan-600 focus:bg-white transition-all pr-8"
                     />
-                    <ChevronDown className="absolute right-3 top-3 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                    <ChevronDown className="absolute right-3 top-3 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
                   </div>
 
                   {isDestinoMenuOpen && (
                     <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-20 max-h-52 overflow-y-auto p-1 text-xs">
                       {destinosFiltrados.length === 0 ? (
-                        <div className="p-2 text-slate-400 text-center">Sem destinos correspondentes</div>
+                        <div className="p-2 text-slate-500 text-center">Sem destinos correspondentes</div>
                       ) : (
                         destinosFiltrados.map((dest) => {
                           const isSelected = selectedDestinoId === (dest.id || dest.destino);
@@ -550,8 +550,8 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                             >
                               <div>
                                 <span className="font-semibold">{dest.destino}</span>
-                                <span className="ml-1.5 text-[10px] text-slate-400 font-mono">({dest.uf})</span>
-                                {dest.rotas && <span className="ml-1.5 text-[10px] text-slate-400">• Rota: {dest.rotas}</span>}
+                                <span className="ml-1.5 text-[10px] text-slate-500 font-mono">({dest.uf})</span>
+                                {dest.rotas && <span className="ml-1.5 text-[10px] text-slate-500">• Rota: {dest.rotas}</span>}
                               </div>
                               {isSelected && <Check className="h-3.5 w-3.5 text-emerald-600" />}
                             </div>
@@ -636,7 +636,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                         }`}
                       >
                         <div className="text-xs font-bold">{v.label}</div>
-                        <div className="text-[10px] text-slate-400 font-medium">{v.cap}</div>
+                        <div className="text-[10px] text-slate-500 font-medium">{v.cap}</div>
                       </button>
                     ))}
                   </div>
@@ -694,7 +694,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                     onChange={(e) => setValorMercadoria(Math.max(0, parseFloat(e.target.value) || 0))}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-cyan-600 focus:bg-white transition-all"
                   />
-                  <p className="text-[10px] text-slate-400">Usado para cálculo do Ad Valorem (Seguro) da rota.</p>
+                  <p className="text-[10px] text-slate-500">Usado para cálculo do Ad Valorem (Seguro) da rota.</p>
                 </div>
               </div>
             </div>
@@ -744,7 +744,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
             <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-md space-y-5 text-center relative overflow-hidden">
               <div className="absolute top-0 right-0 h-24 w-24 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
               
-              <span className="text-[10px] font-extrabold tracking-widest text-slate-400 uppercase block">
+              <span className="text-[10px] font-extrabold tracking-widest text-slate-500 uppercase block">
                 CUSTO TOTAL ESTIMADO DO FRETE
               </span>
 
@@ -758,18 +758,18 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                   </p>
                 </div>
               ) : (
-                <p className="text-sm text-slate-400">Selecione uma rota para calcular</p>
+                <p className="text-sm text-slate-500">Selecione uma rota para calcular</p>
               )}
 
               {/* Lead Time Badge */}
               {calculoFrete && (
                 <div className="grid grid-cols-2 gap-2 pt-2 text-xs border-t border-slate-100">
                   <div className="p-2.5 bg-slate-50 rounded-xl">
-                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Lead Time Entrega</span>
+                    <span className="text-[10px] font-bold text-slate-500 block uppercase">Lead Time Entrega</span>
                     <span className="font-bold text-slate-800">{calculoFrete.leadTime} dias</span>
                   </div>
                   <div className="p-2.5 bg-slate-50 rounded-xl">
-                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Modalidade</span>
+                    <span className="text-[10px] font-bold text-slate-500 block uppercase">Modalidade</span>
                     <span className="font-bold text-slate-800 capitalize">{modalidade}</span>
                   </div>
                 </div>
@@ -789,7 +789,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                   <div className="flex justify-between items-center gap-3 py-1 border-b border-slate-100/60">
                     <div>
                       <span className="font-bold text-slate-800 block">Frete Base / Frete Peso</span>
-                      <span className="text-[10px] text-slate-400">{calculoFrete.faixaDesc}</span>
+                      <span className="text-[10px] text-slate-500">{calculoFrete.faixaDesc}</span>
                     </div>
                     <span className="font-bold text-slate-900">R$ {calculoFrete.freteBase.toFixed(2)}</span>
                   </div>
@@ -798,7 +798,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                   <div className="flex justify-between items-center gap-3 py-1 border-b border-slate-100/60">
                     <div>
                       <span className="font-semibold text-slate-700 block">Ad Valorem (Seguro)</span>
-                      <span className="text-[10px] text-slate-400">{calculoFrete.adValoresPct}% sobre R$ {valorMercadoria.toLocaleString('pt-BR')}</span>
+                      <span className="text-[10px] text-slate-500">{calculoFrete.adValoresPct}% sobre R$ {valorMercadoria.toLocaleString('pt-BR')}</span>
                     </div>
                     <span className="font-semibold text-slate-800">R$ {calculoFrete.adValoresValor.toFixed(2)}</span>
                   </div>
@@ -807,7 +807,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                   <div className="flex justify-between items-center gap-3 py-1 border-b border-slate-100/60">
                     <div>
                       <span className="font-semibold text-slate-700 block">GRIS (Gerenciamento de Risco)</span>
-                      <span className="text-[10px] text-slate-400">{calculoFrete.grisPct}% sobre R$ {valorMercadoria.toLocaleString('pt-BR')}</span>
+                      <span className="text-[10px] text-slate-500">{calculoFrete.grisPct}% sobre R$ {valorMercadoria.toLocaleString('pt-BR')}</span>
                     </div>
                     <span className="font-semibold text-slate-800">R$ {calculoFrete.grisValor.toFixed(2)}</span>
                   </div>
@@ -816,7 +816,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                   <div className="flex justify-between items-center gap-3 py-1 border-b border-slate-100/60">
                     <div>
                       <span className="font-semibold text-slate-700 block">Pedágio</span>
-                      <span className="text-[10px] text-slate-400">{calculoFrete.fracoes100kg} fração(ões) de 100kg (R$ {calculoFrete.taxaPedagioFracao.toFixed(2)}/100kg)</span>
+                      <span className="text-[10px] text-slate-500">{calculoFrete.fracoes100kg} fração(ões) de 100kg (R$ {calculoFrete.taxaPedagioFracao.toFixed(2)}/100kg)</span>
                     </div>
                     <span className="font-semibold text-slate-800">R$ {calculoFrete.pedagioTotal.toFixed(2)}</span>
                   </div>
@@ -855,7 +855,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                   <div className="flex justify-between items-center gap-3 py-1 border-b border-slate-100/60 text-cyan-900">
                     <div>
                       <span className="font-semibold block">ICMS Embutido ({calculoFrete.icmsPct}%)</span>
-                      <span className="text-[10px] text-slate-400">Alíquota fiscal aplicável no destino</span>
+                      <span className="text-[10px] text-slate-500">Alíquota fiscal aplicável no destino</span>
                     </div>
                     <span className="font-bold">R$ {calculoFrete.valorIcms.toFixed(2)}</span>
                   </div>

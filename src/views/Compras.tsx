@@ -319,7 +319,7 @@ const ClipboardCopyButton = ({ text, label, size = 'sm' }: { text: string; label
     <button
       type="button"
       onClick={handleCopy}
-      className={`${padClass} rounded-md bg-slate-50 hover:bg-slate-150 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors relative group cursor-pointer inline-flex items-center justify-center shrink-0 border border-slate-200/50 dark:border-slate-700`}
+      className={`${padClass} rounded-md bg-slate-50 hover:bg-slate-150 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors relative group cursor-pointer inline-flex items-center justify-center shrink-0 border border-slate-200/50 dark:border-slate-700`}
       title={`Copiar ${label} (${text})`}
       aria-label={`Copiar ${label} ${text}`}
     >
@@ -361,7 +361,7 @@ const EstoqueTagBadge = ({ situacao }: { situacao: SituacaoEstoqueMaterial | nul
   if (!situacao?.tag) return null;
   return (
     <span
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-black tracking-wide uppercase whitespace-nowrap ${ESTILO_TAG_ESTOQUE[situacao.tag]}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-black tracking-wide uppercase whitespace-nowrap ${ESTILO_TAG_ESTOQUE[situacao.tag]}`}
       title={`${ROTULO_TAG_ESTOQUE[situacao.tag]} — ${descreverSituacaoEstoque(situacao)} (Controle de Estoque)`}
     >
       <Warehouse className="h-2.5 w-2.5" aria-hidden="true" />
@@ -379,7 +379,7 @@ const SEM_TAG_ESTOQUE = 'SEM';
 const BOTAO_ACAO_BASE = 'inline-flex items-center justify-center whitespace-nowrap border font-bold transition-all cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed';
 // Na tabela ficam em grade 2×2 e baixos (h-6): a coluna Ações não pode deixar
 // a linha mais alta que os campos de status/promessa/observação.
-const BOTAO_ACAO_TABELA = `${BOTAO_ACAO_BASE} w-[66px] h-6 gap-0.5 px-1 rounded-md text-[9px]`;
+const BOTAO_ACAO_TABELA = `${BOTAO_ACAO_BASE} w-[66px] h-6 gap-0.5 px-1 rounded-md text-[10px]`;
 const BOTAO_ACAO_CARD = `${BOTAO_ACAO_BASE} h-7 gap-1 px-2 rounded-lg text-[11px] shadow-xs lg:min-w-[104px] lg:h-8 lg:gap-1.5 lg:px-3 lg:rounded-xl lg:text-xs`;
 const COR_BOTAO_COTACAO = 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600';
 const COR_BOTAO_ML = 'bg-yellow-300 hover:bg-yellow-400 text-slate-900 border-yellow-400';
@@ -444,7 +444,7 @@ const MercadoLivreTag = ({ cotacoes }: { cotacoes: CotacaoItemVinculo[] }) => {
   if (ml.length === 0) return null;
   return (
     <span
-      className="inline-flex items-center px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[9px] font-black tracking-wide uppercase whitespace-nowrap"
+      className="inline-flex items-center px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[10px] font-black tracking-wide uppercase whitespace-nowrap"
       title={`Item com compra pelo Mercado Livre — ${ml.map(c => c.numero).join(', ')}`}
     >
       Mercado Livre
@@ -469,7 +469,7 @@ const ORIGEM_CURTA: Record<string, string> = { PO: 'PO', COTACAO: 'Cotação', C
 const OrigemFornecedorBadges = ({ f }: { f: FornecedorMaterialRow }) => (
   <>
     {origensDe(f).map(o => (
-      <span key={o} title={ROTULO_ORIGEM[o]} className={`px-1.5 py-0.5 rounded border text-[9px] font-black uppercase tracking-wide ${ORIGEM_ESTILO[o]}`}>
+      <span key={o} title={ROTULO_ORIGEM[o]} className={`px-1.5 py-0.5 rounded border text-[10px] font-black uppercase tracking-wide ${ORIGEM_ESTILO[o]}`}>
         {ORIGEM_CURTA[o]}
       </span>
     ))}
@@ -489,7 +489,7 @@ const FornecedorHistoricoCard = ({ f }: { f: FornecedorMaterialRow }) => (
           {f.fornecedor}
         </span>
         {f.regiao_uf && f.regiao_uf !== '—' && (
-          <span className="px-1.5 py-0.3 bg-slate-100 dark:bg-slate-800 text-[9px] font-black rounded text-slate-500 dark:text-slate-400">
+          <span className="px-1.5 py-0.3 bg-slate-100 dark:bg-slate-800 text-[10px] font-black rounded text-slate-500 dark:text-slate-400">
             {f.regiao_uf}
           </span>
         )}
@@ -502,7 +502,7 @@ const FornecedorHistoricoCard = ({ f }: { f: FornecedorMaterialRow }) => (
       )}
       {(f.cidade || f.pais) && (f.cidade !== '—' || f.pais !== '—') && (
         <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-          <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+          <MapPin className="h-3 w-3 text-slate-500 shrink-0" />
           {[f.rua, f.cidade, f.pais].filter(x => x && x !== '—').join(', ')}
         </p>
       )}
@@ -581,7 +581,7 @@ const HistoricoFornecedoresModal = ({
     </ModalHeader>
     <ModalBody className="space-y-2">
       {fornecedores.length === 0 ? (
-        <p className="text-xs text-slate-400">Sem PO, cotação ou catálogo anterior para este material.</p>
+        <p className="text-xs text-slate-500">Sem PO, cotação ou catálogo anterior para este material.</p>
       ) : (
         fornecedores.map((f, idx) => <FornecedorHistoricoCard key={idx} f={f} />)
       )}
@@ -2533,7 +2533,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     const pct = Math.min(99, Math.max(1, Math.round(entrega.percentual)));
     return entrega.parcial ? (
       <span
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-900/50"
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-900/50"
         title={`Entrega parcial: fornecidos ${formatInt(entrega.fornecido)} de ${formatInt(entrega.solicitado)} ${un} — faltam ${formatInt(entrega.faltando)}`}
       >
         <AlertTriangle className="h-3 w-3 shrink-0" />
@@ -2541,7 +2541,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       </span>
     ) : (
       <span
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-900/50"
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-900/50"
         title={`Fornecido a mais: ${formatInt(entrega.fornecido)} contra ${formatInt(entrega.solicitado)} ${un} pedidos`}
       >
         <AlertTriangle className="h-3 w-3 shrink-0" />
@@ -2558,7 +2558,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     );
     const mlBadge = tituloMl ? (
       <span
-        className="inline-flex items-center px-2 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[9px] font-black tracking-wide uppercase whitespace-nowrap"
+        className="inline-flex items-center px-2 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[10px] font-black tracking-wide uppercase whitespace-nowrap"
         title={tituloMl}
       >
         Mercado Livre
@@ -2577,7 +2577,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         <div className="inline-flex flex-wrap items-center gap-1.5">
           {eContrato ? (
             <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-900/50"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-900/50"
               title="Item de contrato (categoria D no SAP): fornecimento amarrado a contrato, sem pedido a colocar"
             >
               <Check className="h-3 w-3 shrink-0" />
@@ -2593,7 +2593,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             </span>
           ) : (
             <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
               title={`PO ${docCompra || '—'} emitida em ${formatDateBR(r.data_pedido)}`}
             >
               <Check className="h-3 w-3 shrink-0" />
@@ -2611,7 +2611,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               pedido de verdade, ele é que nasceu amarrado ao contrato. */}
           {!eContrato && contratoPO && (
             <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-900/50"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-900/50"
               title={`Pedido colocado por referência ao contrato ${contratoPO}${itemContrato ? `, item ${itemContrato}` : ''} — não passou por cotação`}
             >
               <FileText className="h-3 w-3 shrink-0" />
@@ -2623,7 +2623,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           )}
           {!dataMigo && !eContrato && (
             <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-amber-100 dark:bg-amber-955/40 text-amber-700 dark:text-amber-450 border border-amber-250 dark:border-amber-900/50"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-amber-100 dark:bg-amber-955/40 text-amber-700 dark:text-amber-450 border border-amber-250 dark:border-amber-900/50"
               title="Item comprado mas sem registro de entrada física/nota fiscal (Sem MIGO)"
             >
               Sem MIGO
@@ -2631,7 +2631,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           )}
           {!dataMigo && !eContrato && chegadasMap.has(r.ri_po) && (
             <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-900/50"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-900/50"
               title={`Registrado por ${chegadasMap.get(r.ri_po)!.registrado_por_nome}`}
             >
               <PackageCheck className="h-3 w-3 shrink-0" />
@@ -2644,7 +2644,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     }
     return (
       <div className="inline-flex flex-wrap items-center gap-1.5">
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50">
           Sem PO
         </span>
         {mlBadge}
@@ -2672,7 +2672,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             {docCompra && <ClipboardCopyButton text={docCompra} label={r.is_contrato ? 'Contrato' : 'PO'} size="xs" />}
           </span>
           {r.item_pedido && (
-            <span className="px-1.5 py-0.3 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-black text-slate-500 dark:text-slate-400">
+            <span className="px-1.5 py-0.3 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-black text-slate-500 dark:text-slate-400">
               Item {r.item_pedido}
             </span>
           )}
@@ -2690,15 +2690,15 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         {!compact && poForn && (poForn.telefone !== '—' || poForn.email !== '—') && (
           <div className="flex flex-wrap items-center gap-1.5">
             {poForn.telefone !== '—' && poForn.telefone.split(';').map(t => t.trim()).filter(Boolean).map((tel, telIdx) => (
-              <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
-                <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+              <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[10px] shrink-0">
+                <Phone className="h-3 w-3 text-slate-500 shrink-0" />
                 <a href={`tel:${tel}`} className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold font-mono" title={`Ligar: ${tel}`}>{tel}</a>
                 <ClipboardCopyButton text={tel} label="telefone" />
               </div>
             ))}
             {poForn.email !== '—' && (
-              <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] min-w-0 max-w-full">
-                <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+              <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[10px] min-w-0 max-w-full">
+                <Mail className="h-3 w-3 text-slate-500 shrink-0" />
                 <a href={`mailto:${poForn.email}`} className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[155px]" title={poForn.email}>{poForn.email}</a>
                 <ClipboardCopyButton text={poForn.email} label="e-mail" />
               </div>
@@ -2724,7 +2724,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           {/* Contrato não tem carga a chegar, então não cobra MIGO. */}
           {r.is_contrato ? <span /> : renderMigoInfo(r.data_migo || undefined)}
           {r.criado_por_pedido && (
-            <span className="text-slate-400 dark:text-slate-500 font-semibold">Comprador: {r.criado_por_pedido}</span>
+            <span className="text-slate-500 dark:text-slate-500 font-semibold">Comprador: {r.criado_por_pedido}</span>
           )}
         </div>
       </div>
@@ -2905,7 +2905,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               />
               {/* Comprado = PO emitido no SAP, número de compra do ML ou status "Comprado". */}
               <div className={cf('relative shrink-0 w-[170px] lg:w-auto lg:min-w-[170px]', 'relative w-full')}>
-                <PackageCheck className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                <PackageCheck className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
                 <select
                   value={compradoFilter}
                   onChange={(e) => setCompradoFilter(e.target.value as typeof compradoFilter)}
@@ -2936,7 +2936,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               />
               {/* Consumo x Projeto — material 100000… é item de projeto. */}
               <div className={cf('relative shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]', 'relative w-full')}>
-                <Boxes className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                <Boxes className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
                 <select
                   value={tipoItemFilter}
                   onChange={(e) => setTipoItemFilter(e.target.value as TipoItemFilter)}
@@ -2991,7 +2991,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             Central de Compras
           </h2>
           {lastUpdated && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
+            <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
               <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('requisicoes')}
             </p>
           )}
@@ -3118,7 +3118,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           {/* Card 1: RMs em aberto / Total RMs (Info) */}
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-2.5 pl-3.5 lg:p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block leading-tight">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 block leading-tight">
               {poFilter === 'Sem MIGO' ? 'RMs sem MIGO' : poFilter === 'Sem PO' ? 'RMs em aberto' : poFilter === 'Contrato' ? 'RMs de contrato' : poFilter === 'M Livre' ? 'RMs no ML' : 'Total RMs'}
             </span>
             <p className="text-xl lg:text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.rms}</p>
@@ -3138,7 +3138,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             </span>
             <p className="text-xl lg:text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.itens}</p>
             {kpiFilter === 'Todos' && (
-              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-blue-50 text-[#0056c6] dark:bg-blue-950/40">Filtro Ativo</span>
+              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-blue-50 text-[#0056c6] dark:bg-blue-950/40">Filtro Ativo</span>
             )}
           </div>
 
@@ -3151,10 +3151,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 dark:bg-emerald-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block leading-tight">Com Fornecedor</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 block leading-tight">Com Fornecedor</span>
             <p className="text-xl lg:text-3xl font-black text-emerald-600 dark:text-emerald-500 mt-1">{kpis.com}</p>
             {kpiFilter === 'Com Fornecedor' && (
-              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">Filtro Ativo</span>
+              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">Filtro Ativo</span>
             )}
           </div>
 
@@ -3167,10 +3167,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-rose-500 dark:bg-rose-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block leading-tight">Sem Histórico</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 block leading-tight">Sem Histórico</span>
             <p className="text-xl lg:text-3xl font-black text-rose-600 dark:text-rose-500 mt-1">{kpis.sem}</p>
             {kpiFilter === 'Sem Histórico' && (
-              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-rose-50 text-rose-600 dark:bg-rose-955/35">Filtro Ativo</span>
+              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-rose-50 text-rose-600 dark:bg-rose-955/35">Filtro Ativo</span>
             )}
           </div>
 
@@ -3183,10 +3183,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 dark:bg-amber-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block leading-tight">Críticos / Em Atraso</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 block leading-tight">Críticos / Em Atraso</span>
             <p className="text-xl lg:text-3xl font-black text-amber-600 dark:text-amber-500 mt-1">{kpis.criticos}</p>
             {kpiFilter === 'Críticos' && (
-              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-amber-50 text-amber-650 dark:bg-amber-955/20">Filtro Ativo</span>
+              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-50 text-amber-650 dark:bg-amber-955/20">Filtro Ativo</span>
             )}
           </div>
 
@@ -3200,10 +3200,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-500 dark:bg-orange-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block leading-tight">Itens Parciais</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 block leading-tight">Itens Parciais</span>
             <p className="text-xl lg:text-3xl font-black text-orange-600 dark:text-orange-500 mt-1">{kpis.parciais}</p>
             {kpiFilter === 'Parciais' && (
-              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-orange-50 text-orange-600 dark:bg-orange-950/40">Filtro Ativo</span>
+              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase bg-orange-50 text-orange-600 dark:bg-orange-950/40">Filtro Ativo</span>
             )}
           </div>
         </div>
@@ -3434,7 +3434,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                 className="h-5 w-5 lg:h-4 lg:w-4 cursor-pointer"
                                 aria-label={`Selecionar item ${r.item_reqc}`}
                               />
-                              <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 dark:text-slate-500">RM {rm}</span>
+                              <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-500">RM {rm}</span>
                               <ClipboardCopyButton text={rm} label="RM" size="xs" />
                               <span className="text-[10px] text-slate-350">•</span>
                               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Item {r.item_reqc}</span>
@@ -3484,7 +3484,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                               )}
                             </div>
                             <div className="flex items-center gap-2">
-                              <button
+                              <button aria-label="Ver detalhes SAP"
                                 onClick={() => abrirDetalheSap(r, vinculoSisten)}
                                 className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-450 dark:text-slate-500 hover:text-[#0056c6] dark:hover:text-emerald-450 cursor-pointer"
                                 title="Ver detalhes SAP"
@@ -3495,7 +3495,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                               {renderEntregaParcialBadge(r)}
                               <EstoqueTagBadge situacao={situacaoEstoqueDe(r)} />
                               {r.status_requisicao !== 'Processado' && r.alerta && (
-                                <span className={`px-2 py-0.5 rounded text-[9px] font-black tracking-wide uppercase ${alertStyle.chip}`}>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-black tracking-wide uppercase ${alertStyle.chip}`}>
                                   {r.alerta}
                                 </span>
                               )}
@@ -3522,7 +3522,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             que é de fato (ver `lib/centralComprasSisten.ts`). */}
                             {vinculoSisten?.item.is_generic && (
                               <div className="mt-1.5">
-                                <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
                                   <Tag className="h-2.5 w-2.5" />
                                   Item Genérico
                                 </span>
@@ -3572,7 +3572,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                           {/* Informações do Pedido de Compra (PO) já emitido */}
                           {r.status_requisicao === 'Processado' && (
                             <div className="space-y-1.5 pt-1">
-                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-500 block">
                                 Informações do Pedido de Compra (PO)
                               </span>
                               {renderPOInfoBlock(r, poFornecedor)}
@@ -3597,7 +3597,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                   {!encontrado && <span className="ml-1 normal-case tracking-normal font-bold text-rose-600 dark:text-rose-400">· sem histórico</span>}
                                 </button>
                               ) : (
-                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-500 block">
                                 Fornecedores sugeridos ({fornecedores.length})
                               </span>
                               )}
@@ -3623,25 +3623,25 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         <div className="border-t border-slate-150 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40 p-4 space-y-3">
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div className="space-y-1">
-                              <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
+                              <label className="text-[10px] font-extrabold uppercase text-slate-500 dark:text-slate-500 tracking-wider block">
                                 Status do Item
                               </label>
                               {renderStatusSelect(r.ri, r.item_status || 'Aguardando Cotação')}
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
+                              <label className="text-[10px] font-extrabold uppercase text-slate-500 dark:text-slate-500 tracking-wider block">
                                 Previsão de Entrega
                               </label>
                               {renderPromessaInput(r)}
                             </div>
                             <div className="space-y-1">
                               <div className="flex items-center justify-between">
-                                <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
+                                <label className="text-[10px] font-extrabold uppercase text-slate-500 dark:text-slate-500 tracking-wider block">
                                   Observações
                                 </label>
                                 <button
                                   onClick={() => handleViewHistory(r.ri)}
-                                  className="text-[9px] font-bold text-slate-400 hover:text-[#0056c6] dark:text-slate-500 dark:hover:text-emerald-450 flex items-center gap-0.5 cursor-pointer"
+                                  className="text-[10px] font-bold text-slate-500 hover:text-[#0056c6] dark:text-slate-500 dark:hover:text-emerald-450 flex items-center gap-0.5 cursor-pointer"
                                   title="Histórico de alterações"
                                 >
                                   <History className="h-3 w-3" /> Histórico
@@ -3659,7 +3659,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
                           {mlItens.get(r.ri) && (
                             <div className="flex items-start gap-2 p-2.5 rounded-xl border border-yellow-300 dark:border-yellow-900/60 bg-yellow-50/70 dark:bg-yellow-950/10">
-                              <span className="px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[9px] font-black tracking-wide uppercase whitespace-nowrap">
+                              <span className="px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[10px] font-black tracking-wide uppercase whitespace-nowrap">
                                 Mercado Livre
                               </span>
                               <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} onEditarCompra={setEditarCompraMl} />
@@ -3673,7 +3673,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                 Pendente de salvar
                               </span>
                             ) : (
-                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
+                              <span className="text-[10px] text-slate-500 dark:text-slate-500 font-semibold">
                                 {r.item_status_updated_at
                                   ? `Alt: ${new Date(r.item_status_updated_at).toLocaleDateString('pt-BR')} por ${r.item_status_updated_by || 'Sistema'}`
                                   : r.obs_updated_at
@@ -3830,7 +3830,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                     {!selectedSupplier && r.status_requisicao === 'Processado' ? (
                                       renderPOInfoBlock(r, poFornecedor, true)
                                     ) : !selectedSupplier ? (
-                                      <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
+                                      <span className="text-rose-500 font-bold uppercase tracking-wider text-[10px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
                                         Sem fornecedor
                                       </span>
                                     ) : (
@@ -3839,29 +3839,29 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                           <span className="font-bold text-slate-800 dark:text-slate-200 break-words" title={selectedSupplier.fornecedor}>
                                             {selectedSupplier.fornecedor}
                                             {selectedSupplier.nome_fantasia && selectedSupplier.nome_fantasia !== '—' && (
-                                              <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-medium">
+                                              <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">
                                                 Fantasia: {selectedSupplier.nome_fantasia}
                                               </span>
                                             )}
                                           </span>
-                                          <span className="px-1 py-0.2 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-semibold text-slate-500">
+                                          <span className="px-1 py-0.2 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-semibold text-slate-500">
                                             {selectedSupplier.regiao_uf}
                                           </span>
                                         </div>
-                                        <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold">
+                                        <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold">
                                           <span>Preço: <span className="text-emerald-600 dark:text-emerald-450">{formatPreco(selectedSupplier.preco_liquido)}</span></span>
                                           <span className="flex items-center gap-0.5">
-                                            <Calendar className="h-2.5 w-2.5 text-slate-400" />
+                                            <Calendar className="h-2.5 w-2.5 text-slate-500" />
                                             {selectedSupplier.ultima_data !== '—' ? (isNaN(Date.parse(selectedSupplier.ultima_data)) ? selectedSupplier.ultima_data : new Date(selectedSupplier.ultima_data).toLocaleDateString('pt-BR')) : '—'}
                                           </span>
                                         </div>
-                                        <div className="text-[9px] font-bold">
+                                        <div className="text-[10px] font-bold">
                                           {renderMigoInfo(selectedSupplier.data_migo)}
                                         </div>
                                         <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-150/50 dark:border-slate-750">
                                           {selectedSupplier.telefone !== '—' && selectedSupplier.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
-                                            <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
-                                              <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                                            <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[10px] shrink-0">
+                                              <Phone className="h-3 w-3 text-slate-500 shrink-0" />
                                               <a href={`tel:${singleTel}`} className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold font-mono" title={`Ligar: ${singleTel}`}>
                                                 {singleTel}
                                               </a>
@@ -3869,8 +3869,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                             </div>
                                           ))}
                                           {selectedSupplier.email !== '—' && (
-                                            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] min-w-0 max-w-full">
-                                              <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                                            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[10px] min-w-0 max-w-full">
+                                              <Mail className="h-3 w-3 text-slate-500 shrink-0" />
                                               <a href={`mailto:${selectedSupplier.email}`} className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[155px]" title={selectedSupplier.email}>
                                                 {selectedSupplier.email}
                                               </a>
@@ -3889,7 +3889,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                     <span className="font-mono font-bold block text-slate-850 dark:text-slate-100">RM {rm}</span>
                                     <ClipboardCopyButton text={rm} label="RM" size="xs" />
                                   </div>
-                                  <span className="text-[10px] text-slate-400 font-semibold">Item {r.item_reqc}</span>
+                                  <span className="text-[10px] text-slate-500 font-semibold">Item {r.item_reqc}</span>
                                   {/* RM vinculada em Abrir RM > Abertas a uma solicitação do SISTEN. */}
                                   {vinculoSisten && (
                                     <div className="text-[10px] flex items-center gap-1 flex-wrap">
@@ -3987,7 +3987,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                               também usada no texto técnico da cotação). */}
                                   {vinculoSisten?.item.is_generic && (
                                     <div className="mt-1">
-                                      <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
                                         <Tag className="h-2.5 w-2.5" />
                                         Item Genérico
                                       </span>
@@ -4042,7 +4042,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                       {renderEntregaParcialBadge(r)}
                                     </div>
                                   ) : (
-                                    <span className="text-slate-400 dark:text-slate-600">—</span>
+                                    <span className="text-slate-500 dark:text-slate-600">—</span>
                                   )}
                                 </td>
 
@@ -4055,7 +4055,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                     {r.status_requisicao === 'Processado' ? (
                                       renderPOInfoBlock(r, poFornecedor, true)
                                     ) : !encontrado ? (
-                                      <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
+                                      <span className="text-rose-500 font-bold uppercase tracking-wider text-[10px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
                                         Sem fornecedor
                                       </span>
                                     ) : (
@@ -4065,7 +4065,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                             {fornecedores[0].fornecedor}
                                           </span>
                                           <span className="flex gap-1 flex-wrap my-0.5"><OrigemFornecedorBadges f={fornecedores[0]} /></span>
-                                          <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold mt-0.5">
+                                          <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold mt-0.5">
                                             <span className="text-emerald-600 dark:text-emerald-455">{formatPreco(fornecedores[0].preco_liquido)}</span>
                                             <MigoBadge dataMigo={fornecedores[0].data_migo} />
                                           </div>
@@ -4107,9 +4107,9 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                       rows={2}
                                       className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 pr-7 pl-2 focus:border-[#0056c6] focus:outline-none transition-all resize-y leading-snug"
                                     />
-                                    <button
+                                    <button aria-label="Ver histórico de alterações"
                                       onClick={() => handleViewHistory(r.ri)}
-                                      className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-655 cursor-pointer"
+                                      className="absolute right-2 top-1.5 text-slate-500 hover:text-slate-655 cursor-pointer"
                                       title="Ver histórico de alterações"
                                     >
                                       <History className="h-3 w-3" />
@@ -4190,7 +4190,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                     className="px-5 py-2 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 flex items-center gap-1.5"
                   >
                     <span>Carregar mais itens</span>
-                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                    <ChevronDown className="h-4 w-4 text-slate-500" />
                   </button>
                 </div>
               )}
@@ -4280,7 +4280,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                 </span>
                 <button
                   onClick={() => setHistoryOpenRi(null)}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 transition-colors cursor-pointer"
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-650 dark:hover:text-slate-300 transition-colors cursor-pointer"
                   aria-label="Fechar janela"
                 >
                   <X className="h-4 w-4" />
@@ -4289,7 +4289,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             </div>
 
             <div className="px-5 pt-4 space-y-1.5">
-              <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
+              <label className="text-[10px] font-extrabold uppercase text-slate-500 dark:text-slate-500 tracking-wider block">
                 Novo comentário
               </label>
               <textarea
@@ -4323,7 +4323,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                     <div key={h.id || idx} className="relative pl-4 border-l-2 border-slate-200 dark:border-slate-850">
                       <div className="absolute -left-[5.5px] top-1.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 shadow-2xs" />
 
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 font-semibold mb-1">
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-500 font-semibold mb-1">
                         <span>{h.user_name || 'Comprador'}</span>
                         <span>{new Date(h.created_at).toLocaleString('pt-BR')}</span>
                       </div>
@@ -4332,7 +4332,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         {h.obs_comprador ? (
                           <p className="text-slate-750 dark:text-slate-200 leading-normal font-medium whitespace-pre-wrap">{h.obs_comprador}</p>
                         ) : (
-                          <p className="text-slate-400 dark:text-slate-500 italic">Sem anotação de texto</p>
+                          <p className="text-slate-500 dark:text-slate-500 italic">Sem anotação de texto</p>
                         )}
                         {h.data_entrega_prevista && (
                           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-450 rounded text-[10px] font-bold border border-blue-100/60 dark:border-blue-900/30">
@@ -4581,7 +4581,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                       title={waNumber ? 'Abre o WhatsApp Web/App com a mensagem preenchida para o fornecedor' : 'Fornecedor sem telefone cadastrado'}
                       className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 ${waNumber
                           ? 'bg-[#25D366] hover:bg-[#1fbd59] text-white cursor-pointer'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-600 cursor-not-allowed'
                         }`}
                     >
                       <MessageCircle className="h-3.5 w-3.5" />

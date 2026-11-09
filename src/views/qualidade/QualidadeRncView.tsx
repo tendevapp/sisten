@@ -164,7 +164,7 @@ export default function QualidadeRncView({ user, onNavigate, abaInicial = 'novo'
               <ClipboardCheck className="h-3.5 w-3.5" />
               FRM.QUA-0026
             </span>
-            <span className="text-xs text-slate-400">• Módulo de Qualidade</span>
+            <span className="text-xs text-slate-500">• Módulo de Qualidade</span>
           </div>
           <h1 className="mt-1 font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Gestão de RNC — Relatório de Não Conformidade
@@ -214,7 +214,7 @@ export default function QualidadeRncView({ user, onNavigate, abaInicial = 'novo'
       {/* Métricas */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
         <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
-          <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total de RNCs</span>
+          <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total de RNCs</span>
           <p className="mt-1 font-display text-2xl font-bold text-slate-900 dark:text-slate-100">{metricas?.total || 0}</p>
         </div>
         <div className="rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4 shadow-2xs dark:border-amber-900/40 dark:bg-amber-950/20">
@@ -254,7 +254,7 @@ export default function QualidadeRncView({ user, onNavigate, abaInicial = 'novo'
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-slate-200/80 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900">
             <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
               <div className="relative flex-1 min-w-[200px]">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
                   placeholder="Buscar por código, fornecedor, projeto ou descrição..."
@@ -375,7 +375,7 @@ export default function QualidadeRncView({ user, onNavigate, abaInicial = 'novo'
                       </div>
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-[11px] text-slate-400 dark:border-slate-800">
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-[11px] text-slate-500 dark:border-slate-800">
                       <span>{formatDataBR(rnc.data_emissao)}</span>
                       <div className="flex items-center gap-2">
                         {atividadesAbertas > 0 && (
@@ -389,7 +389,7 @@ export default function QualidadeRncView({ user, onNavigate, abaInicial = 'novo'
                             {rnc.anexos.length} anexo(s)
                           </span>
                         )}
-                        {!modoSelecao && <ChevronRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />}
+                        {!modoSelecao && <ChevronRight className="h-4 w-4 text-slate-500 group-hover:translate-x-0.5 transition-transform" />}
                       </div>
                     </div>
                   </div>
@@ -443,7 +443,7 @@ export default function QualidadeRncView({ user, onNavigate, abaInicial = 'novo'
                     Responsável: <strong>{atividade.quem_nome || '-'}</strong> · Prazo: {formatDataBR(atividade.quando_fim)}
                   </p>
                 </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
               </div>
             ))
           )}

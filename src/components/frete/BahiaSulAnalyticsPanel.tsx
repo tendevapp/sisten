@@ -470,7 +470,7 @@ export default function BahiaSulAnalyticsPanel({
             className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all shadow-2xs cursor-pointer"
             title="Recarregar dados"
           >
-            <RefreshCw className={`h-3.5 w-3.5 text-slate-400 ${loading ? 'animate-spin text-amber-500' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${loading ? 'animate-spin text-amber-500' : ''}`} />
             <span>Atualizar</span>
           </button>
 
@@ -506,12 +506,12 @@ export default function BahiaSulAnalyticsPanel({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         {/* Total CTe */}
         <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-1">
-          <div className="flex items-center justify-between text-slate-400">
+          <div className="flex items-center justify-between text-slate-500">
             <span className="text-[11px] font-semibold">Total de CTes</span>
-            <Package className="h-4 w-4 text-slate-400" />
+            <Package className="h-4 w-4 text-slate-500" />
           </div>
           <p className="text-2xl font-black text-slate-800">{kpis.totalCte}</p>
-          <span className="text-[10px] text-slate-400">Conhecimentos na base</span>
+          <span className="text-[10px] text-slate-500">Conhecimentos na base</span>
         </div>
 
         {/* Em Trânsito */}
@@ -546,14 +546,14 @@ export default function BahiaSulAnalyticsPanel({
 
         {/* Total Frete */}
         <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs space-y-1">
-          <div className="flex items-center justify-between text-slate-400">
+          <div className="flex items-center justify-between text-slate-500">
             <span className="text-[11px] font-semibold">Frete Cobrado</span>
             <DollarSign className="h-4 w-4 text-emerald-600" />
           </div>
           <p className="text-xl font-black text-slate-800">
             {kpis.totalFreteCobrado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
           </p>
-          <span className="text-[10px] text-slate-400">Total contratado</span>
+          <span className="text-[10px] text-slate-500">Total contratado</span>
         </div>
 
         {/* Vínculo SAP */}
@@ -598,14 +598,14 @@ export default function BahiaSulAnalyticsPanel({
 
         <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
           <div>
-            <span className="text-[10px] text-slate-400 font-semibold block">Frete Calculado</span>
+            <span className="text-[10px] text-slate-500 font-semibold block">Frete Calculado</span>
             <span className="text-sm font-black text-slate-800">
               {kpis.totalFreteCalculado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </span>
           </div>
 
           <div>
-            <span className="text-[10px] text-slate-400 font-semibold block">Divergência Líquida</span>
+            <span className="text-[10px] text-slate-500 font-semibold block">Divergência Líquida</span>
             <span className={`text-sm font-black flex items-center gap-1 ${
               kpis.divergenciaLiquida > 10 ? 'text-rose-600' : kpis.divergenciaLiquida < -10 ? 'text-cyan-700' : 'text-emerald-600'
             }`}>
@@ -630,7 +630,7 @@ export default function BahiaSulAnalyticsPanel({
               title="Filtrar fretes com sobrepreço"
             >
               <span className="text-xs font-black block">{kpis.qtdSobrepreco}</span>
-              <span className="text-[9px] font-bold uppercase">Sobrepreço</span>
+              <span className="text-[10px] font-bold uppercase">Sobrepreço</span>
             </button>
 
             <button
@@ -643,7 +643,7 @@ export default function BahiaSulAnalyticsPanel({
               title="Filtrar fretes conformes"
             >
               <span className="text-xs font-black block">{kpis.qtdConforme}</span>
-              <span className="text-[9px] font-bold uppercase">Conforme</span>
+              <span className="text-[10px] font-bold uppercase">Conforme</span>
             </button>
 
             <button
@@ -656,7 +656,7 @@ export default function BahiaSulAnalyticsPanel({
               title="Filtrar fretes abaixo da tabela"
             >
               <span className="text-xs font-black block">{kpis.qtdDesconto}</span>
-              <span className="text-[9px] font-bold uppercase">Abaixo</span>
+              <span className="text-[10px] font-bold uppercase">Abaixo</span>
             </button>
 
             <button
@@ -669,7 +669,7 @@ export default function BahiaSulAnalyticsPanel({
               title="Filtrar fretes sem rota mapeada"
             >
               <span className="text-xs font-black block">{kpis.qtdSemRota}</span>
-              <span className="text-[9px] font-bold uppercase">Sem Rota</span>
+              <span className="text-[10px] font-bold uppercase">Sem Rota</span>
             </button>
           </div>
         </div>
@@ -681,7 +681,7 @@ export default function BahiaSulAnalyticsPanel({
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           {/* Input de Busca */}
           <div className="relative flex-1 min-w-[280px]">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
             <input
               ref={searchInputRef}
               type="text"
@@ -692,15 +692,15 @@ export default function BahiaSulAnalyticsPanel({
             />
             <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
               {searchTerm && (
-                <button
+                <button aria-label="Limpar pesquisa"
                   onClick={() => setSearchTerm('')}
-                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors cursor-pointer"
+                  className="p-1 rounded-md text-slate-500 hover:text-slate-600 hover:bg-slate-200/60 transition-colors cursor-pointer"
                   title="Limpar pesquisa"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
-              <span className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-400 bg-slate-200/60 border border-slate-200 select-none" title="Pressione / para buscar">
+              <span className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-500 bg-slate-200/60 border border-slate-200 select-none" title="Pressione / para buscar">
                 /
               </span>
             </div>
@@ -710,7 +710,7 @@ export default function BahiaSulAnalyticsPanel({
           <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 text-xs">
             <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 font-bold text-slate-700 border border-slate-200/80">
               <span className="text-amber-600 font-black">{entregasFiltradas.length}</span>
-              <span className="text-slate-400 font-normal">de</span>
+              <span className="text-slate-500 font-normal">de</span>
               <span>{kpis.totalCte}</span>
               <span className="text-slate-500 font-normal">fretes</span>
             </span>
@@ -732,7 +732,7 @@ export default function BahiaSulAnalyticsPanel({
         <div className="flex items-center gap-2.5 flex-wrap pt-3 border-t border-slate-100">
           {/* Filtros de Status Operacional */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
+            <span className="text-xs font-bold text-slate-500 flex items-center gap-1">
               <Filter className="h-3.5 w-3.5" /> Status:
             </span>
             <div className="flex items-center rounded-xl bg-slate-100 p-1 space-x-1">
@@ -909,7 +909,7 @@ export default function BahiaSulAnalyticsPanel({
           <div className="p-12 text-center space-y-3">
             <Package className="mx-auto h-12 w-12 text-slate-300" />
             <h4 className="text-sm font-bold text-slate-700">Nenhum conhecimento de entrega encontrado</h4>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
               {entregas.length === 0
                 ? 'Nenhuma planilha da Bahia Sul foi importada ainda. Clique no botão "Importar Planilha" acima para carregar o arquivo da transportadora.'
                 : 'Nenhum registro corresponde aos filtros selecionados. Tente ajustar os termos de busca.'}
@@ -982,7 +982,7 @@ export default function BahiaSulAnalyticsPanel({
                               {item.cto_filial}
                             </span>
                           </p>
-                          <p className="text-[10px] text-slate-400">Série {item.cto_serie || '1'}</p>
+                          <p className="text-[10px] text-slate-500">Série {item.cto_serie || '1'}</p>
                         </div>
                       </td>
 
@@ -992,7 +992,7 @@ export default function BahiaSulAnalyticsPanel({
                           <p className="font-semibold text-slate-800 truncate" title={item.rmt_nome || ''}>
                             {item.rmt_nome || '—'}
                           </p>
-                          <p className="text-[10px] text-slate-400 font-mono">
+                          <p className="text-[10px] text-slate-500 font-mono">
                             {item.rmt_cnpj || 'CNPJ não inf.'}
                           </p>
                         </div>
@@ -1003,10 +1003,10 @@ export default function BahiaSulAnalyticsPanel({
                         <div className="space-y-0.5">
                           <p className="text-slate-700 font-medium flex items-center gap-1">
                             <span>{item.org_cidade || '—'}</span>
-                            <ArrowRight className="h-3 w-3 text-slate-400 shrink-0" />
+                            <ArrowRight className="h-3 w-3 text-slate-500 shrink-0" />
                             <span className="font-bold text-slate-900">{item.dst_cidade || 'TEN'}</span>
                           </p>
-                          <p className="text-[10px] text-slate-400">
+                          <p className="text-[10px] text-slate-500">
                             {item.qtd_volumes ? `${item.qtd_volumes} vol.` : ''} {item.kgs_real ? `• ${item.kgs_real} kg` : ''}
                           </p>
                         </div>
@@ -1027,7 +1027,7 @@ export default function BahiaSulAnalyticsPanel({
                               <AlertTriangle className="h-3 w-3" /> {item.diasAtraso}d atraso
                             </p>
                           ) : (
-                            <p className="text-[10px] text-slate-400">Embarque: {item.embarque ? new Date(item.embarque + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</p>
+                            <p className="text-[10px] text-slate-500">Embarque: {item.embarque ? new Date(item.embarque + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</p>
                           )}
                         </div>
                       </td>
@@ -1071,7 +1071,7 @@ export default function BahiaSulAnalyticsPanel({
                               className="w-28 px-2 py-1 text-xs border border-indigo-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
                               autoFocus
                             />
-                            <button
+                            <button aria-label="Salvar"
                               onClick={() => handleSavePo(item.chave_unica)}
                               disabled={savingPo}
                               className="p-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer"
@@ -1079,7 +1079,7 @@ export default function BahiaSulAnalyticsPanel({
                             >
                               <Check className="h-3.5 w-3.5" />
                             </button>
-                            <button
+                            <button aria-label="Cancelar"
                               onClick={() => setEditingPoChave(null)}
                               className="p-1 rounded bg-slate-200 text-slate-600 hover:bg-slate-300 cursor-pointer"
                               title="Cancelar"
@@ -1107,12 +1107,12 @@ export default function BahiaSulAnalyticsPanel({
                                   {item.nro_pedido || item.pedidoSap?.documento_compra}
                                 </span>
                               )}
-                              <button
+                              <button aria-label="Editar / trocar pedido vinculado"
                                 onClick={() => {
                                   setEditingPoChave(item.chave_unica);
                                   setInputPoNumber(item.nro_pedido || item.pedidoSap?.documento_compra || '');
                                 }}
-                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-indigo-600 transition-opacity p-0.5"
+                                className="opacity-0 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 text-slate-500 hover:text-indigo-600 transition-opacity p-0.5"
                                 title="Editar / trocar pedido vinculado"
                               >
                                 <Edit2 className="h-3 w-3" />
@@ -1125,26 +1125,26 @@ export default function BahiaSulAnalyticsPanel({
                             )}
                             {item.itensPedido && item.itensPedido.length > 0 && (
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-[10px] text-slate-400 font-medium">
+                                <span className="text-[10px] text-slate-500 font-medium">
                                   {item.itensPedido.length} {item.itensPedido.length === 1 ? 'item' : 'itens'}
                                 </span>
                                 {isCteComMigo(item) ? (
                                   <span
-                                    className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200"
+                                    className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200"
                                     title="Todos os itens do PO possuem MIGO lançado no SAP"
                                   >
                                     <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" /> MIGO OK
                                   </span>
                                 ) : item.itensPedido.some(it => Boolean(it.dataMigo)) ? (
                                   <span
-                                    className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200"
+                                    className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200"
                                     title="Parte dos itens do PO já possui MIGO no SAP"
                                   >
                                     <Clock className="h-2.5 w-2.5 text-amber-600" /> MIGO Parcial
                                   </span>
                                 ) : (
                                   <span
-                                    className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-800 bg-amber-50/90 px-1.5 py-0.2 rounded border border-amber-200/80"
+                                    className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-800 bg-amber-50/90 px-1.5 py-0.2 rounded border border-amber-200/80"
                                     title="Itens ainda sem MIGO no SAP"
                                   >
                                     Sem MIGO
@@ -1179,7 +1179,7 @@ export default function BahiaSulAnalyticsPanel({
                                     {sug.documentoCompra}
                                   </span>
                                   <span
-                                    className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border ${CONFIANCA_BADGE[sug.confianca]}`}
+                                    className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded-full border ${CONFIANCA_BADGE[sug.confianca]}`}
                                     title={sugestaoTitulo(sug)}
                                   >
                                     {sug.confianca}
@@ -1221,7 +1221,7 @@ export default function BahiaSulAnalyticsPanel({
                               setEditingPoChave(item.chave_unica);
                               setInputPoNumber('');
                             }}
-                            className="text-[10px] font-semibold text-slate-400 hover:text-indigo-600 underline cursor-pointer"
+                            className="text-[10px] font-semibold text-slate-500 hover:text-indigo-600 underline cursor-pointer"
                           >
                             + Vincular PO SAP
                           </button>
@@ -1241,7 +1241,7 @@ export default function BahiaSulAnalyticsPanel({
                           {item.frt_cobrado ? item.frt_cobrado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
                         </p>
                         {item.vlr_mercadoria && (
-                          <p className="text-[10px] text-slate-400">
+                          <p className="text-[10px] text-slate-500">
                             Merc: {item.vlr_mercadoria.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </p>
                         )}
@@ -1286,17 +1286,17 @@ export default function BahiaSulAnalyticsPanel({
                             )}
 
                             {item.freteCalculado.statusAuditoria === 'sem_cobranca' && (
-                              <span className="text-[10px] text-slate-400">Sem cobrança</span>
+                              <span className="text-[10px] text-slate-500">Sem cobrança</span>
                             )}
                           </div>
                         ) : (
                           <div className="space-y-0.5">
-                            <p className="font-semibold text-slate-400">—</p>
+                            <p className="font-semibold text-slate-500">—</p>
                             <span
                               className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-500"
                               title="Origem não encontrada na tabela contratual"
                             >
-                              <HelpCircle className="h-2.5 w-2.5 text-slate-400 shrink-0" />
+                              <HelpCircle className="h-2.5 w-2.5 text-slate-500 shrink-0" />
                               <span>Sem rota</span>
                             </span>
                           </div>
@@ -1329,7 +1329,7 @@ export default function BahiaSulAnalyticsPanel({
         {/* Footer com contagem */}
         <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
           <span>Exibindo <strong>{entregasFiltradas.length}</strong> de <strong>{entregas.length}</strong> entregas registradas</span>
-          <span className="text-[11px] text-slate-400">Clique em qualquer linha para abrir os detalhes completos do CTe</span>
+          <span className="text-[11px] text-slate-500">Clique em qualquer linha para abrir os detalhes completos do CTe</span>
         </div>
       </div>
 
@@ -1356,9 +1356,9 @@ export default function BahiaSulAnalyticsPanel({
                   </p>
                 </div>
               </div>
-              <button
+              <button aria-label="Fechar"
                 onClick={() => setSelectedItem(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1432,7 +1432,7 @@ export default function BahiaSulAnalyticsPanel({
                     <p className="text-base font-black text-slate-900">
                       {selectedItem.frt_cobrado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </p>
-                    <span className="text-[10px] text-slate-400">Total faturado no frete</span>
+                    <span className="text-[10px] text-slate-500">Total faturado no frete</span>
                   </div>
 
                   {/* Frete por Item (Linha do PO) */}
@@ -1443,7 +1443,7 @@ export default function BahiaSulAnalyticsPanel({
                         ? indicadoresFrete.fretePorLinha.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                         : '—'}
                     </p>
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-[10px] text-slate-500">
                       {indicadoresFrete && indicadoresFrete.totalItens > 0
                         ? `Divisão por ${indicadoresFrete.totalItens} ${indicadoresFrete.totalItens === 1 ? 'item' : 'itens'} no pedido`
                         : 'Sem itens de pedido associados'}
@@ -1460,7 +1460,7 @@ export default function BahiaSulAnalyticsPanel({
                         ? `${(selectedItem.frt_cobrado / selectedItem.qtd_volumes).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} / vol`
                         : '—'}
                     </p>
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-[10px] text-slate-500">
                       {indicadoresFrete && indicadoresFrete.fretePorUnidade !== null
                         ? `Divisão por ${indicadoresFrete.totalQuantidade} unidades físicas no pedido`
                         : selectedItem.qtd_volumes && selectedItem.qtd_volumes > 0
@@ -1563,14 +1563,14 @@ export default function BahiaSulAnalyticsPanel({
                 <p className="font-bold text-slate-700 border-b border-slate-200 pb-1">Partes Envolvidas</p>
                 <div className="space-y-1.5 text-[11px]">
                   <div>
-                    <span className="text-slate-400">Remetente (Fornecedor):</span>
+                    <span className="text-slate-500">Remetente (Fornecedor):</span>
                     <p className="font-semibold text-slate-800">{selectedItem.rmt_nome || '—'}</p>
-                    <p className="text-[10px] text-slate-400 font-mono">{selectedItem.rmt_cnpj}</p>
+                    <p className="text-[10px] text-slate-500 font-mono">{selectedItem.rmt_cnpj}</p>
                   </div>
                   <div>
-                    <span className="text-slate-400">Destinatário:</span>
+                    <span className="text-slate-500">Destinatário:</span>
                     <p className="font-semibold text-slate-800">{selectedItem.dst_nome || '—'}</p>
-                    <p className="text-[10px] text-slate-400 font-mono">{selectedItem.dst_cnpj}</p>
+                    <p className="text-[10px] text-slate-500 font-mono">{selectedItem.dst_cnpj}</p>
                   </div>
                 </div>
               </div>
@@ -1580,27 +1580,27 @@ export default function BahiaSulAnalyticsPanel({
                 <p className="font-bold text-slate-700 border-b border-slate-200 pb-1">Datas & Prazos</p>
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <div>
-                    <span className="text-slate-400">Emissão:</span>
+                    <span className="text-slate-500">Emissão:</span>
                     <p className="font-medium text-slate-800">{selectedItem.emissao ? new Date(selectedItem.emissao + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</p>
                   </div>
                   <div>
-                    <span className="text-slate-400">Embarque:</span>
+                    <span className="text-slate-500">Embarque:</span>
                     <p className="font-medium text-slate-800">{selectedItem.embarque ? new Date(selectedItem.embarque + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</p>
                   </div>
                   <div>
-                    <span className="text-slate-400">Previsão Entrega:</span>
+                    <span className="text-slate-500">Previsão Entrega:</span>
                     <p className="font-bold text-amber-700">{selectedItem.prv_entrega ? new Date(selectedItem.prv_entrega + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</p>
                   </div>
                   <div>
-                    <span className="text-slate-400">Entrega Real:</span>
+                    <span className="text-slate-500">Entrega Real:</span>
                     <p className="font-bold text-emerald-700">{selectedItem.entrega ? new Date(selectedItem.entrega + 'T00:00:00').toLocaleDateString('pt-BR') : 'Pendente'}</p>
                   </div>
                   <div>
-                    <span className="text-slate-400">Prazo Contratado:</span>
+                    <span className="text-slate-500">Prazo Contratado:</span>
                     <p className="text-slate-800">{selectedItem.prz_contratado ? new Date(selectedItem.prz_contratado + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</p>
                   </div>
                   <div>
-                    <span className="text-slate-400">Chegada Terminal:</span>
+                    <span className="text-slate-500">Chegada Terminal:</span>
                     <p className="text-slate-800">{selectedItem.chegada ? new Date(selectedItem.chegada + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</p>
                   </div>
                 </div>
@@ -1610,12 +1610,12 @@ export default function BahiaSulAnalyticsPanel({
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 space-y-2">
                 <p className="font-bold text-slate-700 border-b border-slate-200 pb-1">Rota & Carga</p>
                 <div className="space-y-1 text-[11px]">
-                  <p><span className="text-slate-400">Origem:</span> <strong className="text-slate-800">{selectedItem.org_cidade || '—'}</strong></p>
-                  <p><span className="text-slate-400">Destino:</span> <strong className="text-slate-800">{selectedItem.dst_cidade || '—'}</strong></p>
-                  <p><span className="text-slate-400">Volumes:</span> <strong className="text-slate-800">{selectedItem.qtd_volumes || '—'}</strong></p>
-                  <p><span className="text-slate-400">Peso Real:</span> <strong className="text-slate-800">{selectedItem.kgs_real ? `${selectedItem.kgs_real} kg` : '—'}</strong></p>
-                  <p><span className="text-slate-400">Peso Cubado:</span> <strong className="text-slate-800">{selectedItem.kgs_cubado ? `${selectedItem.kgs_cubado} kg` : '—'}</strong></p>
-                  <p><span className="text-slate-400">NFs Embarcadas:</span> <strong className="font-mono text-slate-800">{selectedItem.nfs_embarcadas || '—'}</strong></p>
+                  <p><span className="text-slate-500">Origem:</span> <strong className="text-slate-800">{selectedItem.org_cidade || '—'}</strong></p>
+                  <p><span className="text-slate-500">Destino:</span> <strong className="text-slate-800">{selectedItem.dst_cidade || '—'}</strong></p>
+                  <p><span className="text-slate-500">Volumes:</span> <strong className="text-slate-800">{selectedItem.qtd_volumes || '—'}</strong></p>
+                  <p><span className="text-slate-500">Peso Real:</span> <strong className="text-slate-800">{selectedItem.kgs_real ? `${selectedItem.kgs_real} kg` : '—'}</strong></p>
+                  <p><span className="text-slate-500">Peso Cubado:</span> <strong className="text-slate-800">{selectedItem.kgs_cubado ? `${selectedItem.kgs_cubado} kg` : '—'}</strong></p>
+                  <p><span className="text-slate-500">NFs Embarcadas:</span> <strong className="font-mono text-slate-800">{selectedItem.nfs_embarcadas || '—'}</strong></p>
                 </div>
               </div>
 
@@ -1624,19 +1624,19 @@ export default function BahiaSulAnalyticsPanel({
                 <p className="font-bold text-slate-700 border-b border-slate-200 pb-1">Valores Financeiros</p>
                 <div className="space-y-1 text-[11px]">
                   <p>
-                    <span className="text-slate-400">Valor da Mercadoria:</span>{' '}
+                    <span className="text-slate-500">Valor da Mercadoria:</span>{' '}
                     <strong className="text-slate-800">
                       {selectedItem.vlr_mercadoria ? selectedItem.vlr_mercadoria.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
                     </strong>
                   </p>
                   <p>
-                    <span className="text-slate-400">Frete Cobrado:</span>{' '}
+                    <span className="text-slate-500">Frete Cobrado:</span>{' '}
                     <strong className="text-emerald-700 font-black text-sm">
                       {selectedItem.frt_cobrado ? selectedItem.frt_cobrado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
                     </strong>
                   </p>
                   <p>
-                    <span className="text-slate-400">Tipo de Embarque:</span>{' '}
+                    <span className="text-slate-500">Tipo de Embarque:</span>{' '}
                     <span className="font-semibold text-slate-700">{selectedItem.tpo_embarque || 'NORMAL'}</span>
                   </p>
                 </div>
@@ -1683,19 +1683,19 @@ export default function BahiaSulAnalyticsPanel({
                   {/* Resumo em 3 Blocos */}
                   <div className="grid grid-cols-3 gap-3 p-3 bg-white rounded-xl border border-slate-200/80 text-center">
                     <div>
-                      <span className="text-[10px] text-slate-400 font-semibold block">Frete Cobrado</span>
+                      <span className="text-[10px] text-slate-500 font-semibold block">Frete Cobrado</span>
                       <span className="text-base font-black text-slate-800">
                         {selectedItem.frt_cobrado ? selectedItem.frt_cobrado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
                       </span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 font-semibold block">Frete Calculado (Tabela)</span>
+                      <span className="text-[10px] text-slate-500 font-semibold block">Frete Calculado (Tabela)</span>
                       <span className="text-base font-black text-cyan-700">
                         {selectedItem.freteCalculado.totalComIcms.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 font-semibold block">Divergência / Desvio</span>
+                      <span className="text-[10px] text-slate-500 font-semibold block">Divergência / Desvio</span>
                       <span className={`text-base font-black ${
                         selectedItem.freteCalculado.diferenca > 1 ? 'text-rose-600' : selectedItem.freteCalculado.diferenca < -1 ? 'text-cyan-700' : 'text-emerald-600'
                       }`}>
@@ -1709,50 +1709,50 @@ export default function BahiaSulAnalyticsPanel({
                   <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden text-xs">
                     <div className="px-3 py-2 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between text-[11px] font-bold text-slate-600">
                       <span>Memória de Cálculo (Critérios do Simulador)</span>
-                      <span className="text-slate-400 font-normal">
+                      <span className="text-slate-500 font-normal">
                         Rota: <strong>{selectedItem.freteCalculado.rotaEncontrada.origem} ({selectedItem.freteCalculado.rotaEncontrada.uf}) ➔ {selectedItem.freteCalculado.rotaEncontrada.destino}</strong> • Código: <strong>{selectedItem.freteCalculado.rotaEncontrada.rotas || 'Padrão'}</strong>
                       </span>
                     </div>
                     <div className="p-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-[11px]">
                       <div>
-                        <span className="text-slate-400 block">Peso Tarifado:</span>
+                        <span className="text-slate-500 block">Peso Tarifado:</span>
                         <strong className="text-slate-800">{selectedItem.freteCalculado.pesoConsiderado.toFixed(2)} kg</strong>
-                        <span className="text-[10px] text-slate-400 block">{selectedItem.freteCalculado.faixaDesc}</span>
+                        <span className="text-[10px] text-slate-500 block">{selectedItem.freteCalculado.faixaDesc}</span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block">Frete Base (Peso):</span>
+                        <span className="text-slate-500 block">Frete Base (Peso):</span>
                         <strong className="text-slate-800">{selectedItem.freteCalculado.freteBase.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
                       </div>
                       <div>
-                        <span className="text-slate-400 block">Ad Valorem ({selectedItem.freteCalculado.adValoresPct}%):</span>
+                        <span className="text-slate-500 block">Ad Valorem ({selectedItem.freteCalculado.adValoresPct}%):</span>
                         <strong className="text-slate-800">{selectedItem.freteCalculado.adValoresValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
-                        <span className="text-[10px] text-slate-400 block">Merc: {selectedItem.freteCalculado.vlrMercadoria.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                        <span className="text-[10px] text-slate-500 block">Merc: {selectedItem.freteCalculado.vlrMercadoria.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block">GRIS / Seguro ({selectedItem.freteCalculado.grisPct}%):</span>
+                        <span className="text-slate-500 block">GRIS / Seguro ({selectedItem.freteCalculado.grisPct}%):</span>
                         <strong className="text-slate-800">{selectedItem.freteCalculado.grisValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
-                        <span className="text-[10px] text-slate-400 block">Gerenc. de Risco</span>
+                        <span className="text-[10px] text-slate-500 block">Gerenc. de Risco</span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block">Pedágio ({selectedItem.freteCalculado.fracoes100kg} fr. 100kg):</span>
+                        <span className="text-slate-500 block">Pedágio ({selectedItem.freteCalculado.fracoes100kg} fr. 100kg):</span>
                         <strong className="text-slate-800">{selectedItem.freteCalculado.pedagioTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
                       </div>
                       <div>
-                        <span className="text-slate-400 block">Taxa CAT:</span>
+                        <span className="text-slate-500 block">Taxa CAT:</span>
                         <strong className="text-slate-800">{selectedItem.freteCalculado.cat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
                       </div>
                       <div>
-                        <span className="text-slate-400 block">ITR / TAS:</span>
+                        <span className="text-slate-500 block">ITR / TAS:</span>
                         <strong className="text-slate-800">{selectedItem.freteCalculado.itrTas.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
                       </div>
                       <div>
-                        <span className="text-slate-400 block">Taxa Fixa / Redespacho:</span>
+                        <span className="text-slate-500 block">Taxa Fixa / Redespacho:</span>
                         <strong className="text-slate-800">{selectedItem.freteCalculado.taxaFixa.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
                       </div>
                       <div>
-                        <span className="text-slate-400 block">ICMS ({selectedItem.freteCalculado.icmsPct}%):</span>
+                        <span className="text-slate-500 block">ICMS ({selectedItem.freteCalculado.icmsPct}%):</span>
                         <strong className="text-slate-800">{selectedItem.freteCalculado.valorIcms.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
-                        <span className="text-[10px] text-slate-400 block">Subtotal: {selectedItem.freteCalculado.subtotalSemIcms.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                        <span className="text-[10px] text-slate-500 block">Subtotal: {selectedItem.freteCalculado.subtotalSemIcms.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                       </div>
                     </div>
                   </div>

@@ -128,8 +128,8 @@ function CampoFrete({ valor, teorico, onSalvar }: { valor: number | null; teoric
       }`}
       title={teorico ? 'Frete estimado pela tabela Bahia Sul a partir do peso dos itens. Digite o frete que o fornecedor cotou para substituir a estimativa.' : undefined}
     >
-      <Truck className={`h-3 w-3 shrink-0 ${teorico ? 'text-indigo-400' : 'text-slate-400'}`} />
-      <span className={`text-[10px] ${teorico ? 'text-indigo-400' : 'text-slate-400'}`}>R$</span>
+      <Truck className={`h-3 w-3 shrink-0 ${teorico ? 'text-indigo-400' : 'text-slate-500'}`} />
+      <span className={`text-[10px] ${teorico ? 'text-indigo-400' : 'text-slate-500'}`}>R$</span>
       <input
         inputMode="decimal"
         value={texto}
@@ -144,7 +144,7 @@ function CampoFrete({ valor, teorico, onSalvar }: { valor: number | null; teoric
         className={`w-full min-w-0 bg-transparent py-0.5 text-[11px] tabular-nums outline-none ${teorico ? 'italic text-indigo-700 dark:text-indigo-300' : ''}`}
       />
       {teorico && (
-        <span className="shrink-0 rounded bg-indigo-100 px-1 text-[8px] font-bold uppercase tracking-wide text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-300">
+        <span className="shrink-0 rounded bg-indigo-100 px-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-300">
           estim.
         </span>
       )}
@@ -198,7 +198,7 @@ function ChipsImpostos({ celula, freteEhTeorico }: { celula: CelulaMapa; freteEh
     partes.push({ rotulo: freteEhTeorico ? 'Frete estim.' : 'Frete', total: custo.freteRateado, destaque: 'frete' });
   }
   if (partes.length === 0) {
-    return <span className="text-[10px] text-slate-400">sem impostos destacados</span>;
+    return <span className="text-[10px] text-slate-500">sem impostos destacados</span>;
   }
   const detalhe = [
     ...partes.map(p => `${p.rotulo}: ${formatBRL(p.total)} no item`),
@@ -228,7 +228,7 @@ function ChipsImpostos({ celula, freteEhTeorico }: { celula: CelulaMapa; freteEh
           }`}
         >
           {p.rotulo} <span className={`font-semibold ${p.destaque ? '' : 'text-slate-600 dark:text-slate-300'}`}>{formatBRL(porUn(p.total))}</span>
-          {qtd ? <span className="text-slate-400">/{un}</span> : null}
+          {qtd ? <span className="text-slate-500">/{un}</span> : null}
         </span>
       ))}
     </div>
@@ -299,14 +299,14 @@ function RodapeCustos({ celula, precoSap, onMemoria }: {
       {a && (
         <div title={memoriaCustoAquisicao(custo, un).join('\n')}>
           Custo de aquisição <span className="font-semibold text-slate-700 dark:text-slate-200">{formatBRL(a.unitario)}</span>
-          <span className="text-slate-400">/{un}</span>
+          <span className="text-slate-500">/{un}</span>
         </div>
       )}
       <div className="flex flex-wrap items-baseline gap-x-1.5">
         {precoSap && !precoSap.incompleto && (
           <span title={`Preço Líq. do Exportar SAP — preset ${precoSap.codigoFiscal}`}>
             Preço líquido (SAP) <span className="font-semibold text-slate-700 dark:text-slate-200">{formatBRL(precoSap.impostos.precoLiquidoUnitario)}</span>
-            <span className="text-slate-400">/{un}</span>
+            <span className="text-slate-500">/{un}</span>
           </span>
         )}
         <button
@@ -435,7 +435,7 @@ function ConfirmarForaDoMelhorModal({
           ))}
         </ul>
         <label className="block">
-          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Observação <span className="font-normal text-slate-400">(opcional)</span></span>
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Observação <span className="font-normal text-slate-500">(opcional)</span></span>
           <textarea
             value={observacao}
             onChange={e => setObservacao(e.target.value)}
@@ -512,7 +512,7 @@ function CabecalhoFornecedor({
           className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
             vencedor
               ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400'
-              : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+              : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-500'
           }`}
           title={vencedor ? 'Melhor colocado (mais linhas cobertas, menor custo entre eles)' : `${posicao + 1}º colocado`}
         >
@@ -522,17 +522,17 @@ function CabecalhoFornecedor({
           <div className="truncate text-xs font-bold text-slate-800 dark:text-slate-100" title={resumo.nome}>
             {nomeFornecedorCurto(resumo.nome)}
           </div>
-          <div className="truncate text-[10px] text-slate-400">
+          <div className="truncate text-[10px] text-slate-500">
             {resumo.cnpj ? formatarCnpj(resumo.cnpj) : 'CNPJ não identificado'}
             {proposta.fornecedor_uf ? ` · ${proposta.fornecedor_uf}` : ''}
           </div>
         </div>
         {proposta.arquivo_origem && (
-          <button
+          <button aria-label="Ver a cotação original — documento e/ou o Markdown extraído dele"
             type="button"
             onClick={() => setPreviewAberto(true)}
             title="Ver a cotação original — documento e/ou o Markdown extraído dele"
-            className="shrink-0 rounded-md border border-slate-200 p-1 text-slate-400 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
+            className="shrink-0 rounded-md border border-slate-200 p-1 text-slate-500 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
           >
             <FileSearch className="h-3.5 w-3.5" />
           </button>
@@ -642,7 +642,7 @@ function CabecalhoFornecedor({
           {delta != null && delta > 0.01 && <span className="text-rose-500">+{delta.toFixed(1)}%</span>}
         </div>
         {(resumo.totalImpostos.ipi > 0 || resumo.totalImpostos.icms > 0 || resumo.totalImpostos.pisCofins > 0 || resumo.totalImpostos.difal > 0) && (
-          <div className="flex flex-wrap gap-x-2 text-[10px] tabular-nums text-slate-400" title="Soma dos impostos destacados nos itens cotados. Só entram no total acima nas bases desembolso/custo líquido.">
+          <div className="flex flex-wrap gap-x-2 text-[10px] tabular-nums text-slate-500" title="Soma dos impostos destacados nos itens cotados. Só entram no total acima nas bases desembolso/custo líquido.">
             {resumo.totalImpostos.ipi > 0 && <span>IPI {formatBRL(resumo.totalImpostos.ipi)}</span>}
             {resumo.totalImpostos.icms > 0 && <span>ICMS {formatBRL(resumo.totalImpostos.icms)}</span>}
             {resumo.totalImpostos.pisCofins > 0 && <span>PIS/COF {formatBRL(resumo.totalImpostos.pisCofins)}</span>}
@@ -718,7 +718,7 @@ function Celula({
           <div className="min-w-0">
             <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-50">
               {formatBRL(custo.unitarioComparavel ?? custo.precoUnitario)}
-              <span className="ml-0.5 text-[10px] font-normal text-slate-400">/{item.unidade_medida || 'un'}</span>
+              <span className="ml-0.5 text-[10px] font-normal text-slate-500">/{item.unidade_medida || 'un'}</span>
             </div>
             <div className="text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
               {formatQtd(custo.quantidade)} × = <span className="font-semibold text-slate-700 dark:text-slate-200">{formatBRL(custo.comparavel)}</span>
@@ -750,7 +750,7 @@ function Celula({
           conferir com os próprios olhos se a linha juntou o mesmo material
           antes de confiar no % de similaridade. */}
       <p
-        className="line-clamp-2 pl-[18px] text-[10px] leading-snug text-slate-400 dark:text-slate-500"
+        className="line-clamp-2 pl-[18px] text-[10px] leading-snug text-slate-500 dark:text-slate-500"
         title={item.descricao_produto || undefined}
       >
         {item.descricao_produto || 'sem descrição'}
@@ -884,18 +884,18 @@ function CelulaHistorico({
       {/* Gross em destaque: é a base do preço cotado. Sem ele, o líquido sobe. */}
       <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-50">
         {formatBRL(gross ?? compra.preco)}
-        <span className="ml-0.5 text-[10px] font-normal text-slate-400">/{unidade} {gross != null ? 'gross' : 'líquido'}</span>
+        <span className="ml-0.5 text-[10px] font-normal text-slate-500">/{unidade} {gross != null ? 'gross' : 'líquido'}</span>
       </div>
       {gross != null && (
         <div className="-mt-0.5 text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
           líquido <span className="font-semibold text-slate-700 dark:text-slate-200">{formatBRL(compra.preco)}</span>
-          <span className="text-[10px] text-slate-400">/{unidade}</span>
+          <span className="text-[10px] text-slate-500">/{unidade}</span>
         </div>
       )}
       <div className="line-clamp-2 text-[11px] font-medium leading-snug text-slate-600 dark:text-slate-300">
         {nomeFornecedorCurto(compra.fornecedor)}
       </div>
-      <div className="text-[10px] text-slate-400">
+      <div className="text-[10px] text-slate-500">
         {formatDateBR(compra.data)}{compra.pedido ? ` · PO ${compra.pedido}` : ''}
         {numerosNf.length > 0 && (
           <span className="text-slate-500 dark:text-slate-400">
@@ -907,7 +907,7 @@ function CelulaHistorico({
       {compraNf && (
         <div className="text-[10px] tabular-nums text-slate-500 dark:text-slate-400">
           custo de aquisição <span className="font-semibold text-slate-700 dark:text-slate-200">{formatBRL(compraNf.custoUnitario)}</span>
-          <span className="text-slate-400">/{unidade}</span>
+          <span className="text-slate-500">/{unidade}</span>
         </div>
       )}
       {comp && (passadoMaisBarato || ofertaMaisBarata) && (
@@ -1739,7 +1739,7 @@ export default function MapaComparativo({
           </button>
           <div className="min-w-0">
             <h2 className="truncate text-sm font-bold text-slate-900 dark:text-slate-50">Mapa comparativo</h2>
-            <p className="truncate text-[11px] text-slate-400">
+            <p className="truncate text-[11px] text-slate-500">
               {busca.trim() || ocultarSemCotacao ? `${linhasVisiveis.length} de ${linhas.length}` : linhas.length} {linhas.length === 1 ? 'item' : 'itens'} · {resumos.length} {resumos.length === 1 ? 'fornecedor' : 'fornecedores'}
               {agrupadasPorIa > 0 && ` · ${agrupadasPorIa} ${agrupadasPorIa === 1 ? 'linha agrupada' : 'linhas agrupadas'} por similaridade`}
             </p>
@@ -1809,7 +1809,7 @@ export default function MapaComparativo({
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border border-b-0 border-slate-200 bg-slate-50/80 px-3.5 py-2 dark:border-slate-800 dark:bg-slate-800/40">
           <div className="flex flex-wrap items-center gap-2.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               Comparativo item × fornecedor
             </span>
             <div className="flex items-center gap-0.5 rounded-lg bg-slate-200/60 p-0.5 dark:bg-slate-900/50">
@@ -1847,7 +1847,7 @@ export default function MapaComparativo({
         {linhasVisiveis.length === 0 ? (
           <div className="rounded-b-2xl border border-t-0 border-slate-200 bg-white py-10 text-center dark:border-slate-800 dark:bg-slate-900">
             <SearchX className="mx-auto mb-1.5 h-5 w-5 text-slate-300 dark:text-slate-700" />
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500">
               {busca.trim() ? <>Nenhum item bate com &quot;{busca}&quot;.</> : 'Nenhum item para mostrar — todos foram retirados por não ter cotação.'}
             </p>
           </div>
@@ -1919,7 +1919,7 @@ export default function MapaComparativo({
                       <History className="h-3.5 w-3.5 shrink-0" />
                       Menor compra
                     </div>
-                    <div className="mt-0.5 text-[10px] font-normal normal-case text-slate-400">
+                    <div className="mt-0.5 text-[10px] font-normal normal-case text-slate-500">
                       desde {formatDateBR(INICIO_HISTORICO_COMPRAS)}
                     </div>
                     <AlcaColuna
@@ -2074,11 +2074,11 @@ export default function MapaComparativo({
             <Scissors className="h-3.5 w-3.5" />
             Separar
           </button>
-          <button
+          <button aria-label="Cancelar seleção"
             type="button"
             onClick={limparSelecaoAgrupamento}
             title="Cancelar seleção"
-            className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            className="rounded-full p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           >
             <X className="h-3.5 w-3.5" />
           </button>

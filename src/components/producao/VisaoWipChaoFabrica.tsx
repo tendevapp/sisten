@@ -458,7 +458,7 @@ export default function VisaoWipChaoFabrica({
               <div className="flex flex-wrap items-center gap-3">
                 {filtroTipos}
                 {resumo}
-                <button
+                <button aria-label="Fechar (Esc)"
                   type="button"
                   onClick={() => setExpandido(false)}
                   title="Fechar (Esc)"
@@ -492,7 +492,7 @@ export default function VisaoWipChaoFabrica({
           style={{ left: arrasto.x, top: arrasto.y }}
         >
           <span className="text-xs font-black">{arrasto.item.tramo.tramo}</span>
-          <span className="text-[9px] font-semibold opacity-80">{arrasto.item.tramo.serie}</span>
+          <span className="text-[10px] font-semibold opacity-80">{arrasto.item.tramo.serie}</span>
         </div>
       )}
     </section>

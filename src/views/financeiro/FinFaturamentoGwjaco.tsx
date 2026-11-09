@@ -344,7 +344,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
           {/* Filtros + ações */}
           <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 sm:flex-row sm:items-center sm:p-4 dark:border-slate-800 dark:bg-slate-900">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
                 placeholder="Buscar por torre, tramo, código de cliente, NF ou projeto..."
@@ -403,7 +403,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
                     <td className="px-3 py-2">
                       {row.data_faturado
                         ? <span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmtDataBR(row.data_faturado)}</span>
-                        : <span className="text-slate-400">—</span>}
+                        : <span className="text-slate-500">—</span>}
                     </td>
                     <td className="px-3 py-2">{row.semana_faturamento ?? '—'}</td>
                     <td className="px-3 py-2">{fmtDataBR(row.data_expedido)}</td>
@@ -415,25 +415,25 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
                           Sim
                         </span>
                       ) : (
-                        <span className="text-slate-400">—</span>
+                        <span className="text-slate-500">—</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{row.projeto_codigo || '—'}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-1">
-                        <button
+                        <button aria-label="Editar lançamento"
                           type="button"
                           onClick={() => abrirEdicao(row)}
                           title="Editar lançamento"
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800"
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
-                        <button
+                        <button aria-label="Excluir"
                           type="button"
                           onClick={() => setParaExcluir(row)}
                           title="Excluir"
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40"
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -445,7 +445,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
             </table>
             {linhasFiltradas.length === 0 && !loading && (
               <div className="p-8 text-center">
-                <Receipt className="mx-auto h-8 w-8 text-slate-400" />
+                <Receipt className="mx-auto h-8 w-8 text-slate-500" />
                 <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Nenhum lançamento encontrado</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Ajuste a busca ou cadastre uma nova torre/tramo.</p>
               </div>

@@ -179,7 +179,7 @@ export default function ComposicaoModal<T>({ config, onClose }: ComposicaoModalP
               <p className="text-xs mt-1" style={{ color: 'var(--ink-muted)' }}>{config.subtitle}</p>
             )}
           </div>
-          <button
+          <button aria-label="Fechar janela"
             onClick={onClose}
             className="p-1.5 rounded-lg transition-colors duration-150 cursor-pointer hover:bg-[var(--surface-sunken)]"
             style={{ color: 'var(--ink-muted)' }}
@@ -245,7 +245,7 @@ export default function ComposicaoModal<T>({ config, onClose }: ComposicaoModalP
                 style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken)', color: 'var(--ink-primary)' }}
               />
               {query && (
-                <button
+                <button aria-label="Limpar pesquisa"
                   onClick={() => setQuery('')}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 cursor-pointer"
                   style={{ color: 'var(--ink-muted)' }}

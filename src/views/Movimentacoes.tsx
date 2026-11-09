@@ -843,7 +843,7 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                                 <span className="font-mono font-bold mr-1.5" style={{ color: 'var(--ink-primary)' }}>{m.tipo_movimento || '—'}</span>
                                 {m.descricao_tipo_movimento}
                                 {!m.movimenta_estoque && (
-                                  <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}>
+                                  <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}>
                                     interna
                                   </span>
                                 )}
@@ -873,7 +873,7 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                                     <span className="font-mono font-bold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{m.deposito}</span>
                                     {isDepositoInativo(m.deposito) && (
                                       <span
-                                        className="ml-1 rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide align-middle"
+                                        className="ml-1 rounded px-1 py-px text-[10px] font-bold uppercase tracking-wide align-middle"
                                         style={{ background: 'rgba(100,116,139,0.16)', color: 'var(--ink-muted)' }}
                                       >
                                         inativo

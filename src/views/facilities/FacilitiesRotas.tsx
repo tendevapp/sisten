@@ -322,18 +322,18 @@ export default function FacilitiesRotas({
 
   const AcoesLinha = ({ r }: { r: RhRota }) => (
     <div className="flex items-center gap-1.5">
-      <button
+      <button aria-label="Editar"
         type="button"
         onClick={() => abrirEditar(r)}
-        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+        className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400"
         title="Editar"
       >
         <Edit2 className="h-4 w-4" />
       </button>
-      <button
+      <button aria-label="Excluir"
         type="button"
         onClick={() => setParaExcluir(r)}
-        className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
+        className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
         title="Excluir"
       >
         <Trash2 className="h-4 w-4" />
@@ -366,7 +366,7 @@ export default function FacilitiesRotas({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <button aria-label="Recarregar"
             type="button"
             onClick={carregar}
             disabled={carregando}
@@ -405,7 +405,7 @@ export default function FacilitiesRotas({
         {[
           { rotulo: 'Colaboradores', valor: stats.total, icon: Users, cor: 'text-blue-500' },
           { rotulo: 'Ativos', valor: stats.ativos, icon: CheckCircle2, cor: 'text-emerald-500' },
-          { rotulo: 'Inativos', valor: stats.inativos, icon: XCircle, cor: 'text-slate-400' },
+          { rotulo: 'Inativos', valor: stats.inativos, icon: XCircle, cor: 'text-slate-500' },
           { rotulo: 'Rotas distintas', valor: stats.rotas, icon: BusFront, cor: 'text-teal-500' },
         ].map(s => {
           const Icon = s.icon;
@@ -425,7 +425,7 @@ export default function FacilitiesRotas({
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               value={busca}
@@ -468,7 +468,7 @@ export default function FacilitiesRotas({
               </button>
             ))}
           </div>
-          <span className="text-[11px] font-medium text-slate-400">
+          <span className="text-[11px] font-medium text-slate-500">
             {filtradas.length} de {rotas.length} registro(s)
           </span>
           {temFiltro && (
@@ -707,15 +707,15 @@ export default function FacilitiesRotas({
 
                   <dl className="mt-3 grid grid-cols-1 gap-1.5 text-xs text-slate-600 dark:text-slate-300">
                     <div className="flex items-center gap-2">
-                      <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-500" />
                       <span>{r.ponto_embarque}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Clock className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <Clock className="h-3.5 w-3.5 shrink-0 text-slate-500" />
                       <span className="font-mono">{r.horario}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <Phone className="h-3.5 w-3.5 shrink-0 text-slate-500" />
                       <span>{r.contato || '—'}</span>
                     </div>
                   </dl>

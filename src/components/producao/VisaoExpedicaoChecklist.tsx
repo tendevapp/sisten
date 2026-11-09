@@ -135,7 +135,7 @@ export default function VisaoExpedicaoChecklist({ torres }: VisaoExpedicaoCheckl
       </div>
 
       {carregando ? (
-        <div className="py-16 text-center text-sm text-slate-400">Carregando checklist de liberação...</div>
+        <div className="py-16 text-center text-sm text-slate-500">Carregando checklist de liberação...</div>
       ) : torresRelevantes.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
           Nenhum tramo em White, Pátio ou Expedido no momento com os filtros atuais.
@@ -167,7 +167,7 @@ export default function VisaoExpedicaoChecklist({ torres }: VisaoExpedicaoCheckl
                       TORRE {torre.torre_numero}
                     </strong>
                     <div className="mt-1 flex items-center justify-center gap-1">
-                      <span className="rounded bg-indigo-100 px-1.5 py-0.2 text-[9px] font-bold text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-200">
+                      <span className="rounded bg-indigo-100 px-1.5 py-0.2 text-[10px] font-bold text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-200">
                         {percentualTorre}% liberado
                       </span>
                     </div>
@@ -211,11 +211,11 @@ export default function VisaoExpedicaoChecklist({ torres }: VisaoExpedicaoCheckl
 
                           <div className="mt-1.5 flex items-center justify-center">
                             {progresso.percentual >= 100 && tramo ? (
-                              <span className="inline-flex items-center gap-0.5 rounded bg-black/30 px-1.5 py-0.5 text-[9px] font-bold">
+                              <span className="inline-flex items-center gap-0.5 rounded bg-black/30 px-1.5 py-0.5 text-[10px] font-bold">
                                 <Check className="h-2.5 w-2.5" /> Liberado
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-0.5 rounded bg-black/30 px-1.5 py-0.5 text-[9px] font-bold">
+                              <span className="inline-flex items-center gap-0.5 rounded bg-black/30 px-1.5 py-0.5 text-[10px] font-bold">
                                 {progresso.concluidas}/{progresso.total} etapas
                               </span>
                             )}

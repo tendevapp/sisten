@@ -346,7 +346,7 @@ Condição: 30 dias | Frete: CIF
                 Gestão de APIs & Edge Functions
               </h2>
             </div>
-            <p className="text-xs text-slate-400 max-w-2xl">
+            <p className="text-xs text-slate-500 max-w-2xl">
               Monitore, diagnostique e teste todas as integrações de Inteligência Artificial e serviços externos do SISTEN.
             </p>
           </div>
@@ -471,19 +471,19 @@ Condição: 30 dias | Frete: CIF
                   {/* Informações Técnicas */}
                   <div className="space-y-2 text-xs border-t border-slate-100 pt-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Provedor:</span>
+                      <span className="text-slate-500">Provedor:</span>
                       <span className="font-medium text-slate-700">{api.provedor}</span>
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Modelos / Fontes:</span>
+                      <span className="text-slate-500">Modelos / Fontes:</span>
                       <span className="font-mono text-[11px] text-slate-600 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
                         {api.modelos.join(', ')}
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Secrets Vinculados:</span>
+                      <span className="text-slate-500">Secrets Vinculados:</span>
                       <div className="flex flex-wrap gap-1">
                         {api.secrets.map((sec) => (
                           <span
@@ -518,7 +518,7 @@ Condição: 30 dias | Frete: CIF
 
                         {status.latencyMs !== null && (
                           <span className="font-mono text-[11px] text-slate-500 flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-slate-400" />
+                            <Clock className="w-3 h-3 text-slate-500" />
                             {status.latencyMs}ms
                           </span>
                         )}
@@ -669,7 +669,7 @@ Condição: 30 dias | Frete: CIF
 
               {latencyMs !== null && (
                 <div className="flex items-center gap-1 text-slate-500 font-mono text-[11px]">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <Clock className="w-3.5 h-3.5 text-slate-500" />
                   Latência: <span className="font-bold text-slate-700">{latencyMs}ms</span>
                 </div>
               )}
@@ -736,7 +736,7 @@ Condição: 30 dias | Frete: CIF
                 npx supabase secrets set GEMINI_API_KEY="AQ.SuaChaveAqui"
               </code>
             </div>
-            <p className="text-[10px] text-slate-400 mt-2">
+            <p className="text-[10px] text-slate-500 mt-2">
               Salva o secret no cofre do Supabase sem expor no Git.
             </p>
           </div>
@@ -770,7 +770,7 @@ Condição: 30 dias | Frete: CIF
                 npx supabase functions deploy gemini-generate --no-verify-jwt
               </code>
             </div>
-            <p className="text-[10px] text-slate-400 mt-2">
+            <p className="text-[10px] text-slate-500 mt-2">
               Publica a função diretamente na região do seu banco de dados.
             </p>
           </div>

@@ -21,6 +21,7 @@ import { ACCEPT_ANEXO, AnexoInvalidoError, MAX_ANEXOS, prepareAttachment, type P
 import { estornarDocumento, proximoCodigo, registrarSobressalente, subirEvidencia, ProjSaldoInsuficienteError } from '../../lib/projetosApi';
 import type { Profile, ProjEvidencia } from '../../types';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
+import { confirmar } from '../../lib/confirmar';
 
 interface Props { dados: DadosProjetos; user: Profile; podeLancar: boolean }
 
@@ -140,7 +141,7 @@ export default function PainelSobressalentes({ dados, user, podeLancar }: Props)
   };
 
   const estornar = async (id: string, codigo: string) => {
-    if (!window.confirm(`Estornar ${codigo}? As peças voltam ao estoque.`)) return;
+    if (!await confirmar({ titulo: 'Estornar sobressalente?', mensagem: `Estornar ${codigo}? As peças voltam ao estoque.`, confirmarLabel: 'Estornar', variante: 'perigo' })) return;
     try {
       await estornarDocumento('proj_sobressalentes', id, user.id);
       toast.success(`${codigo} estornado.`);

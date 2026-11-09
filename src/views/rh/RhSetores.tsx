@@ -167,7 +167,7 @@ export default function RhSetores({ onNavigate }: Props) {
       </div>
 
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
         <input
           type="text"
           value={busca}
@@ -179,9 +179,9 @@ export default function RhSetores({ onNavigate }: Props) {
 
       <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         {carregando ? (
-          <div className="flex justify-center py-12 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
+          <div className="flex justify-center py-12 text-slate-500"><Loader2 className="h-6 w-6 animate-spin" /></div>
         ) : filtrados.length === 0 ? (
-          <p className="px-4 py-12 text-center text-sm text-slate-400">Nenhum setor cadastrado.</p>
+          <p className="px-4 py-12 text-center text-sm text-slate-500">Nenhum setor cadastrado.</p>
         ) : (
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {filtrados.map(s => (
@@ -198,12 +198,12 @@ export default function RhSetores({ onNavigate }: Props) {
                     onClick={() => alternar(s)}
                     title={s.ativo ? 'Inativar' : 'Ativar'}
                     className={`rounded-lg p-1.5 transition-colors cursor-pointer ${
-                      s.ativo ? 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      s.ativo ? 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
                   >
                     {s.ativo ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                   </button>
-                  <button
+                  <button aria-label="Editar"
                     type="button"
                     onClick={() => { setEditando(s); setNome(s.nome); setModalAberto(true); }}
                     title="Editar"
@@ -211,7 +211,7 @@ export default function RhSetores({ onNavigate }: Props) {
                   >
                     <Edit2 className="h-4 w-4" />
                   </button>
-                  <button
+                  <button aria-label="Excluir"
                     type="button"
                     onClick={() => setParaExcluir(s)}
                     title="Excluir"

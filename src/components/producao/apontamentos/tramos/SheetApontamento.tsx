@@ -198,7 +198,7 @@ export default function SheetApontamento({ tramos, situacoes, hoje, user, onClos
         {acao === 'avancar' && proximo && (
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
             <span className="rounded-md px-2 py-1 text-xs font-bold" style={{ background: cor.fundo, color: cor.texto }}>{CONFIG_ETAPA[etapa].rotulo}</span>
-            <ArrowRight className="h-4 w-4 text-slate-400" />
+            <ArrowRight className="h-4 w-4 text-slate-500" />
             <span className="rounded-md px-2 py-1 text-xs font-bold" style={{ background: COR_ETAPA[etapaDestino].fundo, color: COR_ETAPA[etapaDestino].texto }}>
               {CONFIG_ETAPA[etapaDestino].rotulo}
             </span>
@@ -209,7 +209,7 @@ export default function SheetApontamento({ tramos, situacoes, hoje, user, onClos
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
               <span className="rounded-md px-2 py-1 text-xs font-bold" style={{ background: cor.fundo, color: cor.texto }}>{CONFIG_ETAPA[etapa].rotulo}</span>
-              <Undo2 className="h-4 w-4 text-slate-400" />
+              <Undo2 className="h-4 w-4 text-slate-500" />
               <span className="rounded-md px-2 py-1 text-xs font-bold" style={{ background: COR_ETAPA[etapaAnterior].fundo, color: COR_ETAPA[etapaAnterior].texto }}>
                 {CONFIG_ETAPA[etapaAnterior].rotulo}
               </span>

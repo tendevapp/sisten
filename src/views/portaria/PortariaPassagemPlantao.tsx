@@ -520,7 +520,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
       <div data-tour="passagem-filtros" className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div className="relative sm:col-span-2">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               placeholder="Buscar por vigilante, protocolo..."
@@ -674,11 +674,11 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
 
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                    <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                    <Calendar className="h-3.5 w-3.5 text-slate-500" />
                     <span>{p.data.split('-').reverse().join('/')}</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                    <Clock className="h-3.5 w-3.5 text-slate-400" />
+                    <Clock className="h-3.5 w-3.5 text-slate-500" />
                     <span>{p.horario_inicio} às {p.horario_fim}</span>
                   </div>
                 </div>
@@ -729,13 +729,13 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
                     <Eye className="h-3.5 w-3.5" />
                     Ver Detalhes
                   </button>
-                  <button
+                  <button aria-label="Visualizar / Exportar PDF Oficial (FRM.SGP-0010)"
                     type="button"
                     onClick={() => setPdfPreview({
                       gerar: () => gerarPassagemPlantaoPdf(p),
                       titulo: `Passagem de Plantão - ${p.numero_protocolo || p.data}`,
                     })}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800"
+                    className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800"
                     title="Visualizar / Exportar PDF Oficial (FRM.SGP-0010)"
                   >
                     <FileDown className="h-4 w-4" />
@@ -757,7 +757,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
                         </button>
                       )}
                       {podeEditar && (
-                        <button
+                        <button aria-label="Excluir Plantão"
                           type="button"
                           onClick={() => setPlantaoParaExcluir(p)}
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
@@ -777,7 +777,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
 
       {plantoes.length === 0 && !loading && (
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-slate-900">
-          <ShieldCheck className="mx-auto h-8 w-8 text-slate-400" />
+          <ShieldCheck className="mx-auto h-8 w-8 text-slate-500" />
           <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Nenhum plantão registrado</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">Clique em "Novo Plantão" para iniciar a conferência do posto.</p>
         </div>

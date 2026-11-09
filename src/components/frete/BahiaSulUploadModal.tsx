@@ -100,9 +100,9 @@ export default function BahiaSulUploadModal({
               <p className="text-xs text-slate-500">Base de dados de entregas das compras (CTe)</p>
             </div>
           </div>
-          <button
+          <button aria-label="Fechar"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -124,13 +124,13 @@ export default function BahiaSulUploadModal({
                 className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-not-allowed"
               />
               <div className="flex flex-col items-center space-y-2 pointer-events-none">
-                <span className="p-3 rounded-full bg-slate-100 text-slate-400 group-hover:bg-amber-100 group-hover:text-amber-600 transition-all">
+                <span className="p-3 rounded-full bg-slate-100 text-slate-500 group-hover:bg-amber-100 group-hover:text-amber-600 transition-all">
                   <Upload className="h-6 w-6" />
                 </span>
                 <p className="text-sm font-semibold text-slate-700">
                   Clique para selecionar ou arraste o arquivo aqui
                 </p>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500">
                   Formatos aceitos: Excel (.xlsx, .xls) ou CSV
                 </p>
               </div>
@@ -172,15 +172,15 @@ export default function BahiaSulUploadModal({
             </div>
             <div className="grid grid-cols-3 gap-2.5 text-[10px]">
               <div className="bg-white p-2 rounded-lg border border-emerald-100">
-                <p className="text-slate-400">Total Lidos</p>
+                <p className="text-slate-500">Total Lidos</p>
                 <p className="text-slate-700 font-black text-sm">{lastLog.records_read}</p>
               </div>
               <div className="bg-white p-2 rounded-lg border border-emerald-100">
-                <p className="text-slate-400">Novos CTe</p>
+                <p className="text-slate-500">Novos CTe</p>
                 <p className="text-emerald-700 font-black text-sm">+{lastLog.records_inserted}</p>
               </div>
               <div className="bg-white p-2 rounded-lg border border-emerald-100">
-                <p className="text-slate-400">Atualizados</p>
+                <p className="text-slate-500">Atualizados</p>
                 <p className="text-slate-600 font-black text-sm">{lastLog.records_updated}</p>
               </div>
             </div>

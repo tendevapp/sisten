@@ -413,7 +413,7 @@ export default function Estoque({ user }: EstoqueProps) {
             <span className="font-mono font-bold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{r.deposito}</span>
             {isDepositoInativo(r.deposito) && (
               <span
-                className="ml-1 rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide align-middle"
+                className="ml-1 rounded px-1 py-px text-[10px] font-bold uppercase tracking-wide align-middle"
                 style={{ background: 'rgba(100,116,139,0.16)', color: 'var(--ink-muted)' }}
               >
                 inativo
@@ -479,7 +479,7 @@ export default function Estoque({ user }: EstoqueProps) {
             Posição atual de estoque por material e depósito, importada da transação ZL0024. Use os filtros, a busca e as colunas personalizáveis para encontrar itens rapidamente.
           </p>
           {lastUpdated && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
+            <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
               <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('estoque')}
             </p>
           )}
@@ -517,22 +517,22 @@ export default function Estoque({ user }: EstoqueProps) {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 lg:gap-3.5">
           <div className="min-w-0 rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-3.5 lg:p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500 dark:bg-blue-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1 truncate"><Layers className="h-3 w-3 shrink-0" /> <span className="truncate">Itens em Estoque</span></span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1 truncate"><Layers className="h-3 w-3 shrink-0" /> <span className="truncate">Itens em Estoque</span></span>
             <p className="tabular text-xl lg:text-3xl font-black text-slate-800 dark:text-slate-100 mt-1 leading-tight truncate" title={kpis.itens.toLocaleString('pt-BR')}>{kpis.itens.toLocaleString('pt-BR')}</p>
           </div>
           <div className="min-w-0 rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-3.5 lg:p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1 truncate"><Package className="h-3 w-3 shrink-0" /> <span className="truncate">Materiais</span></span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1 truncate"><Package className="h-3 w-3 shrink-0" /> <span className="truncate">Materiais</span></span>
             <p className="tabular text-xl lg:text-3xl font-black text-slate-800 dark:text-slate-100 mt-1 leading-tight truncate" title={kpis.materiais.toLocaleString('pt-BR')}>{kpis.materiais.toLocaleString('pt-BR')}</p>
           </div>
           <div className="min-w-0 rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-3.5 lg:p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-violet-500 dark:bg-violet-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1 truncate"><PackageCheck className="h-3 w-3 shrink-0" /> <span className="truncate">Quantidade Total</span></span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1 truncate"><PackageCheck className="h-3 w-3 shrink-0" /> <span className="truncate">Quantidade Total</span></span>
             <p className="tabular text-base sm:text-lg lg:text-xl font-black text-slate-800 dark:text-slate-100 mt-1.5 lg:mt-2 leading-tight truncate" title={formatQtd(kpis.quantidade)}>{formatQtd(kpis.quantidade)}</p>
           </div>
           <div className="min-w-0 rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-3.5 lg:p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 dark:bg-emerald-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1 truncate"><DollarSign className="h-3 w-3 shrink-0" /> <span className="truncate">Valor Total</span></span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1 truncate"><DollarSign className="h-3 w-3 shrink-0" /> <span className="truncate">Valor Total</span></span>
             <p className="tabular text-base sm:text-lg lg:text-xl font-black text-emerald-600 dark:text-emerald-500 mt-1.5 lg:mt-2 leading-tight truncate" title={formatPreco(kpis.valor)}>{formatPreco(kpis.valor)}</p>
           </div>
         </div>
@@ -553,7 +553,7 @@ export default function Estoque({ user }: EstoqueProps) {
             horizontal (evita empurrar a lista para muito longe do topo);
             a partir de `lg` quebram em linha normalmente. */}
         <div className="pt-3.5 border-t border-slate-100 dark:border-slate-800">
-          <span className="hidden lg:flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
+          <span className="hidden lg:flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-2">
             <Filter className="h-3 w-3" /> Filtros
           </span>
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
@@ -569,7 +569,7 @@ export default function Estoque({ user }: EstoqueProps) {
               panelClassName="w-80 sm:w-96"
             />
             <div className="relative shrink-0 w-[150px] lg:w-auto lg:min-w-[140px]">
-              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={tipoItemFilter}
                 onChange={(e) => setTipoItemFilter(e.target.value as 'Todos' | 'projeto' | 'consumo')}
@@ -603,7 +603,7 @@ export default function Estoque({ user }: EstoqueProps) {
               </select>
             </div>
             <div className="relative shrink-0 w-[152px] lg:w-auto lg:min-w-[140px]">
-              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={abcFilter}
                 onChange={(e) => setAbcFilter(e.target.value as 'Todos' | ClasseAbc)}
@@ -616,7 +616,7 @@ export default function Estoque({ user }: EstoqueProps) {
               </select>
             </div>
             <div className="relative shrink-0 w-[152px] lg:w-auto lg:min-w-[160px]">
-              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={grupoFilter}
                 onChange={(e) => setGrupoFilter(e.target.value)}
@@ -627,7 +627,7 @@ export default function Estoque({ user }: EstoqueProps) {
               </select>
             </div>
             <div className="relative shrink-0 w-[188px] lg:w-auto lg:min-w-[180px]">
-              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={compraDiretaFilter}
                 onChange={(e) => setCompraDiretaFilter(e.target.value)}
@@ -698,7 +698,7 @@ export default function Estoque({ user }: EstoqueProps) {
               >
                 <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
                 <span>Personalizar Colunas</span>
-                <ChevronDown className="h-3 w-3 text-slate-400" />
+                <ChevronDown className="h-3 w-3 text-slate-500" />
               </button>
               {showColMenu && (
                 <div className="absolute right-0 mt-1.5 w-60 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 z-30 p-3 text-left">
@@ -760,7 +760,7 @@ export default function Estoque({ user }: EstoqueProps) {
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <span
-                          className="shrink-0 inline-flex items-center justify-center rounded border w-4 h-4 text-[9px] font-black leading-none"
+                          className="shrink-0 inline-flex items-center justify-center rounded border w-4 h-4 text-[10px] font-black leading-none"
                           style={{ borderColor: CLASSE_ABC_COR[classe], color: 'var(--ink-primary)' }}
                           title={`Classe ${classe} da curva ABC`}
                         >

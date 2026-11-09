@@ -95,7 +95,7 @@ export default function AprovadorSetoresSelect({
         }`}
       >
         <span className="truncate">{resumo}</span>
-        <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none transition-transform ${open ? 'rotate-180' : ''} ${ativo ? 'text-emerald-600' : 'text-slate-400'}`} />
+        <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none transition-transform ${open ? 'rotate-180' : ''} ${ativo ? 'text-emerald-600' : 'text-slate-500'}`} />
       </button>
 
       {open && (
@@ -121,7 +121,7 @@ export default function AprovadorSetoresSelect({
 
           {sectors.length >= 8 && (
             <div className="relative border-b border-slate-100 dark:border-slate-800 p-2">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <input
                 autoFocus
                 value={query}
@@ -134,7 +134,7 @@ export default function AprovadorSetoresSelect({
 
           <div className="overflow-y-auto flex-1 p-1">
             {visiveis.length === 0 && (
-              <p className="px-3 py-4 text-xs text-slate-400 text-center">Nenhum setor encontrado</p>
+              <p className="px-3 py-4 text-xs text-slate-500 text-center">Nenhum setor encontrado</p>
             )}
             {visiveis.map(s => {
               const marcado = selected.includes(s.id);

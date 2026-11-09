@@ -706,7 +706,7 @@ export default function ContasPagar({ user }: ContasPagarProps) {
                                   {isExpanded ? (
                                     <ChevronDown className="h-4 w-4 text-emerald-600 dark:text-emerald-400 font-bold" />
                                   ) : (
-                                    <ChevronRight className="h-4 w-4 text-slate-400" />
+                                    <ChevronRight className="h-4 w-4 text-slate-500" />
                                   )}
                                 </button>
                                 <div className="min-w-0">
@@ -714,7 +714,7 @@ export default function ContasPagar({ user }: ContasPagarProps) {
                                     {group.nome}
                                   </span>
                                   {group.codigo && (
-                                    <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-500">
                                       Cód. SAP: {group.codigo}
                                     </span>
                                   )}
@@ -735,11 +735,11 @@ export default function ContasPagar({ user }: ContasPagarProps) {
                                   {formatBRL(group.saldoAberto)}
                                 </span>
                               ) : (
-                                <span className="text-slate-400 font-normal">—</span>
+                                <span className="text-slate-500 font-normal">—</span>
                               )}
                             </Td>
                             <Td align="right" numeric strong className="text-emerald-700 dark:text-emerald-400 font-extrabold">
-                              {group.valorPago > 0 ? formatBRL(group.valorPago) : <span className="text-slate-400 font-normal">—</span>}
+                              {group.valorPago > 0 ? formatBRL(group.valorPago) : <span className="text-slate-500 font-normal">—</span>}
                             </Td>
                             <Td>
                               <div className="flex flex-wrap items-center gap-1.5">

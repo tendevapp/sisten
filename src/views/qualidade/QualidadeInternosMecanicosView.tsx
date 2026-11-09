@@ -48,7 +48,7 @@ function tituloPendencia(p: api.PendenciaInternos): string {
   return `${p.base?.codigo_registro || 'Novo checklist'}${dados?.modelo_nome ? ` · ${dados.modelo_nome}` : ''}${dados?.tramo ? ` · ${dados.tramo}` : ''}${dados?.sequencial ? ` / ${dados.sequencial}` : ''}`;
 }
 
-const semCodigo = <span className="font-sans font-semibold italic text-slate-400">Código gerado ao sincronizar</span>;
+const semCodigo = <span className="font-sans font-semibold italic text-slate-500">Código gerado ao sincronizar</span>;
 
 const VALIDACOES = [
   { chave: 'nao_conformidade', pt: 'Seção tem NÃO CONFORMIDADE (NC) via “Se Suíte”?', en: 'Section has NON-CONFORMITY (NC) via “Se Suite”?' },
@@ -150,7 +150,7 @@ function RespostaBotoes({ value, onChange, variante }: { value: api.InternosResp
 
 function ChipResposta({ value, variante }: { value: api.InternosResposta | null | undefined; variante: 'producao' | 'qualidade' }) {
   const opcao = OPCOES_RESPOSTA[variante].find(item => item.value === value);
-  if (!opcao) return <span className="inline-flex rounded-lg border border-dashed border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-400 dark:border-slate-700">Sem resposta</span>;
+  if (!opcao) return <span className="inline-flex rounded-lg border border-dashed border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-500 dark:border-slate-700">Sem resposta</span>;
   return <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-bold ${opcao.active}`}>{opcao.label}</span>;
 }
 
@@ -260,9 +260,9 @@ function ChecklistResumoCard({ item, acoes, destaque }: { item: api.InternosChec
       <StatusBadge status={item.status} />
     </div>
     <dl className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-2.5 text-center dark:bg-slate-950">
-      <div><dt className="text-[10px] font-semibold uppercase text-slate-400">Projeto</dt><dd className="truncate text-xs font-bold text-slate-700 dark:text-slate-200">{item.projeto}</dd></div>
-      <div><dt className="text-[10px] font-semibold uppercase text-slate-400">Tramo</dt><dd className="text-xs font-bold text-slate-700 dark:text-slate-200">{item.tramo}</dd></div>
-      <div><dt className="text-[10px] font-semibold uppercase text-slate-400">Sequencial</dt><dd className="truncate text-xs font-bold text-slate-700 dark:text-slate-200">{item.sequencial}</dd></div>
+      <div><dt className="text-[10px] font-semibold uppercase text-slate-500">Projeto</dt><dd className="truncate text-xs font-bold text-slate-700 dark:text-slate-200">{item.projeto}</dd></div>
+      <div><dt className="text-[10px] font-semibold uppercase text-slate-500">Tramo</dt><dd className="text-xs font-bold text-slate-700 dark:text-slate-200">{item.tramo}</dd></div>
+      <div><dt className="text-[10px] font-semibold uppercase text-slate-500">Sequencial</dt><dd className="truncate text-xs font-bold text-slate-700 dark:text-slate-200">{item.sequencial}</dd></div>
     </dl>
     <div className="space-y-1 text-[11px] text-slate-500">
       {destaque}
@@ -749,7 +749,7 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
     {rascunhos.length > 0 && <section className="space-y-3">
       <h2 className="font-display text-lg font-bold text-slate-900 dark:text-slate-50">Rascunhos em preenchimento</h2>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {rascunhos.map(item => <ChecklistResumoCard key={item.id} item={item} acoes={acoesChecklist(item)} destaque={<p className="flex items-center gap-1.5"><UserCheck className="h-3.5 w-3.5 text-slate-400" /> Iniciado por <b className="text-slate-700 dark:text-slate-200">{item.criado_por_nome || '-'}</b> · {fmtDataHora(item.created_at)}</p>} />)}
+        {rascunhos.map(item => <ChecklistResumoCard key={item.id} item={item} acoes={acoesChecklist(item)} destaque={<p className="flex items-center gap-1.5"><UserCheck className="h-3.5 w-3.5 text-slate-500" /> Iniciado por <b className="text-slate-700 dark:text-slate-200">{item.criado_por_nome || '-'}</b> · {fmtDataHora(item.created_at)}</p>} />)}
       </div>
     </section>}
 
@@ -777,9 +777,9 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
 
   const renderHistorico = () => <div className="space-y-4">
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-      <div className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={busca} onChange={event => setBusca(event.target.value)} placeholder="Buscar por código, checklist, projeto, tramo, sequencial ou responsável…" className={`${inputClass} pl-9`} /></div>
+      <div className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" /><input value={busca} onChange={event => setBusca(event.target.value)} placeholder="Buscar por código, checklist, projeto, tramo, sequencial ou responsável…" className={`${inputClass} pl-9`} /></div>
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
-        {([['FINALIZADO', 'Finalizados'], ['AGUARDANDO_QUALIDADE', 'Aguardando Qualidade'], ['RASCUNHO', 'Rascunhos'], ['TODOS', 'Todos']] as const).map(([valor, label]) => <button key={valor} type="button" onClick={() => setFiltro(valor)} className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold ${filtro === valor ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-900 dark:text-blue-300' : 'text-slate-500'}`}>{label} <span className="text-slate-400">{contagem[valor]}</span></button>)}
+        {([['FINALIZADO', 'Finalizados'], ['AGUARDANDO_QUALIDADE', 'Aguardando Qualidade'], ['RASCUNHO', 'Rascunhos'], ['TODOS', 'Todos']] as const).map(([valor, label]) => <button key={valor} type="button" onClick={() => setFiltro(valor)} className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold ${filtro === valor ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-900 dark:text-blue-300' : 'text-slate-500'}`}>{label} <span className="text-slate-500">{contagem[valor]}</span></button>)}
       </div>
     </div>
     {historicoFiltrado.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -831,7 +831,7 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
         {gruposDoModelo.map(({ grupo, itens }) => <div key={`${grupo}-${itens[0].chave}`} className="space-y-3">
           <div className="flex items-baseline gap-2 border-b border-slate-200 pb-2 dark:border-slate-800">
             <Bilingue inline texto={grupo || 'GERAL / GENERAL'} ptClass="text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200" enClass="text-xs uppercase" />
-            <span className="ml-auto text-[11px] text-slate-400">{itens.length} {itens.length === 1 ? 'item' : 'itens'}</span>
+            <span className="ml-auto text-[11px] text-slate-500">{itens.length} {itens.length === 1 ? 'item' : 'itens'}</span>
           </div>
           {itens.map(item => <ItemVerificacao
             key={item.chave}
@@ -855,7 +855,7 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
           {VALIDACOES.map((item, indice) => {
             const valor = validacoes[item.chave];
             return <div key={item.chave} className="grid gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
-              <div className="flex gap-2 text-xs"><span className="font-black text-slate-400">{indice + 1}</span><div><Bilingue pt={item.pt} en={item.en} ptClass="font-semibold text-slate-800 dark:text-slate-100" /></div></div>
+              <div className="flex gap-2 text-xs"><span className="font-black text-slate-500">{indice + 1}</span><div><Bilingue pt={item.pt} en={item.en} ptClass="font-semibold text-slate-800 dark:text-slate-100" /></div></div>
               {etapa === 'QUALIDADE'
                 ? <div className="grid grid-cols-2 gap-1.5">{(['SIM', 'NAO'] as const).map(opcao => <button key={opcao} type="button" aria-pressed={valor?.resposta === opcao} onClick={() => setValidacoes(previous => ({ ...previous, [item.chave]: { ...(previous[item.chave] || { identificacao: '' }), resposta: opcao } }))} className={`min-h-[40px] rounded-xl border px-4 text-xs font-bold ${valor?.resposta === opcao ? opcao === 'SIM' ? 'border-red-600 bg-red-600 text-white' : 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}>{opcao === 'SIM' ? <>Sim <span className="font-normal italic">/ Yes</span></> : <>Não <span className="font-normal italic">/ No</span></>}</button>)}</div>
                 : <span className={`w-fit rounded-lg px-3 py-1 text-xs font-bold ${valor?.resposta === 'SIM' ? 'bg-red-100 text-red-700' : valor?.resposta === 'NAO' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{valor?.resposta === 'SIM' ? 'Sim' : valor?.resposta === 'NAO' ? 'Não' : '-'}</span>}
@@ -889,7 +889,7 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
               <input disabled={!editavel} value={dadosAssinatura[papel].setor} onChange={event => setDadosAssinatura(previous => ({ ...previous, [papel]: { ...previous[papel], setor: event.target.value } }))} placeholder="Setor / Sector" className={`${inputClass} text-xs`} />
               {assinatura?.localUrl || assinatura?.preview_url ? <><div className="flex items-center gap-2">
                 <img src={assinatura.localUrl || assinatura.preview_url} alt={`Assinatura ${pt}`} className="h-16 flex-1 rounded-lg border border-slate-200 bg-white object-contain dark:border-slate-700" />
-                {editavel && <button type="button" onClick={() => refazerAssinatura(papel)} className="rounded-lg border border-slate-200 p-2 text-slate-500 dark:border-slate-700" title="Refazer assinatura"><Trash2 className="h-4 w-4" /></button>}
+                {editavel && <button aria-label="Refazer assinatura" type="button" onClick={() => refazerAssinatura(papel)} className="rounded-lg border border-slate-200 p-2 text-slate-500 dark:border-slate-700" title="Refazer assinatura"><Trash2 className="h-4 w-4" /></button>}
               </div>
               <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Assinado em {formatarDataHoraAssinatura(assinatura.assinadoEm || assinatura.assinado_em || assinatura.data_assinatura)}{assinatura.localFile ? <span className="font-normal text-amber-600"> · grava ao salvar</span> : assinatura.local ? <span className="font-normal text-amber-600"> · guardada no aparelho</span> : null}</p>
               </> : editavel ? <div className="grid grid-cols-2 gap-2">

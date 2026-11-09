@@ -58,7 +58,7 @@ export default function PrazosEtapasRelatorio({ podeEditar }: { podeEditar: bool
         {!podeEditar && ' Somente leitura: quem edita é o Planejamento.'}
       </p>
       {!etapas ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
+        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-500" /></div>
       ) : (
         <table className="mt-3 min-w-[36rem] text-sm">
           <thead>
@@ -73,7 +73,7 @@ export default function PrazosEtapasRelatorio({ podeEditar }: { podeEditar: bool
               <tr key={e.codigo}>
                 <td className="py-1.5 font-semibold">
                   {e.nome}
-                  {e.escopo === 'T1' && <span className="ml-1 text-[10px] font-normal text-slate-400">(só T1)</span>}
+                  {e.escopo === 'T1' && <span className="ml-1 text-[10px] font-normal text-slate-500">(só T1)</span>}
                 </td>
                 <td className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300">{regraLegivel(e)}</td>
                 <td className="px-3 py-1.5">

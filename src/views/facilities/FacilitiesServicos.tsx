@@ -280,7 +280,7 @@ export default function FacilitiesServicos({ user, onNavigate }: Props) {
       {/* Filtros */}
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 sm:flex-row sm:items-center sm:p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
             placeholder="Buscar serviço por nome ou descrição..."
@@ -340,7 +340,7 @@ export default function FacilitiesServicos({ user, onNavigate }: Props) {
                     ? (reordenandoId ? 'Salvando ordenação...' : 'Limpe a busca e os filtros para reordenar')
                     : 'Subir na lista do formulário'
                 }
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-slate-800"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-slate-800"
               >
                 {reordenandoId === item.id ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-teal-600 dark:text-teal-400" />
@@ -357,7 +357,7 @@ export default function FacilitiesServicos({ user, onNavigate }: Props) {
                     ? (reordenandoId ? 'Salvando ordenação...' : 'Limpe a busca e os filtros para reordenar')
                     : 'Descer na lista do formulário'
                 }
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-slate-800"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-slate-800"
               >
                 {reordenandoId === item.id ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-teal-600 dark:text-teal-400" />
@@ -370,11 +370,11 @@ export default function FacilitiesServicos({ user, onNavigate }: Props) {
                 type="button"
                 onClick={() => handleToggleStatus(item)}
                 title={item.ativo ? 'Clique para inativar' : 'Clique para ativar'}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 {item.ativo
                   ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  : <XCircle className="h-4 w-4 text-slate-400" />}
+                  : <XCircle className="h-4 w-4 text-slate-500" />}
               </button>
               <button
                 type="button"
@@ -384,11 +384,11 @@ export default function FacilitiesServicos({ user, onNavigate }: Props) {
                 <Edit2 className="h-3.5 w-3.5" />
                 Editar
               </button>
-              <button
+              <button aria-label="Excluir serviço"
                 type="button"
                 onClick={() => setItemParaExcluir(item)}
                 title="Excluir serviço"
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -399,7 +399,7 @@ export default function FacilitiesServicos({ user, onNavigate }: Props) {
 
       {servicosFiltrados.length === 0 && !loading && (
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-slate-900">
-          <Wrench className="mx-auto h-8 w-8 text-slate-400" />
+          <Wrench className="mx-auto h-8 w-8 text-slate-500" />
           <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Nenhum serviço encontrado</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Ajuste os filtros de busca ou cadastre um novo serviço.

@@ -1113,7 +1113,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const painelLivros = (
     <>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               placeholder="Filtrar por data, vigilante, protocolo..."
@@ -1184,13 +1184,13 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                           )
                         ) : (
                           podeEditarFormulario(user, rel) && (
-                            <button
+                            <button aria-label="Excluir este plantão"
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setItemParaExcluir(rel);
                               }}
-                              className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
+                              className="rounded-lg p-1 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
                               title="Excluir este plantão"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -1301,7 +1301,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                       <p className={`mt-0.5 text-xs ${outroDia ? 'font-semibold text-rose-600 dark:text-rose-400' : 'text-slate-500'}`}>
                         <LogIn className="mr-1 inline h-3 w-3" />
                         Entrada {outroDia ? `${oc.relatorio.data.slice(8, 10)}/${oc.relatorio.data.slice(5, 7)} ` : ''}às {String(oc.horario).slice(0, 5)}
-                        {tipo && <span className="text-slate-400"> · {tipo.label}</span>}
+                        {tipo && <span className="text-slate-500"> · {tipo.label}</span>}
                       </p>
                     </div>
                     <button
@@ -1407,10 +1407,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                           <Plus className="h-3.5 w-3.5" />
                           Nova Ocorrência
                         </button>
-                        <button
+                        <button aria-label="Excluir livro do período"
                           type="button"
                           onClick={() => setItemParaExcluir(relatorioAtivo)}
-                          className="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
+                          className="rounded-xl p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
                           title="Excluir livro do período"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -1426,27 +1426,35 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
                 {/* Filtros de Categoria — no celular deslizam numa linha só */}
                 <div className="no-scrollbar -mx-3 flex min-w-0 items-center gap-1.5 overflow-x-auto px-3 pt-3 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pt-4 [&>button]:shrink-0 [&>button]:whitespace-nowrap [&>button]:py-2 sm:[&>button]:py-1">
+                  {/* Ícones do lucide, não emoji: emoji desenha diferente em cada
+                      sistema (Windows × Android) e não segue o tema. */}
                   {[
-                    { id: 'TODAS', label: 'Todas as Ocorrências' },
-                    { id: 'PATIO', label: '🟢 No Pátio (Sem Saída)' },
-                    { id: 'VEICULOS', label: '🚗 Veículos' },
-                    { id: 'PESSOAS', label: '🚶‍♂️ Visitantes & Terceiros' },
-                    { id: 'RONDAS', label: '🛡️ Rondas' },
-                    { id: 'ALERTAS', label: '⚠️ Alertas' },
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setFiltroCategoria(tab.id)}
-                      className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-colors ${
-                        filtroCategoria === tab.id
-                          ? 'bg-purple-600 text-white shadow-xs'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
+                    { id: 'TODAS', label: 'Todas as Ocorrências', Icone: null },
+                    { id: 'PATIO', label: 'No Pátio (Sem Saída)', Icone: LogIn, cor: 'text-emerald-500' },
+                    { id: 'VEICULOS', label: 'Veículos', Icone: Car },
+                    { id: 'PESSOAS', label: 'Visitantes & Terceiros', Icone: Users },
+                    { id: 'RONDAS', label: 'Rondas', Icone: Shield },
+                    { id: 'ALERTAS', label: 'Alertas', Icone: AlertTriangle, cor: 'text-amber-500' },
+                  ].map((tab) => {
+                    const ativo = filtroCategoria === tab.id;
+                    const Icone = tab.Icone;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        aria-pressed={ativo}
+                        onClick={() => setFiltroCategoria(tab.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold transition-colors ${
+                          ativo
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {Icone && <Icone className={`h-3.5 w-3.5 shrink-0 ${ativo ? '' : tab.cor ?? ''}`} aria-hidden="true" />}
+                        {tab.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1495,11 +1503,11 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                             {controlaSaida ? (
                               <div className="grid shrink-0 grid-cols-1 overflow-hidden rounded-xl border border-purple-200 text-center dark:border-purple-900/60">
                                 <div className="bg-purple-100/70 px-2.5 py-1 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300">
-                                  <span className="block text-[9px] font-bold uppercase tracking-wide">Entrada</span>
+                                  <span className="block text-[10px] font-bold uppercase tracking-wide">Entrada</span>
                                   <span className="font-mono text-xs font-bold">{String(oc.horario).slice(0, 5)}</span>
                                 </div>
                                 <div className={`px-2.5 py-1 ${oc.hora_saida ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'}`}>
-                                  <span className="block text-[9px] font-bold uppercase tracking-wide">Saída</span>
+                                  <span className="block text-[10px] font-bold uppercase tracking-wide">Saída</span>
                                   <span className="font-mono text-xs font-bold">{oc.hora_saida ? String(oc.hora_saida).slice(0, 5) : '--:--'}</span>
                                 </div>
                               </div>
@@ -1541,7 +1549,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                                 {oc.descricao}
                               </p>
 
-                              <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                              <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
                                 <span>
                                   Vigilante: <strong className="text-slate-600 dark:text-slate-300">{oc.vigilante}</strong>
                                 </span>
@@ -1590,18 +1598,18 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
                             {podeEditarAtivo && (
                               <div className="flex items-center gap-1">
-                                <button
+                                <button aria-label="Editar ou reabrir lançamento"
                                   type="button"
                                   onClick={() => abrirModalEdicao(oc)}
-                                  className="p-1.5 text-slate-400 hover:text-purple-600 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/50 transition-all"
+                                  className="p-1.5 text-slate-500 hover:text-purple-600 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/50 transition-all"
                                   title="Editar ou reabrir lançamento"
                                 >
                                   <Edit3 className="h-4 w-4" />
                                 </button>
-                                <button
+                                <button aria-label="Excluir lançamento"
                                   type="button"
                                   onClick={() => setOcorrenciaParaExcluir(oc)}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
+                                  className="p-1.5 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
                                   title="Excluir lançamento"
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -1735,7 +1743,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                         <span className="text-xs font-bold text-slate-900 dark:text-slate-100 leading-tight">
                           {tipo.label}
                         </span>
-                        <span className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">
+                        <span className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">
                           {tipo.sublabel}
                         </span>
                       </button>
@@ -1847,7 +1855,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                             ✓ Pronta para inclusão no livro
                           </p>
                         </div>
-                        <button
+                        <button aria-label="Remover foto"
                           type="button"
                           onClick={() => setFormOcorrencia((prev) => ({ ...prev, foto_url: null }))}
                           className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
@@ -2119,7 +2127,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                           placeholder="Vazio = Aguardando Retorno"
                           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         />
-                        <p className="text-[10px] text-slate-400 mt-0.5">
+                        <p className="text-[10px] text-slate-500 mt-0.5">
                           {formOcorrencia.hora_saida ? 'Retorno já registrado' : 'Deixe em branco se o colaborador ainda não retornou'}
                         </p>
                       </div>
@@ -2258,7 +2266,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                           placeholder="Vazio = No Pátio"
                           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         />
-                        <p className="text-[10px] text-slate-400 mt-0.5">
+                        <p className="text-[10px] text-slate-500 mt-0.5">
                           {formOcorrencia.hora_saida ? 'Saída já registrada' : 'Deixe em branco para saída pendente'}
                         </p>
                       </div>
@@ -2416,7 +2424,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                               <button
                                 type="button"
                                 onClick={() => handleRemoverPessoa(idx)}
-                                className="text-slate-400 hover:text-rose-600 text-xs font-bold inline-flex items-center gap-1"
+                                className="text-slate-500 hover:text-rose-600 text-xs font-bold inline-flex items-center gap-1"
                                 title="Remover esta pessoa"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />

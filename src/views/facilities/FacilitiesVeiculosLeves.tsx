@@ -173,7 +173,7 @@ export default function FacilitiesVeiculosLeves({ user, onNavigate }: Props) {
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por modelo ou placa..." className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100" />
         </div>
         <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
@@ -203,9 +203,9 @@ export default function FacilitiesVeiculosLeves({ user, onNavigate }: Props) {
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${alerta.classe}`} title={veiculo.data_licenciamento ? `Licenciamento: ${veiculo.data_licenciamento}` : undefined}>{alerta.texto}</span>
                 </div>
                 <div className="flex items-center gap-1 sm:justify-end">
-                  <button type="button" onClick={() => alternarAtivo(veiculo)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-teal-600" title={veiculo.ativo ? 'Inativar' : 'Ativar'}>{veiculo.ativo ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}</button>
-                  <button type="button" onClick={() => abrirEdicao(veiculo)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-teal-600" title="Editar"><Edit2 className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setExcluindo(veiculo)} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Excluir"><Trash2 className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => alternarAtivo(veiculo)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-teal-600" title={veiculo.ativo ? 'Inativar' : 'Ativar'}>{veiculo.ativo ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}</button>
+                  <button aria-label="Editar" type="button" onClick={() => abrirEdicao(veiculo)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-teal-600" title="Editar"><Edit2 className="h-4 w-4" /></button>
+                  <button aria-label="Excluir" type="button" onClick={() => setExcluindo(veiculo)} className="rounded-lg p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600" title="Excluir"><Trash2 className="h-4 w-4" /></button>
                 </div>
                   </>;
                 })()}

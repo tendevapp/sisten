@@ -400,7 +400,7 @@ export default function Materials({ user }: MaterialsProps) {
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Catálogo de Materiais SAP</h2>
           <p className="mt-1 text-sm text-slate-500">Busca no catálogo de materiais exportado do SAP. Use chips e filtros avançados para refinar.</p>
           {lastUpdated && (
-            <p className="mt-1.5 text-[11px] font-medium text-slate-400 flex items-center gap-1">
+            <p className="mt-1.5 text-[11px] font-medium text-slate-500 flex items-center gap-1">
               <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('materials')}
             </p>
           )}
@@ -446,7 +446,7 @@ export default function Materials({ user }: MaterialsProps) {
             {chips.map((chip, idx) => (
               <span key={idx} className="inline-flex items-center space-x-1 rounded-full bg-emerald-50 border border-emerald-100 py-1 px-3 text-xs font-semibold text-emerald-800">
                 <span>{chip}</span>
-                <button type="button" onClick={() => handleRemoveChip(chip)} className="text-emerald-500 hover:text-emerald-800 focus:outline-none cursor-pointer">
+                <button aria-label="Fechar" type="button" onClick={() => handleRemoveChip(chip)} className="text-emerald-500 hover:text-emerald-800 focus:outline-none cursor-pointer">
                   <X className="h-3 w-3" />
                 </button>
               </span>
@@ -525,10 +525,10 @@ export default function Materials({ user }: MaterialsProps) {
                   className="w-full rounded-lg border border-gray-200 bg-white py-1.5 px-2.5 pr-7 text-xs focus:outline-none focus:border-emerald-600 shadow-2xs font-mono"
                 />
                 {ncmFilter && (
-                  <button
+                  <button aria-label="Limpar NCM"
                     type="button"
                     onClick={() => setNcmFilter('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 cursor-pointer"
                     title="Limpar NCM"
                   >
                     <X className="h-3 w-3" />
@@ -633,11 +633,11 @@ export default function Materials({ user }: MaterialsProps) {
         {/* Mobile: lista em cards */}
         <div className="lg:hidden divide-y divide-gray-100 dark:divide-slate-800">
           {isLoading ? (
-            <div className="py-10 text-center text-slate-400">
+            <div className="py-10 text-center text-slate-500">
               <Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Buscando materiais...
             </div>
           ) : results.length === 0 ? (
-            <div className="py-10 px-4 text-center text-slate-400 text-sm">
+            <div className="py-10 px-4 text-center text-slate-500 text-sm">
               Nenhum material correspondente aos filtros. Tente remover termos ou limpar filtros.
             </div>
           ) : (
@@ -658,7 +658,7 @@ export default function Materials({ user }: MaterialsProps) {
                         <span className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-400">{m.material_code}</span>
                         <button
                           onClick={() => handleCopyCode(m.material_code)}
-                          className="p-1.5 -m-1 text-slate-400 hover:text-slate-600 focus:outline-none shrink-0 cursor-pointer"
+                          className="p-1.5 -m-1 text-slate-500 hover:text-slate-600 focus:outline-none shrink-0 cursor-pointer"
                           aria-label="Copiar código"
                         >
                           {copiedCode === m.material_code
@@ -720,7 +720,7 @@ export default function Materials({ user }: MaterialsProps) {
           <TableShell maxHeight="none">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-gray-100 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <tr className="border-b border-gray-100 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                 <th className="py-3 px-4 w-12 text-center">Fav</th>
                 <th className="py-3 px-4 w-28">Código SAP</th>
                 <th className="py-3 px-4">Descrição</th>
@@ -735,13 +735,13 @@ export default function Materials({ user }: MaterialsProps) {
             <tbody className="divide-y divide-gray-100 text-sm">
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-slate-400">
+                  <td colSpan={9} className="py-10 text-center text-slate-500">
                     <Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Buscando materiais...
                   </td>
                 </tr>
               ) : results.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-slate-400">
+                  <td colSpan={9} className="py-10 text-center text-slate-500">
                     Nenhum material correspondente aos filtros. Tente remover termos ou limpar filtros.
                   </td>
                 </tr>
@@ -754,7 +754,13 @@ export default function Materials({ user }: MaterialsProps) {
                     <React.Fragment key={m.id}>
                       <tr className="hover:bg-slate-50/50 transition-colors">
                         <td className="py-3.5 px-4 text-center">
-                          <button onClick={() => handleToggleFavorite(m.material_code)} className="focus:outline-none cursor-pointer">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleFavorite(m.material_code)}
+                            aria-label={isFav ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                            aria-pressed={isFav}
+                            className="cursor-pointer rounded outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                          >
                             <Star className={`h-4.5 w-4.5 ${isFav ? 'fill-amber-400 stroke-amber-400' : 'text-slate-300 hover:text-slate-500'}`} />
                           </button>
                         </td>
@@ -763,7 +769,7 @@ export default function Materials({ user }: MaterialsProps) {
                             <span className="text-emerald-700 font-bold">{m.material_code}</span>
                             <button
                               onClick={() => handleCopyCode(m.material_code)}
-                              className="text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
+                              className="text-slate-500 hover:text-slate-600 focus:outline-none cursor-pointer"
                               title="Copiar Código"
                             >
                               {copiedCode === m.material_code ? (
@@ -785,7 +791,7 @@ export default function Materials({ user }: MaterialsProps) {
                             {m.technical_text && m.technical_text.length > 50 && (
                               <button
                                 onClick={() => setExpandedId(isExpanded ? null : m.id)}
-                                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 self-start mt-0.5 cursor-pointer"
+                                className="text-[10px] font-bold text-slate-500 hover:text-slate-600 self-start mt-0.5 cursor-pointer"
                               >
                                 {isExpanded ? 'Ocultar detalhes' : 'Ver mais'}
                               </button>
@@ -802,7 +808,7 @@ export default function Materials({ user }: MaterialsProps) {
                                 <AlertTriangle className="h-3 w-3 text-amber-700 shrink-0" />
                                 Z1 · Obsoleto
                               </span>
-                              <span className="text-[9px] font-medium text-amber-700 text-center leading-tight">
+                              <span className="text-[10px] font-medium text-amber-700 text-center leading-tight">
                                 Ativar com setor Fiscal
                               </span>
                             </div>
@@ -846,7 +852,7 @@ export default function Materials({ user }: MaterialsProps) {
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                               <div className="sm:col-span-2 space-y-2">
                                 <div>
-                                  <p className="font-bold text-slate-700 uppercase tracking-wider text-[9px]">Texto Completo SAP / Especificação</p>
+                                  <p className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">Texto Completo SAP / Especificação</p>
                                   <p className="mt-1 font-mono text-slate-600 leading-normal bg-white p-2.5 rounded border border-slate-100 whitespace-pre-wrap">{m.technical_text || '—'}</p>
                                 </div>
                                 {(m.grupo_mercadoria_desc || m.tipo_material_desc || m.denominacao) && (
@@ -870,7 +876,7 @@ export default function Materials({ user }: MaterialsProps) {
                                 )}
                               </div>
                               <div className="space-y-1.5">
-                                <p className="font-bold text-slate-700 uppercase tracking-wider text-[9px]">Classificação Fiscal & Status</p>
+                                <p className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">Classificação Fiscal & Status</p>
                                 <div className="bg-white p-2.5 rounded border border-slate-100 space-y-1 text-xs">
                                   <p className="text-slate-600">
                                     Status SAP:{' '}

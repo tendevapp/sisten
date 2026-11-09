@@ -421,12 +421,12 @@ export default function ExportarSapModal({ linhasIniciais, numeroProcesso, simpl
             </button>
           </div>
           {carregandoTabelas && (
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-400">
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
               <Loader2 className="h-3 w-3 animate-spin" /> Carregando tabelas DDP e Imposto...
             </span>
           )}
           {sugerindoImposto && (
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-400">
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
               <Loader2 className="h-3 w-3 animate-spin" /> Sugerindo códigos de imposto pelo histórico...
             </span>
           )}

@@ -58,7 +58,7 @@ export default function FotoMiniatura({
         {url ? (
           <img src={url} alt={foto.nome_arquivo || 'Foto da expedição'} className="h-full w-full object-cover" loading="lazy" />
         ) : (
-          <span className="flex h-full w-full items-center justify-center text-slate-400">
+          <span className="flex h-full w-full items-center justify-center text-slate-500">
             {erro ? <ImageOff className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
           </span>
         )}

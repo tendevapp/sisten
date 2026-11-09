@@ -702,7 +702,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
       >
         {/* Campo de Busca */}
         <div data-tour="solicitacoes-busca" className="relative flex-1 min-w-[260px] max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
           <input
             type="text"
             value={busca}
@@ -846,7 +846,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           >
             <table className="w-full text-left border-collapse min-w-[1050px]">
               <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500">
                   {modoFila && (
                     <th scope="col" className="w-10 px-3 py-3 text-center">
                       <input
@@ -879,7 +879,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
                       <p className="font-semibold text-slate-700 dark:text-slate-200">
                         {escopo === 'acao' ? 'Nada esperando você no momento' : 'Nenhuma solicitação encontrada'}
                       </p>
-                      <p className="text-xs text-slate-400 mt-1">Ajuste os filtros de busca para ampliar os resultados.</p>
+                      <p className="text-xs text-slate-500 mt-1">Ajuste os filtros de busca para ampliar os resultados.</p>
                     </td>
                   </tr>
                 ) : (
@@ -977,7 +977,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
                           <div className="text-sm font-medium text-slate-800 dark:text-slate-200">
                             {formatDateBR(req.created_at)}
                           </div>
-                          <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                          <div className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">
                             {tempoAbertura}
                           </div>
                         </td>
@@ -1008,13 +1008,13 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
                         {/* Acoes */}
                         <td className="px-3 py-3.5 text-center whitespace-nowrap">
-                          <button
+                          <button aria-label="Ver detalhes da solicitação"
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               abrir(req.id);
                             }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
                             title="Ver detalhes da solicitação"
                           >
                             <MoreVertical className="h-4 w-4" />
@@ -1056,7 +1056,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
                 <div className="space-y-2.5 flex-1 pr-1 md:overflow-y-auto md:max-h-[640px]">
                   {itensCol.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-slate-400">Nenhum item nesta coluna</div>
+                    <div className="py-8 text-center text-xs text-slate-500">Nenhum item nesta coluna</div>
                   ) : (
                     itensCol.map(linha => {
                       const req = linha.request;
@@ -1108,7 +1108,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
         <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <button
+              <button aria-label="Anterior"
                 type="button"
                 onClick={() => setRefMes(m => addMonths(m, -1))}
                 className="rounded-lg border border-slate-200 dark:border-slate-700 p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
@@ -1122,7 +1122,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
               >
                 Hoje
               </button>
-              <button
+              <button aria-label="Próximo"
                 type="button"
                 onClick={() => setRefMes(m => addMonths(m, 1))}
                 className="rounded-lg border border-slate-200 dark:border-slate-700 p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
@@ -1178,7 +1178,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
                       </button>
                     ))}
                     {itensDia.length > 2 && (
-                      <span className="text-[9px] text-slate-400 font-medium pl-1 block">
+                      <span className="text-[10px] text-slate-500 font-medium pl-1 block">
                         +{itensDia.length - 2} mais
                       </span>
                     )}

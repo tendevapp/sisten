@@ -264,7 +264,7 @@ export default function TabApresentacao({
               </button>
             ))}
           </div>
-          <span className="text-[11px] text-slate-400">
+          <span className="text-[11px] text-slate-500">
             até {MAX_COLUNAS[granularidade]} {ROTULO_GRANULARIDADE[granularidade].plural} mais recentes do período · clique nos gráficos para ver os itens
           </span>
         </>

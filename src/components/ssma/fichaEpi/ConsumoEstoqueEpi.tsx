@@ -253,7 +253,7 @@ export default function ConsumoEstoqueEpi() {
   if (saidas.length === 0 && saldos.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 px-6 py-14 text-center dark:border-slate-700">
-        <Warehouse className="mx-auto h-9 w-9 text-slate-400" />
+        <Warehouse className="mx-auto h-9 w-9 text-slate-500" />
         <h2 className="mt-3 text-sm font-bold text-slate-800 dark:text-slate-100">Sem dados do depósito {DEPOSITO_EPI}</h2>
         <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">Importe a MB51 e a ZL0024 na aba Importar SAP do painel administrativo.</p>
       </div>
@@ -287,11 +287,11 @@ export default function ConsumoEstoqueEpi() {
           placeholder="Palavras-chave — código ou descrição do material (Enter adiciona)"
         />
         <div className="flex flex-wrap items-center gap-2">
-          <CalendarRange className="h-4 w-4 text-slate-400" />
+          <CalendarRange className="h-4 w-4 text-slate-500" />
           <select value={periodo} onChange={e => setPeriodo(e.target.value)} className={selectCls} aria-label="Período">
             {PERIODOS.map(p => <option key={p.valor} value={p.valor}>{p.rotulo}</option>)}
           </select>
-          <Tags className="ml-1 h-4 w-4 text-slate-400" />
+          <Tags className="ml-1 h-4 w-4 text-slate-500" />
           <select value={finalidade} onChange={e => setFinalidade(e.target.value)} className={selectCls} aria-label="Finalidade da baixa">
             <option value="">Finalidade: todas</option>
             {finalidades.map(f => <option key={f} value={f}>{f}</option>)}
@@ -433,12 +433,12 @@ export default function ConsumoEstoqueEpi() {
                     const semSaida = item.lancamentos === 0 && item.estornos === 0;
                     const cobertura = item.coberturaDias;
                     return (
-                      <tr key={item.material} className={`cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 ${semSaida ? 'text-slate-400' : 'text-slate-700 dark:text-slate-200'}`} onClick={() => setAberto(item.material)}>
+                      <tr key={item.material} className={`cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 ${semSaida ? 'text-slate-500' : 'text-slate-700 dark:text-slate-200'}`} onClick={() => setAberto(item.material)}>
                         <td className="px-3 py-2 pl-4 max-w-80">
                           <span className="font-mono font-bold text-[#0056c6] dark:text-sky-400">{item.material}</span>
                           <p className="truncate" title={item.descricao ?? ''}>{item.descricao || 'Sem descrição'}</p>
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums">{formatQtd(item.saldo)} <span className="text-slate-400">{item.umb ?? ''}</span></td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatQtd(item.saldo)} <span className="text-slate-500">{item.umb ?? ''}</span></td>
                         <td className="px-3 py-2 text-right font-bold tabular-nums">{semSaida ? '—' : formatQtd(item.quantidade)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{semSaida ? '—' : formatBRL(item.valor)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{semSaida ? '—' : <>{item.lancamentos}{item.estornos > 0 && <span className="text-red-500" title="Estornos"> +{item.estornos}</span>}</>}</td>

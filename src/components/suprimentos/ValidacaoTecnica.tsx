@@ -38,7 +38,7 @@ export function ValidacaoTag({ v, onClick }: { v: ValidacaoTecnica; onClick?: ()
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-black tracking-wide uppercase whitespace-nowrap cursor-pointer ${ESTILO_TAG[v.status]}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-black tracking-wide uppercase whitespace-nowrap cursor-pointer ${ESTILO_TAG[v.status]}`}
       title={`Validação técnica ${v.codigo ?? ''}${decisao}`}
     >
       <ShieldCheck className="h-2.5 w-2.5" />
@@ -77,13 +77,13 @@ export function DetalheValidacao({ v }: { v: ValidacaoTecnica }) {
       </div>
 
       <div>
-        <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">O que validar</p>
+        <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">O que validar</p>
         <p className="whitespace-pre-wrap text-slate-800 dark:text-slate-200">{v.descricao}</p>
       </div>
 
       {v.links.length > 0 && (
         <div className="space-y-1">
-          <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Links</p>
+          <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Links</p>
           {v.links.map(l => (
             <a key={l} href={l} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-[#0056c6] dark:text-blue-400 hover:underline break-all">
               <ExternalLink className="h-3.5 w-3.5 shrink-0" /> {l}
@@ -94,14 +94,14 @@ export function DetalheValidacao({ v }: { v: ValidacaoTecnica }) {
 
       {v.anexos.length > 0 && (
         <div className="space-y-2">
-          <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Anexos</p>
+          <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Anexos</p>
           {fotos.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {fotos.map((f, i) => (
                 <button key={f.path} type="button" onClick={() => lightbox.abrir(imagensLightbox, i)} className="cursor-zoom-in" title={f.nome}>
                   {urls[f.path]
                     ? <img src={urls[f.path]} alt={f.nome} className="h-20 w-20 rounded-lg border border-slate-200 object-cover dark:border-slate-700" />
-                    : <span className="flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700"><RefreshCw className="h-4 w-4 animate-spin text-slate-400" /></span>}
+                    : <span className="flex h-20 w-20 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700"><RefreshCw className="h-4 w-4 animate-spin text-slate-500" /></span>}
                 </button>
               ))}
             </div>
@@ -227,7 +227,7 @@ function MarcarUsuarios({
                 onClick={() => { onChange([...marcados, { id: p.id, nome: p.name }]); setBusca(''); }}
                 className="w-full px-3 py-1.5 text-left text-xs hover:bg-violet-50 dark:hover:bg-violet-950/30"
               >
-                {p.name} <span className="text-slate-400">{p.cargo}</span>
+                {p.name} <span className="text-slate-500">{p.cargo}</span>
               </button>
             </li>
           ))}
@@ -446,7 +446,7 @@ export function AbrirValidacaoModal({ user, item, setorInicial, historico, onClo
                     <div key={a.previewUrl} className="relative">
                       {a.mimeType.startsWith('image/')
                         ? <img src={a.previewUrl} alt={a.name} className="h-16 w-16 rounded-lg border border-slate-200 object-cover dark:border-slate-700" />
-                        : <span className="flex h-16 w-24 flex-col items-center justify-center gap-1 rounded-lg border border-slate-200 px-1 text-[9px] text-slate-500 dark:border-slate-700"><FileText className="h-4 w-4" /><span className="truncate max-w-full">{a.name}</span></span>}
+                        : <span className="flex h-16 w-24 flex-col items-center justify-center gap-1 rounded-lg border border-slate-200 px-1 text-[10px] text-slate-500 dark:border-slate-700"><FileText className="h-4 w-4" /><span className="truncate max-w-full">{a.name}</span></span>}
                       <button
                         type="button"
                         onClick={() => { URL.revokeObjectURL(a.previewUrl); setArquivos(l => l.filter((_, j) => j !== i)); }}
@@ -458,7 +458,7 @@ export function AbrirValidacaoModal({ user, item, setorInicial, historico, onClo
                     </div>
                   ))}
                   {arquivos.length < MAX_ANEXOS_VALIDACAO && (
-                    <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-slate-300 text-[9px] font-bold text-slate-500 hover:border-violet-400 dark:border-slate-700">
+                    <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-slate-300 text-[10px] font-bold text-slate-500 hover:border-violet-400 dark:border-slate-700">
                       {preparando ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
                       Anexar
                       <input type="file" accept={ACCEPT_ANEXO} multiple className="hidden" onChange={e => { anexar(e.target.files); e.target.value = ''; }} />

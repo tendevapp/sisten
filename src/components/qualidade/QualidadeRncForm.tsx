@@ -148,7 +148,7 @@ export default function QualidadeRncForm({ user, onSuccess }: QualidadeRncFormPr
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900 space-y-4">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Identificação</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Identificação</h3>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
@@ -295,7 +295,7 @@ export default function QualidadeRncForm({ user, onSuccess }: QualidadeRncFormPr
       </div>
 
       <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900 space-y-2">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Descrição da Não Conformidade *</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Descrição da Não Conformidade *</h3>
         <textarea
           required
           rows={5}
@@ -308,7 +308,7 @@ export default function QualidadeRncForm({ user, onSuccess }: QualidadeRncFormPr
 
       <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
             Anexos / Evidências ({anexos.length}/{MAX_ANEXOS_RNC})
           </h3>
           <div className="flex gap-2">
@@ -353,14 +353,14 @@ export default function QualidadeRncForm({ user, onSuccess }: QualidadeRncFormPr
                   <img src={previews[idx]} alt={file.name} className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-1 text-center">
-                    <Paperclip className="h-5 w-5 text-slate-400" />
-                    <span className="line-clamp-2 text-[9px] text-slate-500">{file.name}</span>
+                    <Paperclip className="h-5 w-5 text-slate-500" />
+                    <span className="line-clamp-2 text-[10px] text-slate-500">{file.name}</span>
                   </div>
                 )}
-                <button
+                <button aria-label="Fechar"
                   type="button"
                   onClick={() => removerArquivo(idx)}
-                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white opacity-0 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 transition-opacity group-hover:opacity-100"
                 >
                   <X className="h-3 w-3" />
                 </button>

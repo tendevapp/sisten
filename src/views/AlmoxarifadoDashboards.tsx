@@ -342,7 +342,7 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
 
       {!loading && !error && rows.length === 0 && (
         <div className="flex flex-col items-center justify-center p-16 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl text-center">
-          <Boxes className="h-12 w-12 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-full mb-3" />
+          <Boxes className="h-12 w-12 text-slate-500 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-full mb-3" />
           <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Nenhuma posição de estoque disponível</h3>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-md">
             Importe a posição de estoque (transação ZL0024) na aba "Importar SAP" do painel administrativo.
@@ -486,9 +486,9 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
                   Listagem agrupada por Grupo de Mercadoria com opção de expandir e pesquisar materiais.
                 </p>
               </div>
-              <button
+              <button aria-label="Fechar janela"
                 onClick={() => setSelectedModalData(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-600 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Fechar janela"
               >
                 <X className="h-5 w-5" />
@@ -558,9 +558,9 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
                     className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
                   />
                   {modalSearchQuery && (
-                    <button
+                    <button aria-label="Limpar pesquisa"
                       onClick={() => setModalSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
                       title="Limpar pesquisa"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -646,7 +646,7 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
                                     {isExpanded ? (
                                       <ChevronDown className="h-4 w-4 text-emerald-600 dark:text-emerald-400 font-bold" />
                                     ) : (
-                                      <ChevronRight className="h-4 w-4 text-slate-400" />
+                                      <ChevronRight className="h-4 w-4 text-slate-500" />
                                     )}
                                   </span>
                                   <div className="min-w-0">

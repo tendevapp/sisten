@@ -117,7 +117,7 @@ export default function ProgramacaoSemanal({ etapas, semanaAtual, podeEditar, us
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         {carregando ? (
           <div className="flex justify-center py-10">
-            <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+            <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
           </div>
         ) : (
           <table className="w-full min-w-[720px] border-collapse text-sm">
@@ -127,7 +127,7 @@ export default function ProgramacaoSemanal({ etapas, semanaAtual, podeEditar, us
                 {semanas.map(s => (
                   <th key={chaveSemana(s)} className="px-1 py-2 text-center text-xs font-bold">
                     {rotuloSemana(s)}
-                    {mesmaSemana(s, semanaAtual) && <span className="ml-1 rounded bg-blue-500 px-1 text-[9px]">atual</span>}
+                    {mesmaSemana(s, semanaAtual) && <span className="ml-1 rounded bg-blue-500 px-1 text-[10px]">atual</span>}
                     <span className="block text-[10px] font-normal text-slate-300">{intervaloSemana(s)}</span>
                   </th>
                 ))}

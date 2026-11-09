@@ -150,7 +150,7 @@ export default function HelpdeskSatisfactionCard({
 
         <div className="flex items-center justify-between text-xs pt-1">
           <span className={`font-bold ${rConfig.color}`}>{rConfig.label}</span>
-          <span className="text-[11px] text-slate-400">{rConfig.desc}</span>
+          <span className="text-[11px] text-slate-500">{rConfig.desc}</span>
         </div>
 
         {request.rating_comment && (
@@ -255,7 +255,7 @@ export default function HelpdeskSatisfactionCard({
                 <span className={`text-xs font-bold ${RATING_LABELS[activeRating].color}`}>
                   {RATING_LABELS[activeRating].label}
                 </span>
-                <p className="text-[10px] text-slate-400">
+                <p className="text-[10px] text-slate-500">
                   {RATING_LABELS[activeRating].desc}
                 </p>
               </div>

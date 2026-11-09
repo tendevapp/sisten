@@ -509,10 +509,10 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <button
+            <button aria-label="Voltar para a lista de processos de cotação"
               type="button"
               onClick={() => onNavigate('/suprimentos/cotacoes')}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+              className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
               title="Voltar para a lista de processos de cotação"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -547,7 +547,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
               <Package className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Itens Cotados</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Itens Cotados</p>
               <p className="text-xl font-bold text-slate-900 dark:text-slate-100">
                 {metricas ? metricas.totalItens.toLocaleString('pt-BR') : '—'}
               </p>
@@ -562,7 +562,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
               <FileText className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Propostas Catalogadas</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Propostas Catalogadas</p>
               <p className="text-xl font-bold text-slate-900 dark:text-slate-100">
                 {metricas ? metricas.totalPropostas.toLocaleString('pt-BR') : '—'}
               </p>
@@ -577,7 +577,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
               <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Fornecedores Únicos</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fornecedores Únicos</p>
               <p className="text-xl font-bold text-slate-900 dark:text-slate-100">
                 {metricas ? metricas.totalFornecedores.toLocaleString('pt-BR') : '—'}
               </p>
@@ -592,7 +592,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
               <DollarSign className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Volume Total Cotado</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Volume Total Cotado</p>
               <p className="text-lg font-bold text-slate-900 dark:text-slate-100 truncate">
                 {metricas ? formatBRL(metricas.valorTotalCotado) : '—'}
               </p>
@@ -624,7 +624,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                 <span className={`font-bold ${benchmark.dispersaoPct > 50 ? 'text-rose-600' : benchmark.dispersaoPct > 20 ? 'text-amber-600' : 'text-emerald-600'}`}>
                   {benchmark.dispersaoPct}%
                 </span>
-                <span className="text-[10px] text-slate-400">
+                <span className="text-[10px] text-slate-500">
                   {benchmark.dispersaoPct < 15 ? '(Preço estável)' : benchmark.dispersaoPct < 40 ? '(Variação moderada)' : '(Alta dispersão)'}
                 </span>
               </div>
@@ -649,7 +649,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
               <span className="text-base font-extrabold text-indigo-700 dark:text-indigo-400 block mt-0.5">
                 {benchmark.precoMedio != null ? formatBRL(benchmark.precoMedio) : '—'}
               </span>
-              <span className="text-[11px] text-slate-400 block mt-0.5">
+              <span className="text-[11px] text-slate-500 block mt-0.5">
                 Média do histórico
               </span>
             </div>
@@ -660,7 +660,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
               <span className="text-base font-extrabold text-slate-700 dark:text-slate-300 block mt-0.5">
                 {benchmark.maiorPreco != null ? formatBRL(benchmark.maiorPreco) : '—'}
               </span>
-              <span className="text-[11px] text-slate-400 block mt-0.5">
+              <span className="text-[11px] text-slate-500 block mt-0.5">
                 Teto registrado
               </span>
             </div>
@@ -725,7 +725,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           {/* Busca Textual */}
           <div className="relative md:col-span-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
             <input
               type="text"
               value={busca}
@@ -737,10 +737,10 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
               className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-900"
             />
             {busca && (
-              <button
+              <button aria-label="Fechar"
                 type="button"
                 onClick={() => setBusca('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -844,7 +844,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
         {/* Palavras-chave ativas: a busca exige todas, em qualquer ordem */}
         {palavrasAtivas.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="text-slate-400">Exigindo todas as palavras:</span>
+            <span className="text-slate-500">Exigindo todas as palavras:</span>
             {palavrasAtivas.map(palavra => (
               <span
                 key={palavra}
@@ -853,7 +853,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                 {palavra}
               </span>
             ))}
-            <span className="text-slate-400">— em qualquer ordem, sem acento. Use "aspas" para expressão exata.</span>
+            <span className="text-slate-500">— em qualquer ordem, sem acento. Use "aspas" para expressão exata.</span>
           </div>
         )}
 
@@ -882,7 +882,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
         )}
 
         {/* Resumo da consulta */}
-        <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-800">
+        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800">
           <span>
             {visao === 'itens' ? (
               <>Exibindo <strong>{itens.length}</strong> {itens.length === 1 ? 'item' : 'itens'} {totalRegistros > itens.length && `de ${totalRegistros} encontrados`}</>
@@ -924,7 +924,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                       {it.preco_unitario != null ? formatBRL(it.preco_unitario) : '—'}
                     </span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-400">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
                     {it.codigo_produto && <span>Cód {it.codigo_produto}</span>}
                     {it.marca_fabricante && <span>· {it.marca_fabricante}</span>}
                     {it.vinculo?.material_code && (
@@ -936,7 +936,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                   </div>
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
                     {p?.fornecedor_razao_social || '—'}
-                    <span className="ml-1 font-normal text-slate-400">
+                    <span className="ml-1 font-normal text-slate-500">
                       {[p?.fornecedor_cidade, p?.fornecedor_uf].filter(Boolean).join('/')}
                     </span>
                   </p>
@@ -1031,14 +1031,14 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {carregandoItens ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400">
+                    <td colSpan={9} className="py-12 text-center text-slate-500">
                       <RefreshCw className="mx-auto h-6 w-6 animate-spin text-indigo-500 mb-2" />
                       Carregando itens históricos...
                     </td>
                   </tr>
                 ) : itensOrdenados.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400">
+                    <td colSpan={9} className="py-12 text-center text-slate-500">
                       <Package className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
                       Nenhum item encontrado com os filtros selecionados.
                     </td>
@@ -1057,7 +1057,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                           <div className="font-semibold text-slate-900 dark:text-slate-100 truncate" title={it.descricao_produto}>
                             {it.descricao_produto}
                           </div>
-                          <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                          <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
                             {it.codigo_produto && <span>Cód: {it.codigo_produto}</span>}
                             {it.marca_fabricante && <span>· {it.marca_fabricante}</span>}
                             {it.ncm && <span>· NCM {it.ncm}</span>}
@@ -1078,7 +1078,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                                 </button>
                                 {genericos.has(it.vinculo.material_code) && (
                                   <span
-                                    className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                                    className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
                                     title="Código usado para vários produtos: o preço não é comparável item a item."
                                   >
                                     <Boxes className="h-2.5 w-2.5" />
@@ -1092,13 +1092,13 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                               <button
                                 type="button"
                                 onClick={() => alternarGenerico(it.vinculo!.material_code)}
-                                className="mt-0.5 text-[10px] font-semibold text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer"
+                                className="mt-0.5 text-[10px] font-semibold text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer"
                               >
                                 {genericos.has(it.vinculo.material_code) ? 'desmarcar genérico' : 'marcar como genérico'}
                               </button>
                             </>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+                            <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                               <Link2 className="h-3 w-3" />
                               sem vínculo
                             </span>
@@ -1109,7 +1109,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                           <div className="font-semibold text-slate-800 dark:text-slate-200 truncate" title={p?.fornecedor_razao_social || ''}>
                             {p?.fornecedor_razao_social || '—'}
                           </div>
-                          <div className="text-[11px] text-slate-400 truncate">
+                          <div className="text-[11px] text-slate-500 truncate">
                             {[p?.fornecedor_cidade, p?.fornecedor_uf].filter(Boolean).join('/') || p?.fornecedor_cnpj || ''}
                           </div>
                         </td>
@@ -1183,7 +1183,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                       {formatBRL(prop.valor_total_orcamento ?? prop.soma_itens_valor)}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 truncate">
+                  <p className="text-[11px] text-slate-500 truncate">
                     {prop.numero_proposta ? `Nº ${prop.numero_proposta}` : 'Sem número'}
                     {prop.arquivo_origem ? ` · ${prop.arquivo_origem}` : ''}
                   </p>
@@ -1260,14 +1260,14 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {carregandoPropostas ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
+                    <td colSpan={7} className="py-12 text-center text-slate-500">
                       <RefreshCw className="mx-auto h-6 w-6 animate-spin text-indigo-500 mb-2" />
                       Carregando cotações completas...
                     </td>
                   </tr>
                 ) : propostasOrdenadas.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
+                    <td colSpan={7} className="py-12 text-center text-slate-500">
                       <FileSpreadsheet className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
                       Nenhuma proposta encontrada com os filtros selecionados.
                     </td>
@@ -1285,7 +1285,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                           <div className="font-bold text-slate-900 dark:text-slate-100">
                             {prop.numero_proposta ? `Nº ${prop.numero_proposta}` : 'Proposta sem número'}
                           </div>
-                          <div className="text-[11px] text-slate-400 truncate" title={prop.arquivo_origem || ''}>
+                          <div className="text-[11px] text-slate-500 truncate" title={prop.arquivo_origem || ''}>
                             {prop.arquivo_origem || 'Documento catalogado'}
                           </div>
                         </td>
@@ -1294,7 +1294,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                           <div className="font-semibold text-slate-800 dark:text-slate-200 truncate" title={prop.fornecedor_razao_social || ''}>
                             {prop.fornecedor_razao_social || '—'}
                           </div>
-                          <div className="text-[11px] text-slate-400 flex items-center gap-2">
+                          <div className="text-[11px] text-slate-500 flex items-center gap-2">
                             <span>{[prop.fornecedor_cidade, prop.fornecedor_uf].filter(Boolean).join('/') || prop.fornecedor_cnpj}</span>
                             {prop.vendedor_nome && <span>· Vendedor: {prop.vendedor_nome}</span>}
                           </div>
@@ -1304,9 +1304,9 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                           <div className="text-slate-700 dark:text-slate-300 font-medium">
                             {prop.condicao_pagamento || prop.forma_pagamento || 'A combinar'}
                           </div>
-                          <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
                             <span
-                              className={`inline-flex rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
+                              className={`inline-flex rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
                                 prop.frete_modalidade === 'FOB' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
                               }`}
                             >
@@ -1329,7 +1329,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                         <td className="py-3 px-4 whitespace-nowrap text-slate-500 dark:text-slate-400 text-xs">
                           <div>{dataEmissao}</div>
                           {prop.validade_texto && (
-                            <div className="text-[10px] text-slate-400">Validade: {prop.validade_texto}</div>
+                            <div className="text-[10px] text-slate-500">Validade: {prop.validade_texto}</div>
                           )}
                         </td>
 

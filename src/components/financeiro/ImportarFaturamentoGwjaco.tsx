@@ -259,7 +259,7 @@ export default function ImportarFaturamentoGwjaco({ linhasExistentes, user, onIm
                     );
                   })}
                   {linhas.length > 30 && (
-                    <p className="text-center text-slate-400">… e mais {linhas.length - 30} linha(s).</p>
+                    <p className="text-center text-slate-500">… e mais {linhas.length - 30} linha(s).</p>
                   )}
                 </div>
               </div>

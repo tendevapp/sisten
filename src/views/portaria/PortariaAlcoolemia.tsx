@@ -116,7 +116,7 @@ function MiniaturasFotosTeste({
           <button type="button" onClick={() => onAbrir(i)} aria-label={`Abrir foto ${i + 1}`} className="flex h-full w-full items-center justify-center">
             {foto.preview_url
               ? <img src={foto.preview_url} alt="" loading="lazy" className="h-full w-full object-cover" />
-              : <Camera className="h-4 w-4 text-slate-400" />}
+              : <Camera className="h-4 w-4 text-slate-500" />}
           </button>
           {onRemover && (
             <button
@@ -719,7 +719,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
       {/* Livro */}
       <div>
         {carregando && testes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+          <div className="flex flex-col items-center justify-center py-16 text-slate-500">
             <Loader2 className="h-8 w-8 animate-spin text-rose-600" />
             <span className="mt-3 text-sm font-medium">Carregando livro…</span>
           </div>
@@ -816,14 +816,14 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                         <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-700 dark:text-slate-300">
                           {!umDia && <div className="text-xs font-semibold text-slate-500">{item.data.slice(8, 10)}/{item.data.slice(5, 7)}</div>}
                           <div className="font-bold">{item.horario}</div>
-                          <div className="text-xs text-slate-400">{(item.turno || '').toLowerCase()}</div>
+                          <div className="text-xs text-slate-500">{(item.turno || '').toLowerCase()}</div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-bold text-slate-900 dark:text-slate-100">{item.nome}</div>
                           <div className="text-xs text-slate-500">
                             {item.matricula ? `Matr. ${item.matricula}` : item.documento ? `Doc. ${item.documento}` : ''}
                             {item.cargo_funcao && <span className="ml-2">{item.cargo_funcao.toLowerCase()}</span>}
-                            <span className="ml-2 font-mono text-slate-400">{item.codigo_formulario}</span>
+                            <span className="ml-2 font-mono text-slate-500">{item.codigo_formulario}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -1369,7 +1369,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
             {/* Fotos do teste (visor do etilômetro, termo…): comprimidas antes de subir */}
             <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
               <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-                <Camera className="h-3.5 w-3.5" /> Fotos do teste <span className="font-normal text-slate-400">(opcional)</span>
+                <Camera className="h-3.5 w-3.5" /> Fotos do teste <span className="font-normal text-slate-500">(opcional)</span>
               </label>
               {formFotosMantidas.length > 0 && (
                 <div className="mb-2">
@@ -1632,7 +1632,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
             {/* Fotos do teste (visor do etilômetro, termo…): comprimidas antes de subir */}
             <div>
               <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-                <Camera className="h-3.5 w-3.5" /> Fotos do teste <span className="font-normal text-slate-400">(opcional)</span>
+                <Camera className="h-3.5 w-3.5" /> Fotos do teste <span className="font-normal text-slate-500">(opcional)</span>
               </label>
               {afericaoFotosMantidas.length > 0 && (
                 <div className="mb-2">

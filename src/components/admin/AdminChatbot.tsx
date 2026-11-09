@@ -212,17 +212,17 @@ export default function AdminChatbot({ user }: AdminChatbotProps) {
             </div>
 
             <div className="flex items-center gap-1">
-              <button
+              <button aria-label="Limpar Histórico"
                 onClick={handleClearChat}
                 title="Limpar Histórico"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors"
+                className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800/80 transition-colors"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
-              <button
+              <button aria-label="Fechar"
                 onClick={() => setIsOpen(false)}
                 title="Fechar"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors"
+                className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800/80 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -255,10 +255,10 @@ export default function AdminChatbot({ user }: AdminChatbotProps) {
                     <FormattedText content={msg.text} />
                   </div>
 
-                  <div className="flex items-center gap-2 px-1 text-[10px] text-slate-400 dark:text-slate-500">
+                  <div className="flex items-center gap-2 px-1 text-[10px] text-slate-500 dark:text-slate-500">
                     <span>{msg.timestamp}</span>
                     {msg.modelUsed && (
-                      <span className="text-[9px] bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.2 rounded font-mono">
+                      <span className="text-[10px] bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.2 rounded font-mono">
                         {msg.modelUsed}
                       </span>
                     )}
@@ -331,7 +331,7 @@ export default function AdminChatbot({ user }: AdminChatbotProps) {
               </button>
             </div>
             <p className="text-[10px] text-center text-slate-400 dark:text-slate-500 mt-1.5">
-              Pressione <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-800 rounded text-[9px] font-mono">Enter</kbd> para enviar
+              Pressione <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-800 rounded text-[10px] font-mono">Enter</kbd> para enviar
             </p>
           </div>
 

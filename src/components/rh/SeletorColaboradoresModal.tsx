@@ -234,7 +234,7 @@ export default function SeletorColaboradoresModal({
             {/* Filtros encadeados */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   <Filter className="h-3 w-3" /> Filtros
                 </span>
                 {filtrosAtivos > 0 && (
@@ -292,7 +292,7 @@ export default function SeletorColaboradoresModal({
 
             <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
               {resultados.length === 0 ? (
-                <li className="px-3 py-8 text-center text-xs text-slate-400">
+                <li className="px-3 py-8 text-center text-xs text-slate-500">
                   Nenhum colaborador encontrado com esses filtros.
                 </li>
               ) : (
@@ -328,7 +328,7 @@ export default function SeletorColaboradoresModal({
                           </span>
                         </span>
                         {jaNaAse && (
-                          <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                          <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                             Já na ASE
                           </span>
                         )}
@@ -355,9 +355,9 @@ export default function SeletorColaboradoresModal({
         <ModalFooter className="!justify-between">
           {/* Carrinho: os escolhidos ficam à vista, e cada chip remove o seu. */}
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <ShoppingCart className={`h-4 w-4 shrink-0 ${carrinho.length > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} />
+            <ShoppingCart className={`h-4 w-4 shrink-0 ${carrinho.length > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500'}`} />
             {carrinho.length === 0 ? (
-              <span className="text-[11px] text-slate-400">Nenhum colaborador selecionado.</span>
+              <span className="text-[11px] text-slate-500">Nenhum colaborador selecionado.</span>
             ) : (
               <div className="flex max-h-16 min-w-0 flex-1 flex-wrap gap-1 overflow-y-auto">
                 {carrinho.map(p => (

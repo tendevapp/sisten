@@ -97,7 +97,7 @@ export default function ColarMarkdownPanel({ processoId, processando, erro, uso,
       />
 
       <div className="mt-3 flex items-center justify-between">
-        <div className="flex items-center gap-3 text-[11px] text-slate-400">
+        <div className="flex items-center gap-3 text-[11px] text-slate-500">
           <span>{markdown.length.toLocaleString('pt-BR')} caracteres</span>
           {(processando || uso) && (
             <>

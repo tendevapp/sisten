@@ -68,7 +68,7 @@ function ColunaNave({ nave, titulo, etapas, onAlterado }: { nave: Nave; titulo: 
       </div>
       <div className="mt-2 flex gap-2">
         <input value={novo} onChange={e => setNovo(e.target.value)} placeholder="Nova etapa" className={`${inputCls} py-1.5`} />
-        <button type="button" onClick={adicionar} disabled={salvando || !idNovo || duplicado} title={duplicado ? 'Já existe uma etapa com esse nome' : undefined} className={btnPrimario}>
+        <button aria-label={duplicado ? 'Já existe uma etapa com esse nome' : undefined} type="button" onClick={adicionar} disabled={salvando || !idNovo || duplicado} title={duplicado ? 'Já existe uma etapa com esse nome' : undefined} className={btnPrimario}>
           <Plus className="h-4 w-4" />
         </button>
       </div>

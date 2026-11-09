@@ -1738,7 +1738,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                                           <span className="font-black uppercase tracking-wide text-rose-700 dark:text-rose-300">
                                             {it.description.toUpperCase()}
                                           </span>
-                                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-rose-600 text-white shadow-2xs">
+                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-rose-600 text-white shadow-2xs">
                                             GENÉRICO
                                           </span>
                                         </div>
@@ -2474,7 +2474,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                           <div className="flex items-center gap-1.5">
                             <span>{l['ID Req']}</span>
                             {ehGenerico && (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-rose-600 text-white shadow-2xs">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-rose-600 text-white shadow-2xs">
                                 GENÉRICO
                               </span>
                             )}

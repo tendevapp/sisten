@@ -193,7 +193,7 @@ export default function SituacaoPecaProjetoResumo({ chave, mostrarCabecalho = tr
                     <span className="w-9 shrink-0 font-mono font-extrabold text-slate-800 dark:text-slate-100">{t.tramo}</span>
                     <span className="min-w-0 flex-1 text-slate-600 dark:text-slate-300">
                       {formatQtd(t.porTramo)} por tramo · <span className="font-bold tabular-nums text-slate-900 dark:text-slate-50">{formatQtd(t.tramosCobertos)}</span> tramo{t.tramosCobertos === 1 ? '' : 's'}
-                      <span className="text-slate-400"> · {formatQtd(t.pendentes)} pendente{t.pendentes === 1 ? '' : 's'}</span>
+                      <span className="text-slate-500"> · {formatQtd(t.pendentes)} pendente{t.pendentes === 1 ? '' : 's'}</span>
                     </span>
                     <Chip cor={cobre
                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
@@ -264,7 +264,7 @@ export default function SituacaoPecaProjetoResumo({ chave, mostrarCabecalho = tr
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[10px] text-slate-400 dark:border-slate-800">
+      <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[10px] text-slate-500 dark:border-slate-800">
         <span>Saldo e movimentos do módulo Almoxarifado › Projetos; consumo pela BOM do {item.projeto.replace('_', ' ')}.</span>
         <button
           type="button"

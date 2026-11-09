@@ -636,7 +636,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
               {metricas.funcoesAtivas} ativas
             </span>
           </div>
-          <span className="mt-0.5 text-[11px] text-slate-400">Cargos mapeados</span>
+          <span className="mt-0.5 text-[11px] text-slate-500">Cargos mapeados</span>
         </div>
 
         <div className="flex flex-col rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -645,7 +645,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
             <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">{metricas.totalRequisitos}</span>
             <span className="text-[11px] font-medium text-slate-500">vínculos</span>
           </div>
-          <span className="mt-0.5 text-[11px] text-slate-400">Exigências na fábrica</span>
+          <span className="mt-0.5 text-[11px] text-slate-500">Exigências na fábrica</span>
         </div>
 
         <div className="flex flex-col rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/30">
@@ -720,7 +720,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
 
         {/* Pílulas de filtro rápido de pendência */}
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="text-slate-400 mr-1 text-[11px]">Vínculo Book:</span>
+          <span className="text-slate-500 mr-1 text-[11px]">Vínculo Book:</span>
           <button
             type="button"
             onClick={() => setFiltroPendencia('todos')}
@@ -783,7 +783,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                 </span>
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                       Cargo Selecionado
                     </span>
                     {funcaoAtual && (
@@ -822,7 +822,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
               <div className="mt-3.5 border-t border-slate-100 pt-3 dark:border-slate-800 space-y-2.5">
                 {/* Campo de busca do cargo */}
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <input
                     value={buscaFuncao}
                     onChange={e => setBuscaFuncao(e.target.value)}
@@ -871,7 +871,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                           }`}
                         >
                           <div className="flex w-full items-start justify-between gap-2">
-                            <span className="font-mono text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                            <span className="font-mono text-[10px] font-bold text-slate-500 dark:text-slate-500">
                               {funcao.codigo_origem}
                             </span>
                             <div className="flex items-center gap-1">
@@ -922,7 +922,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
             {/* Busca de funções */}
             <div className="border-b border-slate-100 p-3 dark:border-slate-800">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <input
                   value={buscaFuncao}
                   onChange={e => setBuscaFuncao(e.target.value)}
@@ -968,7 +968,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                       }`}
                     >
                       <div className="flex w-full items-start justify-between gap-2">
-                        <span className="font-mono text-[10px] font-bold text-slate-400 group-hover:text-slate-600 dark:text-slate-500">
+                        <span className="font-mono text-[10px] font-bold text-slate-500 group-hover:text-slate-600 dark:text-slate-500">
                           {funcao.codigo_origem}
                         </span>
                         <div className="flex items-center gap-1">
@@ -1064,7 +1064,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                       onClick={() => abrirEditarFuncao(funcaoAtual)}
                       className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
                     >
-                      <Pencil className="h-3.5 w-3.5 text-slate-400" />
+                      <Pencil className="h-3.5 w-3.5 text-slate-500" />
                       <span>Editar Cargo</span>
                     </button>
 
@@ -1143,11 +1143,11 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                               <span className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-bold ${grupo.badge}`}>
                                 {grupo.rotulo}
                               </span>
-                              <span className="text-xs text-slate-400">
+                              <span className="text-xs text-slate-500">
                                 ({itensDoGrupo.length} {itensDoGrupo.length === 1 ? 'item' : 'itens'})
                               </span>
                             </div>
-                            <span className="text-[11px] text-slate-400 hidden sm:inline">{grupo.desc}</span>
+                            <span className="text-[11px] text-slate-500 hidden sm:inline">{grupo.desc}</span>
                           </div>
 
                           <div className="grid gap-3 sm:grid-cols-1 xl:grid-cols-2">
@@ -1164,7 +1164,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
 
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-start justify-between gap-2">
-                                      <span className="font-mono text-[10px] font-bold text-slate-400">
+                                      <span className="font-mono text-[10px] font-bold text-slate-500">
                                         {req.codigo_epi_origem}
                                       </span>
                                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
@@ -1242,7 +1242,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                                     <Pencil className="h-3 w-3" />
                                     <span>Editar</span>
                                   </button>
-                                  <button
+                                  <button aria-label="Excluir exigência desta função"
                                     type="button"
                                     onClick={() => setExcluindoId(req.id)}
                                     className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40 cursor-pointer"
@@ -1273,7 +1273,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
           {/* Barra de Busca e Filtros Globais */}
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="relative flex-1 max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <input
                 value={buscaGeral}
                 onChange={e => {
@@ -1287,7 +1287,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
 
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                <ListFilter className="h-3.5 w-3.5 text-slate-400" />
+                <ListFilter className="h-3.5 w-3.5 text-slate-500" />
                 <span>Classificação:</span>
                 <select
                   value={filtroClassificacao}
@@ -1341,7 +1341,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                         <p className="font-bold text-slate-900 dark:text-slate-100">
                           {req.funcao?.nome || 'Função não identificada'}
                         </p>
-                        <p className="font-mono text-[10px] text-slate-400">
+                        <p className="font-mono text-[10px] text-slate-500">
                           {req.funcao?.codigo_origem}
                         </p>
                       </td>
@@ -1350,7 +1350,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                         <p className="font-semibold text-slate-800 dark:text-slate-200">
                           {req.descricao_epi_origem}
                         </p>
-                        <p className="font-mono text-[10px] text-slate-400">
+                        <p className="font-mono text-[10px] text-slate-500">
                           {req.codigo_epi_origem} {req.ca_origem ? `· CA orig: ${req.ca_origem}` : ''}
                         </p>
                       </td>
@@ -1399,7 +1399,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                       </td>
 
                       <td className="px-3 py-3 text-right">
-                        <button
+                        <button aria-label="Editar requisito"
                           type="button"
                           onClick={() => abrirEditarRequisito(req)}
                           className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
@@ -1422,7 +1422,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                 Página {paginaAtual} de {totalPaginas}
               </span>
               <div className="flex items-center gap-1">
-                <button
+                <button aria-label="Anterior"
                   type="button"
                   disabled={paginaAtual <= 1}
                   onClick={() => setPaginaAtual(p => Math.max(1, p - 1))}
@@ -1430,7 +1430,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </button>
-                <button
+                <button aria-label="Próximo"
                   type="button"
                   disabled={paginaAtual >= totalPaginas}
                   onClick={() => setPaginaAtual(p => Math.min(totalPaginas, p + 1))}
@@ -1461,10 +1461,10 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                   {editandoRequisito.id ? 'Editar Requisito de EPI' : 'Novo Requisito de EPI'}
                 </h3>
               </div>
-              <button
+              <button aria-label="Fechar"
                 type="button"
                 onClick={() => setEditandoRequisito(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 cursor-pointer"
+                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1664,7 +1664,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
 
                 {/* Campo de pesquisa no Book */}
                 <div className="mt-3 relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                   <input
                     value={buscaBook}
                     onChange={e => setBuscaBook(e.target.value)}
@@ -1676,7 +1676,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                 {/* Lista de seleção do Book */}
                 <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 divide-y divide-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:divide-slate-700">
                   {opcoesBookFiltradas.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-slate-400">
+                    <div className="p-4 text-center text-xs text-slate-500">
                       Nenhum EPI encontrado no Book com esse filtro.
                     </div>
                   ) : (
@@ -1754,10 +1754,10 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                   {modalFuncao.id ? 'Editar Função / Cargo' : 'Nova Função / Cargo'}
                 </h3>
               </div>
-              <button
+              <button aria-label="Fechar"
                 type="button"
                 onClick={() => setModalFuncao(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1897,10 +1897,10 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                     Copie a relação de EPIs de um cargo de referência diretamente para o cargo de destino.
                   </p>
                 </div>
-                <button
+                <button aria-label="Fechar"
                   type="button"
                   onClick={() => setModalCopiarCargo(null)}
-                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 cursor-pointer"
+                  className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 cursor-pointer"
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -2023,7 +2023,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
 
                     {/* Campo de pesquisa dentro do modal */}
                     <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                       <input
                         value={modalCopiarCargo.buscaEpi}
                         onChange={e => setModalCopiarCargo({ ...modalCopiarCargo, buscaEpi: e.target.value })}
@@ -2035,7 +2035,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                     {/* Lista rolável de itens com checkbox */}
                     <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 p-1 divide-y divide-slate-100 dark:border-slate-800 dark:divide-slate-800/60">
                       {reqsOrigemFiltrados.length === 0 ? (
-                        <div className="p-4 text-center text-xs text-slate-400">
+                        <div className="p-4 text-center text-xs text-slate-500">
                           Nenhum EPI encontrado com o filtro informado.
                         </div>
                       ) : (
@@ -2111,7 +2111,7 @@ export default function SsmaEpiPorFuncaoView({ onBack }: Props) {
                       )}
                     </div>
 
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[11px] text-slate-500">
                       💡 Os EPIs selecionados serão duplicados para o cargo de destino mantendo classificação, condição de uso e vínculo com o Book de EPIs.
                     </p>
                   </div>

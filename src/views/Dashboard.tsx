@@ -394,7 +394,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           <Card dataTour="inicio-notificacoes">
             <div className="flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
-                <Bell className="h-4 w-4 text-slate-400" />
+                <Bell className="h-4 w-4 text-slate-500" />
                 Notificações
                 {unread.length > 0 && (
                   <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{unread.length}</span>
@@ -441,9 +441,9 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                         <span className="mt-0.5 block line-clamp-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
                           {n.description}
                         </span>
-                        <span className="mt-1 block text-[10px] font-medium text-slate-400">{tempoRelativo(n.created_at)}</span>
+                        <span className="mt-1 block text-[10px] font-medium text-slate-500">{tempoRelativo(n.created_at)}</span>
                       </span>
-                      <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-slate-300 opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100 dark:text-slate-600" />
+                      <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-slate-300 opacity-0 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 transition-all group-hover:translate-x-0.5 group-hover:opacity-100 dark:text-slate-600" />
                     </button>
                   );
                 })
@@ -455,7 +455,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           <Card dataTour="inicio-recentes">
             <div className="flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
-                <List className="h-4 w-4 text-slate-400" />
+                <List className="h-4 w-4 text-slate-500" />
                 Minhas solicitações recentes
               </h2>
               <button
@@ -491,12 +491,12 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                     className="flex w-full items-center justify-between gap-3 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
                   >
                     <span className="flex min-w-0 items-center gap-3">
-                      <span className="font-mono text-xs font-bold text-slate-400">#{r.number}</span>
+                      <span className="font-mono text-xs font-bold text-slate-500">#{r.number}</span>
                       <span className="min-w-0">
                         <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
                           {tituloSolicitacao(r)}
                         </span>
-                        <span className="mt-0.5 block text-[10px] text-slate-400">
+                        <span className="mt-0.5 block text-[10px] text-slate-500">
                           {new Date(r.created_at).toLocaleDateString('pt-BR')}
                         </span>
                       </span>
@@ -514,13 +514,13 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           {/* Acesso rápido: favoritos + recentes */}
           <Card dataTour="inicio-acesso-rapido">
             <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
-              <Star className="h-4 w-4 text-slate-400" />
+              <Star className="h-4 w-4 text-slate-500" />
               Acesso rápido
             </h2>
 
             <div className="mt-3 space-y-4">
               <div>
-                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Favoritos</p>
+                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Favoritos</p>
                 {favPages.length === 0 ? (
                   <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
                     Toque na estrela de uma página recente para fixá-la aqui.
@@ -536,7 +536,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                             onClick={() => onNavigate(p.path!)}
                             className="flex flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60"
                           >
-                            {PIcon && <PIcon className="h-4 w-4 shrink-0 text-slate-400" />}
+                            {PIcon && <PIcon className="h-4 w-4 shrink-0 text-slate-500" />}
                             <span className="truncate">{p.label}</span>
                           </button>
                           <button
@@ -556,7 +556,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
 
               {recentPages.length > 0 && (
                 <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
-                  <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                     <Clock className="h-3 w-3" /> Recentes
                   </p>
                   <ul className="space-y-1">
@@ -569,13 +569,13 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                             onClick={() => onNavigate(p.path!)}
                             className="flex flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60"
                           >
-                            {PIcon && <PIcon className="h-4 w-4 shrink-0 text-slate-400" />}
+                            {PIcon && <PIcon className="h-4 w-4 shrink-0 text-slate-500" />}
                             <span className="truncate">{p.label}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => toggleFav(p.path!)}
-                            className="rounded-lg p-1.5 text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-amber-500 group-hover:opacity-100 dark:text-slate-600 dark:hover:bg-slate-800"
+                            className="rounded-lg p-1.5 text-slate-300 opacity-0 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-slate-100 hover:text-amber-500 group-hover:opacity-100 dark:text-slate-600 dark:hover:bg-slate-800"
                             aria-label={`Fixar ${p.label}`}
                           >
                             <Star className="h-3.5 w-3.5" />
@@ -588,7 +588,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
               )}
 
               {favPages.length === 0 && recentPages.length === 0 && (
-                <p className="text-[11px] text-slate-400">Sua navegação recente aparecerá aqui.</p>
+                <p className="text-[11px] text-slate-500">Sua navegação recente aparecerá aqui.</p>
               )}
             </div>
           </Card>
@@ -596,7 +596,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           {/* Mapa de módulos liberados */}
           <Card dataTour="inicio-modulos">
             <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
-              <Compass className="h-4 w-4 text-slate-400" />
+              <Compass className="h-4 w-4 text-slate-500" />
               Explorar módulos
             </h2>
             <div className="mt-3 grid grid-cols-2 gap-2">
@@ -623,22 +623,22 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           {user.roles.includes('admin') && (
             <Card className="bg-slate-50/60 dark:bg-slate-900/60">
               <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
-                <Sparkles className="h-4 w-4 text-slate-400" />
+                <Sparkles className="h-4 w-4 text-slate-500" />
                 Resumo administrativo
               </h2>
               <dl className="mt-3 grid grid-cols-2 gap-3 text-center">
                 <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                  <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Usuários ativos</dt>
+                  <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Usuários ativos</dt>
                   <dd className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-50">
                     {localDb.getProfiles().filter(p => p.status === 'ativo').length}
                   </dd>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                  <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Solicitações</dt>
+                  <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Solicitações</dt>
                   <dd className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-50">{requests.length}</dd>
                 </div>
                 <div className="col-span-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                  <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Materiais ativos no catálogo</dt>
+                  <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Materiais ativos no catálogo</dt>
                   <dd className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-50">
                     {materialsCount ? materialsCount.toLocaleString('pt-BR') : '—'}
                   </dd>

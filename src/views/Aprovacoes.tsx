@@ -852,7 +852,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
       {/* Cartao: Justificativa e Aplicacao */}
       <div className="p-4 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
         <h3 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-          <FileText className="w-3.5 h-3.5 text-slate-400" />
+          <FileText className="w-3.5 h-3.5 text-slate-500" />
           <span>Justificativa e Aplicação da Compra</span>
         </h3>
         <p className="text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
@@ -864,7 +864,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
       <div className="p-4 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
           <h3 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-slate-400" />
+            <Layers className="w-3.5 h-3.5 text-slate-500" />
             <span>Itens Solicitados ({itensAtivos.length})</span>
           </h3>
           <span className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400">
@@ -918,7 +918,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
                       {sinais && sinais.length > 0 ? (
                         <SinalChips chips={sinais} />
                       ) : carregandoSinais ? (
-                        <p className="text-[11px] text-slate-400 italic">Consultando estoque e demandas no SAP...</p>
+                        <p className="text-[11px] text-slate-500 italic">Consultando estoque e demandas no SAP...</p>
                       ) : null}
                     </>
                   )}
@@ -974,7 +974,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
       {anexosAtivos.length > 0 && (
         <div className="p-4 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2.5">
           <h3 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Download className="w-3.5 h-3.5 text-slate-400" />
+            <Download className="w-3.5 h-3.5 text-slate-500" />
             <span>Anexos da Solicitação ({anexosAtivos.length})</span>
           </h3>
           <AttachmentGallery requestId={solicitacaoAtiva.id} emptyLabel="Nenhum anexo enviado." />
@@ -985,7 +985,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
       {historicoAtivo.length > 0 && (
         <div className="p-4 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
           <h3 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
+            <Clock className="w-3.5 h-3.5 text-slate-500" />
             <span>Histórico de Decisões & Trâmite</span>
           </h3>
           <div className="space-y-2 pt-1 text-xs">
@@ -1001,7 +1001,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
                     </p>
                   )}
                 </div>
-                <span className="text-[11px] text-slate-400 shrink-0 font-mono">
+                <span className="text-[11px] text-slate-500 shrink-0 font-mono">
                   {formatDateTimeBR(h.created_at)}
                 </span>
               </div>
@@ -1062,7 +1062,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs transition-colors cursor-pointer"
             >
               <span>Central Geral</span>
-              <ArrowUpRight className="w-3.5 h-3.5 text-slate-400" />
+              <ArrowUpRight className="w-3.5 h-3.5 text-slate-500" />
             </button>
           </div>
         </div>
@@ -1080,7 +1080,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
           </div>
           <div className="flex-1 min-w-0 px-3 py-2">
             <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Urgentes</p>
-            <p className={`tabular text-xl font-black leading-tight ${kpis.pendentesCriticas > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>{kpis.pendentesCriticas}</p>
+            <p className={`tabular text-xl font-black leading-tight ${kpis.pendentesCriticas > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-500'}`}>{kpis.pendentesCriticas}</p>
           </div>
         </div>
 
@@ -1265,7 +1265,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
           <div className="flex flex-nowrap lg:flex-wrap items-center gap-2">
             {/* Campo de Busca */}
             <div className="relative min-w-0 lg:min-w-[200px] flex-1 lg:flex-none">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
                 value={busca}
@@ -1277,7 +1277,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
                 <button
                   onClick={() => setBusca('')}
                   aria-label="Limpar busca"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-slate-600 dark:hover:text-white"
                 >
                   <X className="w-3.5 h-3.5 lg:w-3 lg:h-3" />
                 </button>
@@ -1407,7 +1407,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
           {/* Fila de Cards Rolavel */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/80 p-2 space-y-1.5">
             {solicitacoesFiltradas.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 dark:text-slate-500">
+              <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500 dark:text-slate-500">
                 <CheckCircle2 className="w-12 h-12 text-slate-300 dark:text-slate-700 mb-2" />
                 <p className="font-bold text-sm text-slate-700 dark:text-slate-300">Nenhuma solicitação encontrada</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs">
@@ -1453,7 +1453,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
                             type="button"
                             onClick={e => alternarSelecaoLote(req.id, e)}
                             aria-label={isChecked ? `Tirar #${req.number} do lote` : `Pôr #${req.number} no lote`}
-                            className="-m-2 p-2 lg:m-0 lg:p-0 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer lg:mt-0.5"
+                            className="-m-2 p-2 lg:m-0 lg:p-0 text-slate-500 hover:text-slate-600 dark:hover:text-white cursor-pointer lg:mt-0.5"
                           >
                             {isChecked ? (
                               <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -1471,7 +1471,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
                         {idsEditadasAposAprovacao.has(req.id) && (
                           <span
                             title="Esta solicitação já havia sido aprovada anteriormente e voltou para a fila após ser editada pelo solicitante"
-                            className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-700 shadow-2xs"
+                            className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-700 shadow-2xs"
                           >
                             <FileEdit className="w-2.5 h-2.5 text-amber-700 dark:text-amber-400" />
                             Editada
@@ -1480,7 +1480,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
                         {itensReq.some(it => it.is_generic) && (
                           <span
                             title="Esta solicitação possui item(ns) genérico(s)"
-                            className="inline-flex items-center text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-700 shadow-2xs"
+                            className="inline-flex items-center text-[10px] font-black uppercase px-1.5 py-0.5 rounded-full border bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-700 shadow-2xs"
                           >
                             Genérico
                           </span>
@@ -1497,9 +1497,9 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
                     {/* Solicitante e Setor */}
                     <div className="mt-2 flex items-center justify-between text-xs text-slate-700 dark:text-slate-300">
                       <div className="flex items-center gap-1.5 truncate">
-                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <User className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                         <span className="font-semibold truncate">{req.solicitante_name}</span>
-                        <span className="text-slate-400">·</span>
+                        <span className="text-slate-500">·</span>
                         <span className="text-slate-500 dark:text-slate-400 truncate">{nomeSetor(req.solicitante_sector_id)}</span>
                       </div>
                       <span className="text-[11px] text-slate-500 dark:text-slate-400 shrink-0 ml-2">
@@ -1510,7 +1510,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
                     {/* Resumo de Itens e Data de Necessidade */}
                     <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between border-t border-slate-100 dark:border-slate-800/60 pt-1.5">
                       <div className="flex items-center gap-1 truncate text-slate-500 dark:text-slate-400">
-                        <Layers className="w-3 h-3 text-slate-400 shrink-0" />
+                        <Layers className="w-3 h-3 text-slate-500 shrink-0" />
                         <span className="truncate">
                           {itensReq.length} {itensReq.length === 1 ? 'item' : 'itens'}:{' '}
                           {itensReq.slice(0, 2).map(it => it.is_generic ? `${it.description.toUpperCase()} [GENÉRICO]` : it.description).join(', ')}
@@ -1520,7 +1520,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
 
                       {req.data_necessidade && (
                         <div className="flex items-center gap-1 shrink-0 ml-2 font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                          <Calendar className="w-3 h-3 text-slate-400" />
+                          <Calendar className="w-3 h-3 text-slate-500" />
                           <span>Para {formatDateBR(req.data_necessidade)}</span>
                         </div>
                       )}
@@ -1646,7 +1646,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs transition-colors cursor-pointer"
                   >
                     <span>Ver na Central</span>
-                    <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
                   </button>
                 </div>
               </div>
@@ -1661,7 +1661,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
               </div>
             </div>
           ) : (
-            <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center text-slate-400 dark:text-slate-500">
+            <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center text-slate-500 dark:text-slate-500">
               <FileText className="w-16 h-16 text-slate-300 dark:text-slate-700 mb-3" />
               <p className="font-bold text-base text-slate-700 dark:text-slate-300">Nenhuma solicitação selecionada</p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">

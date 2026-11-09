@@ -89,9 +89,9 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
   return (
     <div className="space-y-4">
       <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <Search className="h-4 w-4 text-slate-400" />
+        <Search className="h-4 w-4 text-slate-500" />
         <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por colaborador, matrícula, código da ficha ou função" className="w-full bg-transparent py-2.5 text-sm outline-none" />
-        {carregando && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+        {carregando && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
       </label>
 
       {pendentesAssinatura.length > 0 && (
@@ -111,7 +111,7 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
 
       {!carregando && listadas.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 px-6 py-14 text-center dark:border-slate-700">
-          <ClipboardList className="mx-auto h-9 w-9 text-slate-400" />
+          <ClipboardList className="mx-auto h-9 w-9 text-slate-500" />
           <h2 className="mt-3 text-sm font-bold text-slate-800 dark:text-slate-100">{busca ? 'Nenhuma ficha encontrada' : 'Nenhuma ficha lançada ainda'}</h2>
           <p className="mt-1 text-xs text-slate-500">As fichas aparecem aqui assim que o colaborador assina a entrega.</p>
         </div>

@@ -41,7 +41,7 @@ export default function ConfirmDialog({
           </span>
           <div className="min-w-0 flex-1 pt-1">
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">{titulo}</h3>
-            <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">{mensagem}</div>
+            <div className="mt-1 whitespace-pre-line text-sm text-slate-600 dark:text-slate-300">{mensagem}</div>
           </div>
         </div>
       </ModalBody>

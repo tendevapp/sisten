@@ -187,7 +187,7 @@ export default function ModalComposicaoBomKit({ composicao, onClose }: Props) {
                         <div className="flex items-center gap-1.5">
                           {item.isGargalo && (
                             <span
-                              className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase shrink-0"
+                              className="px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase shrink-0"
                               style={{ background: 'var(--abc-c)', color: '#fff' }}
                             >
                               Gargalo

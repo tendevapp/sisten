@@ -142,14 +142,14 @@ export default function FilaOfflineFormularios({ usuarioId, emFormulario }: Prop
         {operacoes.length > 0 && <ul className="max-h-[50vh] space-y-2 overflow-y-auto">
           {operacoes.map((op, indice) => <li key={op.id} className={`rounded-xl border p-3 ${op.estado === 'erro' ? 'border-red-200 bg-red-50/60 dark:border-red-900/60 dark:bg-red-950/20' : 'border-slate-200 dark:border-slate-800'}`}>
             <div className="flex items-start gap-2">
-              <span className="mt-0.5 text-[11px] font-black text-slate-400">{indice + 1}</span>
+              <span className="mt-0.5 text-[11px] font-black text-slate-500">{indice + 1}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-slate-900 dark:text-slate-50">{op.rotulo}</p>
                 {op.resumo && <p className="truncate text-[11px] text-slate-500">{op.resumo}</p>}
-                <p className="text-[11px] text-slate-400">Guardado às {hora(op.criadoEm)}{op.estado === 'enviando' ? ' · enviando…' : ''}</p>
+                <p className="text-[11px] text-slate-500">Guardado às {hora(op.criadoEm)}{op.estado === 'enviando' ? ' · enviando…' : ''}</p>
                 {op.estado === 'erro' && op.erro && <p className="mt-1 text-[11px] font-semibold text-red-700 dark:text-red-300">Recusado pelo servidor: {op.erro}</p>}
               </div>
-              <button type="button" onClick={() => setDescartar(op)} disabled={op.estado === 'enviando'} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600 disabled:opacity-40 dark:hover:bg-slate-800" title="Descartar do aparelho"><Trash2 className="h-4 w-4" /></button>
+              <button aria-label="Descartar do aparelho" type="button" onClick={() => setDescartar(op)} disabled={op.estado === 'enviando'} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-red-600 disabled:opacity-40 dark:hover:bg-slate-800" title="Descartar do aparelho"><Trash2 className="h-4 w-4" /></button>
             </div>
           </li>)}
         </ul>}

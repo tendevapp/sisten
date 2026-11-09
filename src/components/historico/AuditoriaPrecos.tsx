@@ -61,7 +61,7 @@ const Badge = ({ texto, fg, bg, titulo }: { texto: string; fg: string; bg: strin
 
 /** Δ% com sinal e cor. Vermelho acima, verde abaixo — só quando há referência. */
 const Delta = ({ pct }: { pct?: number | null }) => {
-  if (pct == null || !Number.isFinite(pct)) return <span className="text-slate-400">—</span>;
+  if (pct == null || !Number.isFinite(pct)) return <span className="text-slate-500">—</span>;
   const acima = pct > 0;
   return (
     <span
@@ -347,7 +347,7 @@ export default function AuditoriaPrecos() {
       <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs">
         <div className="flex flex-col xl:flex-row gap-3">
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
             <input
               type="text"
               value={busca}
@@ -439,7 +439,7 @@ export default function AuditoriaPrecos() {
           {' '}· {formatInt(compras.length)} no total
         </span>
         {mesIpca && (
-          <span className="flex items-center gap-1 font-medium text-slate-400 dark:text-slate-500">
+          <span className="flex items-center gap-1 font-medium text-slate-500 dark:text-slate-500">
             <Clock className="h-3 w-3" /> IPCA até {formatMesAno(mesIpca)}
           </span>
         )}
@@ -479,7 +479,7 @@ export default function AuditoriaPrecos() {
                     <Tr onClick={() => alternarExpansao(c.material)}>
                       <Td>
                         <ChevronRight
-                          className={`h-3.5 w-3.5 text-slate-400 transition-transform ${aberto ? 'rotate-90' : ''}`}
+                          className={`h-3.5 w-3.5 text-slate-500 transition-transform ${aberto ? 'rotate-90' : ''}`}
                         />
                       </Td>
                       <Td>
@@ -488,7 +488,7 @@ export default function AuditoriaPrecos() {
                       </Td>
                       <Td>
                         <div className="truncate max-w-[180px]">{c.fornecedor || '—'}</div>
-                        <div className="text-slate-400 dark:text-slate-500">{c.doc_compra || '—'}</div>
+                        <div className="text-slate-500 dark:text-slate-500">{c.doc_compra || '—'}</div>
                         {c.pedido_parcial && (
                           <div className="mt-0.5">
                             <Badge
@@ -552,10 +552,10 @@ export default function AuditoriaPrecos() {
                               Compras anteriores de {c.material} — o que formou a referência
                             </p>
                             {historico === 'carregando' && (
-                              <p className="text-xs text-slate-400">Carregando histórico...</p>
+                              <p className="text-xs text-slate-500">Carregando histórico...</p>
                             )}
                             {historico === undefined && (
-                              <p className="text-xs text-slate-400">Carregando histórico...</p>
+                              <p className="text-xs text-slate-500">Carregando histórico...</p>
                             )}
                             {Array.isArray(historico) && historico.length === 0 && (
                               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -587,7 +587,7 @@ export default function AuditoriaPrecos() {
                                         <td className="py-1.5 pr-4">{h.doc_compra || '—'}</td>
                                         <td className="py-1.5 pr-4 text-right tabular-nums">{formatQtd(h.qtd)}</td>
                                         <td className="py-1.5 pr-4 text-right tabular-nums">{formatBRL(h.preco_unit)}</td>
-                                        <td className="py-1.5 pr-4 text-right tabular-nums text-slate-400">
+                                        <td className="py-1.5 pr-4 text-right tabular-nums text-slate-500">
                                           ×{Number(h.fator_ipca).toFixed(3)}
                                         </td>
                                         <td className="py-1.5 text-right tabular-nums font-bold">{formatBRL(h.preco_corrigido)}</td>

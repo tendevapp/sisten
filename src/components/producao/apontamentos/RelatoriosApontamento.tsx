@@ -130,7 +130,7 @@ function Faixa({ ano, subtitulo }: { ano: number; subtitulo: string }) {
       <div className="absolute inset-y-0 right-0 flex w-24 items-center justify-center bg-gradient-to-br from-orange-500 to-orange-600 [clip-path:polygon(22%_0,100%_0,100%_100%,0_100%)] sm:w-44">
         <span className="pl-4 text-right leading-none">
           <span className="block text-xl font-black tracking-tight sm:text-3xl">TEN</span>
-          <span className="hidden text-[9px] font-semibold uppercase sm:block">Torres Eólicas do Nordeste</span>
+          <span className="hidden text-[10px] font-semibold uppercase sm:block">Torres Eólicas do Nordeste</span>
         </span>
       </div>
     </div>

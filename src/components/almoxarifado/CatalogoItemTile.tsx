@@ -78,7 +78,7 @@ function CatalogoItemTile({
             {formatarSaldo(item.saldo_total)} {item.umb}
           </span>
           {bookEpi && (
-            <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-0.5 rounded-md bg-blue-600 px-1 py-0.5 text-[9px] font-bold text-white">
+            <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-0.5 rounded-md bg-blue-600 px-1 py-0.5 text-[10px] font-bold text-white">
               <ShieldCheck className="h-2.5 w-2.5" /> EPI
             </span>
           )}

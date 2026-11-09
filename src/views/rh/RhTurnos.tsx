@@ -147,16 +147,16 @@ export default function RhTurnos({ onNavigate }: Props) {
 
       <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         {carregando ? (
-          <div className="flex justify-center py-12 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
+          <div className="flex justify-center py-12 text-slate-500"><Loader2 className="h-6 w-6 animate-spin" /></div>
         ) : turnos.length === 0 ? (
-          <p className="px-4 py-12 text-center text-sm text-slate-400">Nenhum turno cadastrado.</p>
+          <p className="px-4 py-12 text-center text-sm text-slate-500">Nenhum turno cadastrado.</p>
         ) : (
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {turnos.map(t => (
               <li key={t.id} className="flex items-center gap-3 px-4 py-3">
                 <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900 dark:text-slate-50">{t.nome}</span>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <button
+                  <button aria-label="Editar"
                     type="button"
                     onClick={() => { setEditando(t); setNome(t.nome); setModalAberto(true); }}
                     title="Editar"
@@ -164,7 +164,7 @@ export default function RhTurnos({ onNavigate }: Props) {
                   >
                     <Edit2 className="h-4 w-4" />
                   </button>
-                  <button
+                  <button aria-label="Excluir"
                     type="button"
                     onClick={() => setParaExcluir(t)}
                     title="Excluir"

@@ -86,7 +86,7 @@ function FiltrosRelatorio({
         </select>
       </label>
       <div className="min-w-0 flex-1">
-        <p className="mb-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">Torres <span className="font-normal text-slate-400">(sem seleção, mostra todas)</span></p>
+        <p className="mb-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">Torres <span className="font-normal text-slate-500">(sem seleção, mostra todas)</span></p>
         <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
           {torres.map(torre => {
             const ativa = torresSelecionadas.includes(torre);
@@ -292,7 +292,7 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
       </nav>
     </header>
 
-    {carregando ? <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
+    {carregando ? <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>
       : erro ? <p className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">{erro}</p>
         : modo === 'relatorio' ? <>
           <FiltrosRelatorio semanas={semanas} semana={semanaRelatorio} torres={torresDaSemana} torresSelecionadas={torresSelecionadas} onSemana={semana => { setSemanaRelatorio(semana); setTorresSelecionadas([]); }} onTorres={setTorresSelecionadas} />
@@ -331,7 +331,7 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
               <td className="p-1"><input aria-label={`Data de expedição da torre ${linha.torre_numero} ${linha.tramo}`} type="date" min={`${ANO_MIN}-01-01`} max={`${ANO_MAX}-12-31`} value={dataParaInput(linha.data_expedicao)} onChange={e => alterarData(linha.id, 'data_expedicao', e.target.value)} onBlur={e => alterarData(linha.id, 'data_expedicao', e.target.value)} className="rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
               <td className="p-1"><select aria-label={`Status da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.status} disabled={bloqueada} onChange={e => mudarStatus(linha, e.target.value as StatusPlanoExpedicao)} className={`h-8 rounded-md border border-transparent px-2 text-xs font-bold focus:border-blue-500 focus:outline-none ${STATUS[linha.status].classe}`}><option value="a_faturar">A faturar</option><option value="faturado">Faturado</option><option value="expedido">Expedido</option></select></td>
               <td className="p-1"><input aria-label={`Observação da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.observacao ?? ''} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, observacao: e.target.value || null } : item))} onBlur={e => void salvar(linha.id, { observacao: e.target.value || null })} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} className="w-44 rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
-              <td className="p-2 text-slate-400">{bloqueada ? <Save className="h-4 w-4 animate-pulse text-blue-600" /> : <ChevronRight className="h-4 w-4" />}</td>
+              <td className="p-2 text-slate-500">{bloqueada ? <Save className="h-4 w-4 animate-pulse text-blue-600" /> : <ChevronRight className="h-4 w-4" />}</td>
             </tr>; }))}</tbody></table>
             {!linhasDados.length && <p className="p-8 text-center text-sm text-slate-500">Nenhum tramo encontrado para esse filtro.</p>}
           </section>

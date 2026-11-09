@@ -436,7 +436,7 @@ export default function CotacaoHistoricoDetalhesModal({
                     Itens da Proposta ({itensProposta.length > 0 ? itensProposta.length : 1})
                   </h4>
                   {carregandoItens && (
-                    <span className="text-[11px] text-slate-400 animate-pulse">Carregando itens...</span>
+                    <span className="text-[11px] text-slate-500 animate-pulse">Carregando itens...</span>
                   )}
                 </div>
 
@@ -469,14 +469,14 @@ export default function CotacaoHistoricoDetalhesModal({
                                 {it.descricao_produto}
                               </div>
                               {it.codigo_produto && (
-                                <div className="text-[11px] text-slate-400">
+                                <div className="text-[11px] text-slate-500">
                                   Cód: {it.codigo_produto}
                                 </div>
                               )}
                             </td>
                             <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">
                               <div>{it.marca_fabricante || '—'}</div>
-                              {it.ncm && <div className="text-[10px] text-slate-400">NCM: {it.ncm}</div>}
+                              {it.ncm && <div className="text-[10px] text-slate-500">NCM: {it.ncm}</div>}
                             </td>
                             <td className="py-2.5 px-3 text-right font-medium text-slate-700 dark:text-slate-300">
                               {it.quantidade ?? 1} {it.unidade_medida || 'UN'}

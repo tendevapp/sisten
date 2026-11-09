@@ -69,6 +69,7 @@ import { exportarRelatorioRecebimentoExcel } from '../../lib/recebimentoAlmoxPla
 import type { PdfGerado } from '../../lib/pdfExport/core';
 import ModalLotesValidade from '../../components/almoxarifado/ModalLotesValidade';
 import { normalizarLotesValidade, type LoteValidade } from '../../lib/lotesValidade';
+import { confirmar } from '../../lib/confirmar';
 
 interface Props {
   user: Profile;
@@ -328,7 +329,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
           onAbrir={(row) => setDetalhe({ tipo: 'carga', row })}
           onRecarregar={recarregar}
           onExcluir={async (id, codigo) => {
-            if (!window.confirm(`Excluir a ficha cega ${codigo}? Sai da tela, mas permanece no banco.`)) return;
+            if (!await confirmar({ titulo: 'Excluir ficha cega?', mensagem: `Excluir a ficha cega ${codigo}? Sai da tela, mas permanece no banco.`, confirmarLabel: 'Excluir', variante: 'perigo' })) return;
             try { await excluirCarga(id, user.id); toast.success(`${codigo} excluída.`); await recarregar(); }
             catch (err: any) { toast.error(err?.message || 'Falha ao excluir.'); }
           }}
@@ -360,8 +361,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
           onNova={() => setForm({ tipo: 'conferencia' })}
           onEditar={(row) => setForm({ tipo: 'conferencia', registro: row })}
           onContinuarRascunho={(id) => setForm({ tipo: 'conferencia', rascunhoId: id })}
-          onExcluirRascunho={(id) => {
-            if (!window.confirm('Descartar este rascunho de conferência? O que foi digitado se perde.')) return;
+          onExcluirRascunho={async (id) => {
+            if (!await confirmar({ titulo: 'Descartar rascunho?', mensagem: 'Descartar este rascunho de conferência? O que foi digitado se perde.', confirmarLabel: 'Descartar', variante: 'perigo' })) return;
             removerRascunhoConferencia(id);
             sincronizarRascunhos();
           }}
@@ -378,7 +379,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
             }
           }}
           onExcluir={async (id, codigo) => {
-            if (!window.confirm(`Excluir a conferência ${codigo}? Sai da tela, mas permanece no banco.`)) return;
+            if (!await confirmar({ titulo: 'Excluir conferência?', mensagem: `Excluir a conferência ${codigo}? Sai da tela, mas permanece no banco.`, confirmarLabel: 'Excluir', variante: 'perigo' })) return;
             try { await excluirConferencia(id, user.id); toast.success(`${codigo} excluída.`); await recarregar(); }
             catch (err: any) { toast.error(err?.message || 'Falha ao excluir.'); }
           }}
@@ -426,7 +427,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
             catch (err: any) { toast.error(err?.message || 'Falha ao atualizar a NCR.'); }
           }}
           onExcluir={async (id, codigo) => {
-            if (!window.confirm(`Excluir a não conformidade ${codigo}? Ela sai da tela, mas permanece no banco.`)) return;
+            if (!await confirmar({ titulo: 'Excluir não conformidade?', mensagem: `Excluir a não conformidade ${codigo}? Ela sai da tela, mas permanece no banco.`, confirmarLabel: 'Excluir', variante: 'perigo' })) return;
             try { await excluirNcAberta(id, { nome: user.name }); toast.success(`${codigo} excluída.`); await recarregar(); }
             catch (err: any) { toast.error(err?.message || 'Falha ao excluir a NCR.'); }
           }}
@@ -3642,7 +3643,7 @@ function ModalNovaNc({
           <Campo rotulo="Pesquisar pedido ou fornecedor">
             <div className="flex gap-2">
               <input value={buscaPedido} onChange={(e) => setBuscaPedido(e.target.value)} className={inputCls} placeholder="Nº do pedido ou fornecedor" />
-              <button type="button" onClick={() => void carregarItensDoPedido(buscaPedido)} className="shrink-0 rounded-lg border px-3 text-xs font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+              <button aria-label="Buscar" type="button" onClick={() => void carregarItensDoPedido(buscaPedido)} className="shrink-0 rounded-lg border px-3 text-xs font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
                 <Search className="h-4 w-4" />
               </button>
             </div>

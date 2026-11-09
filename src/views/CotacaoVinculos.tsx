@@ -345,7 +345,7 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
                   className="w-64 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                 />
               </div>
-              <button
+              <button aria-label="Recarregar"
                 type="button"
                 onClick={carregar}
                 className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 hover:text-blue-600 dark:border-slate-800 dark:bg-slate-900 cursor-pointer"
@@ -357,7 +357,7 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
           </div>
 
           {carregando && vinculos.length === 0 && (
-            <div className="flex justify-center py-16 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            <div className="flex justify-center py-16 text-slate-500"><Loader2 className="h-6 w-6 animate-spin" /></div>
           )}
 
           {!carregando && vinculos.length === 0 && (
@@ -386,7 +386,7 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
                         <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${STATUS_CLASSE[v.status]}`}>
                           {STATUS_LABEL[v.status]}
                         </span>
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                           {ORIGEM_LABEL[v.origem] ?? v.origem}
                         </span>
                         <Chip rotulo="preço" valor={sinais.preco as number} />
@@ -435,7 +435,7 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
                           {formatQtd(v.rm_qtd)} un
                           {v.rm_requisitante ? ` · ${v.rm_requisitante}` : ''}
                           <br />
-                          <span className="text-slate-400">{v.rm_texto_breve}</span>
+                          <span className="text-slate-500">{v.rm_texto_breve}</span>
                         </p>
                       )}
 
@@ -444,7 +444,7 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
                           Pedido {v.po_doc_compra}/{v.po_item} de {dataBR(v.po_data_doc)} ·{' '}
                           {formatBRL(v.po_preco_unit ?? 0)}/un · {formatQtd(v.po_qtd)} un
                           <br />
-                          <span className="text-slate-400">{v.po_txt_breve}</span>
+                          <span className="text-slate-500">{v.po_txt_breve}</span>
                         </p>
                       )}
 
@@ -497,7 +497,7 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
                             <span className="font-mono font-bold text-slate-800 dark:text-slate-100">{c.material_code}</span>
                             <span className="ml-2 text-slate-500 dark:text-slate-400">{c.descricao}</span>
                           </span>
-                          <span className="shrink-0 text-[10px] font-bold uppercase text-slate-400">
+                          <span className="shrink-0 text-[10px] font-bold uppercase text-slate-500">
                             confirmar {c.score !== null && c.score !== undefined ? `· ${Math.round(Number(c.score) * 100)}%` : ''}
                           </span>
                         </button>
@@ -541,7 +541,7 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
           </div>
 
           {carregando ? (
-            <div className="flex justify-center py-16 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            <div className="flex justify-center py-16 text-slate-500"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : auditoria.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-white/60 p-10 text-center dark:border-slate-800 dark:bg-slate-900/40">
               <ClipboardCheck className="mx-auto h-8 w-8 text-slate-300" />
@@ -564,7 +564,7 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{l.doc_compra}/{l.item}</p>
-                        <p className="text-[11px] text-slate-400">{dataBR(l.data_doc)}</p>
+                        <p className="text-[11px] text-slate-500">{dataBR(l.data_doc)}</p>
                       </div>
                       <span className="shrink-0 text-sm font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                         {formatBRL(l.preco_pedido ?? 0)}
@@ -573,7 +573,7 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
                     <p className="text-xs text-slate-600 dark:text-slate-300 truncate">
                       <span className="font-mono">{l.material}</span>
                       {l.material_generico && <span className="ml-1 text-amber-600 dark:text-amber-400">· genérico</span>}
-                      <span className="block text-[11px] text-slate-400 truncate">{l.txt_breve}</span>
+                      <span className="block text-[11px] text-slate-500 truncate">{l.txt_breve}</span>
                     </p>
                     <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{l.fornecedor_pedido}</p>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
@@ -628,19 +628,19 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
                     <tr key={l.po_id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
                       <td className="px-3 py-2.5 font-semibold text-slate-800 dark:text-slate-100">
                         {l.doc_compra}/{l.item}
-                        <span className="block text-[10px] font-normal text-slate-400">{dataBR(l.data_doc)}</span>
+                        <span className="block text-[10px] font-normal text-slate-500">{dataBR(l.data_doc)}</span>
                       </td>
                       <td className="px-3 py-2.5">
                         <span className="font-mono text-slate-700 dark:text-slate-200">{l.material}</span>
                         {l.material_generico && (
                           <span
-                            className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                            className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
                             title={l.motivo_generico ?? 'Código usado para vários produtos diferentes.'}
                           >
                             GENÉRICO
                           </span>
                         )}
-                        <span className="block text-[10px] text-slate-400">{l.txt_breve}</span>
+                        <span className="block text-[10px] text-slate-500">{l.txt_breve}</span>
                       </td>
                       <td className="px-3 py-2.5 text-slate-600 dark:text-slate-300">
                         {l.fornecedor_pedido}
@@ -659,7 +659,7 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
                       <td className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-300">
                         {l.menor_preco_cotado === null ? '—' : formatBRL(l.menor_preco_cotado)}
                         {l.fornecedores_cotados ? (
-                          <span className="block text-[10px] text-slate-400">{l.fornecedores_cotados} fornecedor(es)</span>
+                          <span className="block text-[10px] text-slate-500">{l.fornecedores_cotados} fornecedor(es)</span>
                         ) : null}
                       </td>
                       <td className="px-3 py-2.5 text-right text-slate-600 dark:text-slate-300">
@@ -737,7 +737,7 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
               ))}
               {rodadas.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-slate-400">Nenhuma rodada registrada.</td>
+                  <td colSpan={7} className="px-3 py-8 text-center text-slate-500">Nenhuma rodada registrada.</td>
                 </tr>
               )}
             </tbody>

@@ -398,7 +398,7 @@ export default function UsageDashboard() {
             </select>
           </div>
 
-          <button
+          <button aria-label="Atualizar dados"
             onClick={() => loadAll()}
             disabled={loading}
             className="p-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
@@ -429,7 +429,7 @@ export default function UsageDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Usuários ativos por dia</h3>
-            <p className="text-xs text-slate-400">Total de usuários únicos que acessaram o app no período</p>
+            <p className="text-xs text-slate-500">Total de usuários únicos que acessaram o app no período</p>
           </div>
           <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 p-0.5 bg-slate-50 dark:bg-slate-800/50">
             {(['day', 'week', 'month'] as Granularity[]).map(g => (
@@ -483,7 +483,7 @@ export default function UsageDashboard() {
         <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
           <div>
             <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Páginas mais visitadas</h3>
-            <p className="text-xs text-slate-400">Ranking por acessos e tempo médio de permanência</p>
+            <p className="text-xs text-slate-500">Ranking por acessos e tempo médio de permanência</p>
           </div>
 
           {loading && !pageRanking.length ? (
@@ -507,26 +507,26 @@ export default function UsageDashboard() {
                         {isExpanded ? (
                           <ChevronDown className="h-4 w-4 text-emerald-600 shrink-0" />
                         ) : (
-                          <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
+                          <ChevronRight className="h-4 w-4 text-slate-500 shrink-0" />
                         )}
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
                             {r.page_label || labelForPath(r.path)}
                           </p>
-                          <p className="text-[10px] text-slate-400 font-mono truncate">{r.path}</p>
+                          <p className="text-[10px] text-slate-500 font-mono truncate">{r.path}</p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-4 text-right shrink-0">
                         <div>
                           <span className="text-xs font-bold text-slate-800 dark:text-slate-200 font-mono">{r.visits}</span>
-                          <span className="text-[10px] text-slate-400 block">visitas</span>
+                          <span className="text-[10px] text-slate-500 block">visitas</span>
                         </div>
                         <div className="w-16">
                           <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
                             {fmtDwell(r.avg_dwell_seconds)}
                           </span>
-                          <span className="text-[10px] text-slate-400 block">médio</span>
+                          <span className="text-[10px] text-slate-500 block">médio</span>
                         </div>
                       </div>
                     </div>
@@ -537,12 +537,12 @@ export default function UsageDashboard() {
                           Usuários que visitaram esta página ({usersList?.length ?? 0}):
                         </p>
                         {isUsersLoading ? (
-                          <div className="flex items-center gap-2 text-slate-400 py-2">
+                          <div className="flex items-center gap-2 text-slate-500 py-2">
                             <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                             <span>Carregando usuários...</span>
                           </div>
                         ) : !usersList?.length ? (
-                          <p className="text-slate-400 py-1">Nenhum usuário encontrado.</p>
+                          <p className="text-slate-500 py-1">Nenhum usuário encontrado.</p>
                         ) : (
                           <ul className="space-y-1 max-h-40 overflow-y-auto">
                             {usersList.map(u => (
@@ -552,7 +552,7 @@ export default function UsageDashboard() {
                                 </span>
                                 <div className="text-right flex items-center gap-3 font-mono text-[11px]">
                                   <span className="text-slate-600 dark:text-slate-400">{u.visits}x</span>
-                                  <span className="text-slate-400 text-[10px]">{fmtDateTime(u.last_visit)}</span>
+                                  <span className="text-slate-500 text-[10px]">{fmtDateTime(u.last_visit)}</span>
                                 </div>
                               </li>
                             ))}
@@ -571,7 +571,7 @@ export default function UsageDashboard() {
         <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
           <div>
             <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Horários de maior uso</h3>
-            <p className="text-xs text-slate-400">Distribuição por dia da semana e hora</p>
+            <p className="text-xs text-slate-500">Distribuição por dia da semana e hora</p>
           </div>
 
           {loading && !byHour.length ? (
@@ -582,12 +582,12 @@ export default function UsageDashboard() {
                 {/* Hour axis */}
                 <div className="flex pl-9">
                   {Array.from({ length: 24 }).map((_, h) => (
-                    <div key={h} className="flex-1 text-center text-[8px] text-slate-400">{h % 3 === 0 ? h : ''}</div>
+                    <div key={h} className="flex-1 text-center text-[10px] text-slate-500">{h % 3 === 0 ? h : ''}</div>
                   ))}
                 </div>
                 {DOW_LABELS.map((dow, dIdx) => (
                   <div key={dIdx} className="flex items-center">
-                    <div className="w-9 text-[10px] font-semibold text-slate-400 shrink-0">{dow}</div>
+                    <div className="w-9 text-[10px] font-semibold text-slate-500 shrink-0">{dow}</div>
                     {Array.from({ length: 24 }).map((_, h) => {
                       const cnt = hourMap.m.get(`${dIdx}-${h}`) || 0;
                       const intensity = hourMap.max > 0 ? cnt / hourMap.max : 0;
@@ -620,10 +620,10 @@ export default function UsageDashboard() {
         >
           {showActiveUsers
             ? <ChevronDown className="h-4 w-4 text-emerald-600 shrink-0" />
-            : <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />}
+            : <ChevronRight className="h-4 w-4 text-slate-500 shrink-0" />}
           <Users className="h-4 w-4 text-emerald-600 shrink-0" />
           <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Usuários ativos no período</span>
-          <span className="ml-auto text-[11px] text-slate-400">
+          <span className="ml-auto text-[11px] text-slate-500">
             {showActiveUsers && activeUserList?.length
               ? `${activeUserList.length} usuário${activeUserList.length === 1 ? '' : 's'} · ordenado pelo último uso`
               : 'Ver quem usou o app e quando'}
@@ -640,7 +640,7 @@ export default function UsageDashboard() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-bold uppercase tracking-wider">
+                    <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-500 font-bold uppercase tracking-wider">
                       <th className="py-2 pl-2 w-8"></th>
                       <th className="py-2">Usuário</th>
                       <th className="py-2 text-right">Sessões</th>
@@ -661,7 +661,7 @@ export default function UsageDashboard() {
                             onClick={() => toggleUserExpand(u.user_id)}
                             className="hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition-colors"
                           >
-                            <td className="py-2 pl-2 text-slate-400">
+                            <td className="py-2 pl-2 text-slate-500">
                               {isUserExpanded ? (
                                 <ChevronDown className="h-4 w-4 text-emerald-600" />
                               ) : (
@@ -673,7 +673,7 @@ export default function UsageDashboard() {
                                 {u.user_name || u.email || u.user_id}
                               </div>
                               {u.user_name && u.email && (
-                                <div className="text-[10px] text-slate-400 truncate">{u.email}</div>
+                                <div className="text-[10px] text-slate-500 truncate">{u.email}</div>
                               )}
                             </td>
                             <td className="py-2 text-right font-mono text-slate-600 dark:text-slate-400">{u.sessions}</td>
@@ -681,7 +681,7 @@ export default function UsageDashboard() {
                             <td className="py-2 text-right text-slate-500 whitespace-nowrap">{fmtDateTime(u.first_event)}</td>
                             <td className="py-2 text-right whitespace-nowrap pr-2">
                               <div className="font-medium text-slate-700 dark:text-slate-300">{fmtDateTime(u.last_event)}</div>
-                              <div className="text-[10px] text-slate-400">{fmtDesde(u.last_event)}</div>
+                              <div className="text-[10px] text-slate-500">{fmtDesde(u.last_event)}</div>
                             </td>
                           </tr>
 
@@ -689,12 +689,12 @@ export default function UsageDashboard() {
                             <tr className="bg-slate-50/70 dark:bg-slate-800/40">
                               <td colSpan={6} className="p-4 pl-8">
                                 {isHistLoading ? (
-                                  <div className="flex items-center gap-2 text-xs text-slate-400 py-3">
+                                  <div className="flex items-center gap-2 text-xs text-slate-500 py-3">
                                     <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-600" />
                                     <span>Carregando histórico de navegação...</span>
                                   </div>
                                 ) : !history || history.length === 0 ? (
-                                  <p className="text-xs text-slate-400 py-2">
+                                  <p className="text-xs text-slate-500 py-2">
                                     Nenhuma navegação de página registrada para este usuário no período.
                                   </p>
                                 ) : (
@@ -718,14 +718,14 @@ export default function UsageDashboard() {
                                           className="flex items-center justify-between gap-3 text-xs bg-white dark:bg-slate-900 px-3 py-2 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs"
                                         >
                                           <div className="flex items-center gap-2 min-w-0 flex-1">
-                                            <span className="font-mono text-[10px] text-slate-400 w-6 text-right shrink-0">
+                                            <span className="font-mono text-[10px] text-slate-500 w-6 text-right shrink-0">
                                               #{idx + 1}
                                             </span>
                                             <div className="min-w-0">
                                               <div className="font-medium text-slate-700 dark:text-slate-200 truncate">
                                                 {visit.page_label}
                                               </div>
-                                              <div className="font-mono text-[10px] text-slate-400 truncate">
+                                              <div className="font-mono text-[10px] text-slate-500 truncate">
                                                 {visit.path}
                                               </div>
                                             </div>
@@ -736,7 +736,7 @@ export default function UsageDashboard() {
                                               <div className="text-[11px] text-slate-600 dark:text-slate-400 font-mono">
                                                 {new Date(visit.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                                               </div>
-                                              <div className="text-[9px] text-slate-400">
+                                              <div className="text-[10px] text-slate-500">
                                                 {new Date(visit.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                                               </div>
                                             </div>
@@ -748,7 +748,7 @@ export default function UsageDashboard() {
                                                   {fmtDwell(visit.dwell_seconds)}
                                                 </span>
                                               ) : (
-                                                <span className="text-[10px] text-slate-400 italic">
+                                                <span className="text-[10px] text-slate-500 italic">
                                                   Última tela
                                                 </span>
                                               )}
@@ -790,7 +790,7 @@ function KpiCard({ icon: Icon, label, value, accent }: { icon: any; label: strin
         <Icon className="h-5 w-5" />
       </div>
       <div className="min-w-0">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">{label}</p>
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">{label}</p>
         <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{value}</p>
       </div>
     </div>
@@ -800,7 +800,7 @@ function KpiCard({ icon: Icon, label, value, accent }: { icon: any; label: strin
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 px-3 py-2">
-      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">{label}</p>
+      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">{label}</p>
       <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{value}</p>
     </div>
   );
@@ -808,7 +808,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 
 function EmptyState({ loading }: { loading: boolean }) {
   return (
-    <div className="flex items-center justify-center h-40 text-xs text-slate-400">
+    <div className="flex items-center justify-center h-40 text-xs text-slate-500">
       {loading ? (
         <span className="flex items-center gap-2"><RefreshCw className="h-4 w-4 animate-spin" /> Carregando...</span>
       ) : (

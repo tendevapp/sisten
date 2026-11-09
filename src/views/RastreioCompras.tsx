@@ -702,7 +702,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
             Acompanhe o ciclo de vida das compras — da requisição à entrega. Busque por RM, PO, item, fornecedor ou setor, e veja a programação de entregas no cronograma.
           </p>
           {lastUpdated && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
+            <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
               <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('historico_pedidos')}
             </p>
           )}
@@ -754,11 +754,11 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
               >
                 <div className={`absolute top-0 left-0 w-1.5 h-full ${k.color}`} />
                 <div className="flex items-center justify-between gap-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1">
                     <Icon className="h-3 w-3" /> {k.label}
                   </span>
                   {isActive && (
-                    <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
+                    <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
                       Filtrado
                     </span>
                   )}
@@ -798,7 +798,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
             tela. Mesmo padrão já usado em Estoque.tsx. */}
         <div className="space-y-3">
           <div data-tour="rastreio-search" className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
             <input
               type="text"
               value={searchQuery}
@@ -809,7 +809,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
           </div>
           <div data-tour="rastreio-filtros" className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
             <div className="relative shrink-0 w-[172px] lg:w-auto lg:min-w-[160px]">
-              <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={tipoFilter}
                 onChange={(e) => setTipoFilter(e.target.value as TipoItemFilter)}
@@ -821,7 +821,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
               </select>
             </div>
             <div className="relative shrink-0 w-[140px] lg:w-auto lg:min-w-[130px]">
-              <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={poFilter}
                 onChange={(e) => {
@@ -837,7 +837,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
               </select>
             </div>
             <div className="relative shrink-0 w-[140px] lg:w-auto lg:min-w-[130px]">
-              <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={prazoFilter}
                 onChange={(e) => {
@@ -854,7 +854,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
               </select>
             </div>
             <div className="relative shrink-0 w-[150px] lg:w-auto lg:min-w-[160px]">
-              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -865,7 +865,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
               </select>
             </div>
             <div className="relative shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]">
-              <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={setorFilter}
                 onChange={(e) => setSetorFilter(e.target.value)}
@@ -876,7 +876,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
               </select>
             </div>
             <div className="relative shrink-0 w-[120px] lg:w-auto lg:min-w-[120px]">
-              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={anoFilter}
                 onChange={(e) => setAnoFilter(e.target.value)}
@@ -919,7 +919,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                       onChange={e => setDateFilters(p => ({ ...p, [key]: { ...p[key], from: e.target.value } }))}
                       className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none"
                     />
-                    <span className="text-[11px] font-bold text-slate-400 shrink-0">até</span>
+                    <span className="text-[11px] font-bold text-slate-500 shrink-0">até</span>
                     <input
                       type="date"
                       value={dateFilters[key].to}
@@ -961,7 +961,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
       {!loading && !error && rows.length === 0 && (
         <div className="flex flex-col items-center justify-center p-16 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl text-center">
-          <Route className="h-12 w-12 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950/30 p-2.5 rounded-full mb-3" />
+          <Route className="h-12 w-12 text-slate-500 dark:text-slate-500 bg-slate-50 dark:bg-slate-950/30 p-2.5 rounded-full mb-3" />
           <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Nenhum registro de compra encontrado</h3>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-md">
             Os dados de rastreio vêm das requisições SAP importadas. Verifique se a base foi importada em Cadastros SAP.
@@ -980,7 +980,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                   {poFilter !== 'Todos' && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[11px] font-semibold">
                       {poFilter}
-                      <button type="button" onClick={() => setPoFilter('Todos')} className="hover:text-rose-600 cursor-pointer ml-0.5" title="Remover filtro">
+                      <button aria-label="Remover filtro" type="button" onClick={() => setPoFilter('Todos')} className="hover:text-rose-600 cursor-pointer ml-0.5" title="Remover filtro">
                         <X className="h-3 w-3" />
                       </button>
                     </span>
@@ -988,7 +988,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                   {prazoFilter !== 'Todos' && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold">
                       {prazoFilter === 'atrasado' ? 'Atrasados' : prazoFilter === 'no_prazo' ? 'No prazo' : prazoFilter === 'entregue' ? 'Entregues' : 'Sem data'}
-                      <button type="button" onClick={() => setPrazoFilter('Todos')} className="hover:text-rose-600 cursor-pointer ml-0.5" title="Remover filtro">
+                      <button aria-label="Remover filtro" type="button" onClick={() => setPrazoFilter('Todos')} className="hover:text-rose-600 cursor-pointer ml-0.5" title="Remover filtro">
                         <X className="h-3 w-3" />
                       </button>
                     </span>
@@ -1003,7 +1003,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                   >
                     <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
                     <span className="hidden sm:inline">Personalizar Colunas</span>
-                    <ChevronDown className="h-3 w-3 text-slate-400" />
+                    <ChevronDown className="h-3 w-3 text-slate-500" />
                   </button>
                   {showColMenu && (
                     <div className="absolute right-0 mt-1.5 w-60 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 z-30 p-3 text-left">
@@ -1162,7 +1162,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                 className="px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-sm font-bold text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
               />
             </label>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-500">
               Use a data em que a carga entrou no almoxarifado — pode ser diferente de hoje e da data de resposta do fornecedor.
             </p>
           </ModalBody>

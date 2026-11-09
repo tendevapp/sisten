@@ -352,9 +352,9 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
         <MultiSelectFilter label="Fornecedor" icon={Building2} allLabel="Todos" searchable options={fornecedorOptions} selected={fornecedores} onChange={setFornecedores}
           renderOption={(nome) => `${nome} (${fornecedorCodigo.get(nome) || ''})`} className="hidden lg:block shrink-0 lg:min-w-[250px]" panelClassName="w-96 max-h-80" />
         <div className="relative min-w-0 flex-1 lg:flex-none lg:shrink-0 lg:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
           <input value={busca} onChange={event => setBusca(event.target.value)} placeholder="NF, material, serviço ou fornecedor" className="pl-9 pr-8 py-2 border rounded-lg text-sm lg:text-xs h-10 lg:h-9 w-full bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700" />
-          {busca && <button onClick={() => setBusca('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 cursor-pointer"><X className="h-3.5 w-3.5" /></button>}
+          {busca && <button aria-label="Fechar" onClick={() => setBusca('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 cursor-pointer"><X className="h-3.5 w-3.5" /></button>}
         </div>
         <select value={tipoItem} onChange={event => setTipoItem(event.target.value as typeof tipoItem)} className="hidden lg:block px-3 py-2 border rounded-lg text-xs h-9 shrink-0 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700">
           <option value="Todos">Todos os itens</option><option value="MATERIAL">Materiais</option><option value="SERVICO">Serviços</option><option value="SEM_ITEM">Sem item identificado</option>
@@ -364,7 +364,7 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
         </select>
         <div className="hidden lg:flex items-center gap-1.5 border rounded-lg px-3 py-1 text-xs h-9 shrink-0 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900">
           <input type="date" value={periodoDe} onChange={event => setPeriodoDe(event.target.value)} className="bg-transparent outline-none" aria-label="Data inicial" />
-          <span className="text-slate-400">até</span>
+          <span className="text-slate-500">até</span>
           <input type="date" value={periodoAte} onChange={event => setPeriodoAte(event.target.value)} className="bg-transparent outline-none" aria-label="Data final" />
         </div>
         <BotaoFiltros ativos={filtrosLigados} onClick={() => setFiltrosAbertos(true)} className="lg:hidden" />
@@ -631,7 +631,7 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
               <MousePointerClick className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
               <span className="truncate"><strong>Item selecionado:</strong> {resumoSelecionado.fornecedorNome} · {resumoSelecionado.descricaoItem}</span>
             </div>
-            <button onClick={() => { setSerieSelecionada(''); setPeriodoAcumuladoSelecionado(null); }} className="shrink-0 p-1 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/50 cursor-pointer" title="Limpar seleção"><X className="h-3.5 w-3.5" /></button>
+            <button aria-label="Limpar seleção" onClick={() => { setSerieSelecionada(''); setPeriodoAcumuladoSelecionado(null); }} className="shrink-0 p-1 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/50 cursor-pointer" title="Limpar seleção"><X className="h-3.5 w-3.5" /></button>
           </div>
         )}
         <TableShell maxHeight="68vh">
@@ -664,14 +664,14 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
                       <Td>
                         <div className="font-bold text-slate-900 dark:text-slate-100">{item.fornecedorNome}</div>
                         <div className="text-slate-500 mt-0.5 truncate max-w-[340px]" title={item.descricaoItem}>{item.descricaoItem}</div>
-                        <div className="font-mono text-[10px] text-slate-400 mt-0.5">{item.itemChave} · última compra {formatDateBR(item.dataUltimaCompra)}</div>
+                        <div className="font-mono text-[10px] text-slate-500 mt-0.5">{item.itemChave} · última compra {formatDateBR(item.dataUltimaCompra)}</div>
                       </Td>
                       <td className="px-3 py-2 text-center tabular">{item.qtdNfs}</td>
                       <Td align="right" numeric>{formatQtd(item.quantidade)}</Td>
                       <Td align="right" numeric strong>{formatBRL(item.valorFaturado)}</Td>
                       <Td align="right" numeric strong className="text-emerald-600 dark:text-emerald-400">{formatBRL(item.valorPagoRastreado)}</Td>
                       <Td align="right" numeric mono>{formatBRL(item.precoUnitarioAtual)}</Td>
-                      <Td align="right">{item.variacaoPrecoPct === null ? <span className="text-slate-400">—</span> : <span className={`inline-flex items-center gap-1 font-bold ${item.variacaoPrecoPct > 0 ? 'text-rose-600' : item.variacaoPrecoPct < 0 ? 'text-emerald-600' : 'text-slate-500'}`}>{item.variacaoPrecoPct > 0 ? <TrendingUp className="h-3 w-3" /> : item.variacaoPrecoPct < 0 ? <TrendingDown className="h-3 w-3" /> : null}{formatPct(item.variacaoPrecoPct)}</span>}</Td>
+                      <Td align="right">{item.variacaoPrecoPct === null ? <span className="text-slate-500">—</span> : <span className={`inline-flex items-center gap-1 font-bold ${item.variacaoPrecoPct > 0 ? 'text-rose-600' : item.variacaoPrecoPct < 0 ? 'text-emerald-600' : 'text-slate-500'}`}>{item.variacaoPrecoPct > 0 ? <TrendingUp className="h-3 w-3" /> : item.variacaoPrecoPct < 0 ? <TrendingDown className="h-3 w-3" /> : null}{formatPct(item.variacaoPrecoPct)}</span>}</Td>
                       <td className="px-3 py-2 text-center">{badgeStatus(item.statusPagamento)}</td>
                     </tr>
                     {expandido && (
@@ -682,7 +682,7 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
                             <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
                               <table className="w-full min-w-[830px] text-xs border-collapse">
                                 <thead><tr className="bg-slate-100/90 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300 text-[10px] uppercase tracking-wide"><th className="px-3 py-2 text-left">Data</th><th className="px-3 py-2 text-left">NF</th><th className="px-3 py-2 text-right">Quantidade</th><th className="px-3 py-2 text-right">Preço unit.</th><th className="px-3 py-2 text-right">Faturado</th><th className="px-3 py-2 text-right">Pago rastreado</th><th className="px-3 py-2 text-center">Pagamento</th><th className="px-3 py-2 text-center">Evidência</th></tr></thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">{detalhes.map(linha => <tr key={linha.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50"><td className="px-3 py-2 tabular">{formatDateBR(linha.data_documento)}</td><td className="px-3 py-2 font-mono font-bold">{linha.numero_nf_normalizado}</td><td className="px-3 py-2 text-right font-mono">{formatQtd(linha.quantidade)}</td><td className="px-3 py-2 text-right font-mono">{formatBRL(linha.preco_unitario)}</td><td className="px-3 py-2 text-right font-mono font-bold">{formatBRL(linha.valor_item_nf)}</td><td className="px-3 py-2 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatBRL(linha.valor_pago_rateado)}</td><td className="px-3 py-2 text-center"><div>{badgeStatus(linha.status_pagamento, () => abrirLancamentosFbl1n(linha))}</div>{detalheExcedenteFbl1n(linha)}</td><td className="px-3 py-2 text-center">{Number(linha.qtd_linhas_zf0076) > 0 ? <span className="text-[10px] font-bold text-violet-700 dark:text-violet-300">ZF0076</span> : <span className="text-slate-400">—</span>}</td></tr>)}</tbody>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">{detalhes.map(linha => <tr key={linha.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50"><td className="px-3 py-2 tabular">{formatDateBR(linha.data_documento)}</td><td className="px-3 py-2 font-mono font-bold">{linha.numero_nf_normalizado}</td><td className="px-3 py-2 text-right font-mono">{formatQtd(linha.quantidade)}</td><td className="px-3 py-2 text-right font-mono">{formatBRL(linha.preco_unitario)}</td><td className="px-3 py-2 text-right font-mono font-bold">{formatBRL(linha.valor_item_nf)}</td><td className="px-3 py-2 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatBRL(linha.valor_pago_rateado)}</td><td className="px-3 py-2 text-center"><div>{badgeStatus(linha.status_pagamento, () => abrirLancamentosFbl1n(linha))}</div>{detalheExcedenteFbl1n(linha)}</td><td className="px-3 py-2 text-center">{Number(linha.qtd_linhas_zf0076) > 0 ? <span className="text-[10px] font-bold text-violet-700 dark:text-violet-300">ZF0076</span> : <span className="text-slate-500">—</span>}</td></tr>)}</tbody>
                               </table>
                             </div>
                           </div>
@@ -745,7 +745,7 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
                             <div className="flex items-center gap-1.5">
                               <span>{linha.fornecedor_nome || linha.fornecedor_codigo}</span>
                               {ehItem && (
-                                <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
                                   Item selecionado
                                 </span>
                               )}

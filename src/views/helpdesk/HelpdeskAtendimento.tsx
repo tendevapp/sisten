@@ -332,9 +332,9 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
               <Radio className="h-4 w-4 text-emerald-700" />
               <h2 className="text-sm font-bold text-slate-800">Fila de Chamados</h2>
             </div>
-            <button 
+            <button aria-label="Atualizar lista" 
               onClick={loadTickets} 
-              className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              className="p-1 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
               title="Atualizar lista"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -343,7 +343,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
 
           {/* Seletor de Setor Destinatário */}
           <div className="flex items-center space-x-2">
-            <span className="text-[11px] font-bold text-slate-400 uppercase shrink-0">Setor:</span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase shrink-0">Setor:</span>
             <select
               value={selectedSectorFilter}
               onChange={(e) => setSelectedSectorFilter(e.target.value)}
@@ -363,7 +363,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
           {/* Campo de Busca & Criticidade */}
           <div className="flex items-center space-x-2">
             <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+              <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
               <input
                 type="text"
                 placeholder="Buscar por nº, solicitante, texto..."
@@ -459,7 +459,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
             <div className="py-16 text-center space-y-2">
               <CheckSquare className="h-8 w-8 text-slate-300 mx-auto" />
               <p className="text-xs font-semibold text-slate-500">Nenhum chamado nesta fila.</p>
-              <p className="text-[11px] text-slate-400">Altere os filtros ou a aba para visualizar outros chamados.</p>
+              <p className="text-[11px] text-slate-500">Altere os filtros ou a aba para visualizar outros chamados.</p>
             </div>
           ) : (
             filteredTickets.map(t => {
@@ -484,7 +484,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
                         {crit.label}
                       </span>
                     </div>
-                    <span className="text-[10px] text-slate-400">{dateStr}</span>
+                    <span className="text-[10px] text-slate-500">{dateStr}</span>
                   </div>
 
                   <p className="text-xs font-semibold text-slate-800 line-clamp-2 leading-relaxed">
@@ -493,7 +493,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
 
                   <div className="flex items-center justify-between pt-1 text-[11px]">
                     <div className="flex items-center space-x-1.5 text-slate-500 truncate max-w-[200px]">
-                      <User className="h-3 w-3 text-slate-400 shrink-0" />
+                      <User className="h-3 w-3 text-slate-500 shrink-0" />
                       <span className="truncate">{t.solicitante_name}</span>
                     </div>
 
@@ -542,7 +542,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
 
                 <div className="flex flex-col sm:items-end space-y-1">
                   <HelpdeskSlaBadge ticket={selectedTicket} size="md" showProgress={true} />
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[10px] text-slate-500">
                     Destino: <strong>{getSectorName(selectedTicket.target_sector_id)}</strong>
                   </span>
                 </div>
@@ -569,7 +569,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
               <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 sm:p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Descrição do Incidente / Solicitação</h3>
-                  <span className="text-[10px] text-slate-400 font-mono">ID: {selectedTicket.id}</span>
+                  <span className="text-[10px] text-slate-500 font-mono">ID: {selectedTicket.id}</span>
                 </div>
                 <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">
                   {selectedTicket.justificativa || 'Sem justificativa informada.'}
@@ -744,13 +744,13 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
                     <MessageSquare className="h-4 w-4 text-emerald-700 mr-1.5" />
                     Histórico & Linha do Tempo
                   </h3>
-                  <span className="text-[11px] text-slate-400">{timelineEvents.length} eventos</span>
+                  <span className="text-[11px] text-slate-500">{timelineEvents.length} eventos</span>
                 </div>
 
                 {/* Eventos da Timeline */}
                 <div className="space-y-3.5 max-h-[380px] overflow-y-auto pr-1">
                   {timelineEvents.length === 0 ? (
-                    <p className="text-xs text-slate-400 text-center py-6">Nenhum evento registrado ainda.</p>
+                    <p className="text-xs text-slate-500 text-center py-6">Nenhum evento registrado ainda.</p>
                   ) : (
                     timelineEvents.map(evt => {
                       const isInternal = evt.isInternal;
@@ -764,7 +764,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
                             </div>
                             <div className="flex-1">
                               <span className="font-semibold text-slate-700">{evt.author}</span>: {evt.content}
-                              <span className="text-[10px] text-slate-400 ml-2">
+                              <span className="text-[10px] text-slate-500 ml-2">
                                 {new Date(evt.date).toLocaleString('pt-BR')}
                               </span>
                             </div>
@@ -796,7 +796,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
                                 </span>
                               )}
                             </div>
-                            <span className="text-slate-400 text-[10px]">
+                            <span className="text-slate-500 text-[10px]">
                               {new Date(evt.date).toLocaleString('pt-BR')}
                             </span>
                           </div>
@@ -857,7 +857,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
 
                       {showCannedDropdown && (
                         <div className="absolute right-0 bottom-full mb-1 w-72 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-20 space-y-1">
-                          <p className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase">Modelos de Resposta</p>
+                          <p className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase">Modelos de Resposta</p>
                           {CANNED_RESPONSES.map((item, idx) => (
                             <button
                               key={idx}
@@ -891,7 +891,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
                           : 'border-slate-200 focus:ring-1 focus:ring-emerald-600 bg-white'
                       }`}
                     />
-                    <button
+                    <button aria-label="Enviar"
                       type="submit"
                       className={`rounded-xl px-4 text-white font-bold text-xs flex items-center justify-center transition-colors cursor-pointer ${
                         noteType === 'internal'
@@ -911,10 +911,10 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
 
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 text-center space-y-3">
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-500 p-8 text-center space-y-3">
             <Radio className="h-12 w-12 text-slate-300" />
             <h3 className="text-sm font-bold text-slate-600">Nenhum chamado selecionado</h3>
-            <p className="text-xs text-slate-400 max-w-sm">
+            <p className="text-xs text-slate-500 max-w-sm">
               Selecione um chamado na lista à esquerda para visualizar os detalhes, interagir na timeline ou assumir o atendimento.
             </p>
           </div>

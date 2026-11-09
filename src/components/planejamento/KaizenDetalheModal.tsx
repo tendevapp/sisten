@@ -292,7 +292,7 @@ export default function KaizenDetalheModal({ user, kaizen, onClose, onAlterado, 
 function Info({ rotulo, valor }: { rotulo: string; valor: string | null | undefined }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{rotulo}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{rotulo}</p>
       <p className="truncate font-medium text-slate-800 dark:text-slate-100">{valor || '—'}</p>
     </div>
   );

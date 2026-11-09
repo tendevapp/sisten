@@ -57,7 +57,7 @@ function CartaoTramo({ t, dias, faixa, selecionado, modoSelecao, pendente, onCli
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          {modoSelecao && (selecionado ? <CheckSquare className="h-4 w-4 text-blue-600" /> : <Square className="h-4 w-4 text-slate-400" />)}
+          {modoSelecao && (selecionado ? <CheckSquare className="h-4 w-4 text-blue-600" /> : <Square className="h-4 w-4 text-slate-500" />)}
           <span className="font-mono text-base font-bold text-slate-900 dark:text-slate-50">{t.serie}</span>
         </div>
         {dias !== null && <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${CLASSE_FAIXA[faixa]}`}>{dias}d</span>}
@@ -176,7 +176,7 @@ export default function QuadroTramos({ tramos, situacoes, hoje, user, onRegistra
                 onClick={() => tocar(t)}
               />
             ))}
-            {!lista.length && <p className="px-2 py-4 text-center text-xs text-slate-400">Nenhum tramo.</p>}
+            {!lista.length && <p className="px-2 py-4 text-center text-xs text-slate-500">Nenhum tramo.</p>}
           </div>
         )}
       </section>
@@ -191,7 +191,7 @@ export default function QuadroTramos({ tramos, situacoes, hoje, user, onRegistra
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-full sm:w-60">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               value={busca}
               onChange={e => setBusca(e.target.value)}

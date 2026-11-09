@@ -237,7 +237,7 @@ export default function PromptsIaSection({ usuarioId, usuarioNome }: Props) {
       </div>
 
       {carregando ? (
-        <div className="flex justify-center py-10 text-slate-400">
+        <div className="flex justify-center py-10 text-slate-500">
           <Loader2 className="h-5 w-5 animate-spin" />
         </div>
       ) : prompts.length === 0 ? (
@@ -248,7 +248,7 @@ export default function PromptsIaSection({ usuarioId, usuarioNome }: Props) {
         <div className="grid gap-5 lg:grid-cols-[250px_1fr]">
           {/* Coluna da esquerda: lista de endpoints/prompts */}
           <div className="space-y-1.5">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-1">
               Rotinas com IA
             </span>
             {prompts.map(p => (
@@ -270,7 +270,7 @@ export default function PromptsIaSection({ usuarioId, usuarioNome }: Props) {
                     <XCircle className="h-3.5 w-3.5 text-rose-500 shrink-0" />
                   )}
                 </div>
-                <span className="mt-1 block font-mono text-[10px] text-slate-400">{p.chave}</span>
+                <span className="mt-1 block font-mono text-[10px] text-slate-500">{p.chave}</span>
                 <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
                   <span className="font-semibold text-violet-700 dark:text-violet-300">
                     1º {p.parametros?.ordem_provedores?.[0] ? PROVEDORES_IA_INFO[p.parametros.ordem_provedores[0]]?.nome?.split(' ')[0] : 'IA'}
@@ -299,7 +299,7 @@ export default function PromptsIaSection({ usuarioId, usuarioNome }: Props) {
                     />
                     Ativo
                   </label>
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[10px] text-slate-500">
                     v{atual.versao} · {new Date(atual.updated_at).toLocaleString('pt-BR')}
                   </span>
                 </div>
@@ -389,7 +389,7 @@ export default function PromptsIaSection({ usuarioId, usuarioNome }: Props) {
                             <span
                               className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold border ${
                                 !ativo
-                                  ? 'border-dashed border-slate-300 text-slate-400 dark:border-slate-700 dark:text-slate-600 line-through opacity-70'
+                                  ? 'border-dashed border-slate-300 text-slate-500 dark:border-slate-700 dark:text-slate-600 line-through opacity-70'
                                   : idx === 0
                                   ? 'border-violet-400 bg-violet-600 text-white shadow-xs'
                                   : 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200'
@@ -400,7 +400,7 @@ export default function PromptsIaSection({ usuarioId, usuarioNome }: Props) {
                               <span className="font-mono text-[10px] opacity-80">({modelo})</span>
                             </span>
                             {idx < ordemProvedores.length - 1 && (
-                              <span className="text-slate-400 font-bold text-xs">➔</span>
+                              <span className="text-slate-500 font-bold text-xs">➔</span>
                             )}
                           </React.Fragment>
                         );
@@ -444,21 +444,21 @@ export default function PromptsIaSection({ usuarioId, usuarioNome }: Props) {
                             <div className="flex items-center gap-3">
                               {/* Controles de Posição / Ordem */}
                               <div className="flex flex-col gap-0.5">
-                                <button
+                                <button aria-label="Mover para cima"
                                   type="button"
                                   title="Mover para cima"
                                   disabled={isPrimeiro}
                                   onClick={() => moverProvedor(index, 'cima')}
-                                  className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-20 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                                  className="p-1 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-20 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
                                 >
                                   <ArrowUp className="h-3.5 w-3.5" />
                                 </button>
-                                <button
+                                <button aria-label="Mover para baixo"
                                   type="button"
                                   title="Mover para baixo"
                                   disabled={isUltimo}
                                   onClick={() => moverProvedor(index, 'baixo')}
-                                  className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-20 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                                  className="p-1 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-20 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
                                 >
                                   <ArrowDown className="h-3.5 w-3.5" />
                                 </button>
@@ -480,7 +480,7 @@ export default function PromptsIaSection({ usuarioId, usuarioNome }: Props) {
                                     {info.nome}
                                   </h5>
                                 </div>
-                                <p className="text-[10px] text-slate-400 mt-0.5">{info.subtitulo}</p>
+                                <p className="text-[10px] text-slate-500 mt-0.5">{info.subtitulo}</p>
                               </div>
                             </div>
 
@@ -556,8 +556,8 @@ export default function PromptsIaSection({ usuarioId, usuarioNome }: Props) {
 
               {/* Barra de Ações Inferior */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                  <Info className="h-3.5 w-3.5 text-slate-400" />
+                <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                  <Info className="h-3.5 w-3.5 text-slate-500" />
                   <span>
                     {alterado ? 'Há alterações não salvas' : 'Configurações sincronizadas com a versão atual'}
                   </span>

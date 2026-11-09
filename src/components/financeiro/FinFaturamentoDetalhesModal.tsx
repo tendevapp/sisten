@@ -206,66 +206,66 @@ export default function FinFaturamentoDetalhesModal({
               {/* Grid de campos */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/30">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Torre</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Torre</p>
                   <p className="mt-0.5 text-base font-bold text-slate-900 dark:text-slate-100">Torre {linhaIndividual.torre_numero}</p>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/30">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Tramo</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Tramo</p>
                   <p className="mt-0.5 text-base font-bold text-slate-900 dark:text-slate-100">{linhaIndividual.tramo}</p>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/30">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Sequencial (Série)</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Sequencial (Série)</p>
                   <p className="mt-0.5 font-mono text-base font-bold text-slate-900 dark:text-slate-100">
                     {linhaIndividual.serie ?? '—'}
                   </p>
                 </div>
 
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/30">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Nota Fiscal</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Nota Fiscal</p>
                   <p className="mt-0.5 font-mono text-sm font-bold text-slate-900 dark:text-slate-100">
                     {linhaIndividual.nota_fiscal || '—'}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/30">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Data Faturado</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Data Faturado</p>
                   <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
                     {fmtDataBR(linhaIndividual.data_faturado)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/30">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Semana Faturamento</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Semana Faturamento</p>
                   <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
                     {linhaIndividual.semana_faturamento != null ? `Semana ${linhaIndividual.semana_faturamento}` : '—'}
                   </p>
                 </div>
 
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/30">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Data Expedido</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Data Expedido</p>
                   <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
                     {fmtDataBR(linhaIndividual.data_expedido)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/30">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Tramos Previstos</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Tramos Previstos</p>
                   <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
                     {fmtDataBR(linhaIndividual.data_tramos_previstos)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/30">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Código Cliente</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Código Cliente</p>
                   <p className="mt-0.5 truncate text-sm font-medium text-slate-700 dark:text-slate-300">
                     {linhaIndividual.codigo_cliente || '—'}
                   </p>
                 </div>
 
                 <div className="col-span-2 rounded-xl border border-slate-100 bg-slate-50/50 p-3 sm:col-span-2 dark:border-slate-800 dark:bg-slate-800/30">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Part Number</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Part Number</p>
                   <p className="mt-0.5 truncate font-mono text-xs font-medium text-slate-700 dark:text-slate-300">
                     {linhaIndividual.part_number || '—'}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-800/30">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Projeto</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Projeto</p>
                   <p className="mt-0.5 truncate text-sm font-medium text-slate-700 dark:text-slate-300">
                     {linhaIndividual.projeto_codigo || 'GW Jacobina'}
                   </p>
@@ -284,7 +284,7 @@ export default function FinFaturamentoDetalhesModal({
             </div>
           ) : (
             <div className="p-6 text-center">
-              <Clock className="mx-auto h-10 w-10 text-slate-400" />
+              <Clock className="mx-auto h-10 w-10 text-slate-500" />
               <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
                 Torre {detalhe.torre} · Tramo {detalhe.tramo} ainda não foi cadastrado.
               </p>
@@ -299,7 +299,7 @@ export default function FinFaturamentoDetalhesModal({
             {/* Faixa de KPIs compacta */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5 dark:border-slate-800 dark:bg-slate-950/40">
-                <span className="text-[11px] font-semibold uppercase text-slate-400">Total</span>
+                <span className="text-[11px] font-semibold uppercase text-slate-500">Total</span>
                 <p className="text-lg font-bold text-slate-900 dark:text-slate-100">{contagens.total}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5 dark:border-slate-800 dark:bg-slate-950/40">
@@ -387,7 +387,7 @@ export default function FinFaturamentoDetalhesModal({
 
               {/* Busca */}
               <div className="relative w-full sm:w-64">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
                   placeholder="Filtrar torre, NF, seq..."
@@ -448,30 +448,30 @@ export default function FinFaturamentoDetalhesModal({
                             Sim
                           </span>
                         ) : (
-                          <span className="text-slate-400">—</span>
+                          <span className="text-slate-500">—</span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex items-center justify-end gap-1">
                           {onVerTramo && (
-                            <button
+                            <button aria-label="Ver detalhes deste tramo"
                               type="button"
                               onClick={() => onVerTramo(l, l.torre_numero, l.tramo)}
                               title="Ver detalhes deste tramo"
-                              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                              className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                             >
                               <ArrowRight className="h-3.5 w-3.5" />
                             </button>
                           )}
                           {onEditarLinha && (
-                            <button
+                            <button aria-label="Editar este lançamento"
                               type="button"
                               onClick={() => {
                                 onFechar();
                                 onEditarLinha(l);
                               }}
                               title="Editar este lançamento"
-                              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800"
+                              className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800"
                             >
                               <Edit2 className="h-3.5 w-3.5" />
                             </button>
@@ -495,7 +495,7 @@ export default function FinFaturamentoDetalhesModal({
 
       <ModalFooter>
         <div className="flex w-full items-center justify-between">
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-slate-500">
             {ehVisualizacaoIndividual && linhaIndividual ? (
               linhaIndividual.updated_at ? `Última edição: ${fmtDataBR(linhaIndividual.updated_at)}` : ''
             ) : (

@@ -179,7 +179,7 @@ export default function KaizenForm({ user, onSalvo, kaizen, onCancelar }: Props)
                 {f.preview_url ? (
                   <img src={f.preview_url} alt={f.name} className="h-full w-full object-cover" />
                 ) : (
-                  <span className="flex h-full items-center justify-center p-1 text-center text-[10px] text-slate-400">{f.name}</span>
+                  <span className="flex h-full items-center justify-center p-1 text-center text-[10px] text-slate-500">{f.name}</span>
                 )}
                 <button
                   type="button"
@@ -212,7 +212,7 @@ export default function KaizenForm({ user, onSalvo, kaizen, onCancelar }: Props)
             Nome do profissional <span className="text-red-500">*</span>
           </label>
           <div className="relative">
-            <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               value={nome}
               required
@@ -238,7 +238,7 @@ export default function KaizenForm({ user, onSalvo, kaizen, onCancelar }: Props)
                     onClick={() => escolherColaborador(c)}
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-blue-50 dark:hover:bg-slate-800"
                   >
-                    <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    <Search className="h-3.5 w-3.5 shrink-0 text-slate-500" />
                     <span className="flex-1 truncate text-slate-800 dark:text-slate-100">{c.nome}</span>
                     <span className="font-mono text-xs text-slate-500">{c.registro}</span>
                   </button>

@@ -84,7 +84,7 @@ export default function QualidadeHub({ onNavigate }: QualidadeHubProps) {
       {metricas && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
-            <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total de RNCs</span>
+            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total de RNCs</span>
             <p className="mt-1 font-display text-2xl font-bold text-slate-900 dark:text-slate-100">{metricas.total}</p>
           </div>
           <div className="rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4 shadow-2xs dark:border-amber-900/40 dark:bg-amber-950/20">

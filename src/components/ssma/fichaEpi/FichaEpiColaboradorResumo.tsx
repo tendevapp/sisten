@@ -23,7 +23,7 @@ const thCls = 'px-3 py-2.5 font-bold';
 function Dado({ rotulo, valor }: { rotulo: string; valor?: string | null }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{rotulo}</dt>
+      <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{rotulo}</dt>
       <dd className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100" title={valor || undefined}>{valor || '—'}</dd>
     </div>
   );
@@ -33,7 +33,7 @@ function Indicador({ rotulo, valor, destaque }: { rotulo: string; valor: string 
   const cor = destaque === 'aviso' ? 'text-amber-700 dark:text-amber-400' : destaque === 'perigo' ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-slate-50';
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{rotulo}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{rotulo}</p>
       <p className={`text-base font-bold tabular-nums ${cor}`}>{valor}</p>
     </div>
   );
@@ -131,7 +131,7 @@ export default function FichaEpiColaboradorResumo({ fichas, cadastro }: Props) {
                     <td className="px-3 py-2">{item.ca || '—'}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatarQuantidade(item.quantidade)}</td>
                     <td className={`px-3 py-2 ${item.motivo === 3 ? 'font-bold text-red-600 dark:text-red-400' : ''}`} title={MOTIVOS_MED[item.motivo]}>{item.motivo}. {MOTIVOS_MED[item.motivo]}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{item.data_devolucao ? formatarDataBR(item.data_devolucao) : <span className="text-slate-400">em uso</span>}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{item.data_devolucao ? formatarDataBR(item.data_devolucao) : <span className="text-slate-500">em uso</span>}</td>
                     <td className={`px-3 py-2 whitespace-nowrap ${situacao.cls}`}>{situacao.texto}</td>
                     <td className="px-3 py-2 pr-4 text-slate-500">{ficha.criado_por_nome || '—'}</td>
                   </tr>

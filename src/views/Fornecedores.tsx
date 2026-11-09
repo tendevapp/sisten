@@ -258,11 +258,11 @@ function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: C
             
             {/* Coluna da Esquerda: Dados Básicos */}
             <div className="space-y-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Dados Principais</h3>
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Dados Principais</h3>
               
               <div className="space-y-1.5">
                 <label htmlFor="new_cod_vendor" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Código SAP <span className="text-xs font-normal text-slate-400">(opcional)</span>
+                  Código SAP <span className="text-xs font-normal text-slate-500">(opcional)</span>
                 </label>
                 <input
                   id="new_cod_vendor"
@@ -365,7 +365,7 @@ function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: C
               </div>
 
               <div className="space-y-4 pt-3 border-t border-slate-200 dark:border-slate-700">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Representante (Opcional)</h3>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Representante (Opcional)</h3>
 
                 <div className="space-y-1.5">
                   <label htmlFor="new_representante_nome" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
@@ -449,7 +449,7 @@ function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: C
               {/* Seção de E-mails */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">E-mails de Contato</h3>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">E-mails de Contato</h3>
                   <button
                     type="button"
                     onClick={handleAddEmail}
@@ -470,7 +470,7 @@ function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: C
                         className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                       />
                       {emails.length > 1 && (
-                        <button
+                        <button aria-label="Remover este e-mail"
                           type="button"
                           onClick={() => handleRemoveEmail(index)}
                           className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors shrink-0"
@@ -487,7 +487,7 @@ function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: C
               {/* Seção de Telefones */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Telefones de Contato</h3>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Telefones de Contato</h3>
                   <button
                     type="button"
                     onClick={handleAddTelefone}
@@ -508,7 +508,7 @@ function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: C
                         className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                       />
                       {telefones.length > 1 && (
-                        <button
+                        <button aria-label="Remover este telefone"
                           type="button"
                           onClick={() => handleRemoveTelefone(index)}
                           className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors shrink-0"
@@ -713,11 +713,11 @@ function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }:
             
             {/* Coluna Esquerda: Campos Principais */}
             <div className="space-y-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Dados Principais</h3>
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Dados Principais</h3>
 
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Código SAP (Vendor) <span className="text-xs font-normal text-slate-400">(opcional)</span>
+                  Código SAP (Vendor) <span className="text-xs font-normal text-slate-500">(opcional)</span>
                 </label>
                 <input
                   type="text"
@@ -866,7 +866,7 @@ function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }:
               {/* Seção de E-mails */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">E-mails de Contato</h3>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">E-mails de Contato</h3>
                   {canEdit && (
                     <button
                       type="button"
@@ -890,7 +890,7 @@ function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }:
                         className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-555 px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                       />
                       {canEdit && emails.length > 1 && (
-                        <button
+                        <button aria-label="Remover este e-mail"
                           type="button"
                           onClick={() => handleRemoveEmail(index)}
                           className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors shrink-0"
@@ -907,7 +907,7 @@ function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }:
               {/* Seção de Telefones */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Telefones de Contato</h3>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Telefones de Contato</h3>
                   {canEdit && (
                     <button
                       type="button"
@@ -931,7 +931,7 @@ function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }:
                         className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-555 px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                       />
                       {canEdit && telefones.length > 1 && (
-                        <button
+                        <button aria-label="Remover este telefone"
                           type="button"
                           onClick={() => handleRemoveTelefone(index)}
                           className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors shrink-0"
@@ -1434,7 +1434,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   };
 
   const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <ChevronsUpDown className="h-3.5 w-3.5 text-slate-400 ml-1" />;
+    if (sortField !== field) return <ChevronsUpDown className="h-3.5 w-3.5 text-slate-500 ml-1" />;
     return sortDir === 'asc'
       ? <ChevronUp className="h-3.5 w-3.5 text-blue-500 ml-1" />
       : <ChevronDown className="h-3.5 w-3.5 text-blue-500 ml-1" />;
@@ -1719,7 +1719,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                       </div>
                     ))
                   ) : filteredRows.length === 0 ? (
-                    <div className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
+                    <div className="px-4 py-16 text-center text-slate-500 dark:text-slate-500">
                       <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
                       <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
                       {hasFilters && <p className="text-xs mt-1">Tente ajustar os filtros</p>}
@@ -1763,7 +1763,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                       <div className="mt-1.5 flex flex-col gap-1 text-xs text-slate-500 dark:text-slate-400">
                         {locText && (
                           <span className="flex items-center gap-1.5 truncate text-slate-600 dark:text-slate-300 font-medium">
-                            <MapPin className="h-3 w-3 shrink-0 text-slate-400" /> {locText}
+                            <MapPin className="h-3 w-3 shrink-0 text-slate-500" /> {locText}
                           </span>
                         )}
                         {row.telefone && (
@@ -1841,7 +1841,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                         ))
                       ) : filteredRows.length === 0 ? (
                         <tr>
-                          <td colSpan={12} className="px-4 py-20 text-center text-slate-400 dark:text-slate-500">
+                          <td colSpan={12} className="px-4 py-20 text-center text-slate-500 dark:text-slate-500">
                             <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
                             <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
                             {hasFilters && <p className="text-xs mt-1">Tente ajustar os filtros</p>}
@@ -1866,7 +1866,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                         >
                           <td className="px-4 py-3.5">
                             <span className="font-mono text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5">
-                              {row.cod_vendor || <span className="text-slate-400 font-normal italic">Sem SAP</span>}
+                              {row.cod_vendor || <span className="text-slate-500 font-normal italic">Sem SAP</span>}
                             </span>
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
@@ -1876,17 +1876,17 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                           </td>
                           <td className="px-4 py-3.5 max-w-[240px]">
                             <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate block" title={row.fornecedor}>
-                              {row.fornecedor || <span className="text-slate-400 font-normal">—</span>}
+                              {row.fornecedor || <span className="text-slate-500 font-normal">—</span>}
                             </span>
                           </td>
                           <td className="px-4 py-3.5 max-w-[200px]">
                             <span className="text-sm text-slate-700 dark:text-slate-200 truncate block font-medium" title={row.nome_fantasia || ''}>
-                              {row.nome_fantasia || <span className="text-slate-400 font-normal">—</span>}
+                              {row.nome_fantasia || <span className="text-slate-500 font-normal">—</span>}
                             </span>
                           </td>
                           <td className="px-4 py-3.5 max-w-[180px]">
                             <span className="text-sm text-slate-700 dark:text-slate-200 truncate block" title={row.nome_contato || ''}>
-                              {row.nome_contato || <span className="text-slate-400 font-normal">—</span>}
+                              {row.nome_contato || <span className="text-slate-500 font-normal">—</span>}
                             </span>
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
@@ -1895,7 +1895,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                                 {loc.uf}
                               </span>
                             ) : (
-                              <span className="text-slate-400">—</span>
+                              <span className="text-slate-500">—</span>
                             )}
                           </td>
                           <td className="px-4 py-3.5 max-w-[160px]">
@@ -1905,16 +1905,16 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                           </td>
                           <td className="px-4 py-3.5">
                             <span className="text-sm text-slate-700 dark:text-slate-200 block truncate max-w-[200px]" title={splitMultiValues(row.telefone).join(', ')}>
-                              {row.telefone ? splitMultiValues(row.telefone).join(', ') : <span className="text-slate-400">—</span>}
+                              {row.telefone ? splitMultiValues(row.telefone).join(', ') : <span className="text-slate-500">—</span>}
                             </span>
                           </td>
                           <td className="px-4 py-3.5">
                             <span className="text-sm text-slate-700 dark:text-slate-200" title={splitMultiValues(row.email).join(', ')}>
-                              {row.email ? splitMultiValues(row.email).join(', ') : <span className="text-slate-400">—</span>}
+                              {row.email ? splitMultiValues(row.email).join(', ') : <span className="text-slate-500">—</span>}
                             </span>
                           </td>
                           <td className="px-4 py-3.5">
-                            {classifBadge(row.classificacao) || <span className="text-slate-400 text-xs">—</span>}
+                            {classifBadge(row.classificacao) || <span className="text-slate-500 text-xs">—</span>}
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                             {canEdit ? (
@@ -1941,7 +1941,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                             )}
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-slate-500">
                               {row.updated_at
                                 ? new Date(row.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
                                 : row.created_at
@@ -2044,7 +2044,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                         ))
                       ) : paginatedNaoCadastrados.length === 0 ? (
                         <tr>
-                          <td colSpan={canEdit ? 7 : 6} className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
+                          <td colSpan={canEdit ? 7 : 6} className="px-4 py-16 text-center text-slate-500 dark:text-slate-500">
                             <UserX className="h-8 w-8 mx-auto mb-3 opacity-30" />
                             <p className="text-sm font-medium">Nenhum fornecedor pendente de cadastro</p>
                             {naoCadastradosSearch && <p className="text-xs mt-1">Tente ajustar a busca</p>}
@@ -2079,7 +2079,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                                   {loc.uf}
                                 </span>
                               ) : (
-                                <span className="text-slate-400">—</span>
+                                <span className="text-slate-500">—</span>
                               )}
                             </td>
                             <td className="px-4 py-3.5 max-w-[160px]">

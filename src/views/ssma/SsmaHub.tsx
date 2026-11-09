@@ -330,7 +330,7 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral', 
                   <span className={`flex h-7 w-7 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl ${form.cor}`}>
                     <Icon className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
                   </span>
-                  <span className="font-mono text-[9px] sm:text-[11px] font-bold px-1 sm:px-2 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 truncate max-w-[65px] sm:max-w-none">
+                  <span className="font-mono text-[10px] sm:text-[11px] font-bold px-1 sm:px-2 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 truncate max-w-[65px] sm:max-w-none">
                     {form.codigo}
                   </span>
                 </div>
@@ -345,7 +345,7 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral', 
               </div>
 
               <div className="mt-2.5 sm:mt-5 flex w-full items-center justify-between border-t border-slate-100 pt-2 sm:pt-3 dark:border-slate-800">
-                <span className={`rounded-full border px-1.5 sm:px-2.5 py-0.5 text-[9px] sm:text-[11px] font-semibold truncate ${form.badgeCor}`}>
+                <span className={`rounded-full border px-1.5 sm:px-2.5 py-0.5 text-[10px] sm:text-[11px] font-semibold truncate ${form.badgeCor}`}>
                   {form.badge}
                 </span>
 

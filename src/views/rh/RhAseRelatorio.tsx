@@ -375,7 +375,7 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
         </div>
       ) : solicitacoes.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center dark:border-slate-800 dark:bg-slate-900">
-          <CalendarDays className="mx-auto mb-2 h-8 w-8 text-slate-400" />
+          <CalendarDays className="mx-auto mb-2 h-8 w-8 text-slate-500" />
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
             Nenhuma ASE no período e filtros selecionados.
           </p>
@@ -509,7 +509,7 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
                         <td className="whitespace-nowrap px-4 py-2 font-semibold text-slate-900 dark:text-slate-100">{s.numero_protocolo}</td>
                         <td className="whitespace-nowrap px-3 py-2">
                           {formatarDataBR(s.data_execucao)}
-                          <span className="ml-1 text-[10px] text-slate-400">{diaDaSemana(s.data_execucao)}</span>
+                          <span className="ml-1 text-[10px] text-slate-500">{diaDaSemana(s.data_execucao)}</span>
                         </td>
                         <td className="px-3 py-2">{s.setor_nome || '-'}</td>
                         <td className="px-3 py-2">{s.turno_nome || '-'}</td>
@@ -576,7 +576,7 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
                       </td>
                       <td className="whitespace-nowrap px-3 py-2">
                         {formatarDataBR(l.data_execucao)}
-                        <span className="ml-1 text-[10px] text-slate-400">{diaDaSemana(l.data_execucao)}</span>
+                        <span className="ml-1 text-[10px] text-slate-500">{diaDaSemana(l.data_execucao)}</span>
                       </td>
                       <td className="px-3 py-2">{l.registro ? `${l.registro} - ${l.nome}` : l.nome}</td>
                       <td className="px-3 py-2">{l.setor}</td>

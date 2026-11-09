@@ -297,7 +297,7 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
             {groups.map(g => (
               <div key={g.group} className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2 px-1">
-                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-500">
                     {g.group}
                   </h4>
                   {g.pages.some(p => !p.alwaysAdmin) && (
@@ -345,7 +345,7 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
                               {p.label}
                             </p>
                             {p.alwaysAdmin && (
-                              <span className="text-[10px] text-slate-400">(Acesso exclusivo para administradores)</span>
+                              <span className="text-[10px] text-slate-500">(Acesso exclusivo para administradores)</span>
                             )}
                           </div>
 
@@ -355,7 +355,7 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
                               onChange={(val) => setAction(p.id, val)}
                             />
                           ) : (
-                            <span className="text-[10px] font-semibold text-slate-400">(não editável)</span>
+                            <span className="text-[10px] font-semibold text-slate-500">(não editável)</span>
                           )}
                         </div>
 
@@ -405,7 +405,7 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
                                         <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
                                           {sub.label}
                                         </p>
-                                        <p className="text-[10px] text-slate-400 truncate hidden sm:block">
+                                        <p className="text-[10px] text-slate-500 truncate hidden sm:block">
                                           {sub.descricao}
                                         </p>
                                       </div>
@@ -431,7 +431,7 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
                                               <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
                                                 {f.label}
                                               </p>
-                                              <span className="text-[9px] text-slate-400">
+                                              <span className="text-[10px] text-slate-500">
                                                 {f.codigo ? `${f.codigo} • ` : ''}{f.descricao}
                                               </span>
                                             </div>
@@ -451,7 +451,7 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
                                           <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-200">
                                             Escopo ASE:
                                           </p>
-                                          <p className="text-[10px] text-slate-400">
+                                          <p className="text-[10px] text-slate-500">
                                             Visibilidade de solicitações no formulário ASE
                                           </p>
                                         </div>
@@ -511,7 +511,7 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
                                           <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-200">
                                             Edição RID:
                                           </p>
-                                          <p className="text-[10px] text-slate-400">
+                                          <p className="text-[10px] text-slate-500">
                                             Permissão de edição nos registros de desvio RID (ver todas é liberado)
                                           </p>
                                         </div>

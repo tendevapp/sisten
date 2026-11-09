@@ -189,7 +189,7 @@ export default function ProducaoLancamentos({ user }: Props) {
   if (carregandoBase) {
     return (
       <div className="flex justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
       </div>
     );
   }
@@ -278,7 +278,7 @@ export default function ProducaoLancamentos({ user }: Props) {
         <div className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
                 value={filtroTexto}
@@ -305,7 +305,7 @@ export default function ProducaoLancamentos({ user }: Props) {
 
           {carregandoFila ? (
             <div className="flex justify-center py-10">
-              <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+              <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
             </div>
           ) : listaExibida.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
@@ -333,10 +333,10 @@ export default function ProducaoLancamentos({ user }: Props) {
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <button
+                      <button aria-label="Ver ficha da peça"
                         onClick={() => setFichaAberta(item)}
                         title="Ver ficha da peça"
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
                       >
                         <Eye className="h-4 w-4" />
                       </button>

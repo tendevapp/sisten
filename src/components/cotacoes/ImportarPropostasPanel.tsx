@@ -817,13 +817,13 @@ export default function ImportarPropostasPanel({
               : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50'
           }`}
         >
-          <UploadCloud className="h-6 w-6 text-slate-400" />
+          <UploadCloud className="h-6 w-6 text-slate-500" />
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Arraste as propostas aqui ou clique para selecionar</p>
-          <p className="text-[11px] text-slate-400">XLSX, XLS, CSV, JSON, XML, PDF, imagens (JPG/PNG/...) · vários de uma vez</p>
+          <p className="text-[11px] text-slate-500">XLSX, XLS, CSV, JSON, XML, PDF, imagens (JPG/PNG/...) · vários de uma vez</p>
           <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
             PDFs digitais são extraídos instantaneamente no navegador (custo R$ 0). PDFs escaneados e imagens usam IA (OCR) automaticamente.
           </p>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-slate-500">
             Conversão automática: os arquivos são convertidos para Markdown ao carregar. Clique em <strong>"Extrair cotação com IA"</strong> para processar as propostas.
           </p>
         </div>
@@ -845,7 +845,7 @@ export default function ImportarPropostasPanel({
             <p className={`text-xs font-semibold ${semItens ? 'text-amber-800 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>
               {semItens ? 'A cotação está em imagem?' : 'Cotação em imagem ou PDF sem texto?'}
             </p>
-            <p className={`mt-0.5 text-[11px] ${semItens ? 'text-amber-700 dark:text-amber-400' : 'text-slate-400'}`}>
+            <p className={`mt-0.5 text-[11px] ${semItens ? 'text-amber-700 dark:text-amber-400' : 'text-slate-500'}`}>
               Envie um print da cotação (ou cole com Ctrl+V). A IA lê a imagem por OCR e extrai os itens.
             </p>
           </div>
@@ -896,7 +896,7 @@ export default function ImportarPropostasPanel({
               <button
                 type="button"
                 onClick={() => setConfirmLimparLista(true)}
-                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 hover:text-rose-600 transition-colors"
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 hover:text-rose-600 transition-colors"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Limpar lista
@@ -904,7 +904,7 @@ export default function ImportarPropostasPanel({
             </div>
 
             <div>
-              <div className="flex items-center justify-between text-[11px] text-slate-400">
+              <div className="flex items-center justify-between text-[11px] text-slate-500">
                 <span>{finalizados} de {total} processado(s)</span>
                 <span>{progressoPct}%</span>
               </div>
@@ -963,7 +963,7 @@ export default function ImportarPropostasPanel({
 
           {itensSelecionados.length > 0 ? (
             <>
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="mt-1 text-[11px] text-slate-500">
                 {consolidado.length.toLocaleString('pt-BR')} caracteres · ~{estimarTokens(consolidado).toLocaleString('pt-BR')} tokens estimados · pré-visualização abaixo, confira antes de extrair
               </p>
               <div className="mt-2 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-700 dark:bg-slate-950/40">
@@ -971,13 +971,13 @@ export default function ImportarPropostasPanel({
               </div>
             </>
           ) : (
-            <p className="mt-2 text-xs text-slate-400">
+            <p className="mt-2 text-xs text-slate-500">
               Nenhum arquivo selecionado — marque ao menos um na lista acima para extrair.
             </p>
           )}
 
           <div className="mt-3 flex items-center justify-between">
-            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <div className="flex items-center gap-3 text-[11px] text-slate-500">
               {(processando || uso) && (
                 <>
                   <span className="inline-flex items-center gap-1"><Timer className="h-3 w-3" /> {(elapsedMs / 1000).toFixed(1)}s</span>
@@ -1010,7 +1010,7 @@ export default function ImportarPropostasPanel({
         <button
           type="button"
           onClick={() => setModoManual(v => !v)}
-          className="text-[11px] font-semibold text-slate-400 underline hover:text-slate-600 dark:hover:text-slate-300"
+          className="text-[11px] font-semibold text-slate-500 underline hover:text-slate-600 dark:hover:text-slate-300"
         >
           {modoManual ? 'Ocultar colagem manual' : 'Problema no upload? Colar markdown manualmente'}
         </button>

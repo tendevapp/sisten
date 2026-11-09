@@ -162,7 +162,7 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
                 {formatQtd(dados.saldo_total)} <span className="text-sm font-semibold text-slate-500">{umb}</span>
               </p>
             ) : (
-              <p className="mt-0.5 text-[11px] text-slate-400">Oculto para não influenciar a contagem do inventário cíclico.</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">Oculto para não influenciar a contagem do inventário cíclico.</p>
             )}
           </div>
           <div className="flex flex-wrap items-center justify-end gap-1">
@@ -249,23 +249,23 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
                   </p>
                   <dl className="mt-1 grid grid-cols-3 gap-x-2 text-[11px]">
                     <div>
-                      <dt className="text-slate-400">Prev. entrega</dt>
+                      <dt className="text-slate-500">Prev. entrega</dt>
                       <dd className={`font-semibold ${sit === 'atrasado' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-slate-100'}`}>{dataCurta(p.remessa_prevista)}</dd>
                       {daRm && p.quantidade_pendente > 0 && daRm.data.slice(0, 10) !== p.remessa_prevista?.slice(0, 10) && (
                         <dd className="text-[10px] text-slate-500">{daRm.confirmada ? 'confirmada' : 'comprador'} {dataCurta(daRm.data)}</dd>
                       )}
                     </div>
                     <div>
-                      <dt className="text-slate-400">MIGO</dt>
+                      <dt className="text-slate-500">MIGO</dt>
                       <dd className={`font-semibold ${chegou && p.quantidade_pendente > 0 ? 'text-violet-700 dark:text-violet-300' : 'text-slate-800 dark:text-slate-100'}`}>
                         {chegou && p.quantidade_pendente > 0 ? 'Pendente' : dataCurta(p.data_migo ?? p.ultima_entrada)}
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-slate-400">{p.quantidade_pendente > 0 ? 'Falta receber' : 'Recebido'}</dt>
+                      <dt className="text-slate-500">{p.quantidade_pendente > 0 ? 'Falta receber' : 'Recebido'}</dt>
                       <dd className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
                         {formatQtd(p.quantidade_pendente > 0 ? p.quantidade_pendente : (p.quantidade_fornecida ?? p.recebido_mb51 ?? 0))}
-                        <span className="font-normal text-slate-400"> / {formatQtd(p.quantidade_pedida ?? 0)}</span>
+                        <span className="font-normal text-slate-500"> / {formatQtd(p.quantidade_pedida ?? 0)}</span>
                       </dd>
                     </div>
                   </dl>
@@ -294,7 +294,7 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
         </Secao>
       )}
 
-      <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[10px] text-slate-400 dark:border-slate-800">
+      <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[10px] text-slate-500 dark:border-slate-800">
         <span>
           {dados.estoque_importado_em
             ? `ZL0024 importada em ${new Date(dados.estoque_importado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`

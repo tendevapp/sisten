@@ -285,7 +285,7 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
                   <span className={`flex h-7 w-7 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl ${form.cor}`}>
                     <Icon className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
                   </span>
-                  <span className="font-mono text-[9px] sm:text-[11px] font-bold px-1 sm:px-2 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 truncate max-w-[65px] sm:max-w-none">
+                  <span className="font-mono text-[10px] sm:text-[11px] font-bold px-1 sm:px-2 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 truncate max-w-[65px] sm:max-w-none">
                     {form.codigo}
                   </span>
                 </div>
@@ -298,7 +298,7 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
               </div>
 
               <div className="mt-2.5 sm:mt-5 flex w-full items-center justify-between border-t border-slate-100 pt-2 sm:pt-3 dark:border-slate-800">
-                <span className="text-[9px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">
+                <span className="text-[10px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">
                   {form.badge}
                 </span>
                 <span className="inline-flex items-center gap-0.5 sm:gap-1 text-[10px] sm:text-xs font-bold text-blue-600 transition-transform group-hover:translate-x-1 dark:text-blue-400 shrink-0">

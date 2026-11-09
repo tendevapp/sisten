@@ -323,7 +323,7 @@ export default function SolicitacaoExtraForm({
             </label>
             <input type="time" value={hora} onChange={e => setHora(e.target.value)} className={campo} />
           </div>
-          <p className="col-span-2 self-end text-[11px] text-slate-400 sm:col-span-4">
+          <p className="col-span-2 self-end text-[11px] text-slate-500 sm:col-span-4">
             Vai para a aprovação do gestor do setor solicitante e fica pendente de baixa no almoxarifado até o item ter saldo na ZL0024.
           </p>
         </section>
@@ -381,7 +381,7 @@ export default function SolicitacaoExtraForm({
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">
             Materiais <span className="text-red-500">*</span>
           </h3>
-          <span className="text-[11px] text-slate-400">
+          <span className="text-[11px] text-slate-500">
             {semSaldo ? 'Material sem saldo na ZL0024 — a baixa sai no balcão quando a NF for lançada' : 'Material sem saldo na ZL0024 — a baixa é regularizada no SAP depois'}
           </span>
         </div>
@@ -478,7 +478,7 @@ export default function SolicitacaoExtraForm({
         <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Assinatura de quem retira</h3>
           <CampoAssinaturaRetirante valor={assinatura} nome={retirante.nome} onChange={setAssinatura} disabled={salvando} />
-          <p className="text-[11px] text-slate-400">Sai no PDF da retirada, na linha "Quem retirou". Sem ela, a linha fica em branco para assinar no papel.</p>
+          <p className="text-[11px] text-slate-500">Sai no PDF da retirada, na linha "Quem retirou". Sem ela, a linha fica em branco para assinar no papel.</p>
         </section>
       )}
 
@@ -567,7 +567,7 @@ function LinhaMaterial({
             >
               <span className="font-mono font-bold text-slate-900 dark:text-slate-50">{m.material}</span>
               <span className="text-slate-600 dark:text-slate-300"> · {m.descricao}</span>
-              <span className="block text-[10px] text-slate-400">{m.unidade}</span>
+              <span className="block text-[10px] text-slate-500">{m.unidade}</span>
             </button>
           </li>
         ))}
@@ -576,9 +576,9 @@ function LinhaMaterial({
 
   return (
     <div className="grid grid-cols-[1.75rem_1fr_2.25rem] items-start gap-2 rounded-xl border border-slate-100 p-2 dark:border-slate-800 sm:grid-cols-[1.75rem_11rem_6.5rem_4rem_1fr_2.25rem] sm:border-0 sm:p-0">
-      <span className="pt-2.5 text-center text-xs font-bold text-slate-400">{numero}</span>
+      <span className="pt-2.5 text-center text-xs font-bold text-slate-500">{numero}</span>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
         <input
           value={linha.material}
           disabled={disabled}
@@ -597,7 +597,7 @@ function LinhaMaterial({
         onClick={onRemover}
         disabled={disabled || !podeRemover}
         aria-label={`Remover item ${numero}`}
-        className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:invisible sm:order-last dark:hover:bg-rose-950/40"
+        className="rounded-lg p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:invisible sm:order-last dark:hover:bg-rose-950/40"
       >
         <Trash2 className="h-4 w-4" />
       </button>
@@ -622,7 +622,7 @@ function LinhaMaterial({
         />
       </div>
       <div className="relative col-span-2 col-start-2 sm:col-span-1 sm:col-start-auto">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
         <input
           value={linha.descricao}
           disabled={disabled}
@@ -651,7 +651,7 @@ function CampoPep({
 }) {
   return (
     <>
-      <label className={rotulo}>PEP / aplicação <span className="font-normal text-slate-400">(opcional)</span></label>
+      <label className={rotulo}>PEP / aplicação <span className="font-normal text-slate-500">(opcional)</span></label>
       <select
         value={valor?.wbs ?? ''}
         onChange={e => onChange(peps.find(p => p.wbs === e.target.value) ?? null)}
@@ -663,7 +663,7 @@ function CampoPep({
         )}
         {peps.map(p => <option key={p.wbs} value={p.wbs}>{p.nome} — {p.wbs}</option>)}
       </select>
-      <p className="mt-1 text-[11px] text-slate-400">{dica}</p>
+      <p className="mt-1 text-[11px] text-slate-500">{dica}</p>
     </>
   );
 }

@@ -250,7 +250,7 @@ export default function VerCotacaoOriginalModal({
           <div className="min-w-0">
             <h3 className="truncate text-sm font-bold text-slate-900 dark:text-slate-50" title={nome}>{nome}</h3>
             {!carregando && (
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-500">
                 {markdownEditadoEm
                   ? <>corrigido{markdownEditadoPor ? ` por ${markdownEditadoPor}` : ''} em {formatDateTimeBR(markdownEditadoEm)}</>
                   : historico
@@ -307,7 +307,7 @@ export default function VerCotacaoOriginalModal({
           {mostraDocumento && (
             <div className="min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
               {carregandoDoc || anexando ? (
-                <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-400">
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-500">
                   <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
                   <p className="text-xs text-slate-500">
                     {anexando
@@ -326,7 +326,7 @@ export default function VerCotacaoOriginalModal({
                   </div>
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-slate-500">
-                    <FileText className="h-8 w-8 text-slate-400" />
+                    <FileText className="h-8 w-8 text-slate-500" />
                     <p className="text-xs font-medium">
                       {ehPlanilha
                         ? 'Planilha não tem pré-visualização aqui — use "Abrir em nova guia" para baixar. O conteúdo lido está no Markdown.'
@@ -375,7 +375,7 @@ export default function VerCotacaoOriginalModal({
                   <Code2 className="h-3.5 w-3.5 text-emerald-500" />
                   Conteúdo extraído (Markdown)
                   {markdownEditadoEm && !editando && (
-                    <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 text-[9px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                    <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
                       corrigido
                     </span>
                   )}
@@ -417,7 +417,7 @@ export default function VerCotacaoOriginalModal({
               </div>
               <div className="min-h-0 flex-1 overflow-auto bg-white p-3 dark:bg-slate-900">
                 {carregandoHistorico ? (
-                  <div className="flex h-full items-center justify-center text-slate-400">
+                  <div className="flex h-full items-center justify-center text-slate-500">
                     <Loader2 className="h-5 w-5 animate-spin" />
                   </div>
                 ) : editando ? (
@@ -439,7 +439,7 @@ export default function VerCotacaoOriginalModal({
                 )}
               </div>
               {!podeEditar && temMarkdown && !propostaId && (
-                <div className="flex items-center gap-1.5 border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-400 dark:border-slate-800">
+                <div className="flex items-center gap-1.5 border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-500 dark:border-slate-800">
                   <CheckCircle2 className="h-3 w-3" />
                   Salve a proposta para poder corrigir este texto.
                 </div>

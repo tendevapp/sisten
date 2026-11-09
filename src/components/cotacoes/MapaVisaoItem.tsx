@@ -80,9 +80,9 @@ export default function MapaVisaoItem({ linhas, resumos, selecionados, onMarcar 
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
               <div className="min-w-0">
                 <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">{linha.titulo}</span>
-                {linha.ri && <span className="ml-2 text-[10px] text-slate-400">{linha.ri}</span>}
+                {linha.ri && <span className="ml-2 text-[10px] text-slate-500">{linha.ri}</span>}
               </div>
-              <div className="flex items-center gap-2 text-[10px] text-slate-400">
+              <div className="flex items-center gap-2 text-[10px] text-slate-500">
                 {linha.qtdSolicitada != null && <span>{formatQtd(linha.qtdSolicitada)} {linha.unidade || ''}</span>}
                 {linha.dispersao != null && linha.dispersao > 0 && (
                   <span className="font-medium text-amber-600 dark:text-amber-400">

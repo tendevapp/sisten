@@ -708,7 +708,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                 <Mail className="h-4 w-4 text-blue-500" />
               </div>
               <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-50">{configsEmail.length}</p>
-              <p className="text-[11px] text-slate-400">Fluxos com abertura de Outlook</p>
+              <p className="text-[11px] text-slate-500">Fluxos com abertura de Outlook</p>
             </div>
 
             <div className="rounded-2xl border border-emerald-200/60 bg-emerald-50/50 p-4 dark:border-emerald-950/60 dark:bg-emerald-950/20">
@@ -726,7 +726,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                 <Boxes className="h-4 w-4 text-indigo-500" />
               </div>
               <p className="mt-2 text-2xl font-bold text-slate-700 dark:text-slate-300">{modulosUnicos}</p>
-              <p className="text-[11px] text-slate-400">Suprimentos, Logística, Portaria, etc.</p>
+              <p className="text-[11px] text-slate-500">Suprimentos, Logística, Portaria, etc.</p>
             </div>
           </div>
 
@@ -734,7 +734,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <div className="flex flex-1 flex-wrap items-center gap-2">
               <div className="relative min-w-[240px] flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
                   placeholder="Buscar por nome, chave, destinatário ou assunto..."
@@ -768,7 +768,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                 <option value="INATIVOS">Apenas Inativos</option>
               </select>
 
-              <button
+              <button aria-label="Recarregar"
                 type="button"
                 onClick={carregarConfigsEmail}
                 disabled={loadingEmails}
@@ -874,7 +874,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                                   {c.chave}
                                 </span>
                                 {c.descricao && (
-                                  <span className="text-[11px] text-slate-400 truncate max-w-xs" title={c.descricao}>
+                                  <span className="text-[11px] text-slate-500 truncate max-w-xs" title={c.descricao}>
                                     {c.descricao}
                                   </span>
                                 )}
@@ -907,7 +907,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                             <div className="space-y-1">
                               {listaCc.length > 0 && (
                                 <div className="flex items-center gap-1">
-                                  <span className="text-[10px] font-bold text-slate-400">CC:</span>
+                                  <span className="text-[10px] font-bold text-slate-500">CC:</span>
                                   <span className="text-[11px] text-slate-600 dark:text-slate-300 truncate max-w-[160px]" title={listaCc.join(', ')}>
                                     {listaCc.join(', ')}
                                   </span>
@@ -915,14 +915,14 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                               )}
                               {listaBcc.length > 0 && (
                                 <div className="flex items-center gap-1">
-                                  <span className="text-[10px] font-bold text-slate-400">BCC:</span>
+                                  <span className="text-[10px] font-bold text-slate-500">BCC:</span>
                                   <span className="text-[11px] text-slate-600 dark:text-slate-300 truncate max-w-[160px]" title={listaBcc.join(', ')}>
                                     {listaBcc.join(', ')}
                                   </span>
                                 </div>
                               )}
                               {listaCc.length === 0 && listaBcc.length === 0 && (
-                                <span className="text-slate-400 text-[11px]">—</span>
+                                <span className="text-slate-500 text-[11px]">—</span>
                               )}
                             </div>
                           </td>
@@ -933,7 +933,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                                 {c.assunto_padrao}
                               </span>
                             ) : (
-                              <span className="text-slate-400">—</span>
+                              <span className="text-slate-500">—</span>
                             )}
                           </td>
 
@@ -964,7 +964,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
 
                           <td className="px-4 py-3.5 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              <button
+                              <button aria-label="Testar no Outlook (Abre o cliente de e-mail com teste)"
                                 type="button"
                                 onClick={() => handleTestarOutlook({
                                   destinatarios: c.destinatarios,
@@ -972,23 +972,23 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                                   copiaOculta: c.copia_oculta,
                                   assunto: c.assunto_padrao,
                                 })}
-                                className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/40 dark:hover:text-blue-400"
+                                className="rounded-lg p-1.5 text-slate-500 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/40 dark:hover:text-blue-400"
                                 title="Testar no Outlook (Abre o cliente de e-mail com teste)"
                               >
                                 <Send className="h-4 w-4" />
                               </button>
-                              <button
+                              <button aria-label="Editar Configuração"
                                 type="button"
                                 onClick={() => abrirModalEditarEmail(c)}
-                                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+                                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400"
                                 title="Editar Configuração"
                               >
                                 <Edit2 className="h-4 w-4" />
                               </button>
-                              <button
+                              <button aria-label="Excluir"
                                 type="button"
                                 onClick={() => setConfigEmailParaExcluir(c)}
-                                className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
+                                className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
                                 title="Excluir"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -1072,7 +1072,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                 Prazo padrão (UF não cadastrada)
               </label>
               <div className="mt-1.5 flex items-center gap-2">
-                <span className="text-xs text-slate-400">remessa +</span>
+                <span className="text-xs text-slate-500">remessa +</span>
                 <input
                   type="number"
                   min={0}
@@ -1106,7 +1106,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
 
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
             {loadingPrazos ? (
-              <div className="flex items-center justify-center py-12"><RefreshCw className="h-5 w-5 animate-spin text-slate-400" /></div>
+              <div className="flex items-center justify-center py-12"><RefreshCw className="h-5 w-5 animate-spin text-slate-500" /></div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
@@ -1127,7 +1127,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                         <React.Fragment key={l.uf}>
                           {primeiraDaRegiao && (
                             <tr className="bg-slate-50/60 dark:bg-slate-950/40">
-                              <td colSpan={4} className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                              <td colSpan={4} className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500">
                                 {l.regiao}
                               </td>
                             </tr>
@@ -1137,14 +1137,14 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                             <td className="px-4 py-2.5">
                               {l.nome}
                               {!l.salvo && (
-                                <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                                <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
                                   PADRÃO
                                 </span>
                               )}
                             </td>
                             <td className="px-4 py-2.5">
                               <div className="flex items-center gap-2">
-                                <span className="text-slate-400">remessa +</span>
+                                <span className="text-slate-500">remessa +</span>
                                 <input
                                   type="number"
                                   min={0}
@@ -1153,7 +1153,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                                   onChange={(e) => setRascunhoPrazo((r) => ({ ...r, [l.uf]: e.target.value }))}
                                   className="h-8 w-20 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
                                 />
-                                <span className="text-slate-400">dia(s)</span>
+                                <span className="text-slate-500">dia(s)</span>
                               </div>
                             </td>
                             <td className="px-4 py-2.5 text-right">
@@ -1169,7 +1169,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                                   </button>
                                 )}
                                 {l.salvo && l.row && (
-                                  <button
+                                  <button aria-label="Voltar ao padrão da região"
                                     type="button"
                                     onClick={() => setPrazoParaExcluir(l.row)}
                                     className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
@@ -1297,7 +1297,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                                     Salvar
                                   </button>
                                 )}
-                                <button
+                                <button aria-label="Excluir"
                                   type="button"
                                   onClick={() => setTranspParaExcluir(t)}
                                   className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
@@ -1420,7 +1420,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                       disabled={Boolean(configEmailEditando)}
                       className="mt-1 w-full font-mono rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none disabled:bg-slate-100 dark:disabled:bg-slate-800/80 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                     />
-                    <p className="mt-0.5 text-[10px] text-slate-400">Identificador único do código do sistema</p>
+                    <p className="mt-0.5 text-[10px] text-slate-500">Identificador único do código do sistema</p>
                   </div>
 
                   <div>
@@ -1468,7 +1468,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                     onChange={(e) => setFormEmailDestinatarios(e.target.value)}
                     className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
-                  <p className="mt-0.5 text-[10px] text-slate-400">
+                  <p className="mt-0.5 text-[10px] text-slate-500">
                     Separe múltiplos e-mails por vírgula ou ponto e vírgula.
                   </p>
                 </div>
@@ -1512,7 +1512,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                     onChange={(e) => setFormEmailAssunto(e.target.value)}
                     className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
-                  <p className="mt-0.5 text-[10px] text-slate-400">
+                  <p className="mt-0.5 text-[10px] text-slate-500">
                     O módulo poderá complementar este assunto (ex: com número da solicitação ou placa).
                   </p>
                 </div>

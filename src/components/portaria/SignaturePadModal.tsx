@@ -196,7 +196,7 @@ export default function SignaturePadModal({
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
           >
             <X className="h-5 w-5" />
           </button>
@@ -217,7 +217,7 @@ export default function SignaturePadModal({
             />
             {!hasDrawn && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <span className="text-sm font-medium text-slate-400">
+                <span className="text-sm font-medium text-slate-500">
                   Assine aqui com o dedo ou a caneta
                 </span>
               </div>

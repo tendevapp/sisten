@@ -214,7 +214,7 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
   if (!todas.length) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 px-6 py-14 text-center dark:border-slate-700">
-        <BarChart3 className="mx-auto h-9 w-9 text-slate-400" />
+        <BarChart3 className="mx-auto h-9 w-9 text-slate-500" />
         <h2 className="mt-3 text-sm font-bold text-slate-800 dark:text-slate-100">A análise começa com as primeiras fichas</h2>
         <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">
           Cada ficha assinada alimenta esta base. Com duas entregas do mesmo EPI ao mesmo colaborador, a duração por função já aparece.
@@ -247,7 +247,7 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
           placeholder="Palavras-chave — colaborador, registro, função, EPI, código ou descrição SAP (Enter adiciona)"
         />
         <div className="flex flex-wrap items-center gap-2">
-          <CalendarRange className="h-4 w-4 text-slate-400" />
+          <CalendarRange className="h-4 w-4 text-slate-500" />
           <select value={periodo} onChange={e => trocarPeriodo(e.target.value)} className={selectCls} aria-label="Período">
             {PERIODOS.map(p => <option key={p.valor} value={p.valor}>{p.rotulo}</option>)}
           </select>
@@ -423,8 +423,8 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
                     <tr key={e.chave} className="align-top text-slate-700 dark:text-slate-200">
                       <td className="px-3 py-2 pl-4 font-semibold">{e.grupoEpi}</td>
                       <td className="px-3 py-2">
-                        {e.materiaisSap.length === 0 ? <span className="text-slate-400">—</span> : e.materiaisSap.map(m => (
-                          <p key={m.codigo} className="leading-snug"><span className="font-mono font-semibold">{m.codigo}</span>{m.descricao ? <span className="text-slate-500"> · {m.descricao}</span> : null}<span className="text-slate-400"> ({formatarQuantidade(m.unidades)} un.)</span></p>
+                        {e.materiaisSap.length === 0 ? <span className="text-slate-500">—</span> : e.materiaisSap.map(m => (
+                          <p key={m.codigo} className="leading-snug"><span className="font-mono font-semibold">{m.codigo}</span>{m.descricao ? <span className="text-slate-500"> · {m.descricao}</span> : null}<span className="text-slate-500"> ({formatarQuantidade(m.unidades)} un.)</span></p>
                         ))}
                       </td>
                       <td className="px-3 py-2 text-right font-bold tabular-nums">{formatarQuantidade(e.unidades)}</td>
@@ -457,7 +457,7 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {analise.duracaoPorFuncao.map(d => (
-                  <tr key={`${d.funcaoId}-${d.chave}`} className={d.amostras < AMOSTRAS_MINIMAS_DURACAO ? 'text-slate-400' : 'text-slate-700 dark:text-slate-200'}>
+                  <tr key={`${d.funcaoId}-${d.chave}`} className={d.amostras < AMOSTRAS_MINIMAS_DURACAO ? 'text-slate-500' : 'text-slate-700 dark:text-slate-200'}>
                     <td className="px-3 py-2 pl-4">{d.funcaoNome}</td>
                     <td className="px-3 py-2 font-semibold">{d.grupoEpi}</td>
                     <td className="px-3 py-2 text-right font-bold tabular-nums">{fmtDias(d.medianaDias)}</td>

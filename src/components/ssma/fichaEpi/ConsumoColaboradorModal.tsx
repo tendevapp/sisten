@@ -37,7 +37,7 @@ type Situacao = { texto: string; cls: string };
 
 /** Compara a duração do colaborador com a referência da função. */
 function situacaoDoEpi(e: DetalheEpiColaborador): Situacao {
-  if (e.duracaoMedianaDias === null) return { texto: 'Sem reposição medida', cls: 'text-slate-400' };
+  if (e.duracaoMedianaDias === null) return { texto: 'Sem reposição medida', cls: 'text-slate-500' };
   if (e.referenciaFuncaoDias === null) return { texto: 'Sem referência da função', cls: 'text-slate-500' };
   const razao = e.duracaoMedianaDias / e.referenciaFuncaoDias;
   if (razao < 0.5) return { texto: 'Troca precoce', cls: 'font-bold text-amber-600 dark:text-amber-400' };

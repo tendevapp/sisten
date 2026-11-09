@@ -132,7 +132,7 @@ export default function VigilanteSelect({
             )}
             <option value="__OUTRO__">✍️ Outro (digitar nome manualmente)...</option>
           </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400">
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-500">
             <ChevronDown className="h-4 w-4 shrink-0" />
           </div>
         </div>

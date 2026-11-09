@@ -106,6 +106,21 @@ tela já desenha a sua (DataTable, Mapa Comparativo, Lead Time, Central de
 Solicitações, `TabelaComRolagemSuperior`), ou `data-rolagem-superior="nao"`.
 Não escreva outra barra superior à mão.
 
+## 7. Peças únicas de interface
+
+Use a peça que já existe; não escreva outra.
+
+| Precisa de | Use | Não use |
+|---|---|---|
+| Confirmar ação | `await confirmar({ titulo, mensagem, confirmarLabel, variante })` — `src/lib/confirmar.tsx` | `window.confirm` |
+| Diálogo | `ui/Modal.tsx` (Esc, foco e rolagem já resolvidos) | `fixed inset-0` à mão |
+| Botão só com ícone | `aria-label` com a ação ("Excluir item") | só `title` |
+| Rótulo de campo | `useId()` + `htmlFor` | `<label>` solto ao lado do input |
+| Cor | tokens de `src/styles/tokens.css`; no escuro, `dark:` na própria classe | `!important` no bloco `.dark` do index.css |
+
+Texto em tela clara: `text-slate-500` ou mais escuro (`slate-400` dá 2,6:1). Fonte
+mínima 10px; conteúdo em 12px (`text-xs`).
+
 ## Verificação antes de entregar
 
 ```bash

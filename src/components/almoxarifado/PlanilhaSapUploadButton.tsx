@@ -153,22 +153,22 @@ export default function PlanilhaSapUploadButton({
                 </p>
                 <dl className="grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-2.5">
-                    <dt className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Lidos</dt>
+                    <dt className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Lidos</dt>
                     <dd className="text-slate-800 dark:text-slate-100 font-black text-base tabular-nums">{log.records_read.toLocaleString('pt-BR')}</dd>
                   </div>
                   <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-2.5">
-                    <dt className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Inseridos</dt>
+                    <dt className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Inseridos</dt>
                     <dd className="text-slate-800 dark:text-slate-100 font-black text-base tabular-nums">{log.records_inserted.toLocaleString('pt-BR')}</dd>
                   </div>
                   {log.records_updated > 0 && (
                     <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-2.5">
-                      <dt className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Atualizados</dt>
+                      <dt className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Atualizados</dt>
                       <dd className="text-slate-800 dark:text-slate-100 font-black text-base tabular-nums">{log.records_updated.toLocaleString('pt-BR')}</dd>
                     </div>
                   )}
                   {log.records_eliminated > 0 && (
                     <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-2.5">
-                      <dt className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Substituídos</dt>
+                      <dt className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Substituídos</dt>
                       <dd className="text-slate-800 dark:text-slate-100 font-black text-base tabular-nums">{log.records_eliminated.toLocaleString('pt-BR')}</dd>
                     </div>
                   )}
@@ -179,7 +179,7 @@ export default function PlanilhaSapUploadButton({
                     {(log.ignored_rows?.length ?? 0) > 0 && `${log.ignored_rows!.length} linha(s) ignorada(s).`}
                   </p>
                 )}
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-500">
                   O log completo fica em Administração → Log Importação SAP.
                 </p>
               </div>

@@ -201,10 +201,10 @@ export default function RastreioTable({
               {visibleColumns.descricao && (
                 <div>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="font-mono text-[9px] truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</p>
+                    <p className="font-mono text-[10px] truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</p>
                     {r.isGeneric && (
                       <span
-                        className="inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+                        className="inline-flex items-center gap-0.5 text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
                         title="Item Genérico"
                       >
                         <Tag className="h-2.5 w-2.5" />
@@ -236,7 +236,7 @@ export default function RastreioTable({
                 {visibleColumns.setor && <span>{r.setor}</span>}
                 {visibleColumns.transportadora && r.transportadora && (
                   <span className="inline-flex items-center gap-1 font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                    <Truck className="h-3 w-3 text-slate-400" />
+                    <Truck className="h-3 w-3 text-slate-500" />
                     {r.transportadora}
                   </span>
                 )}
@@ -275,7 +275,7 @@ export default function RastreioTable({
               {visibleColumns.status && (
                 <div>
                   <span
-                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold truncate max-w-full ${ITEM_STATUS_STYLE[r.status] || DEFAULT_STATUS_STYLE}`}
+                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-bold truncate max-w-full ${ITEM_STATUS_STYLE[r.status] || DEFAULT_STATUS_STYLE}`}
                     title={r.status}
                   >
                     {r.status}
@@ -289,11 +289,11 @@ export default function RastreioTable({
                   {chegada ? (
                     <div className="flex items-center gap-2">
                       {chegouChip(chegada)}
-                      <button
+                      <button aria-label="Desfazer chegada"
                         onClick={() => onDesfazerChegada?.(r.riPo)}
                         disabled={saving}
                         title="Desfazer chegada"
-                        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 disabled:opacity-50"
+                        className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-rose-500 disabled:opacity-50"
                       >
                         <Undo2 className="h-3.5 w-3.5" />
                       </button>
@@ -370,7 +370,7 @@ export default function RastreioTable({
                     {r.po !== '—'
                       ? r.po
                       : (
-                        <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--status-warning)' }}>
+                        <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--status-warning)' }}>
                           sem po
                         </span>
                       )}
@@ -379,10 +379,10 @@ export default function RastreioTable({
                 {visibleColumns.descricao && (
                   <Td className="py-1.5 px-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono text-[9px] truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</span>
+                      <span className="font-mono text-[10px] truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</span>
                       {r.isGeneric && (
                         <span
-                          className="inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+                          className="inline-flex items-center gap-0.5 text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
                           title="Item Genérico"
                         >
                           <Tag className="h-2.5 w-2.5" />
@@ -458,7 +458,7 @@ export default function RastreioTable({
                 {visibleColumns.status && (
                   <Td className="py-1.5 px-2">
                     <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold truncate max-w-full ${ITEM_STATUS_STYLE[r.status] || DEFAULT_STATUS_STYLE}`}
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-bold truncate max-w-full ${ITEM_STATUS_STYLE[r.status] || DEFAULT_STATUS_STYLE}`}
                       title={r.status}
                     >
                       {r.status}
@@ -470,11 +470,11 @@ export default function RastreioTable({
                     <div className="flex items-center justify-end gap-2">
                       {chegada && chegouChip(chegada)}
                       {chegada ? (
-                        <button
+                        <button aria-label="Desfazer chegada"
                           onClick={(e) => { e.stopPropagation(); onDesfazerChegada?.(r.riPo); }}
                           disabled={saving}
                           title="Desfazer chegada"
-                          className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 disabled:opacity-50"
+                          className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-rose-500 disabled:opacity-50"
                         >
                           <Undo2 className="h-3.5 w-3.5" />
                         </button>

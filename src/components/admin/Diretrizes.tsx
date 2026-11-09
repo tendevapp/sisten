@@ -89,7 +89,7 @@ export default function Diretrizes() {
         </div>
 
         <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
           <input
             type="text"
             value={search}
@@ -100,7 +100,7 @@ export default function Diretrizes() {
           {search && (
             <button
               onClick={() => setSearch('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 cursor-pointer"
               aria-label="Limpar busca"
             >
               <X className="h-4 w-4" />
@@ -110,7 +110,7 @@ export default function Diretrizes() {
 
         <nav className="space-y-4">
           {filtered.length === 0 && (
-            <p className="text-xs text-slate-400 px-1">Nenhum resultado para "{search}".</p>
+            <p className="text-xs text-slate-500 px-1">Nenhum resultado para "{search}".</p>
           )}
           {filtered.map(dom => {
             const Icon = ICONS[dom.icone] || FileText;
@@ -185,7 +185,7 @@ export default function Diretrizes() {
                         {highlight(pagina.nome, search)}
                       </h4>
                       {pagina.arquivo && (
-                        <p className="text-[11px] font-mono text-slate-400 dark:text-slate-500 mt-0.5">
+                        <p className="text-[11px] font-mono text-slate-500 dark:text-slate-500 mt-0.5">
                           {pagina.arquivo}
                         </p>
                       )}
@@ -251,7 +251,7 @@ export default function Diretrizes() {
             <ol className="divide-y divide-slate-100 dark:divide-slate-800">
               {CHANGELOG.map((entry, i) => (
                 <li key={i} className="px-5 py-3.5 flex gap-4">
-                  <span className="shrink-0 text-xs font-mono font-bold text-slate-400 dark:text-slate-500 w-24 pt-0.5">
+                  <span className="shrink-0 text-xs font-mono font-bold text-slate-500 dark:text-slate-500 w-24 pt-0.5">
                     {new Date(entry.data + 'T00:00:00').toLocaleDateString('pt-BR')}
                   </span>
                   <span className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{entry.resumo}</span>

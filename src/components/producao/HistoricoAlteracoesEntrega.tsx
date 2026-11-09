@@ -50,7 +50,7 @@ function Registro({ r, porId, mostrarTramo, mostrarData = false }: { r: Registro
         onClick={() => expansivel && setAberto(a => !a)}
         className={`flex w-full items-start gap-2 text-left ${expansivel ? 'cursor-pointer' : 'cursor-default'}`}
       >
-        <span className="mt-0.5 shrink-0 text-slate-400">
+        <span className="mt-0.5 shrink-0 text-slate-500">
           {expansivel ? aberto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" /> : <span className="inline-block w-3.5" />}
         </span>
         <span className={`${mostrarData ? 'w-24' : 'w-11'} shrink-0 font-mono text-[11px] text-slate-500`}>
@@ -75,7 +75,7 @@ function Registro({ r, porId, mostrarTramo, mostrarData = false }: { r: Registro
               <tr key={l.campo}>
                 <td className="py-0.5 pr-3 font-semibold text-slate-600 dark:text-slate-300">{l.rotulo}</td>
                 <td className="py-0.5 pr-2 text-rose-700 line-through decoration-rose-300 dark:text-rose-300">{l.de}</td>
-                <td className="py-0.5 pr-2 text-slate-400">→</td>
+                <td className="py-0.5 pr-2 text-slate-500">→</td>
                 <td className="py-0.5 text-emerald-700 dark:text-emerald-300">{l.para}</td>
               </tr>
             ))}
@@ -159,7 +159,7 @@ export default function HistoricoAlteracoesEntrega({ tramoId, tramos = [], compa
         {abertoCompacto && (
           <div className="border-t border-slate-100 px-3 pb-2 dark:border-slate-800">
             {carregando || !registros ? (
-              <div className="flex justify-center py-3"><Loader2 className="h-4 w-4 animate-spin text-slate-400" /></div>
+              <div className="flex justify-center py-3"><Loader2 className="h-4 w-4 animate-spin text-slate-500" /></div>
             ) : registros.length === 0 ? (
               <p className="py-3 text-xs text-slate-500">Nenhuma alteração registrada.</p>
             ) : (
@@ -200,7 +200,7 @@ export default function HistoricoAlteracoesEntrega({ tramoId, tramos = [], compa
           <option value="tramo">Só tramo</option>
           <option value="checklist">Só checklist</option>
         </select>
-        <button type="button" onClick={() => void carregar()} className={`${inputCls} inline-flex items-center gap-1.5 font-semibold`} title="Atualizar">
+        <button aria-label="Atualizar" type="button" onClick={() => void carregar()} className={`${inputCls} inline-flex items-center gap-1.5 font-semibold`} title="Atualizar">
           <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'animate-spin' : ''}`} />
         </button>
         <button
@@ -219,7 +219,7 @@ export default function HistoricoAlteracoesEntrega({ tramoId, tramos = [], compa
       </p>
 
       {!registros ? (
-        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-slate-500" /></div>
       ) : porDia.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500 dark:border-slate-700">
           Nenhuma alteração no período e filtros escolhidos.

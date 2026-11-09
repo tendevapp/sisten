@@ -130,7 +130,7 @@ export default function MultiSelectFilter({
           <Icon className={`absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none ${selected.size > 0 ? 'text-[#0056c6]' : 'text-slate-450'}`} />
         )}
         <span className="truncate">{resumo}</span>
-        <ChevronDown className={`absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none transition-transform ${open ? 'rotate-180' : ''} ${selected.size > 0 ? 'text-[#0056c6]' : 'text-slate-400'}`} />
+        <ChevronDown className={`absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none transition-transform ${open ? 'rotate-180' : ''} ${selected.size > 0 ? 'text-[#0056c6]' : 'text-slate-500'}`} />
       </button>
 
       {selected.size > 0 && !open && (
@@ -169,7 +169,7 @@ export default function MultiSelectFilter({
           >
             {showSearch && (
               <div className="relative border-b border-slate-150 dark:border-slate-850 p-2 shrink-0">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
                 <input
                   autoFocus
                   value={query}
@@ -182,7 +182,7 @@ export default function MultiSelectFilter({
 
             <div className="overflow-y-auto flex-1 p-1 custom-scrollbar">
               {visibleOptions.length === 0 && (
-                <p className="px-3 py-4 text-xs font-semibold text-slate-400 text-center">Nenhuma opção</p>
+                <p className="px-3 py-4 text-xs font-semibold text-slate-500 text-center">Nenhuma opção</p>
               )}
               {visibleOptions.map(option => {
                 const marcado = selected.has(option);

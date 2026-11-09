@@ -82,7 +82,7 @@ export default function HistoricoConversoesModal({ onClose }: HistoricoConversoe
               ← Voltar para a lista
             </button>
             {carregandoConteudo ? (
-              <div className="flex items-center justify-center py-16 text-slate-400">
+              <div className="flex items-center justify-center py-16 text-slate-500">
                 <Loader2 className="h-6 w-6 animate-spin" />
               </div>
             ) : verConteudo ? (
@@ -114,7 +114,7 @@ export default function HistoricoConversoesModal({ onClose }: HistoricoConversoe
         ) : (
           <div className="space-y-2">
             <div className="flex justify-end">
-              <button type="button" onClick={carregar} className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-indigo-600">
+              <button type="button" onClick={carregar} className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-indigo-600">
                 <RefreshCw className="h-3 w-3" />
                 Atualizar
               </button>
@@ -138,14 +138,14 @@ export default function HistoricoConversoesModal({ onClose }: HistoricoConversoe
                       <Td>{formatDateTimeBR(item.created_at)}</Td>
                       <Td>
                         <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-200" title={item.user_name ?? 'Sistema'}>
-                          <User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <User className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                           <span className="truncate max-w-[120px]">{item.user_name || 'Sistema'}</span>
                         </span>
                       </Td>
                       <Td truncate title={item.nome_arquivo}>{item.nome_arquivo}</Td>
                       <Td>
                         <span className="inline-flex items-center gap-1">
-                          {item.via === 'ia' ? <Sparkles className="h-3 w-3 text-indigo-500" /> : <Cpu className="h-3 w-3 text-slate-400" />}
+                          {item.via === 'ia' ? <Sparkles className="h-3 w-3 text-indigo-500" /> : <Cpu className="h-3 w-3 text-slate-500" />}
                           {item.modelo ?? (item.via === 'local' ? 'local (sem IA)' : '—')}
                         </span>
                       </Td>
@@ -161,7 +161,7 @@ export default function HistoricoConversoesModal({ onClose }: HistoricoConversoe
                       </Td>
                       <Td align="right">
                         {item.sucesso && (
-                          <button type="button" onClick={() => abrirConteudo(item.id)} title="Ver markdown" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800">
+                          <button aria-label="Ver markdown" type="button" onClick={() => abrirConteudo(item.id)} title="Ver markdown" className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800">
                             <Eye className="h-3.5 w-3.5" />
                           </button>
                         )}

@@ -208,7 +208,7 @@ export function ApresentacaoSlides({ slides, nomeArquivo, controles }: {
           <>
             <SlideEscalado key={slideAtual.id} conteudo={slideAtual.conteudo} encaixarAltura />
             {/* Controles discretos: somem até o mouse chegar, para não sair no print. */}
-            <button
+            <button aria-label="Sair da tela cheia (Esc)"
               type="button"
               onClick={sair}
               className="absolute right-3 top-3 rounded-full bg-white/10 p-2 text-white/80 opacity-0 transition-opacity hover:opacity-100"

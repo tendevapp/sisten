@@ -75,7 +75,7 @@ export default function QualidadeRelatorioSelecaoModal({
       <ModalBody>
         <div className="space-y-5">
           <div>
-            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">
               Campos a incluir
             </h3>
             <div className="space-y-2">
@@ -97,7 +97,7 @@ export default function QualidadeRelatorioSelecaoModal({
           </div>
 
           <div>
-            <h3 className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-400">
+            <h3 className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
               RNCs selecionadas
               <span className="text-rose-600 dark:text-rose-400">{rncsSelecionadas.length} de {rncsDisponiveis.length}</span>
             </h3>

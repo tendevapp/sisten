@@ -652,7 +652,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
 
               {/* Text Search */}
               <div className="relative w-full sm:w-64 sm:ml-auto">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
                 <input
                   type="text"
                   placeholder="Buscar nº ou solicitante..."
@@ -735,7 +735,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 <tbody className="divide-y divide-slate-100">
                   {requests.length === 0 ? (
                     <tr>
-                      <td colSpan={9}className="py-8 text-center text-slate-400 font-medium">
+                      <td colSpan={9}className="py-8 text-center text-slate-500 font-medium">
                         Nenhuma solicitação de cadastro SAP encontrada.
                       </td>
                     </tr>
@@ -753,12 +753,12 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                               {req.registration_type}
                             </span>
                             {req.registration_type === 'Fornecedor' && req.fornecedor_operacao === 'atualizacao' && (
-                              <span className="px-1.5 py-0.5 rounded font-semibold text-[9px] bg-amber-50 border border-amber-200 text-amber-800 w-fit">
+                              <span className="px-1.5 py-0.5 rounded font-semibold text-[10px] bg-amber-50 border border-amber-200 text-amber-800 w-fit">
                                 Atualização
                               </span>
                             )}
                             {(req.codigo_fornecedor_sap || req.codigo_sap_gerado) && (
-                              <span className="font-mono text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 w-fit" title="Código SAP vinculado">
+                              <span className="font-mono text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 w-fit" title="Código SAP vinculado">
                                 SAP: {req.codigo_fornecedor_sap || req.codigo_sap_gerado}
                               </span>
                             )}
@@ -775,12 +775,12 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                         <td className="py-3 px-4">
                           <div>
                             <p className="font-bold text-slate-700">{req.solicitante_name}</p>
-                            <p className="text-[10px] text-slate-400">{getSectorName(req.solicitante_sector_id)}</p>
+                            <p className="text-[10px] text-slate-500">{getSectorName(req.solicitante_sector_id)}</p>
                           </div>
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap">
                           <p className="font-semibold text-slate-700">{new Date(req.created_at).toLocaleDateString('pt-BR')}</p>
-                          <p className="text-[10px] text-slate-400">
+                          <p className="text-[10px] text-slate-500">
                             {new Date(req.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </td>
@@ -844,7 +844,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[11px] text-slate-500 mt-0.5">
                   Aberta em {new Date(selectedReq.created_at).toLocaleString('pt-BR')}
                 </p>
               </div>
@@ -885,7 +885,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
               {/* Details */}
               <div className="space-y-4 text-xs">
                 <div>
-                  <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider">Item / Fornecedor</h4>
+                  <h4 className="font-bold text-slate-500 uppercase text-[10px] tracking-wider">Item / Fornecedor</h4>
                   <p className="font-bold text-slate-800 text-sm mt-1">{selectedReq.justificativa?.split('|')[0] || selectedReq.justificativa}</p>
                 </div>
 
@@ -895,13 +895,13 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                       <>
                         {selectedReq.codigo_fornecedor_sap && (
                           <div className="rounded border border-amber-200 bg-amber-50/60 p-2.5">
-                            <h4 className="font-bold text-amber-800 uppercase text-[9px] tracking-wider">Código Fornecedor SAP (atual)</h4>
+                            <h4 className="font-bold text-amber-800 uppercase text-[10px] tracking-wider">Código Fornecedor SAP (atual)</h4>
                             <p className="font-mono font-bold text-slate-800 text-sm mt-0.5">{selectedReq.codigo_fornecedor_sap}</p>
                           </div>
                         )}
                         {selectedReq.codigo_sap_gerado && selectedReq.codigo_sap_gerado !== selectedReq.codigo_fornecedor_sap && (
                           <div className="rounded border border-emerald-200 bg-emerald-50/70 p-2.5">
-                            <h4 className="font-bold text-emerald-800 uppercase text-[9px] tracking-wider">Código Fornecedor SAP (atualizado)</h4>
+                            <h4 className="font-bold text-emerald-800 uppercase text-[10px] tracking-wider">Código Fornecedor SAP (atualizado)</h4>
                             <p className="font-mono font-bold text-emerald-700 text-sm mt-0.5">{selectedReq.codigo_sap_gerado}</p>
                           </div>
                         )}
@@ -909,7 +909,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                     ) : (
                       (selectedReq.codigo_fornecedor_sap || selectedReq.codigo_sap_gerado) && (
                         <div className="rounded border border-emerald-200 bg-emerald-50/70 p-2.5">
-                          <h4 className="font-bold text-emerald-800 uppercase text-[9px] tracking-wider">Código SAP do Fornecedor</h4>
+                          <h4 className="font-bold text-emerald-800 uppercase text-[10px] tracking-wider">Código SAP do Fornecedor</h4>
                           <p className="font-mono font-bold text-emerald-700 text-sm mt-0.5">
                             {selectedReq.codigo_fornecedor_sap || selectedReq.codigo_sap_gerado}
                           </p>
@@ -920,7 +920,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 ) : (
                   selectedReq.codigo_sap_gerado && (
                     <div className="rounded border border-emerald-200 bg-emerald-50/70 p-2.5">
-                      <h4 className="font-bold text-emerald-800 uppercase text-[9px] tracking-wider">Cód. Material SAP Gerado</h4>
+                      <h4 className="font-bold text-emerald-800 uppercase text-[10px] tracking-wider">Cód. Material SAP Gerado</h4>
                       <p className="font-mono font-bold text-emerald-700 text-sm mt-0.5">{selectedReq.codigo_sap_gerado}</p>
                     </div>
                   )
@@ -928,20 +928,20 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
 
                 {selectedReq.ticket_externo && (
                   <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2.5">
-                    <h4 className="font-bold text-indigo-800 uppercase text-[9px] tracking-wider">Ticket em Plataforma Externa</h4>
+                    <h4 className="font-bold text-indigo-800 uppercase text-[10px] tracking-wider">Ticket em Plataforma Externa</h4>
                     <p className="font-mono font-bold text-slate-800 text-sm mt-0.5">{selectedReq.ticket_externo}</p>
                   </div>
                 )}
 
                 <div>
-                  <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider">Solicitante</h4>
+                  <h4 className="font-bold text-slate-500 uppercase text-[10px] tracking-wider">Solicitante</h4>
                   <p className="font-semibold text-slate-700 mt-1">
                     {selectedReq.solicitante_name} ({getSectorName(selectedReq.solicitante_sector_id)})
                   </p>
                 </div>
 
                 <div>
-                  <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider">Justificativa da Demanda</h4>
+                  <h4 className="font-bold text-slate-500 uppercase text-[10px] tracking-wider">Justificativa da Demanda</h4>
                   <p className="text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded border border-slate-100 italic mt-1">
                     &ldquo;{selectedReq.justificativa}&rdquo;
                   </p>
@@ -949,11 +949,11 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
 
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <div>
-                    <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider">Criticidade</h4>
+                    <h4 className="font-bold text-slate-500 uppercase text-[10px] tracking-wider">Criticidade</h4>
                     <div className="mt-1">{getCriticalityBadge(selectedReq.criticality)}</div>
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider">Status Atual</h4>
+                    <h4 className="font-bold text-slate-500 uppercase text-[10px] tracking-wider">Status Atual</h4>
                     <span className={`inline-flex mt-1 px-2 py-0.5 rounded border text-[10px] font-bold ${getStatusBadgeColor(selectedReq.status)}`}>
                       {getStatusLabel(selectedReq.status)}
                     </span>
@@ -964,7 +964,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                     técnica, cartão CNPJ. É o que o atendente precisa ter à mão
                     para fazer o cadastro sem abrir uma rodada de perguntas. */}
                 <div className="border-t border-slate-100 pt-3">
-                  <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider mb-1.5">Anexos</h4>
+                  <h4 className="font-bold text-slate-500 uppercase text-[10px] tracking-wider mb-1.5">Anexos</h4>
                   <AttachmentGallery
                     requestId={selectedReq.id}
                     emptyLabel="Nenhum anexo enviado pelo solicitante."
@@ -972,21 +972,21 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 </div>
 
                 <div className="border-t border-slate-100 pt-3">
-                  <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider">Atendente Atribuído</h4>
+                  <h4 className="font-bold text-slate-500 uppercase text-[10px] tracking-wider">Atendente Atribuído</h4>
                   <p className="font-semibold text-slate-700 mt-1 flex items-center gap-1.5">
                     {selectedReq.atendente_id ? (
                       <span className="text-slate-800 font-bold">{selectedReq.atendente_name}</span>
                     ) : (
-                      <span className="text-slate-400 italic">Ninguém assumiu ainda</span>
+                      <span className="text-slate-500 italic">Ninguém assumiu ainda</span>
                     )}
                   </p>
                 </div>
 
                 {/* Conversa / Histórico de Observações e Andamentos */}
                 <div className="border-t border-slate-100 pt-3">
-                  <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider mb-2 flex items-center justify-between">
+                  <h4 className="font-bold text-slate-500 uppercase text-[10px] tracking-wider mb-2 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
-                      <MessageSquare className="h-3 w-3 text-slate-400" /> Conversa & Andamentos
+                      <MessageSquare className="h-3 w-3 text-slate-500" /> Conversa & Andamentos
                     </span>
                     <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded-full">
                       {comments.length}
@@ -994,7 +994,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                   </h4>
 
                   {comments.length === 0 ? (
-                    <p className="text-[11px] text-slate-400 italic bg-slate-50 p-2.5 rounded border border-slate-100">
+                    <p className="text-[11px] text-slate-500 italic bg-slate-50 p-2.5 rounded border border-slate-100">
                       Nenhuma observação ou esclarecimento registrado ainda.
                     </p>
                   ) : (
@@ -1017,17 +1017,17 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                               <span className="font-bold flex items-center gap-1">
                                 {c.user_name || 'Usuário'}
                                 {ehSolicitante && (
-                                  <span className="bg-amber-100 text-amber-800 px-1 py-0.2 rounded font-semibold text-[9px]">
+                                  <span className="bg-amber-100 text-amber-800 px-1 py-0.2 rounded font-semibold text-[10px]">
                                     Solicitante
                                   </span>
                                 )}
                                 {souEu && !ehSolicitante && (
-                                  <span className="bg-blue-100 text-blue-800 px-1 py-0.2 rounded font-semibold text-[9px]">
+                                  <span className="bg-blue-100 text-blue-800 px-1 py-0.2 rounded font-semibold text-[10px]">
                                     Você
                                   </span>
                                 )}
                               </span>
-                              <span className="text-slate-400 font-mono text-[9px]">
+                              <span className="text-slate-500 font-mono text-[10px]">
                                 {formatDateTimeBR(c.created_at)}
                               </span>
                             </div>
@@ -1077,7 +1077,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                     <form onSubmit={handleSalvarTicket} className="space-y-2 border border-indigo-100 p-3 rounded-xl bg-indigo-50/40">
                       <label className="text-[11px] font-bold text-indigo-900 flex items-center gap-1.5">
                         <FileText className="h-3.5 w-3.5 text-indigo-600" /> Nº do Ticket Externo
-                        <span className="text-[9px] font-semibold text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded">Opcional</span>
+                        <span className="text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded">Opcional</span>
                       </label>
                       <p className="text-[10px] text-slate-500 leading-snug">
                         Chamado aberto em outra plataforma (Astrein, service desk...). Ex.: <span className="font-mono">Astrein #507203</span>.
@@ -1107,7 +1107,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                         <p className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
                           <MessageSquare className="h-3.5 w-3.5 text-slate-700" /> Observações / Andamento
                         </p>
-                        <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
                           SLA Ativo (não pausa)
                         </span>
                       </div>
@@ -1137,7 +1137,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                         <p className="text-[11px] font-bold text-blue-900 flex items-center gap-1.5">
                           <HelpCircle className="h-3.5 w-3.5 text-blue-600" /> Solicitar Esclarecimento
                         </p>
-                        <span className="text-[9px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
                           Pausa SLA
                         </span>
                       </div>
@@ -1165,7 +1165,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                         <p className="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
                           <CheckCircle className="h-4 w-4 text-emerald-600" /> Fechamento da Demanda — Cadastro SAP
                         </p>
-                        <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
                           {selectedReq.registration_type === 'Fornecedor' ? 'Fornecedor' : 'Item / Material'}
                         </span>
                       </div>
@@ -1286,7 +1286,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                       <div className="mt-3 pt-3 border-t border-emerald-200/70 text-left space-y-1.5">
                         <label className="text-[10px] font-bold text-emerald-950 flex items-center justify-between">
                           <span>{selectedReq.registration_type === 'Fornecedor' ? 'Código SAP do Fornecedor' : 'Código Material SAP'}</span>
-                          <span className="text-[9px] text-slate-500 font-normal">Atualizar código pós-fechamento</span>
+                          <span className="text-[10px] text-slate-500 font-normal">Atualizar código pós-fechamento</span>
                         </label>
                         <div className="flex gap-2">
                           <input

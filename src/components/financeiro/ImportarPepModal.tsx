@@ -179,11 +179,11 @@ export default function ImportarPepModal({ user, onClose, onImportado }: Props) 
                 }}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
-              <Upload className="mx-auto h-8 w-8 text-slate-400 group-hover:text-emerald-600 group-hover:scale-110 transition-all" />
+              <Upload className="mx-auto h-8 w-8 text-slate-500 group-hover:text-emerald-600 group-hover:scale-110 transition-all" />
               <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mt-2">
                 Clique ou arraste a planilha PEP aqui
               </p>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 Suporta .xlsx, .xls ou .csv exportado do SAP
               </p>
             </div>

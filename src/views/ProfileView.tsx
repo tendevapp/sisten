@@ -271,15 +271,15 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
 
             <div className="border-t border-slate-100 pt-5 space-y-4 text-xs">
               <div className="flex items-center text-slate-600 gap-2.5">
-                <Mail className="h-4 w-4 shrink-0 text-slate-400" />
+                <Mail className="h-4 w-4 shrink-0 text-slate-500" />
                 <span className="truncate" title={profile.email}>{profile.email}</span>
               </div>
               <div className="flex items-center text-slate-600 gap-2.5">
-                <Building className="h-4 w-4 shrink-0 text-slate-400" />
+                <Building className="h-4 w-4 shrink-0 text-slate-500" />
                 <span>Setor: <strong>{sector?.name || 'Não atribuído'}</strong></span>
               </div>
               <div className="flex items-center text-slate-600 gap-2.5">
-                <Shield className="h-4 w-4 shrink-0 text-slate-400" />
+                <Shield className="h-4 w-4 shrink-0 text-slate-500" />
                 <span>Status: <strong className="text-emerald-700 uppercase">{profile.status}</strong></span>
               </div>
             </div>
@@ -299,7 +299,7 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
               <div className="border-t border-slate-100 pt-5 space-y-2 text-xs">
                 <p className="font-bold text-slate-700">Grupos de Compras SAP (Somente Leitura):</p>
                 {buyerGroups.length === 0 ? (
-                  <p className="text-[11px] text-slate-400 italic">Nenhum grupo SAP associado.</p>
+                  <p className="text-[11px] text-slate-500 italic">Nenhum grupo SAP associado.</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     {buyerGroups.map((bg) => (
@@ -479,7 +479,7 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
                   />
                   <div>
                     <p className="font-bold text-slate-800 dark:text-slate-100">Apenas In-App</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
+                    <p className="text-[11px] text-slate-500 mt-0.5">
                       Sino de avisos no cabeçalho e centro de notificações interno do SISTEN.
                     </p>
                   </div>
@@ -501,7 +501,7 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
                   />
                   <div>
                     <p className="font-bold text-slate-800 dark:text-slate-100">In-App + E-mail Crítico</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
+                    <p className="text-[11px] text-slate-500 mt-0.5">
                       Avisos em tempo real no sistema e e-mails para chamados urgentes e criticidades 4 e 5.
                     </p>
                   </div>
@@ -517,7 +517,7 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
                       <p className="font-bold text-slate-800 dark:text-slate-200 text-xs">
                         Avisos no Sistema Operacional
                       </p>
-                      <p className="text-[10px] text-slate-400">
+                      <p className="text-[10px] text-slate-500">
                         {permDesktop === 'granted'
                           ? 'Notificação popup na área de trabalho'
                           : permDesktop === 'denied'
@@ -549,11 +549,11 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
                     {avisoPrefs.som ? (
                       <Volume2 className="h-4 w-4 text-emerald-600" />
                     ) : (
-                      <VolumeX className="h-4 w-4 text-slate-400" />
+                      <VolumeX className="h-4 w-4 text-slate-500" />
                     )}
                     <div>
                       <p className="font-bold text-slate-800 dark:text-slate-200 text-xs">Aviso Sonoro</p>
-                      <p className="text-[10px] text-slate-400">Bipe curto e discreto de 2 notas</p>
+                      <p className="text-[10px] text-slate-500">Bipe curto e discreto de 2 notas</p>
                     </div>
                   </div>
                   <button
@@ -582,7 +582,7 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
                   Escolha o que deseja ser notificado
                 </h4>
-                <span className="text-[11px] text-slate-400 font-medium">
+                <span className="text-[11px] text-slate-500 font-medium">
                   Ative ou desative cada categoria
                 </span>
               </div>
@@ -606,11 +606,11 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
                           <div>
                             <h5 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                               {grupo.titulo}
-                              <span className="text-[10px] font-semibold text-slate-400">
+                              <span className="text-[10px] font-semibold text-slate-500">
                                 ({itensAtivos}/{grupo.itens.length} ativos)
                               </span>
                             </h5>
-                            <p className="text-[11px] text-slate-400">{grupo.descricao}</p>
+                            <p className="text-[11px] text-slate-500">{grupo.descricao}</p>
                           </div>
                         </div>
 
@@ -648,12 +648,12 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
                                     {item.label}
                                   </span>
                                   {item.badge && (
-                                    <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[9px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                    <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                                       {item.badge}
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-0.5 leading-snug">
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
                                   {item.descricao}
                                 </p>
                               </div>

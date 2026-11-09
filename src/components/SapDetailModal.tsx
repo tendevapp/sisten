@@ -327,7 +327,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
               <span className="font-mono font-bold">Item: {record.item_reqc || '—'}</span>
               {record.status_requisicao === 'Processado' ? (
                 <span
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
                   title={`PO ${record.documento_compra || '—'} emitida em ${record.data_pedido ? new Date(record.data_pedido).toLocaleDateString('pt-BR') : '—'}`}
                 >
                   <Check className="h-3 w-3 shrink-0" />
@@ -337,7 +337,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                   </span>
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50">
                   Sem PO
                 </span>
               )}
@@ -345,7 +345,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 transition-colors cursor-pointer"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-500 hover:text-slate-650 dark:hover:text-slate-300 transition-colors cursor-pointer"
             aria-label="Fechar modal"
           >
             <X className="h-5 w-5" />
@@ -367,7 +367,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                 {record.material_code && <CopyButton text={record.material_code} label="código do material" />}
                 {ehGenerico && (
                   <span
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-rose-600 text-white shadow-xs"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-rose-600 text-white shadow-xs"
                     title="Código guarda-chuva do catálogo — quem pediu descreveu o item na observação"
                   >
                     Item Genérico
@@ -393,7 +393,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
               <div className="flex items-start justify-between gap-4">
                 <p className="text-base font-extrabold text-slate-900 dark:text-slate-50 leading-snug">
                   {ehGenerico && (
-                    <span className="mr-1.5 align-middle inline-flex items-center rounded bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide">
+                    <span className="mr-1.5 align-middle inline-flex items-center rounded bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide">
                       Genérico
                     </span>
                   )}
@@ -404,7 +404,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
 
               {record.campos_extras?.['texto_completo'] && (
                 <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-900">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-500 block mb-1">
                     Texto Completo / Detalhado
                   </span>
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed whitespace-pre-wrap bg-white/40 dark:bg-slate-900/20 p-2.5 rounded-lg border border-slate-150/40 dark:border-slate-850">
@@ -490,13 +490,13 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
           {!ehGenerico && (techText || isLoadingTechText) && (
             <div className="bg-slate-50/60 dark:bg-slate-950 p-4.5 rounded-xl border border-slate-150 dark:border-slate-850 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-500">
                   Texto Técnico do Catálogo SAP
                 </span>
                 {techText && <CopyButton text={techText} label="texto técnico" />}
               </div>
               {isLoadingTechText ? (
-                <p className="text-xs text-slate-400 animate-pulse">Carregando especificações...</p>
+                <p className="text-xs text-slate-500 animate-pulse">Carregando especificações...</p>
               ) : (
                 <p className="text-xs text-slate-650 dark:text-slate-350 leading-relaxed font-mono whitespace-pre-wrap max-h-40 overflow-y-auto pr-1 bg-white dark:bg-slate-900/40 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
                   {techText}
@@ -509,12 +509,12 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
               material (banco de imagens). Some quando não há nenhuma. */}
           {(carregandoImagens || imagensItem.length > 0) && (
             <div className="bg-slate-50/60 dark:bg-slate-950 p-4.5 rounded-xl border border-slate-150 dark:border-slate-850 space-y-3">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1.5">
                 <ImageIcon className="h-3.5 w-3.5" />
                 {imagemDoCadastro ? 'Imagem do cadastro de itens' : ehGenerico ? 'Foto anexada ao item' : 'Imagem do item'}
               </span>
               {carregandoImagens ? (
-                <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                <p className="text-xs text-slate-500 flex items-center gap-1.5">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando imagem...
                 </p>
               ) : (
@@ -555,7 +555,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
             </h4>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3.5 text-xs">
               <div className="space-y-0.5">
-                <span className="text-slate-400 dark:text-slate-500 block">Qtd. Solicitada</span>
+                <span className="text-slate-500 dark:text-slate-500 block">Qtd. Solicitada</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">{record.qtd_requisicao} {record.unidade_medida}</span>
               </div>
               {/* A RM pode ter sido comprada em mais de um PO: com pedido, a
@@ -563,7 +563,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                   entre o que se pediu e o que se comprou nesta linha ficar à vista. */}
               {record.status_requisicao === 'Processado' && record.qtd_po !== undefined && record.qtd_po !== null && (
                 <div className="space-y-0.5">
-                  <span className="text-slate-400 dark:text-slate-500 block">Qtd. do Pedido</span>
+                  <span className="text-slate-500 dark:text-slate-500 block">Qtd. do Pedido</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
                     {record.qtd_po} {record.unidade_po || record.unidade_medida}
                     {record.total_pos !== undefined && record.total_pos > 1 && (
@@ -575,35 +575,35 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                 </div>
               )}
               <div className="space-y-0.5">
-                <span className="text-slate-400 dark:text-slate-500 block">Natureza (Doc)</span>
+                <span className="text-slate-500 dark:text-slate-500 block">Natureza (Doc)</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">{record.natureza} ({record.tipo_documento || '—'})</span>
               </div>
               <div className="space-y-0.5">
-                <span className="text-slate-400 dark:text-slate-500 block">Grupo de Compradores</span>
+                <span className="text-slate-500 dark:text-slate-500 block">Grupo de Compradores</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">{record.grupo_comprador || '—'}</span>
               </div>
               <div className="space-y-0.5">
-                <span className="text-slate-400 dark:text-slate-500 block">Data Solicitação</span>
+                <span className="text-slate-500 dark:text-slate-500 block">Data Solicitação</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">
                   {record.data_solicitacao ? new Date(record.data_solicitacao).toLocaleDateString('pt-BR') : '—'}
                 </span>
               </div>
               <div className="space-y-0.5">
-                <span className="text-slate-400 dark:text-slate-500 block">Data Limite Remessa</span>
+                <span className="text-slate-500 dark:text-slate-500 block">Data Limite Remessa</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">
                   {record.data_remessa ? new Date(record.data_remessa).toLocaleDateString('pt-BR') : '—'}
                 </span>
               </div>
               <div className="space-y-0.5">
-                <span className="text-slate-400 dark:text-slate-500 block">Requisitante</span>
+                <span className="text-slate-500 dark:text-slate-500 block">Requisitante</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">{record.requisitante_name || '—'}</span>
               </div>
               <div className="space-y-0.5">
-                <span className="text-slate-400 dark:text-slate-500 block">Dias em Aberto</span>
+                <span className="text-slate-500 dark:text-slate-500 block">Dias em Aberto</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">{record.dias_em_aberto} dias</span>
               </div>
               <div className="space-y-0.5">
-                <span className="text-slate-400 dark:text-slate-500 block">Última Modificação Status</span>
+                <span className="text-slate-500 dark:text-slate-500 block">Última Modificação Status</span>
                 <span className="text-[11px] font-bold text-slate-850 dark:text-slate-300">
                   {record.item_status_updated_at 
                     ? `${new Date(record.item_status_updated_at).toLocaleDateString('pt-BR')} por ${record.item_status_updated_by || 'Sistema'}` 
@@ -620,7 +620,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                 Atualização do Comprador
               </h4>
               {record.item_status_updated_at && (
-                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
+                <span className="text-[10px] text-slate-500 dark:text-slate-500 font-semibold">
                   Últ. alt.: {new Date(record.item_status_updated_at).toLocaleDateString('pt-BR')} por {record.item_status_updated_by || 'Sistema'}
                 </span>
               )}
@@ -628,7 +628,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
             <div className="bg-slate-50/60 dark:bg-slate-950 p-4 rounded-xl border border-slate-150 dark:border-slate-850 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
+                  <label className="text-[10px] font-extrabold uppercase text-slate-500 dark:text-slate-500 tracking-wider block">
                     Status do Item
                   </label>
                   <select
@@ -644,7 +644,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
+                <label className="text-[10px] font-extrabold uppercase text-slate-500 dark:text-slate-500 tracking-wider block">
                   Observações
                 </label>
                 <textarea
@@ -683,45 +683,45 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3.5 text-xs bg-emerald-50/20 dark:bg-emerald-950/5 p-4 rounded-xl border border-emerald-100/40 dark:border-emerald-900/20">
                 <div className="space-y-0.5">
-                  <span className="text-slate-400 dark:text-slate-500 block">Número do Pedido</span>
+                  <span className="text-slate-500 dark:text-slate-500 block">Número do Pedido</span>
                   <div className="flex items-center gap-1.5">
                     <span className="font-mono font-bold text-emerald-700 dark:text-emerald-450">{record.documento_compra || '—'}</span>
                     {record.documento_compra && <CopyButton text={record.documento_compra} label="número do pedido" />}
                   </div>
                 </div>
                 <div className="space-y-0.5">
-                  <span className="text-slate-400 dark:text-slate-500 block">Código Fornecedor</span>
+                  <span className="text-slate-500 dark:text-slate-500 block">Código Fornecedor</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">{record.fornecedor_code || '—'}</span>
                 </div>
                 <div className="space-y-0.5">
-                  <span className="text-slate-400 dark:text-slate-500 block">Razão Social Fornecedor</span>
+                  <span className="text-slate-500 dark:text-slate-500 block">Razão Social Fornecedor</span>
                   <div className="flex items-center gap-1.5">
                     <span className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[150px]">{record.fornecedor_name || '—'}</span>
                     {record.fornecedor_name && <CopyButton text={record.fornecedor_name} label="nome do fornecedor" />}
                   </div>
                 </div>
                 <div className="space-y-0.5">
-                  <span className="text-slate-400 dark:text-slate-500 block">Preço Unitário</span>
+                  <span className="text-slate-500 dark:text-slate-500 block">Preço Unitário</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">{formatPreco(record.preco_unitario)}</span>
                 </div>
                 <div className="space-y-0.5">
-                  <span className="text-slate-400 dark:text-slate-500 block">Valor Total</span>
+                  <span className="text-slate-500 dark:text-slate-500 block">Valor Total</span>
                   <span className="font-bold text-emerald-700 dark:text-emerald-450">{formatPreco(record.valor_total)}</span>
                 </div>
                 <div className="space-y-0.5">
-                  <span className="text-slate-400 dark:text-slate-500 block">Data Pedido</span>
+                  <span className="text-slate-500 dark:text-slate-500 block">Data Pedido</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
                     {record.data_pedido ? new Date(record.data_pedido).toLocaleDateString('pt-BR') : '—'}
                   </span>
                 </div>
                 <div className="space-y-0.5">
-                  <span className="text-slate-400 dark:text-slate-500 block">Prazo Entrega SAP</span>
+                  <span className="text-slate-500 dark:text-slate-500 block">Prazo Entrega SAP</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
                     {record.data_entrega_sap ? new Date(record.data_entrega_sap).toLocaleDateString('pt-BR') : '—'}
                   </span>
                 </div>
                 <div className="space-y-0.5">
-                  <span className="text-slate-400 dark:text-slate-500 block">Status de Entrega</span>
+                  <span className="text-slate-500 dark:text-slate-500 block">Status de Entrega</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">{record.campos_extras?.['status_entrega'] || 'Não Recebido'}</span>
                 </div>
               </div>
@@ -737,7 +737,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                 Relatório de Recebimento (Almoxarifado)
               </h4>
               {carregandoRelatorios ? (
-                <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                <p className="text-xs text-slate-500 flex items-center gap-1.5">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando relatório...
                 </p>
               ) : (
@@ -775,7 +775,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
               Fornecedores Históricos ({fornecedores.length})
             </h4>
             {fornecedores.length === 0 ? (
-              <div className="py-6 text-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 text-xs">
+              <div className="py-6 text-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
                 Nenhum fornecedor registrado anteriormente para este material.
               </div>
             ) : (
@@ -791,12 +791,12 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                           {f.fornecedor}
                         </span>
                         {f.regiao_uf && f.regiao_uf !== '—' && (
-                          <span className="px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-[9px] font-black rounded text-slate-500 dark:text-slate-400">
+                          <span className="px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-[10px] font-black rounded text-slate-500 dark:text-slate-400">
                             {f.regiao_uf}
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">
+                      <p className="text-[10px] text-slate-500 dark:text-slate-500 font-bold">
                         Cód: {f.cod_forn} | CNPJ: {f.cnpj || '—'}
                       </p>
                       
@@ -852,7 +852,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
               Histórico de Alterações do Comprador ({auditHistory.length})
             </h4>
             {auditHistory.length === 0 ? (
-              <div className="py-4 text-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 text-xs">
+              <div className="py-4 text-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-500 text-xs">
                 Nenhuma alteração anterior registrada para este item.
               </div>
             ) : (
@@ -862,7 +862,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                     key={h.id || idx}
                     className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/40 dark:bg-slate-900/40 text-xs space-y-2 text-left"
                   >
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500 font-semibold border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-500 font-semibold border-b border-slate-100 dark:border-slate-800 pb-1.5">
                       <span className="flex items-center gap-1">
                         <User className="h-3 w-3" />
                         {h.user_name || 'Sistema'}
@@ -875,21 +875,21 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                     <div className="space-y-1.5">
                       {h.item_status && (
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase">Status:</span>
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30">
+                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-500 uppercase">Status:</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30">
                             {h.item_status}
                           </span>
                         </div>
                       )}
                       {h.obs_comprador && (
                         <div>
-                          <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase block mb-0.5">Observações:</span>
+                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-500 uppercase block mb-0.5">Observações:</span>
                           <p className="text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-950 p-2 rounded border border-slate-100 dark:border-slate-850 whitespace-pre-wrap">{h.obs_comprador}</p>
                         </div>
                       )}
                       {h.data_entrega_prevista && (
                         <div className="flex items-center gap-1">
-                          <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase">Entrega Prevista:</span>
+                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-500 uppercase">Entrega Prevista:</span>
                           <span className="font-bold text-slate-700 dark:text-slate-350">{new Date(h.data_entrega_prevista).toLocaleDateString('pt-BR')}</span>
                         </div>
                       )}

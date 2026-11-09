@@ -14,7 +14,7 @@ interface Props {
 
 const Valor = ({ rotulo, valor, destaque }: { rotulo: string; valor: React.ReactNode; destaque?: boolean }) => (
   <div className="rounded-lg border p-3" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken)' }}>
-    <p className="text-[9px] font-black uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>{rotulo}</p>
+    <p className="text-[10px] font-black uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>{rotulo}</p>
     <p className="mt-1 text-sm font-black tabular" style={{ color: destaque ? 'var(--brand)' : 'var(--ink-primary)' }}>{valor}</p>
   </div>
 );

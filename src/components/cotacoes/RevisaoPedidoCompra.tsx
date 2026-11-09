@@ -96,7 +96,7 @@ function CardPedido({
           <div className="text-sm font-bold text-slate-800 dark:text-slate-100" title={pedido.fornecedorRazaoSocial}>
             {nomeFornecedorCurto(pedido.fornecedorRazaoSocial)}
           </div>
-          <div className="mt-0.5 text-xs text-slate-400">
+          <div className="mt-0.5 text-xs text-slate-500">
             {pedido.fornecedorCnpj ? formatarCnpj(pedido.fornecedorCnpj) : 'CNPJ não identificado'}
             {pedido.fornecedorCidade ? ` · ${pedido.fornecedorCidade}${pedido.fornecedorUf ? `/${pedido.fornecedorUf}` : ''}` : ''}
             {pedido.numeroProposta ? ` · Proposta ${pedido.numeroProposta}` : ''}
@@ -349,7 +349,7 @@ export default function RevisaoPedidoCompra({
           <ArrowLeft className="h-3.5 w-3.5" />
           Voltar ao mapa comparativo
         </button>
-        <span className="text-xs text-slate-400">
+        <span className="text-xs text-slate-500">
           {pedidos.length} {pedidos.length === 1 ? 'pedido' : 'pedidos'} · {totalItens} {totalItens === 1 ? 'item' : 'itens'} · total {formatBRL(totalGeral)}
         </span>
         {jaConcluido && (

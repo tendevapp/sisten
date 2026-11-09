@@ -171,8 +171,8 @@ function VinculoCell({ item, escopo, onResolver }: {
         }`}
       >
         {item.desconsiderado
-          ? <Ban className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-          : <LinkIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+          ? <Ban className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+          : <LinkIcon className="h-3.5 w-3.5 shrink-0 text-slate-500" />}
         <span className="min-w-0 flex-1 truncate font-medium">
           {item.desconsiderado
             ? 'Desconsiderado'
@@ -195,7 +195,7 @@ function VinculoCell({ item, escopo, onResolver }: {
             {item.vinculo_origem === 'ia' ? 'IA ' : ''}{Math.round(item.vinculo_score * 100)}%
           </span>
         )}
-        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${aberto ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform ${aberto ? 'rotate-180' : ''}`} />
       </button>
 
       {aberto && posicao && createPortal(
@@ -206,7 +206,7 @@ function VinculoCell({ item, escopo, onResolver }: {
         >
           {escopo.length > 5 && (
             <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50">
-              <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <Search className="h-3.5 w-3.5 shrink-0 text-slate-500" />
               <input
                 autoFocus
                 value={filtro}
@@ -218,7 +218,7 @@ function VinculoCell({ item, escopo, onResolver }: {
           )}
           <div className="min-h-0 flex-1 overflow-auto divide-y divide-slate-100 dark:divide-slate-800/60">
             {escopoFiltrado.length === 0 ? (
-              <p className="px-3 py-3 text-slate-400 text-center">Nenhum item do escopo bate com "{filtro}".</p>
+              <p className="px-3 py-3 text-slate-500 text-center">Nenhum item do escopo bate com "{filtro}".</p>
             ) : (
               escopoFiltrado.map(e => (
                 <button

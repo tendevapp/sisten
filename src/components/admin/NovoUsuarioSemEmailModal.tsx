@@ -156,7 +156,7 @@ export default function NovoUsuarioSemEmailModal({ sectors, onClose, onCreated }
                 }`}
               />
               {usuarioEditado && (
-                <button
+                <button aria-label="Voltar a sugerir a partir do nome"
                   type="button"
                   onClick={() => { setUsuarioEditado(false); setUsuario(gerarUsuarioLogin(nome)); }}
                   title="Voltar a sugerir a partir do nome"
@@ -234,7 +234,7 @@ export default function NovoUsuarioSemEmailModal({ sectors, onClose, onCreated }
                 onChange={e => setSenha(e.target.value)}
                 className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 dark:border-amber-900/60 dark:bg-slate-900 dark:text-slate-100"
               />
-              <button
+              <button aria-label={senha === SENHA_PROVISORIA_PADRAO ? 'Gerar uma senha aleatória' : `Voltar para a padrão (${SENHA_PROVISORIA_PADRAO})`}
                 type="button"
                 onClick={() => setSenha(senha === SENHA_PROVISORIA_PADRAO ? gerarSenhaProvisoria() : SENHA_PROVISORIA_PADRAO)}
                 title={senha === SENHA_PROVISORIA_PADRAO ? 'Gerar uma senha aleatória' : `Voltar para a padrão (${SENHA_PROVISORIA_PADRAO})`}

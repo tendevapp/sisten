@@ -1274,7 +1274,7 @@ function IconeEventoHistorico({ tipo }: { tipo: string }) {
     case 'abertura':
       return <PlusCircle className="h-4 w-4 text-slate-500 dark:text-slate-400 shrink-0" />;
     default:
-      return <Clock className="h-4 w-4 text-slate-400 shrink-0" />;
+      return <Clock className="h-4 w-4 text-slate-500 shrink-0" />;
   }
 }
 

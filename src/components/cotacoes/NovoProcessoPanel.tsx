@@ -102,7 +102,7 @@ export default function NovoProcessoPanel({ itens, criando, onCriar, onCancelar 
               ))}
             </div>
             {prefixoRm && complemento.trim() && (
-              <p className="mt-1 truncate text-[11px] text-slate-400" title={montarTituloProcesso(prefixoRm, complemento) ?? undefined}>
+              <p className="mt-1 truncate text-[11px] text-slate-500" title={montarTituloProcesso(prefixoRm, complemento) ?? undefined}>
                 Fica: {montarTituloProcesso(prefixoRm, complemento)}
               </p>
             )}

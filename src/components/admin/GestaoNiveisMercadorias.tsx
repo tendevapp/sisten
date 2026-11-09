@@ -510,9 +510,9 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
                   <span className="text-xl font-extrabold text-slate-900 dark:text-slate-50">
                     {qtd}
                   </span>
-                  <span className="text-[11px] text-slate-400">grupos</span>
+                  <span className="text-[11px] text-slate-500">grupos</span>
                 </div>
-                <span className="mt-1 text-[10px] text-slate-400">
+                <span className="mt-1 text-[10px] text-slate-500">
                   {subsQtd} subcategoria(s)
                 </span>
               </button>
@@ -526,7 +526,7 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
         <div className="flex flex-1 flex-wrap items-center gap-2">
           {/* Campo de Busca */}
           <div className="relative min-w-[220px] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               value={busca}
@@ -538,13 +538,13 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
               className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-8 pr-3 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             />
             {busca && (
-              <button
+              <button aria-label="Fechar"
                 type="button"
                 onClick={() => {
                   setBusca('');
                   setPagina(1);
                 }}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -592,7 +592,7 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
             </select>
           </div>
 
-          <button
+          <button aria-label="Recarregar dados e listas suspensas"
             type="button"
             onClick={() => {
               carregarDados();
@@ -663,7 +663,7 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading && itens.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-slate-400">
+                  <td colSpan={7} className="py-16 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
                       <span>Carregando grupos de mercadorias...</span>
@@ -672,13 +672,13 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
                 </tr>
               ) : itens.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-slate-400">
+                  <td colSpan={7} className="py-16 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <AlertCircle className="h-7 w-7 text-slate-300 dark:text-slate-600" />
                       <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                         Nenhum grupo encontrado
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-500">
                         Tente ajustar os termos da busca ou os filtros de nível.
                       </p>
                     </div>
@@ -771,7 +771,7 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
                             >
                               {salvandoInlineOutro ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                             </button>
-                            <button
+                            <button aria-label="Cancelar (Esc)"
                               type="button"
                               onClick={() => setInlineOutroCodigo(null)}
                               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400"
@@ -835,7 +835,7 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
           </span>
 
           <div className="flex items-center gap-1.5">
-            <button
+            <button aria-label="Anterior"
               type="button"
               onClick={() => setPagina((p) => Math.max(1, p - 1))}
               disabled={pagina <= 1 || loading}
@@ -846,7 +846,7 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
             <span className="px-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
               Página {pagina} de {totalPaginas}
             </span>
-            <button
+            <button aria-label="Próximo"
               type="button"
               onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
               disabled={pagina >= totalPaginas || loading}
@@ -964,7 +964,7 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
                       placeholder="Digite o nome da nova subcategoria..."
                       className="h-9 w-full rounded-lg border border-blue-400 bg-white px-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none dark:border-blue-500 dark:bg-slate-950 dark:text-slate-50"
                     />
-                    <p className="mt-1 text-[11px] text-slate-400">
+                    <p className="mt-1 text-[11px] text-slate-500">
                       Esta subcategoria será salva e entrará automaticamente para a lista suspensa de outros grupos.
                     </p>
                   </div>
@@ -1082,7 +1082,7 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
                       placeholder="Digite o nome da nova subcategoria..."
                       className="h-9 w-full rounded-lg border border-blue-400 bg-white px-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none dark:border-blue-500 dark:bg-slate-950 dark:text-slate-50"
                     />
-                    <p className="mt-1 text-[11px] text-slate-400">
+                    <p className="mt-1 text-[11px] text-slate-500">
                       Esta subcategoria será associada aos {selecionados.size} grupos e ficará disponível para os demais.
                     </p>
                   </div>

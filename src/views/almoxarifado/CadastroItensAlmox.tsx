@@ -76,6 +76,7 @@ import {
   listarUltimasContagens, ultimaContagemDoMaterial, type UltimaContagem,
 } from '../../lib/inventarioUltimaContagem';
 import { dataHojeLocal } from '../../lib/dataLocal';
+import { confirmar } from '../../lib/confirmar';
 
 // A contagem é a mesma do Inventário Cíclico (rodada preparada, controle de
 // movimentação, causa na recontagem); só baixa quando alguém toca em "Contar".
@@ -626,7 +627,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
   /** Apaga na hora uma foto adicional já gravada (como o "Excluir foto atual"). */
   const handleRemoverAdicionalSalva = async (foto: FotoAdicionalCatalogo) => {
-    if (!window.confirm('Remover esta foto adicional do item?')) return;
+    if (!await confirmar({ titulo: 'Remover foto?', mensagem: 'Remover esta foto adicional do item?', confirmarLabel: 'Remover', variante: 'perigo' })) return;
     try {
       await removerFotoAdicional(foto);
       setFotosAdicionais((atuais) => atuais.filter((f) => f.id !== foto.id));
@@ -799,7 +800,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   };
 
   /** Etiqueta do item aberto no modal, com o que está digitado (salvo ou não). */
-  const imprimirEtiquetaDoModal = () => {
+  const imprimirEtiquetaDoModal = async () => {
     if (!itemSelecionado) return;
     const posicaoDigitada = posicaoFoto.trim();
     const dados = dadosEtiquetaDoItem(
@@ -815,8 +816,15 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       !comFoto.aplicacao && 'aplicação',
       !comFoto.url_foto && 'foto',
     ].filter(Boolean);
+    // Os botões dizem o que fazem — no confirm nativo era preciso explicar
+    // "(OK = voltar · Cancelar = abrir)" dentro do texto.
     if (faltando.length > 0
-        && window.confirm(`Esta etiqueta está sem ${faltando.join(', ')}.\n\nQuer preencher antes de abrir o PDF?\n(OK = voltar e preencher · Cancelar = abrir assim mesmo)`)) {
+        && await confirmar({
+          titulo: 'Etiqueta incompleta',
+          mensagem: `Esta etiqueta está sem ${faltando.join(', ')}.\nQuer preencher antes de abrir o PDF?`,
+          confirmarLabel: 'Voltar e preencher',
+          cancelarLabel: 'Abrir assim mesmo',
+        })) {
       return;
     }
     abrirPreviewEtiquetas([comFoto]);
@@ -997,7 +1005,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   // Remover foto do cadastro
   const handleRemoverFoto = async () => {
     if (!itemSelecionado || !itemSelecionado.item_catalogo) return;
-    if (!window.confirm(`Deseja remover a foto do material ${itemSelecionado.codigo_sap}?`)) return;
+    if (!await confirmar({ titulo: 'Remover foto?', mensagem: `Deseja remover a foto do material ${itemSelecionado.codigo_sap}?`, confirmarLabel: 'Remover', variante: 'perigo' })) return;
 
     setSalvando(true);
     try {
@@ -1324,7 +1332,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
           <div className="relative flex min-h-0 flex-1 flex-col sm:block">
             <div className="relative flex items-center">
-              <Search className="absolute left-3.5 h-4 w-4 pointer-events-none text-slate-400" />
+              <Search className="absolute left-3.5 h-4 w-4 pointer-events-none text-slate-500" />
               <input
                 ref={inputAdicionarRef}
                 type="text"
@@ -1352,7 +1360,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                     inputAdicionarRef.current?.focus();
                   }}
                   aria-label="Limpar busca"
-                  className="absolute right-3 text-xs text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                  className="absolute right-3 text-xs text-slate-500 hover:text-slate-600 p-1 cursor-pointer"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -1405,7 +1413,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                             style={{ borderColor: 'var(--hairline)' }}
                           />
                         ) : (
-                          <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                          <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500">
                             <Camera className="h-4 w-4" />
                           </div>
                         )}
@@ -1457,7 +1465,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                             Cadastrar Foto
                           </span>
                         )}
-                        <ChevronRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition" />
+                        <ChevronRight className="h-4 w-4 text-slate-500 group-hover:translate-x-0.5 transition" />
                       </div>
                     </div>
                   ))}
@@ -1742,7 +1750,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         </div>
       ) : itensFiltrados.length === 0 ? (
         <div className="rounded-xl border p-12 text-center" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
-          <Boxes className="h-10 w-10 mx-auto text-slate-400 mb-3" />
+          <Boxes className="h-10 w-10 mx-auto text-slate-500 mb-3" />
           <h3 className="text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>
             Nenhum item consumível encontrado
           </h3>
@@ -1914,11 +1922,11 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                   Material SAP: {itemSelecionado.codigo_sap}
                 </p>
               </div>
-              <button
+              <button aria-label="Fechar"
                 type="button"
                 onClick={fecharModalFoto}
                 disabled={salvando}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1 rounded-lg text-slate-500 hover:text-slate-600 cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1971,7 +1979,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         className="h-full w-full object-contain p-2"
                       />
                       <div className="absolute top-2 right-2 flex gap-1">
-                        <button
+                        <button aria-label="Remover foto selecionada"
                           type="button"
                           onClick={() => {
                             if (fotoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(fotoPreviewUrl);
@@ -2125,7 +2133,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         style={{ borderColor: 'var(--brand)', background: 'var(--surface-raised)' }}
                       >
                         <img src={nova.preview} alt="Nova foto adicional" className="h-full w-full object-cover" />
-                        <span className="absolute bottom-1 left-1 rounded bg-amber-600 px-1.5 py-0.5 text-[9px] font-black uppercase text-white">
+                        <span className="absolute bottom-1 left-1 rounded bg-amber-600 px-1.5 py-0.5 text-[10px] font-black uppercase text-white">
                           Nova
                         </span>
                         <button
@@ -2418,7 +2426,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                   {imagemZoom.titulo}
                 </span>
               </div>
-              <button
+              <button aria-label="Fechar"
                 type="button"
                 onClick={() => setImagemZoom(null)}
                 className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
@@ -2459,10 +2467,10 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                   Pesquise o material no catálogo oficial SAP por código ou descrição. Os dados cadastrais são importados automaticamente, ficando habilitada apenas a captura da foto.
                 </p>
               </div>
-              <button
+              <button aria-label="Fechar"
                 type="button"
                 onClick={fecharModalSap}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg cursor-pointer"
+                className="text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -2478,7 +2486,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                       Pesquisar Material no Catálogo SAP
                     </label>
                     <div className="relative">
-                      <Search className="absolute left-3.5 top-3 h-4 w-4 pointer-events-none text-slate-400" />
+                      <Search className="absolute left-3.5 top-3 h-4 w-4 pointer-events-none text-slate-500" />
                       <input
                         type="text"
                         autoFocus
@@ -2493,13 +2501,13 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         }}
                       />
                       {termoBuscaSap && (
-                        <button
+                        <button aria-label="Fechar"
                           type="button"
                           onClick={() => {
                             setTermoBuscaSap('');
                             setResultadosBuscaSap([]);
                           }}
-                          className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                          className="absolute right-3 top-2.5 text-xs text-slate-500 hover:text-slate-600 p-1 cursor-pointer"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -2531,7 +2539,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                           <p className="text-xs text-slate-500 font-medium">Buscando no acervo do SAP…</p>
                         </div>
                       ) : resultadosBuscaSap.length === 0 ? (
-                        <div className="p-8 text-center text-slate-400 space-y-1">
+                        <div className="p-8 text-center text-slate-500 space-y-1">
                           <Search className="h-7 w-7 mx-auto stroke-1" />
                           <p className="text-xs font-semibold">
                             {termoBuscaSap.trim().length < 2
@@ -2558,7 +2566,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                                   style={{ borderColor: 'var(--hairline)' }}
                                 />
                               ) : (
-                                <div className="h-11 w-11 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                                <div className="h-11 w-11 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500">
                                   <ImageIcon className="h-5 w-5" />
                                 </div>
                               )}
@@ -2666,7 +2674,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
                     {itemSapSelecionado.texto_tecnico && (
                       <div className="p-2.5 rounded-lg border bg-white/80 dark:bg-slate-900/60 text-xs italic" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
-                        <span className="font-semibold block not-italic text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">
+                        <span className="font-semibold block not-italic text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">
                           Texto Técnico / Especificação:
                         </span>
                         {itemSapSelecionado.texto_tecnico}
@@ -2675,13 +2683,13 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-2 border-t" style={{ borderColor: 'var(--hairline)' }}>
                       <div>
-                        <span className="text-[11px] text-slate-400 block">Classificação:</span>
+                        <span className="text-[11px] text-slate-500 block">Classificação:</span>
                         <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
                           {itemSapSelecionado.classificacao_nivel1 || 'CONSUMÍVEL'} {itemSapSelecionado.classificacao_nivel2 ? `• ${itemSapSelecionado.classificacao_nivel2}` : ''}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[11px] text-slate-400 block">Grupo de Mercadorias SAP:</span>
+                        <span className="text-[11px] text-slate-500 block">Grupo de Mercadorias SAP:</span>
                         <span className="font-semibold truncate block" style={{ color: 'var(--ink-primary)' }}>
                           {itemSapSelecionado.grp_mercad ? `${itemSapSelecionado.grp_mercad} - ${itemSapSelecionado.grupo_mercadorias}` : itemSapSelecionado.grupo_mercadorias || '—'}
                         </span>
@@ -2709,7 +2717,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                             alt="Preview do material"
                             className="h-full w-full object-contain drop-shadow-sm"
                           />
-                          <button
+                          <button aria-label="Remover foto"
                             type="button"
                             onClick={() => {
                               if (fotoPreviewUrlSap && fotoPreviewUrlSap.startsWith('blob:')) {

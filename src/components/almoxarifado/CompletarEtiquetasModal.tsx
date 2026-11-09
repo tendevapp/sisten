@@ -102,7 +102,7 @@ export default function CompletarEtiquetasModal({ linhas, total, onCancelar, onA
               </p>
             </div>
           </div>
-          <button type="button" onClick={onCancelar} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Fechar">
+          <button type="button" onClick={onCancelar} className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Fechar">
             <X className="h-5 w-5" />
           </button>
         </div>

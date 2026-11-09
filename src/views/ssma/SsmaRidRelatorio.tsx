@@ -115,7 +115,7 @@ export default function SsmaRidRelatorio({ onNavigate }: Props) {
               className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               aria-label="Data inicial"
             />
-            <span className="text-slate-400">a</span>
+            <span className="text-slate-500">a</span>
             <input
               type="date"
               value={periodo.fim}
@@ -133,7 +133,7 @@ export default function SsmaRidRelatorio({ onNavigate }: Props) {
           >
             {(Object.keys(ROTULO_EMPRESA) as FiltroEmpresa[]).map(e => <option key={e} value={e}>{ROTULO_EMPRESA[e]}</option>)}
           </select>
-          <button
+          <button aria-label="Atualizar"
             type="button"
             onClick={() => void carregar()}
             className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"

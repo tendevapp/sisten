@@ -396,7 +396,7 @@ export default function UsersByModuleView({
         <div className="lg:col-span-4 rounded-2xl border border-slate-200/90 bg-white p-3 shadow-2xs space-y-3">
           {/* Busca de Módulos */}
           <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
             <input
               type="text"
               placeholder="Buscar módulo ou tela..."
@@ -449,14 +449,14 @@ export default function UsersByModuleView({
                     }`}>
                       {stats.withAccess}
                     </span>
-                    <p className="text-[9px] text-slate-400 font-semibold">{percent}%</p>
+                    <p className="text-[10px] text-slate-500 font-semibold">{percent}%</p>
                   </div>
                 </button>
               );
             })}
 
             {filteredPages.length === 0 && (
-              <div className="py-8 text-center text-slate-400 text-xs">
+              <div className="py-8 text-center text-slate-500 text-xs">
                 Nenhum módulo encontrado.
               </div>
             )}
@@ -513,7 +513,7 @@ export default function UsersByModuleView({
                       }
                       if (FORMULARIO_SUBPERMISSOES.some(f => f.id === selectedPage.id)) {
                         return (
-                          <p className="text-[11px] text-slate-400 mt-0.5">
+                          <p className="text-[11px] text-slate-500 mt-0.5">
                             Grupo de formulários: além desta regra, o colaborador precisa ter
                             acesso à página "Formulários".
                           </p>
@@ -601,7 +601,7 @@ export default function UsersByModuleView({
                   </select>
 
                   <div className="relative flex-1">
-                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
                     <input
                       type="text"
                       placeholder="Buscar colaborador..."
@@ -693,7 +693,7 @@ export default function UsersByModuleView({
                                 <p className="font-bold text-slate-900 truncate" title={targetUser.name}>
                                   {targetUser.name}
                                 </p>
-                                <p className="text-[10px] text-slate-400 truncate" title={targetUser.email}>
+                                <p className="text-[10px] text-slate-500 truncate" title={targetUser.email}>
                                   {targetUser.email}
                                 </p>
                               </div>
@@ -703,7 +703,7 @@ export default function UsersByModuleView({
                           {/* Cargo e Setor */}
                           <td className="py-2.5 px-3">
                             <p className="font-semibold text-slate-700 truncate">{targetUser.cargo || '—'}</p>
-                            <p className="text-[10px] text-slate-400 truncate">{secName}</p>
+                            <p className="text-[10px] text-slate-500 truncate">{secName}</p>
                           </td>
 
                           {/* Papel */}
@@ -737,7 +737,7 @@ export default function UsersByModuleView({
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
-                                <X className="w-3 h-3 text-slate-400" />
+                                <X className="w-3 h-3 text-slate-500" />
                                 Sem Acesso
                               </span>
                             )}
@@ -750,11 +750,11 @@ export default function UsersByModuleView({
                               {!isAdmin && (
                                 <>
                                   {isOverride ? (
-                                    <button
+                                    <button aria-label="Restaurar para a regra padrão de permissão do papel"
                                       type="button"
                                       onClick={() => handleResetAccess(targetUser)}
                                       disabled={isUpdating}
-                                      className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                                      className="p-1 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                                       title="Restaurar para a regra padrão de permissão do papel"
                                     >
                                       <RotateCcw className="w-3.5 h-3.5" />
@@ -786,20 +786,20 @@ export default function UsersByModuleView({
                               )}
 
                               {/* Botão de Matriz Completa do Usuário */}
-                              <button
+                              <button aria-label="Ver todas as permissões deste colaborador"
                                 type="button"
                                 onClick={() => onConfigurePermissions(targetUser.id)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                                className="p-1 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                                 title="Ver todas as permissões deste colaborador"
                               >
                                 <SlidersHorizontal className="w-3.5 h-3.5" />
                               </button>
 
                               {/* Botão de Editar Perfil */}
-                              <button
+                              <button aria-label="Editar dados cadastrais e governança do colaborador"
                                 type="button"
                                 onClick={() => onEditUser(targetUser)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                                className="p-1 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                                 title="Editar dados cadastrais e governança do colaborador"
                               >
                                 <Settings2 className="w-3.5 h-3.5" />
@@ -812,7 +812,7 @@ export default function UsersByModuleView({
 
                     {filteredUserStatuses.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="py-8 text-center text-slate-400">
+                        <td colSpan={5} className="py-8 text-center text-slate-500">
                           Nenhum colaborador corresponde aos filtros selecionados.
                         </td>
                       </tr>

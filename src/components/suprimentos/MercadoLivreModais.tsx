@@ -336,7 +336,7 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
                 <ul className="text-[11px] divide-y divide-yellow-200/70 dark:divide-yellow-900/50">
                   {detalhe.pacotes.map((p, i) => (
                     <li key={i} className="flex items-center gap-2 py-1">
-                      <span className="text-slate-400 w-5 shrink-0">{i + 1}</span>
+                      <span className="text-slate-500 w-5 shrink-0">{i + 1}</span>
                       <span className="flex-1 min-w-0 truncate" title={p.descricao}>{p.descricao}</span>
                       <span className="shrink-0 text-slate-500">{p.quantidade ?? '—'} un</span>
                       <span className="shrink-0 w-24 text-right font-semibold tabular">{brl(p.valor)}</span>

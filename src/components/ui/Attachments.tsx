@@ -179,7 +179,7 @@ function ImageBankModal({ materialCode, jaAdicionados, onSelect, onClose }: Imag
                       style={{ borderColor: ehGenerico ? undefined : 'var(--hairline)' }}
                     >
                       {ehGenerico && (
-                        <span className="absolute top-1.5 left-1.5 z-10 inline-flex items-center gap-1 rounded bg-rose-600 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-white shadow-xs">
+                        <span className="absolute top-1.5 left-1.5 z-10 inline-flex items-center gap-1 rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white shadow-xs">
                           Uso Genérico
                         </span>
                       )}

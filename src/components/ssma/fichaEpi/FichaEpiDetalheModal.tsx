@@ -26,6 +26,7 @@ import {
 import FichaEpiColaboradorResumo from './FichaEpiColaboradorResumo';
 import SignaturePadModal from '../../portaria/SignaturePadModal';
 import FichaEpiPdfPreview from './FichaEpiPdfPreview';
+import { confirmar } from '../../../lib/confirmar';
 
 interface Props {
   user: Profile;
@@ -100,7 +101,7 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
   };
 
   const desfazerDevolucao = async (linha: LinhaGradeFichaEpi) => {
-    if (!window.confirm(`Desfazer a devolução de "${linha.descricao}"?`)) return;
+    if (!await confirmar({ titulo: 'Desfazer devolução?', mensagem: `Desfazer a devolução de "${linha.descricao}"?`, confirmarLabel: 'Desfazer', variante: 'perigo' })) return;
     try {
       await registrarDevolucaoEpi(linha.itemId, null);
       toast.success('Devolução desfeita.');
@@ -176,7 +177,7 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
               </p>
             )}
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800" aria-label="Fechar">
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800" aria-label="Fechar">
             <X className="h-5 w-5" />
           </button>
         </div>

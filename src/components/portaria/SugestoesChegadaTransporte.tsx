@@ -75,7 +75,7 @@ export default function SugestoesChegadaTransporte({ termo, aoSelecionar, ativo 
       ref={boxRef}
       className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
     >
-      <div className="flex items-center gap-1.5 border-b border-slate-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:border-slate-800 dark:text-slate-500">
+      <div className="flex items-center gap-1.5 border-b border-slate-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-500">
         <History className="h-3 w-3" />
         Chegadas já registradas — clique para preencher
       </div>

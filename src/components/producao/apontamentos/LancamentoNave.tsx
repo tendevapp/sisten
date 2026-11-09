@@ -23,6 +23,7 @@ import {
 } from '../../../lib/producaoApontamentos';
 import type { Profile } from '../../../types';
 import { btnPrimario, btnSecundario, cardCls, inputCls, labelCls, msgErro } from './estilos';
+import { confirmar } from '../../../lib/confirmar';
 
 interface Props {
   user: Profile;
@@ -96,7 +97,7 @@ export default function LancamentoNave({ user, nave, etapas, onAlterado }: Props
   };
 
   const excluir = async (l: LancamentoApontamento) => {
-    if (!window.confirm(`Excluir o lançamento ${l.codigo}?`)) return;
+    if (!await confirmar({ titulo: 'Excluir lançamento?', mensagem: `Excluir o lançamento ${l.codigo}?`, confirmarLabel: 'Excluir', variante: 'perigo' })) return;
     try {
       await excluirLancamento(l.id);
       toast.success(`${l.codigo} excluído.`);
@@ -179,7 +180,7 @@ export default function LancamentoNave({ user, nave, etapas, onAlterado }: Props
         <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Lançamentos de {formatarDataBR(data)}</h3>
         {carregando ? (
           <div className="flex justify-center py-6">
-            <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+            <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
           </div>
         ) : lancamentos.length === 0 ? (
           <p className="py-4 text-center text-xs text-slate-500 dark:text-slate-400">Nenhum lançamento da {nave.titulo} neste dia.</p>
@@ -204,10 +205,10 @@ export default function LancamentoNave({ user, nave, etapas, onAlterado }: Props
                   </div>
                   {pode && (
                     <div className="flex shrink-0 gap-1">
-                      <button type="button" onClick={() => editar(l)} title="Editar" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800">
+                      <button aria-label="Editar" type="button" onClick={() => editar(l)} title="Editar" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800">
                         <Pencil className="h-4 w-4" />
                       </button>
-                      <button type="button" onClick={() => excluir(l)} title="Excluir" className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40">
+                      <button aria-label="Excluir" type="button" onClick={() => excluir(l)} title="Excluir" className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>

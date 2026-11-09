@@ -305,10 +305,10 @@ export default function ColetaAssinaturaTablet({ aberto, papel, contexto, nomeIn
           {contexto && <p className="truncate text-sm text-slate-500">{contexto}</p>}
         </div>
         <div className="ml-auto hidden shrink-0 text-right sm:block">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Data e hora</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Data e hora</p>
           <p className="font-mono text-lg font-bold text-slate-700 dark:text-slate-200">{formatarDataHoraAssinatura(agora)}</p>
         </div>
-        <button type="button" disabled={salvando} onClick={() => { pararCamera(); onFechar(); }} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800" aria-label="Fechar">
+        <button type="button" disabled={salvando} onClick={() => { pararCamera(); onFechar(); }} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800" aria-label="Fechar">
           <X className="h-7 w-7" />
         </button>
       </header>

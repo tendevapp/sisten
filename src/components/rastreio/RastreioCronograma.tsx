@@ -77,14 +77,14 @@ function EntryCard({
             <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
               {chegada ? (
                 <>
-                  <span className="inline-flex items-center gap-1 text-[9px] font-bold" style={{ color: 'var(--status-success, #059669)' }} title={`Registrado por ${chegada.registrado_por_nome}`}>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold" style={{ color: 'var(--status-success, #059669)' }} title={`Registrado por ${chegada.registrado_por_nome}`}>
                     <PackageCheck className="h-3 w-3" /> Chegou {formatDateBR(chegada.data_chegada)}
                   </span>
-                  <button
+                  <button aria-label="Desfazer chegada"
                     onClick={() => onDesfazerChegada?.(row.riPo)}
                     disabled={saving}
                     title="Desfazer chegada"
-                    className="p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 disabled:opacity-50"
+                    className="p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-rose-500 disabled:opacity-50"
                   >
                     <Undo2 className="h-3 w-3" />
                   </button>
@@ -93,7 +93,7 @@ function EntryCard({
                 <button
                   onClick={() => onMarcarChegada?.(row.riPo)}
                   disabled={saving}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 hover:border-emerald-300 dark:hover:border-emerald-800 text-[9px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50"
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 hover:border-emerald-300 dark:hover:border-emerald-800 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50"
                 >
                   <PackageCheck className="h-3 w-3" /> Marcar chegada
                 </button>
@@ -143,7 +143,7 @@ function PoGroupBlock({ group, hoje, compact, onOpen, unreadRis, canAlmoxarifado
       <div className={`flex items-center justify-between gap-2 ${compact ? 'mb-1' : 'mb-1.5'} px-0.5`}>
         <div className="min-w-0">
           <p className={`flex items-center gap-1 font-mono font-black text-slate-700 dark:text-slate-200 ${compact ? 'text-xs' : 'text-sm'}`}>
-            <FileText className="h-3 w-3 shrink-0 text-slate-400 dark:text-slate-500" />
+            <FileText className="h-3 w-3 shrink-0 text-slate-500 dark:text-slate-500" />
             <span className="truncate">PO {group.po}</span>
           </p>
           <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-500 dark:text-slate-400">
@@ -154,7 +154,7 @@ function PoGroupBlock({ group, hoje, compact, onOpen, unreadRis, canAlmoxarifado
         </div>
         {canAlmoxarifado && candidatos.length > 0 && (
           completo ? (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-300 dark:border-emerald-800 px-1.5 py-0.5 text-[9px] font-black text-emerald-700 dark:text-emerald-400">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-300 dark:border-emerald-800 px-1.5 py-0.5 text-[10px] font-black text-emerald-700 dark:text-emerald-400">
               <Check className="h-3 w-3" />{compact ? '' : 'Pedido completo'}
             </span>
           ) : (
@@ -162,7 +162,7 @@ function PoGroupBlock({ group, hoje, compact, onOpen, unreadRis, canAlmoxarifado
               onClick={(e) => { e.stopPropagation(); onMarcarChegadaPo?.(group.po, pendentes.map(r => r.riPo)); }}
               disabled={salvando}
               title={`Marcar chegada dos ${pendentes.length} item(ns) pendentes do PO ${group.po}`}
-              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 text-[9px] font-black text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 disabled:opacity-50"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 text-[10px] font-black text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 disabled:opacity-50"
             >
               <PackageCheck className="h-3 w-3" />
               {compact ? pendentes.length : `Marcar chegada · ${pendentes.length}`}
@@ -265,7 +265,7 @@ export default function RastreioCronograma({
       <div className="flex items-center justify-between px-1">
         <Legend />
         {omitidos > 0 && (
-          <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">
+          <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-500">
             {omitidos.toLocaleString('pt-BR')} já entregues ou sem data prevista (não exibidos)
           </span>
         )}
@@ -313,7 +313,7 @@ function EmptyDay({ label }: { label: string }) {
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center">
       <CalendarClock className="mb-2 h-8 w-8 text-slate-300 dark:text-slate-600" />
       <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Nenhuma entrega prevista</p>
-      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{label}</p>
+      <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">{label}</p>
     </div>
   );
 }
@@ -400,7 +400,7 @@ function MonthlyView({ rows, refDate, hoje, onSelectDay, ...extras }: { rows: Ra
                     <div className="mb-1 flex items-center justify-between">
                       <span className={`text-[11px] font-bold ${isToday ? 'flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white' : inMonth ? 'text-slate-600 dark:text-slate-300' : 'text-slate-300 dark:text-slate-600'}`}>{format(day, 'd')}</span>
                       {entries.length > 0 && (
-                        <span className="text-[9px] font-black text-slate-400 dark:text-slate-500" title={`${entries.length} item(ns) em ${gruposDoDia.length} pedido(s)`}>
+                        <span className="text-[10px] font-black text-slate-400 dark:text-slate-500" title={`${entries.length} item(ns) em ${gruposDoDia.length} pedido(s)`}>
                           {entries.length}
                         </span>
                       )}
@@ -413,15 +413,15 @@ function MonthlyView({ rows, refDate, hoje, onSelectDay, ...extras }: { rows: Ra
                         return (
                           <div key={i} className="flex items-center gap-1 truncate">
                             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} />
-                            <span className="truncate font-mono text-[9px] text-slate-600 dark:text-slate-400">
+                            <span className="truncate font-mono text-[10px] text-slate-600 dark:text-slate-400">
                               {hasValue(g.po) ? `PO ${g.po}` : 'Sem PO'}
                             </span>
-                            <span className="ml-auto shrink-0 text-[9px] font-bold text-slate-400 dark:text-slate-500">{g.rows.length}</span>
+                            <span className="ml-auto shrink-0 text-[10px] font-bold text-slate-500 dark:text-slate-500">{g.rows.length}</span>
                           </div>
                         );
                       })}
                       {gruposDoDia.length > 3 && (
-                        <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-500">
+                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500">
                           +{gruposDoDia.length - 3} pedidos
                         </span>
                       )}
@@ -446,7 +446,7 @@ function MonthlyView({ rows, refDate, hoje, onSelectDay, ...extras }: { rows: Ra
                   <div className={`mb-1.5 flex items-center gap-2 px-0.5 text-xs font-bold ${isToday ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}`}>
                     <CalendarDays className="h-3.5 w-3.5" />
                     {cap(format(day, "EEEE, dd 'de' MMMM", { locale: ptBR }))}
-                    <span className="text-slate-400 dark:text-slate-500 font-semibold">· {entries.length}</span>
+                    <span className="text-slate-500 dark:text-slate-500 font-semibold">· {entries.length}</span>
                   </div>
                   <GroupedEntries entries={entries} hoje={hoje} {...extras} />
                 </div>

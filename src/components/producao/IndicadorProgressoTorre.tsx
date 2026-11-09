@@ -130,7 +130,7 @@ export default function IndicadorProgressoTorre({
         {/* Campo de Busca Rápida por Tramo */}
         <div className="relative w-full md:w-72">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               value={busca}
@@ -414,7 +414,7 @@ export default function IndicadorProgressoTorre({
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Processos Rastreados no Indicador (Nave 2 & Nave White)
               </h4>
-              <span className="text-[11px] text-slate-400">Toque para apontar ou ver detalhes</span>
+              <span className="text-[11px] text-slate-500">Toque para apontar ou ver detalhes</span>
             </div>
 
             <div className="space-y-2">
@@ -509,7 +509,7 @@ export default function IndicadorProgressoTorre({
           >
             <div className="mb-2 flex items-center justify-between">
               <h5 className="text-sm font-bold text-slate-900 dark:text-slate-100">{fotoModal.nome}</h5>
-              <button
+              <button aria-label="Fechar"
                 type="button"
                 onClick={() => setFotoModal(null)}
                 className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -524,7 +524,7 @@ export default function IndicadorProgressoTorre({
                 className="max-h-[70vh] w-auto rounded-xl object-contain"
               />
             ) : (
-              <div className="flex h-48 w-72 items-center justify-center text-xs text-slate-400">
+              <div className="flex h-48 w-72 items-center justify-center text-xs text-slate-500">
                 Imagem não carregada.
               </div>
             )}

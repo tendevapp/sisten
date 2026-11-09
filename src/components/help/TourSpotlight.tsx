@@ -152,7 +152,7 @@ export default function TourSpotlight({ steps, stepIndex, onNext, onBack, onClos
               <span className="flex items-center justify-center h-9 w-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 shrink-0">
                 <Icon className="h-4.5 w-4.5" />
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500">
                 Passo {stepIndex + 1} de {steps.length}
               </span>
             </div>
@@ -160,7 +160,7 @@ export default function TourSpotlight({ steps, stepIndex, onNext, onBack, onClos
               type="button"
               onClick={onClose}
               aria-label="Fechar tour"
-              className="shrink-0 rounded-lg p-1 -m-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="shrink-0 rounded-lg p-1 -m-1 text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <X className="h-4 w-4" />
             </button>
@@ -184,7 +184,7 @@ export default function TourSpotlight({ steps, stepIndex, onNext, onBack, onClos
             <button
               type="button"
               onClick={onClose}
-              className="text-[11px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              className="text-[11px] font-bold text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
             >
               Pular tour
             </button>

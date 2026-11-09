@@ -73,7 +73,7 @@ const JANELA_TOTAL = SEMANAS_BASE + SEMANAS_RECENTES;
 function ChipAlerta({ tipo, grau }: { tipo: TipoAlertaConsumo; grau: GrauAlerta }) {
   const Icone = ICONE_ALERTA[tipo];
   return (
-    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide ${ESTILO_GRAU[grau]}`}>
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide ${ESTILO_GRAU[grau]}`}>
       <Icone className="h-2.5 w-2.5" /> {ROTULO_CURTO_ALERTA[tipo]}
     </span>
   );

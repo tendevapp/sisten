@@ -435,7 +435,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
               <button
                 type="button"
                 onClick={handleSelecionarTodas}
-                className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
+                className="text-slate-500 hover:text-blue-600 dark:hover:text-blue-400"
                 title={sessoesSelecionadasIds.length === sessoes.length ? 'Desmarcar todas' : 'Selecionar todas para PDF consolidado'}
               >
                 {sessoesSelecionadasIds.length > 0 && sessoesSelecionadasIds.length === sessoes.length ? (
@@ -448,7 +448,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                 Sessões Realizadas
               </h2>
             </div>
-            <span className="text-xs font-semibold text-slate-400">{sessoes.length} turmas</span>
+            <span className="text-xs font-semibold text-slate-500">{sessoes.length} turmas</span>
           </div>
 
           {loading ? (
@@ -485,7 +485,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                         <button
                           type="button"
                           onClick={(e) => toggleSelecionarSessao(s.id, e)}
-                          className="mt-0.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
+                          className="mt-0.5 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400"
                           title="Selecionar para exportação consolidada"
                         >
                           {isChecked ? (
@@ -552,10 +552,10 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
 
                   <div className="flex items-center gap-2">
                     {podeEditarSessao && (
-                      <button
+                      <button aria-label="Excluir sessão de briefing"
                         type="button"
                         onClick={() => setItemParaExcluir(sessaoAtiva)}
-                        className="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
+                        className="rounded-xl p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
                         title="Excluir sessão de briefing"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -629,7 +629,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                             <button
                               type="button"
                               onClick={() => setParticipanteParaRemover(p)}
-                              className="-m-1 rounded-lg p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
+                              className="-m-1 rounded-lg p-2 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400"
                               aria-label={`Remover ${p.nome}`}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -717,15 +717,15 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                                   Coletar Assinatura
                                 </button>
                               ) : (
-                                <span className="text-[11px] text-slate-400">Pendente</span>
+                                <span className="text-[11px] text-slate-500">Pendente</span>
                               )}
                             </td>
                             <td className="px-3.5 py-3 text-right">
                               {podeEditarSessao && (
-                                <button
+                                <button aria-label="Remover participante"
                                   type="button"
                                   onClick={() => setParticipanteParaRemover(p)}
-                                  className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
+                                  className="text-slate-500 hover:text-rose-600 dark:hover:text-rose-400"
                                   title="Remover participante"
                                 >
                                   <Trash2 className="h-4 w-4" />

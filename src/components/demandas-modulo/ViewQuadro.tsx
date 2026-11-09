@@ -98,7 +98,7 @@ function Coluna({ bucketId, titulo, cor, tarefas, porId, podeEditar, onAbrirTare
         <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: accent }} />
         <h3 className="text-xs font-bold uppercase tracking-wide truncate flex-1" style={{ color: 'var(--ink-primary)' }} title={titulo}>{titulo}</h3>
         {onCor && (
-          <button
+          <button aria-label="Cor da coluna"
             type="button"
             onClick={() => setPaletaAberta(v => !v)}
             className="shrink-0 rounded p-0.5 hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
@@ -182,7 +182,7 @@ function AdicionarColuna({ onCriar }: { onCriar: (nome: string) => void }) {
       />
       <div className="flex items-center gap-1.5 mt-1.5">
         <button type="button" onClick={confirmar} className="flex-1 rounded-md py-1 text-xs font-bold text-white" style={{ background: 'var(--brand)' }}>Criar</button>
-        <button type="button" onClick={() => { setNome(''); setEditando(false); }} className="rounded-md p-1" style={{ color: 'var(--ink-muted)' }}><X className="h-4 w-4" /></button>
+        <button aria-label="Fechar" type="button" onClick={() => { setNome(''); setEditando(false); }} className="rounded-md p-1" style={{ color: 'var(--ink-muted)' }}><X className="h-4 w-4" /></button>
       </div>
     </div>
   );

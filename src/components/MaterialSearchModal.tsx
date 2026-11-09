@@ -324,7 +324,7 @@ export default function MaterialSearchModal({ termoInicial = '', areaUsuario = n
                   className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 py-0.5 pl-2.5 pr-1 text-xs font-semibold text-emerald-800 dark:text-emerald-300 shadow-2xs"
                 >
                   <span>{chip}</span>
-                  <button
+                  <button aria-label={`Remover chave "${chip}"`}
                     type="button"
                     onClick={() => removerChip(chip)}
                     className="p-0.5 hover:bg-emerald-200/60 dark:hover:bg-emerald-800/60 rounded-full cursor-pointer text-emerald-600 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-100 transition-colors"
@@ -471,7 +471,7 @@ export default function MaterialSearchModal({ termoInicial = '', areaUsuario = n
                                   <AlertTriangle className="h-3 w-3 text-amber-700 shrink-0" />
                                   Z1 · Obsoleto
                                 </span>
-                                <span className="text-[9px] text-amber-700 leading-tight text-center max-w-[130px]">
+                                <span className="text-[10px] text-amber-700 leading-tight text-center max-w-[130px]">
                                   Ativar com setor Fiscal
                                 </span>
                               </div>

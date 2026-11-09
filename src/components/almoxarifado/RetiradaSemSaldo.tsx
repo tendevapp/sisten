@@ -60,7 +60,7 @@ export const resumoItensRetirada = (r: SolExtra) =>
 function Info({ rotulo, valor }: { rotulo: string; valor: string | null | undefined }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{rotulo}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{rotulo}</p>
       <p className="truncate font-medium text-slate-800 dark:text-slate-100">{valor || '—'}</p>
     </div>
   );
@@ -79,7 +79,7 @@ export function ResumoRetirada({ registro: r }: { registro: SolExtra }) {
         <Info rotulo="Data · hora" valor={[formatarDataBR(r.data), r.hora?.slice(0, 5)].filter(Boolean).join(' · ')} />
         <Info rotulo="Registrado por" valor={r.criado_por_nome} />
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Aprovação</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Aprovação</p>
           <AprovacaoChip status={r.aprovacao_status} />
         </div>
       </div>
@@ -304,7 +304,7 @@ export function BaixaRetiradaModal({
                       <td className="px-3 py-1.5 text-xs">{l.saldoDeposito > 0 ? formatDeposito(l.deposito) : '—'}</td>
                       <td className={`whitespace-nowrap px-3 py-1.5 text-right tabular-nums font-semibold ${l.cobre ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                         {formatQtd(l.saldoDeposito)}
-                        {l.saldoTotal !== l.saldoDeposito && <span className="block text-[10px] font-normal text-slate-400">total {formatQtd(l.saldoTotal)}</span>}
+                        {l.saldoTotal !== l.saldoDeposito && <span className="block text-[10px] font-normal text-slate-500">total {formatQtd(l.saldoTotal)}</span>}
                       </td>
                     </tr>
                   ))}

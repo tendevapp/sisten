@@ -100,18 +100,18 @@ export default function QuantidadesPeriodoTable({ records, compradores, granular
         <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
           Quantidades por {granularidade === 'dia' ? 'Dia' : granularidade === 'mes' ? 'Mês' : 'Semana'} e Comprador
         </h3>
-        <p className="text-xs text-slate-400 mt-0.5">Agrupado por métrica (RM, PO, Aberto) para comparar todos os compradores na mesma métrica</p>
+        <p className="text-xs text-slate-500 mt-0.5">Agrupado por métrica (RM, PO, Aberto) para comparar todos os compradores na mesma métrica</p>
       </div>
 
       {buyers.length === 0 ? (
-        <div className="flex items-center justify-center h-32 text-sm text-slate-400">
+        <div className="flex items-center justify-center h-32 text-sm text-slate-500">
           Nenhuma demanda no período/filtro selecionado.
         </div>
       ) : (
         <div ref={scrollRef} className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 <th className={`${metricaColClass} text-left`}>Métrica</th>
                 <th className={`${compradorColClass} text-left`}>Comprador</th>
                 {columns.map(c => (

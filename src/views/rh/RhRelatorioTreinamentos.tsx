@@ -998,7 +998,7 @@ export default function RhRelatorioTreinamentos({ onNavigate }: Props) {
               <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4 dark:border-slate-800">
                   <div className="relative flex-1 min-w-[240px]">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
                     <input
                       type="text"
                       value={buscaTabela}

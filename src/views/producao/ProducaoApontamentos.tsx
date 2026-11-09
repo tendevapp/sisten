@@ -280,7 +280,7 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
           </option>
         ))}
       </select>
-      <button type="button" onClick={carregar} className={`${btnSecundario} px-2.5`} title="Atualizar">
+      <button aria-label="Atualizar" type="button" onClick={carregar} className={`${btnSecundario} px-2.5`} title="Atualizar">
         <RefreshCw className={`h-4 w-4 ${carregando ? 'animate-spin' : ''}`} />
       </button>
     </div>
@@ -343,7 +343,7 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
 
       {['apontar', 'avanco', 'gargalos', 'qualidade'].includes(aba) && !fluxoAntigo && !dadosTramos && (
         <div className="flex justify-center py-16">
-          <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+          <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
         </div>
       )}
 
@@ -373,7 +373,7 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
           {segmento<typeof vistaNave>(vistaNave, [['tabela', 'Programado × Realizado'], ['graficos', 'Relatórios']], setVistaNave)}
           {!etapas || !matriz ? (
             <div className="flex justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+              <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
             </div>
           ) : vistaNave === 'tabela' ? (
             <TabelaProgramadoRealizado matriz={matriz} semanaAtual={semanaAtual} />
@@ -396,7 +396,7 @@ export default function ProducaoApontamentos({ user, onNavigate }: Props) {
             <ProgramacaoSemanal etapas={etapas} semanaAtual={semanaAtual} podeEditar={podeProgramar} usuarioNome={user.name ?? ''} onSalvo={carregar} />
           ) : (
             <div className="flex justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+              <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
             </div>
           )}
         </div>

@@ -79,7 +79,7 @@ export default function ForcePasswordChangeModal({ user, onDone, onLogout }: For
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nova Senha</label>
             <div className="relative">
-              <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <input
                 type={show ? 'text' : 'password'}
                 autoFocus
@@ -93,7 +93,7 @@ export default function ForcePasswordChangeModal({ user, onDone, onLogout }: For
                 type="button"
                 onClick={() => setShow(!show)}
                 aria-label={show ? 'Ocultar senha' : 'Mostrar senha'}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 transition-colors"
               >
                 {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -103,7 +103,7 @@ export default function ForcePasswordChangeModal({ user, onDone, onLogout }: For
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Confirmar Nova Senha</label>
             <div className="relative">
-              <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <input
                 type={show ? 'text' : 'password'}
                 required

@@ -121,7 +121,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
 
           {/* Filtro por Setor */}
           <div className="flex items-center space-x-2 min-w-0">
-            <span className="text-xs font-bold text-slate-400 uppercase shrink-0">Setor Destino:</span>
+            <span className="text-xs font-bold text-slate-500 uppercase shrink-0">Setor Destino:</span>
             <select
               value={selectedSector}
               onChange={(e) => setSelectedSector(e.target.value)}
@@ -166,7 +166,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
         {/* Total & Resolução */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Volume de Chamados</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Volume de Chamados</p>
             <h3 className="text-2xl font-bold text-slate-900">{kpis.total}</h3>
             <div className="text-[11px] text-slate-500 space-x-1.5">
               <span className="text-emerald-700 font-bold">{kpis.resolved} Resolvidos ({kpis.resolutionRate.toFixed(1)}%)</span>
@@ -182,7 +182,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
         {/* SLA Compliance */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cumprimento de SLA</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Cumprimento de SLA</p>
             <h3 className={`text-2xl font-bold ${kpis.slaComplianceRate >= 90 ? 'text-emerald-700' : 'text-rose-700'}`}>
               {kpis.slaComplianceRate.toFixed(1)}%
             </h3>
@@ -199,7 +199,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
         {/* MTTR (Tempo Médio de Resolução) */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tempo Médio (MTTR)</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tempo Médio (MTTR)</p>
             <h3 className="text-2xl font-bold text-slate-900">
               {kpis.avgMttrHours > 0 ? `${kpis.avgMttrHours.toFixed(1)}h` : 'N/A'}
             </h3>
@@ -216,7 +216,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
         {/* CSAT (Satisfação) */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Satisfação CSAT</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Satisfação CSAT</p>
             <h3 className="text-2xl font-bold text-slate-900">
               {kpis.csatCount > 0 ? `${kpis.csatAvg.toFixed(1)} / 5.0` : '4.9 / 5.0'}
             </h3>
@@ -244,7 +244,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-slate-800">Evolução Temporal de Chamados</h3>
-              <p className="text-[11px] text-slate-400">Volume diário de novos chamados vs resoluções</p>
+              <p className="text-[11px] text-slate-500">Volume diário de novos chamados vs resoluções</p>
             </div>
             <div className="flex items-center space-x-3 text-xs font-semibold">
               <span className="flex items-center text-amber-700">
@@ -285,7 +285,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-slate-800">Aging do Backlog Ativo</h3>
-              <p className="text-[11px] text-slate-400">Idade dos chamados que continuam aguardando atendimento</p>
+              <p className="text-[11px] text-slate-500">Idade dos chamados que continuam aguardando atendimento</p>
             </div>
             <span className="text-xs font-bold text-slate-500">
               {kpis.open + kpis.inProgress + kpis.waitingUser} chamados ativos
@@ -353,7 +353,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
               <Users className="h-4 w-4 text-emerald-700 mr-2" />
               Produtividade por Atendente / Técnico
             </h3>
-            <p className="text-[11px] text-slate-400">Volume de resoluções, MTTR médio, taxa de SLA e satisfação dos usuários</p>
+            <p className="text-[11px] text-slate-500">Volume de resoluções, MTTR médio, taxa de SLA e satisfação dos usuários</p>
           </div>
           <span className="text-xs font-bold text-slate-500">{kpis.byAttendant.length} profissionais com atendimentos</span>
         </div>
@@ -374,7 +374,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
             <tbody className="divide-y divide-slate-100">
               {kpis.byAttendant.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-slate-400 text-xs">
+                  <td colSpan={7} className="text-center py-8 text-slate-500 text-xs">
                     Nenhum atendimento individual registrado no período selecionado.
                   </td>
                 </tr>
@@ -405,10 +405,10 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
                         <div className="inline-flex items-center space-x-1 text-amber-500 font-bold">
                           <Star className="h-3 w-3 fill-amber-400" />
                           <span>{att.csatAvg.toFixed(1)}</span>
-                          <span className="text-[10px] text-slate-400">({att.csatCount})</span>
+                          <span className="text-[10px] text-slate-500">({att.csatCount})</span>
                         </div>
                       ) : (
-                        <span className="text-slate-400">-</span>
+                        <span className="text-slate-500">-</span>
                       )}
                     </td>
                   </tr>
@@ -430,14 +430,14 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
                 <Building2 className="h-4 w-4 text-emerald-700 mr-2" />
                 Origem das Demandas por Setor
               </h3>
-              <p className="text-[11px] text-slate-400">Setores que mais abrem chamados</p>
+              <p className="text-[11px] text-slate-500">Setores que mais abrem chamados</p>
             </div>
-            <span className="text-xs font-bold text-slate-400">{kpis.bySectorSolicitante.length} setores</span>
+            <span className="text-xs font-bold text-slate-500">{kpis.bySectorSolicitante.length} setores</span>
           </div>
 
           <div className="space-y-3">
             {kpis.bySectorSolicitante.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-6">Nenhum setor registrado.</p>
+              <p className="text-xs text-slate-500 text-center py-6">Nenhum setor registrado.</p>
             ) : (
               kpis.bySectorSolicitante.slice(0, 6).map((sec, idx) => (
                 <div key={sec.sectorId} className="space-y-1">
@@ -462,21 +462,21 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
                 <MessageSquare className="h-4 w-4 text-amber-600 mr-2" />
                 Mural de Avaliações (CSAT)
               </h3>
-              <p className="text-[11px] text-slate-400">Comentários e notas deixadas pelos solicitantes</p>
+              <p className="text-[11px] text-slate-500">Comentários e notas deixadas pelos solicitantes</p>
             </div>
             <span className="text-xs font-bold text-amber-600">{kpis.ratedTickets.length} avaliados</span>
           </div>
 
           <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
             {kpis.ratedTickets.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-8">Nenhuma avaliação registrada com comentários.</p>
+              <p className="text-xs text-slate-500 text-center py-8">Nenhuma avaliação registrada com comentários.</p>
             ) : (
               kpis.ratedTickets.slice(0, 5).map(t => (
                 <div key={t.id} className="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1.5 text-xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <span className="font-mono font-bold text-slate-700">#{t.number}</span>
-                      <span className="text-slate-400">•</span>
+                      <span className="text-slate-500">•</span>
                       <span className="font-semibold text-slate-800">{t.solicitante_name}</span>
                     </div>
                     <div className="flex items-center space-x-0.5 text-amber-500">

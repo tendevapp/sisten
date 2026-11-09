@@ -349,10 +349,10 @@ function Lista({
               className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 placeholder-slate-400 shadow-xs transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400"
             />
             {busca && (
-              <button
+              <button aria-label="Limpar pesquisa"
                 type="button"
                 onClick={() => setBusca('')}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                 title="Limpar pesquisa"
               >
                 <X className="h-4 w-4" />
@@ -379,7 +379,7 @@ function Lista({
       )}
 
       {itens === null ? (
-        <div className="flex justify-center py-16 text-slate-400">
+        <div className="flex justify-center py-16 text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : itens.length === 0 ? (
@@ -435,7 +435,7 @@ function Lista({
                     className="min-w-0 flex-1 cursor-pointer"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-[11px] font-semibold text-slate-400">{c.numero}</span>
+                      <span className="font-mono text-[11px] font-semibold text-slate-500">{c.numero}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
                         c.status === 'enviado'
                           ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
@@ -455,7 +455,7 @@ function Lista({
 
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       {c.tramos.length === 0 && (
-                        <span className="text-xs text-slate-400">Sem tramos</span>
+                        <span className="text-xs text-slate-500">Sem tramos</span>
                       )}
                       {c.tramos.some((t) => t.numero_tramo) && (
                         <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
@@ -463,16 +463,16 @@ function Lista({
                         </span>
                       )}
                       {etapasTotais > 0 && (
-                        <span className="text-[11px] font-medium text-slate-400">
+                        <span className="text-[11px] font-medium text-slate-500">
                           {etapasPreenchidas}/{etapasTotais} horários
                         </span>
                       )}
                       {c.total_fotos > 0 && (
-                        <span className="text-[11px] font-medium text-slate-400">· {c.total_fotos} foto{c.total_fotos > 1 ? 's' : ''}</span>
+                        <span className="text-[11px] font-medium text-slate-500">· {c.total_fotos} foto{c.total_fotos > 1 ? 's' : ''}</span>
                       )}
                     </div>
 
-                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
                       <span>Criado por {c.criado_por_nome} em {formatDateBR(c.created_at)}</span>
                       {c.enviado_em && (
                         <>
@@ -490,20 +490,20 @@ function Lista({
                       podeEditar && <RestaurarButton onClick={() => handleRestaurar(c)} />
                     ) : (
                       podeEditar && (
-                        <button
+                        <button aria-label="Excluir carregamento"
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setItemParaExcluir(c);
                           }}
-                          className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
+                          className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
                           title="Excluir carregamento"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
                       )
                     )}
-                    <button
+                    <button aria-label="Abrir carregamento"
                       type="button"
                       onClick={() => onAbrir(c.id)}
                       className="p-1 text-slate-300 transition-transform hover:text-blue-500 dark:text-slate-600 cursor-pointer"
@@ -552,7 +552,7 @@ function LogEnviosCard({
     return (
       <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs text-slate-500 dark:border-slate-800/80 dark:bg-slate-900/40 dark:text-slate-400">
         <div className="flex items-center gap-2">
-          <Mail className="h-4 w-4 text-slate-400 shrink-0" />
+          <Mail className="h-4 w-4 text-slate-500 shrink-0" />
           <span>
             Status do e-mail: <strong className="font-semibold text-slate-700 dark:text-slate-300">Pendente de envio</strong>. O e-mail de expedição será registrado aqui assim que for disparado pelo atendente.
           </span>
@@ -608,10 +608,10 @@ function LogEnviosCard({
             >
               <div className="flex flex-wrap items-center justify-between gap-1">
                 <span className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                  <span className="font-mono text-[10px] text-slate-400">#{idx + 1}</span>
+                  <span className="font-mono text-[10px] text-slate-500">#{idx + 1}</span>
                   {log.tipo === 'expedicao_completa' ? 'E-mail de Expedição (Final)' : 'Aviso de Chegada (Portaria)'}
                 </span>
-                <span className="text-[11px] text-slate-400 font-mono">
+                <span className="text-[11px] text-slate-500 font-mono">
                   {formatDateTimeBR(log.enviado_em)}
                 </span>
               </div>
@@ -1204,7 +1204,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
 
   if (!dados) {
     return (
-      <div className="flex justify-center py-16 text-slate-400">
+      <div className="flex justify-center py-16 text-slate-500">
         <Loader2 className="h-6 w-6 animate-spin" />
       </div>
     );
@@ -1265,7 +1265,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               </span>
             )}
           </div>
-          <p className="mt-0.5 font-mono text-[11px] text-slate-400">
+          <p className="mt-0.5 font-mono text-[11px] text-slate-500">
             {dados.numero}{resumoTramos && ` · ${resumoTramos}`}
           </p>
         </div>

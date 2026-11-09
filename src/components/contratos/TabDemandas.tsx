@@ -56,7 +56,7 @@ function IdadeChip({ criadoEm }: { criadoEm: string }) {
       : 'var(--ink-muted)';
   return (
     <span
-      className="inline-flex items-center gap-1 text-[9px] font-bold rounded-full px-2 py-0.5"
+      className="inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5"
       style={{ color: cor, background: `color-mix(in srgb, ${cor} 14%, transparent)` }}
       title={`Aberto ${idade.texto}`}
     >
@@ -124,7 +124,7 @@ function CardContent({ request, setorNome, corPrio, colunas, onSalvarTitulo, onM
               type="button"
               onClick={(e) => { e.stopPropagation(); setEditando(true); }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="shrink-0 opacity-0 group-hover/titulo:opacity-100 transition-opacity cursor-pointer p-0.5 -m-0.5"
+              className="shrink-0 opacity-0 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 group-hover/titulo:opacity-100 transition-opacity cursor-pointer p-0.5 -m-0.5"
               style={{ color: 'var(--ink-muted)' }}
               aria-label="Editar título"
               title="Editar título"
@@ -137,7 +137,7 @@ function CardContent({ request, setorNome, corPrio, colunas, onSalvarTitulo, onM
 
       <div className="flex flex-wrap items-center gap-1.5 mt-2">
         <span
-          className="text-[9px] font-black uppercase tracking-wide rounded-full px-2 py-0.5"
+          className="text-[10px] font-black uppercase tracking-wide rounded-full px-2 py-0.5"
           style={{ color: corPrio, background: `color-mix(in srgb, ${corPrio} 16%, transparent)` }}
         >
           {PRIORIDADE_LABEL[request.criticality] || '—'}
@@ -147,7 +147,7 @@ function CardContent({ request, setorNome, corPrio, colunas, onSalvarTitulo, onM
           onChange={(e) => onMudarStatus(e.target.value as RequestStatus)}
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="text-[9px] font-bold rounded-full px-2 py-0.5 cursor-pointer border-0 appearance-none"
+          className="text-[10px] font-bold rounded-full px-2 py-0.5 cursor-pointer border-0 appearance-none"
           style={{ color: corStatusAtual, background: `color-mix(in srgb, ${corStatusAtual} 14%, transparent)` }}
           title="Mudar status"
         >
@@ -161,7 +161,7 @@ function CardContent({ request, setorNome, corPrio, colunas, onSalvarTitulo, onM
         </select>
         {prazo && (
           <span
-            className="inline-flex items-center gap-1 text-[9px] font-bold rounded-full px-2 py-0.5"
+            className="inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5"
             style={{
               color: prazo.atrasado ? 'var(--status-critical)' : 'var(--status-good)',
               background: prazo.atrasado
@@ -351,10 +351,10 @@ function PainelPersonalizarColunas({
           {colunas.map((col, idx) => (
             <div key={col.status} className="flex items-center gap-1.5 rounded-lg border border-slate-100 dark:border-slate-800 p-1.5">
               <div className="flex flex-col shrink-0">
-                <button type="button" disabled={idx === 0} onClick={() => mover(idx, -1)} className="disabled:opacity-25 cursor-pointer text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+                <button aria-label="Mover para cima" type="button" disabled={idx === 0} onClick={() => mover(idx, -1)} className="disabled:opacity-25 cursor-pointer text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">
                   <ChevronUp className="h-3.5 w-3.5" />
                 </button>
-                <button type="button" disabled={idx === colunas.length - 1} onClick={() => mover(idx, 1)} className="disabled:opacity-25 cursor-pointer text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+                <button aria-label="Mover para baixo" type="button" disabled={idx === colunas.length - 1} onClick={() => mover(idx, 1)} className="disabled:opacity-25 cursor-pointer text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">
                   <ChevronDown className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -375,7 +375,7 @@ function PainelPersonalizarColunas({
                   next[idx] = { ...col, visible: !col.visible };
                   onChange(next);
                 }}
-                className="shrink-0 cursor-pointer text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                className="shrink-0 cursor-pointer text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
                 title={col.visible ? 'Ocultar coluna' : 'Mostrar coluna'}
               >
                 {col.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
@@ -574,7 +574,7 @@ export default function TabDemandas({ user }: TabDemandasProps) {
       </div>
 
       <div className="relative max-w-md">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
         <input
           type="text"
           value={busca}

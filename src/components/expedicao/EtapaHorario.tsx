@@ -264,7 +264,7 @@ export default function EtapaHorario({
               type="button"
               onClick={handleLimpar}
               aria-label={`Limpar ${rotulo}`}
-              className="flex h-11 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:text-rose-500"
+              className="flex h-11 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:text-rose-500"
               title="Limpar data e hora"
             >
               <X className="h-4 w-4" />
@@ -331,7 +331,7 @@ export default function EtapaHorario({
                 type="button"
                 onClick={() => arquivoRef.current?.click()}
                 disabled={enviando}
-                className="flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed border-slate-300 text-slate-400 transition-colors hover:border-blue-400 hover:text-blue-500 disabled:opacity-60 dark:border-slate-600 dark:hover:border-blue-500"
+                className="flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed border-slate-300 text-slate-500 transition-colors hover:border-blue-400 hover:text-blue-500 disabled:opacity-60 dark:border-slate-600 dark:hover:border-blue-500"
               >
                 {origemEnvio === 'arquivo' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />

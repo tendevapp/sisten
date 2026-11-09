@@ -130,13 +130,13 @@ const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) =
   return (
     <button
       onClick={handleCopy}
-      className="p-1 rounded-md bg-slate-50 hover:bg-slate-150 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors relative group cursor-pointer inline-flex items-center justify-center shrink-0 border border-slate-200/50 dark:border-slate-700 h-5 w-5"
+      className="p-1 rounded-md bg-slate-50 hover:bg-slate-150 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors relative group cursor-pointer inline-flex items-center justify-center shrink-0 border border-slate-200/50 dark:border-slate-700 h-5 w-5"
       title={`Copiar ${label}`}
     >
       {copied ? (
         <>
           <Check className="h-3 w-3 text-emerald-655 dark:text-emerald-455" />
-          <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-850 dark:bg-slate-700 text-white text-[9px] py-1 px-1.5 rounded shadow-md whitespace-nowrap z-50">
+          <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-850 dark:bg-slate-700 text-white text-[10px] py-1 px-1.5 rounded shadow-md whitespace-nowrap z-50">
             Copiado!
           </span>
         </>
@@ -475,7 +475,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
               : 'Audite as compras de 2026 contra o que o mesmo material custou no passado, corrigido pelo IPCA. Cada linha abre o histórico que formou a referência.'}
           </p>
           {aba === 'consulta' && lastUpdated && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
+            <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
               <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('historico_pedidos')}
             </p>
           )}
@@ -543,27 +543,27 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><Package className="h-3 w-3" /> Materiais</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1"><Package className="h-3 w-3" /> Materiais</span>
             <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.materiais.toLocaleString('pt-BR')}</p>
           </div>
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500 dark:bg-blue-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><Layers className="h-3 w-3" /> Pedidos</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1"><Layers className="h-3 w-3" /> Pedidos</span>
             <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.pedidos.toLocaleString('pt-BR')}</p>
           </div>
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 dark:bg-emerald-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><Users className="h-3 w-3" /> Fornecedores</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1"><Users className="h-3 w-3" /> Fornecedores</span>
             <p className="text-3xl font-black text-emerald-600 dark:text-emerald-500 mt-1">{kpis.fornecedores.toLocaleString('pt-BR')}</p>
           </div>
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 dark:bg-amber-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><DollarSign className="h-3 w-3" /> Valor Total</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1"><DollarSign className="h-3 w-3" /> Valor Total</span>
             <p className="text-xl font-black text-slate-800 dark:text-slate-100 mt-2 leading-tight">{formatPreco(kpis.valor)}</p>
           </div>
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden col-span-2 lg:col-span-1">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-violet-500 dark:bg-violet-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><DollarSign className="h-3 w-3" /> Preço Médio</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1"><DollarSign className="h-3 w-3" /> Preço Médio</span>
             <p className="text-xl font-black text-slate-800 dark:text-slate-100 mt-2 leading-tight">{formatPreco(kpis.precoMedio)}</p>
           </div>
         </div>
@@ -583,7 +583,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
           {/* Linha secundária: Filtros Específicos/Selects compactos */}
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
             <div className="relative shrink-0 w-[120px] lg:w-auto lg:flex-1 lg:min-w-[110px]">
-              <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={ufFilter}
                 onChange={(e) => { setUfInput(e.target.value); setUfFilter(e.target.value); }}
@@ -594,7 +594,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
               </select>
             </div>
             <div className="relative shrink-0 w-[150px] lg:w-auto lg:flex-1 lg:min-w-[130px]">
-              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={classFilter}
                 onChange={(e) => { setClassInput(e.target.value); setClassFilter(e.target.value); }}
@@ -605,7 +605,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
               </select>
             </div>
             <div className="relative shrink-0 w-[120px] lg:w-auto lg:flex-1 lg:min-w-[100px]">
-              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={yearFilter}
                 onChange={(e) => { setYearInput(e.target.value); setYearFilter(e.target.value); }}
@@ -616,7 +616,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
               </select>
             </div>
             <div className="relative shrink-0 w-[160px] lg:w-auto lg:flex-[1.5] lg:min-w-[140px]">
-              <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={grupoFilter}
                 onChange={(e) => { setGrupoInput(e.target.value); setGrupoFilter(e.target.value); }}
@@ -627,7 +627,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
               </select>
             </div>
             <div className="relative shrink-0 w-[130px] lg:w-auto lg:flex-1 lg:min-w-[110px]">
-              <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={tipoItemFilter}
                 onChange={(e) => { const v = e.target.value as 'Todos' | 'Consumo' | 'Projeto'; setTipoItemInput(v); setTipoItemFilter(v); }}
@@ -640,7 +640,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
               </select>
             </div>
             <div className="relative shrink-0 w-[130px] lg:w-auto lg:flex-1 lg:min-w-[110px]">
-              <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <select
                 value={origemFilter}
                 onChange={(e) => { const v = e.target.value as 'Todos' | 'Contrato' | 'Spot'; setOrigemInput(v); setOrigemFilter(v); }}
@@ -700,7 +700,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
               >
                 <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
                 <span>Personalizar Colunas</span>
-                <ChevronDown className="h-3 w-3 text-slate-400" />
+                <ChevronDown className="h-3 w-3 text-slate-500" />
               </button>
               {showColMenu && (
                 <div className="absolute right-0 mt-1.5 w-60 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 z-30 p-3 text-left">
@@ -772,7 +772,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                       {r.pedido_parcial && (
                         <span
                           title="Entrega ainda não fechou no SAP — quantidade e valor podem mudar até concluir."
-                          className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-bold whitespace-nowrap"
+                          className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap"
                           style={{ color: 'var(--status-warning)', background: 'color-mix(in srgb, var(--status-warning) 14%, transparent)' }}
                         >
                           pedido parcial
@@ -783,14 +783,14 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                       <div className="flex flex-col gap-1 pt-1">
                         {r.telefone !== '—' && (
                           <div className="flex items-center gap-1.5 text-xs">
-                            <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                            <Phone className="h-3 w-3 text-slate-500 shrink-0" />
                             <a href={`tel:${r.telefone.split(';')[0].trim()}`} className="font-mono font-bold text-slate-700 dark:text-slate-350">{r.telefone.split(';')[0].trim()}</a>
                             <ClipboardCopyButton text={r.telefone.split(';')[0].trim()} label="telefone" />
                           </div>
                         )}
                         {r.email !== '—' && (
                           <div className="flex items-center gap-1.5 text-xs min-w-0">
-                            <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                            <Mail className="h-3 w-3 text-slate-500 shrink-0" />
                             <a href={`mailto:${r.email}`} className="font-bold text-slate-650 dark:text-slate-355 truncate">{r.email}</a>
                             <ClipboardCopyButton text={r.email} label="e-mail" />
                           </div>
@@ -886,7 +886,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                                 {r.pedido_parcial && (
                                   <span
                                     title="Entrega ainda não fechou no SAP — quantidade e valor podem mudar até concluir."
-                                    className="ml-1.5 inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-bold whitespace-nowrap align-middle"
+                                    className="ml-1.5 inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap align-middle"
                                     style={{ color: 'var(--status-warning)', background: 'color-mix(in srgb, var(--status-warning) 14%, transparent)' }}
                                   >
                                     pedido parcial
@@ -895,7 +895,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                                 {r.contrato && (
                                   <span
                                     title={`Pedido colocado por referência ao contrato ${r.contrato} — preço já negociado, não passou por cotação`}
-                                    className="ml-1.5 inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-bold whitespace-nowrap align-middle"
+                                    className="ml-1.5 inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap align-middle"
                                     style={{ color: 'var(--series-5)', background: 'color-mix(in srgb, var(--series-5) 14%, transparent)' }}
                                   >
                                     contrato {r.contrato}

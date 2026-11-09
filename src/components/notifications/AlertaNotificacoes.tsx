@@ -122,7 +122,7 @@ function CartaoAviso({ item, onAbrir, onFechar }: { item: ItemAviso; onAbrir: ()
             <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400 line-clamp-2">{item.descricao}</p>
           )}
           {item.rodape && (
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{item.rodape}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">{item.rodape}</p>
           )}
 
           <button

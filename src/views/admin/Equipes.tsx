@@ -96,14 +96,14 @@ function MiniEvolucao({ hist, rotulos }: { hist: HistoricoIndicador; rotulos: st
       <div className="mt-2 flex h-24 items-end gap-1.5">
         {hist.valores.map((v, i) => (
           <div key={rotulos[i]} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-0.5">
-            <span className="text-[9px] tabular-nums" style={{ color: 'var(--ink-secondary)', fontWeight: i === ultima ? 700 : 400 }}>
+            <span className="text-[10px] tabular-nums" style={{ color: 'var(--ink-secondary)', fontWeight: i === ultima ? 700 : 400 }}>
               {v != null && v > 0 ? formatarIndicador(v, hist.indicador.formato) : ''}
             </span>
             <span
               className="w-full rounded-t-sm"
               style={{ height: `${((v ?? 0) / max) * 70}%`, minHeight: (v ?? 0) > 0 ? 2 : 0, background: i === ultima ? 'var(--brand)' : 'color-mix(in srgb, var(--brand) 40%, transparent)' }}
             />
-            <span className="text-[9px]" style={{ color: 'var(--ink-muted)', fontWeight: i === ultima ? 700 : 400 }}>{rotulos[i]}</span>
+            <span className="text-[10px]" style={{ color: 'var(--ink-muted)', fontWeight: i === ultima ? 700 : 400 }}>{rotulos[i]}</span>
           </div>
         ))}
       </div>

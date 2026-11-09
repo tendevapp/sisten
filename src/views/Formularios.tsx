@@ -251,7 +251,7 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
               <FileText className="h-3.5 w-3.5" />
               SISTEN Hub Operacional
             </span>
-            <span className="text-xs text-slate-400 dark:text-slate-500">
+            <span className="text-xs text-slate-500 dark:text-slate-500">
               • {modulosAcessiveis.length} módulos disponíveis
             </span>
           </div>
@@ -277,7 +277,7 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
             {busca && (
               <button
                 onClick={() => setBusca('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-600 dark:hover:text-slate-200"
               >
                 ×
               </button>
@@ -363,7 +363,7 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
 
                     {modulo.badge && (
                       <span
-                        className={`rounded-full px-1 sm:px-2.5 py-0.5 text-[8px] sm:text-[10px] font-bold truncate max-w-[55px] sm:max-w-none ${
+                        className={`rounded-full px-1 sm:px-2.5 py-0.5 text-[10px] sm:text-[10px] font-bold truncate max-w-[55px] sm:max-w-none ${
                           modulo.badgeCor || 'bg-slate-100 text-slate-700'
                         }`}
                       >
@@ -375,7 +375,7 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
                   {/* Bloco de Título com Largura Total (sem truncar) */}
                   <div>
                     {modulo.codigo && (
-                      <p className="text-[7px] sm:text-[10px] font-mono font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-0.5 truncate">
+                      <p className="text-[10px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-500 uppercase mb-0.5 truncate">
                         {modulo.codigo}
                       </p>
                     )}
@@ -393,10 +393,10 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
                 {/* Rodapé Compacto com Ação e Seta */}
                 <div className="mt-2 sm:mt-4 flex items-center justify-between border-t border-slate-100 pt-1.5 sm:pt-2.5 dark:border-slate-800/80">
                   <span
-                    className={`inline-flex items-center text-[9px] sm:text-xs font-semibold ${
+                    className={`inline-flex items-center text-[10px] sm:text-xs font-semibold ${
                       disponivel
                         ? 'text-blue-600 dark:text-blue-400 group-hover:underline'
-                        : 'text-slate-400 dark:text-slate-500'
+                        : 'text-slate-500 dark:text-slate-500'
                     }`}
                   >
                     <span className="hidden xs:inline sm:inline">{disponivel ? 'Acessar' : 'Em breve'}</span>
@@ -405,7 +405,7 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
                     className={`flex h-4 w-4 sm:h-6 sm:w-6 items-center justify-center rounded-md sm:rounded-lg transition-all duration-200 ${
                       disponivel
                         ? 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white dark:bg-blue-950/80 dark:text-blue-400 dark:group-hover:bg-blue-600 dark:group-hover:text-white'
-                        : 'bg-slate-100 text-slate-400 dark:bg-slate-800'
+                        : 'bg-slate-100 text-slate-500 dark:bg-slate-800'
                     }`}
                   >
                     <ArrowRight className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />

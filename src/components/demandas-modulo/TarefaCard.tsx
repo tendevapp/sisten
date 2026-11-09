@@ -33,20 +33,20 @@ export default function TarefaCard({ tarefa, porId }: { tarefa: DemTarefa; porId
 
       <div className="flex flex-wrap items-center gap-1.5 mt-2">
         <span
-          className="text-[9px] font-black uppercase tracking-wide rounded-full px-2 py-0.5"
+          className="text-[10px] font-black uppercase tracking-wide rounded-full px-2 py-0.5"
           style={{ color: cPrio, background: `color-mix(in srgb, ${cPrio} 16%, transparent)` }}
         >
           {PRIORIDADE_LABEL[tarefa.prioridade]}
         </span>
         <span
-          className="text-[9px] font-bold rounded-full px-2 py-0.5"
+          className="text-[10px] font-bold rounded-full px-2 py-0.5"
           style={{ color: cStatus, background: `color-mix(in srgb, ${cStatus} 14%, transparent)` }}
         >
           {STATUS_LABEL[tarefa.status]}
         </span>
         {prazo && (
           <span
-            className="inline-flex items-center gap-1 text-[9px] font-bold rounded-full px-2 py-0.5"
+            className="inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5"
             style={{
               color: prazo.atrasado ? 'var(--status-critical)' : 'var(--status-good)',
               background: prazo.atrasado

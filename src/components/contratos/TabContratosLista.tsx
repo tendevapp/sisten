@@ -342,7 +342,7 @@ export default function TabContratosLista() {
             Acompanhamento dos contratos de fornecimento (ME3N) e das respectivas vigências. Clique num contrato para editar Gestor, Escopo, Parcela, Modalidade, Vigência, Status e anexar documentos.
           </p>
           {lastUpdated && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
+            <p className="text-[11px] text-slate-500 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
               <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('contratos')}
             </p>
           )}
@@ -422,7 +422,7 @@ export default function TabContratosLista() {
             tela. Mesmo padrão já usado em Estoque.tsx. */}
         <div className="space-y-3">
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
             <input
               type="text"
               value={searchQuery}
@@ -533,7 +533,7 @@ export default function TabContratosLista() {
               >
                 <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
                 <span>Personalizar Colunas</span>
-                <ChevronDown className="h-3 w-3 text-slate-400" />
+                <ChevronDown className="h-3 w-3 text-slate-500" />
               </button>
               {showColMenu && (
                 <div className="absolute right-0 mt-1.5 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 z-30 p-3 text-left">

@@ -67,6 +67,7 @@ import {
 } from '../../../lib/fichaEpiRequisicao';
 import { buscarMateriais, type MaterialResultado } from '../../../lib/materiais';
 import FichaEpiPdfPreview from './FichaEpiPdfPreview';
+import { confirmar } from '../../../lib/confirmar';
 
 interface Props {
   user: Profile;
@@ -580,7 +581,7 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
   };
 
   /** Fecha a ficha sem a assinatura: o EPI já foi entregue e o colaborador assina depois. */
-  const fecharSemAssinatura = () => {
+  const fecharSemAssinatura = async () => {
     setTentouAssinar(true);
     const erro = validar();
     if (erro) {
@@ -588,9 +589,7 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
       document.querySelector('[data-devolucao-pendente="true"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
-    if (!window.confirm(
-      `Fechar a ficha SEM a assinatura de ${pessoa?.nome}?\n\nEla fica PENDENTE DE ASSINATURA (aparece em "Fichas emitidas") até o colaborador assinar.`,
-    )) return;
+    if (!await confirmar({ titulo: 'Fechar sem assinatura?', mensagem: `Fechar a ficha SEM a assinatura de ${pessoa?.nome}?\n\nEla fica PENDENTE DE ASSINATURA (aparece em "Fichas emitidas") até o colaborador assinar.`, confirmarLabel: 'Fechar sem assinatura', cancelarLabel: 'Voltar' })) return;
     void salvar(null);
   };
 
@@ -743,7 +742,7 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
                 className="w-full bg-transparent py-2.5 text-sm outline-none"
                 autoFocus
               />
-              {buscando && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+              {buscando && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
             </label>
             {sugestoes.length > 0 && (
               <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
@@ -948,7 +947,7 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
                         </select>
                       </label>
                       {linha.foraDaMatriz && (
-                        <button type="button" onClick={() => setLinhas(atual => atual.filter(l => l.chave !== linha.chave))} className="mb-1 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40" aria-label={`Remover ${linha.grupoEpi}`}>
+                        <button type="button" onClick={() => setLinhas(atual => atual.filter(l => l.chave !== linha.chave))} className="mb-1 rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40" aria-label={`Remover ${linha.grupoEpi}`}>
                           <Trash2 className="h-4 w-4" />
                         </button>
                       )}
@@ -962,9 +961,9 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
           {/* Adicionar EPI fora da matriz */}
           <div className="relative mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
             <label className="flex items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 dark:border-slate-700">
-              <Plus className="h-4 w-4 text-slate-400" />
+              <Plus className="h-4 w-4 text-slate-500" />
               <input value={buscaEpi} onChange={e => setBuscaEpi(e.target.value)} placeholder="Adicionar outro EPI: nome, CA ou código SAP do Book — ou descrição/código do catálogo SAP" className="w-full bg-transparent py-2 text-sm outline-none" />
-              {buscandoSap && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />}
+              {buscandoSap && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-500" />}
             </label>
             {(resultadosEpi.length > 0 || resultadosSap.length > 0) && (
               <ul className="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">

@@ -3863,7 +3863,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   {zoomFotoCatalogo.titulo}
                 </span>
               </div>
-              <button
+              <button aria-label="Fechar"
                 type="button"
                 onClick={() => setZoomFotoCatalogo(null)}
                 className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"

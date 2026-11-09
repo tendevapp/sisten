@@ -125,7 +125,7 @@ function BotaoCopiar({
       className={`inline-flex items-center justify-center rounded transition-colors cursor-pointer shrink-0 ${padding} ${
         copiado
           ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40'
-          : 'text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10'
+          : 'text-slate-500 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10'
       } ${className}`}
       title={copiado ? 'Copiado!' : `Copiar ${rotulo} (${texto})`}
       aria-label={copiado ? `${rotulo} copiado` : `Copiar ${rotulo} ${texto}`}
@@ -1517,7 +1517,7 @@ function ResumoStat({
         </span>
         {ativo && (
           <span
-            className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+            className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
             style={{
               background: cor ? `color-mix(in srgb, ${cor} 20%, transparent)` : 'color-mix(in srgb, var(--brand) 20%, transparent)',
               color: cor || 'var(--brand)',

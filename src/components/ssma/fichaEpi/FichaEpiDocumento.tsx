@@ -114,7 +114,7 @@ export default function FichaEpiDocumento({ fichas, mostrarAssinatura, onRegistr
             </div>
             <div className="border-t border-black pt-0.5 text-[12px]">Assinatura do Funcionário</div>
             {mostrarAssinatura && assinaturaPorFicha.get(atual.id) && atual.assinado_em && (
-              <div className="text-[9px] text-slate-500">Assinado digitalmente em {formatarDataBR(atual.assinado_em.slice(0, 10))}</div>
+              <div className="text-[10px] text-slate-500">Assinado digitalmente em {formatarDataBR(atual.assinado_em.slice(0, 10))}</div>
             )}
           </div>
         </div>
@@ -145,9 +145,9 @@ export default function FichaEpiDocumento({ fichas, mostrarAssinatura, onRegistr
                 <td className={borda}>{formatarDataBR(linha.dataEntrega)}</td>
                 <td className={borda}>
                   {fichaFisica.get(linha.fichaId)
-                    ? <span className="text-[9px] font-semibold text-slate-600">{ROTULO_ASSINATURA_FICHA_FISICA}</span>
+                    ? <span className="text-[10px] font-semibold text-slate-600">{ROTULO_ASSINATURA_FICHA_FISICA}</span>
                     : fichaPendente.get(linha.fichaId)
-                      ? <span className="text-[9px] font-extrabold text-amber-700">{ROTULO_ASSINATURA_PENDENTE}</span>
+                      ? <span className="text-[10px] font-extrabold text-amber-700">{ROTULO_ASSINATURA_PENDENTE}</span>
                       : mostrarAssinatura && <Assinatura src={assinaturaPorFicha.get(linha.fichaId) ?? undefined} className="max-h-8" />}
                 </td>
                 <td className={borda} title={MOTIVOS_MED[linha.motivo]}>{linha.motivo}</td>
@@ -155,9 +155,9 @@ export default function FichaEpiDocumento({ fichas, mostrarAssinatura, onRegistr
                 <td className={`${borda} px-1`}>
                   {linha.dataDevolucao ? (
                     <span className="inline-flex items-center gap-1">
-                      <span className="text-[9px]">{linha.devolucaoPor}</span>
+                      <span className="text-[10px]">{linha.devolucaoPor}</span>
                       {onDesfazerDevolucao && (
-                        <button type="button" onClick={() => onDesfazerDevolucao(linha)} title="Desfazer devolução" className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-red-600 print:hidden">
+                        <button aria-label="Desfazer devolução" type="button" onClick={() => onDesfazerDevolucao(linha)} title="Desfazer devolução" className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-red-600 print:hidden">
                           <Undo2 className="h-3 w-3" />
                         </button>
                       )}

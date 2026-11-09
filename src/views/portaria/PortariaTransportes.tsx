@@ -479,7 +479,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const painelDias = (
     <>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               placeholder="Filtrar por data, placa, empresa..."
@@ -747,7 +747,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                   </div>
 
                   <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                     <input
                       type="text"
                       placeholder="Buscar placa, empresa, motorista..."
@@ -841,11 +841,11 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
                               {item.ocupacao && (
                                 <p className="text-xs text-slate-600 dark:text-slate-300 break-words">
-                                  <span className="text-slate-400">Ocupação / Motivo:</span> {item.ocupacao}
+                                  <span className="text-slate-500">Ocupação / Motivo:</span> {item.ocupacao}
                                 </p>
                               )}
 
-                              <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                              <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
                                 <span>
                                   Vigilante: <strong className="text-slate-600 dark:text-slate-300">{item.vigilante}</strong>
                                 </span>
@@ -878,18 +878,18 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
                                 {podeEditar && (
                                   <div className="flex items-center gap-1">
-                                    <button
+                                    <button aria-label="Editar registro"
                                       type="button"
                                       onClick={() => abrirEdicao(item)}
-                                      className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-all"
+                                      className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-all"
                                       title="Editar registro"
                                     >
                                       <Pencil className="h-4 w-4" />
                                     </button>
-                                    <button
+                                    <button aria-label="Excluir registro"
                                       type="button"
                                       onClick={() => setItemParaExcluir(item)}
-                                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
+                                      className="p-1.5 text-slate-500 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
                                       title="Excluir registro"
                                     >
                                       <Trash2 className="h-4 w-4" />
@@ -1206,7 +1206,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                   Hora de saída
                 </label>
                 <div className="relative">
-                  <Clock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Clock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <input
                     type="time"
                     required

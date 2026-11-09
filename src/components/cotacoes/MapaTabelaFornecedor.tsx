@@ -46,9 +46,9 @@ export default function MapaTabelaFornecedor({ linhas, resumos, selecionados, on
           <tr className="border-b border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-800/40">
             {resumos.map(r => (
               <React.Fragment key={r.propostaKey}>
-                <th className="border-l border-slate-200 p-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:border-slate-800">Desc. cotada</th>
-                <th className="p-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-slate-400">Preço unit.</th>
-                <th className="p-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-slate-400">Preço total</th>
+                <th className="border-l border-slate-200 p-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800">Desc. cotada</th>
+                <th className="p-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-slate-500">Preço unit.</th>
+                <th className="p-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-slate-500">Preço total</th>
               </React.Fragment>
             ))}
           </tr>
@@ -58,7 +58,7 @@ export default function MapaTabelaFornecedor({ linhas, resumos, selecionados, on
             <tr key={linha.key} className="border-b border-slate-100 last:border-0 dark:border-slate-800/70">
               <td className="sticky left-0 z-10 max-w-[260px] bg-white p-2 align-top dark:bg-slate-900">
                 <div className="truncate font-medium text-slate-800 dark:text-slate-100" title={linha.titulo}>{linha.titulo}</div>
-                <div className="text-[10px] text-slate-400">{linha.ri || 'sem RI'}</div>
+                <div className="text-[10px] text-slate-500">{linha.ri || 'sem RI'}</div>
               </td>
               <td className="p-2 text-right align-top tabular-nums text-slate-500 dark:text-slate-400">
                 {linha.qtdSolicitada != null ? `${formatQtd(linha.qtdSolicitada)} ${linha.unidade || ''}` : '—'}

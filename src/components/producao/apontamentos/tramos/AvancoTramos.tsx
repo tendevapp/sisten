@@ -55,7 +55,7 @@ const CLASSE_SITUACAO: Record<SituacaoMes, string> = {
   atingido: 'text-emerald-700 dark:text-emerald-400',
   abaixo: 'text-rose-600 dark:text-rose-400',
   andamento: 'text-amber-600 dark:text-amber-400',
-  vazio: 'text-slate-400',
+  vazio: 'text-slate-500',
 };
 
 interface Props {
@@ -72,11 +72,11 @@ function CartaoMarco({ tramos, marco, prazo, hoje }: { tramos: TramoAtual[]; mar
     <div className={`${cardCls} p-4 ${ind.atrasado ? 'border-rose-300 dark:border-rose-900' : ''}`}>
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">{INDICADOR_MARCO[marco]}</h3>
-        <span className="text-[11px] text-slate-400">{ROTULO_MARCO[marco]}</span>
+        <span className="text-[11px] text-slate-500">{ROTULO_MARCO[marco]}</span>
       </div>
       <p className="mt-1 font-display text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-50">
         {ind.realizado}
-        <span className="text-base font-semibold text-slate-400">/{ind.total}</span>
+        <span className="text-base font-semibold text-slate-500">/{ind.total}</span>
         <span className="ml-2 text-sm font-semibold text-slate-500">{fmtPct(ind.percentual)}</span>
       </p>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
@@ -308,7 +308,7 @@ function GradeTorres({ tramos }: { tramos: TramoAtual[] }) {
             <span className="h-3 w-3 rounded-sm" style={{ background: COR_ETAPA[e].fundo, border: `1px solid ${COR_ETAPA[e].borda}` }} /> {CONFIG_ETAPA[e].rotulo}
           </span>
         ))}
-        <span className="text-slate-400">· T5 no topo, T1 na base</span>
+        <span className="text-slate-500">· T5 no topo, T1 na base</span>
       </div>
     </section>
   );

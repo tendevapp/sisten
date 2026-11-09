@@ -92,7 +92,7 @@ function Panel({ title, hint, children, onOpen, large = false }: { title: string
   >
     <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
       <h3 className={`font-extrabold tracking-wide text-[#0b2d67] ${large ? 'text-2xl' : 'text-sm sm:text-base'}`}>{title}</h3>
-      {onOpen && <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 transition group-hover:text-[#0b2d67]"><Table2 className="h-3.5 w-3.5" /> Dados</span>}
+      {onOpen && <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 transition group-hover:text-[#0b2d67]"><Table2 className="h-3.5 w-3.5" /> Dados</span>}
     </div>
     <div className="px-2 pb-2">{children}</div>
   </section>;

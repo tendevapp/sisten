@@ -313,7 +313,7 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
               <ShieldAlert className="h-3.5 w-3.5" />
               FRM.SSMA-0001
             </span>
-            <span className="text-xs text-slate-400">• Prevenção & Segurança do Trabalho</span>
+            <span className="text-xs text-slate-500">• Prevenção & Segurança do Trabalho</span>
           </div>
           <h1 className="mt-1 font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Registro de Identificação de Desvio (RID)
@@ -392,11 +392,11 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
       {/* Cards de Métricas Operacionais do RID */}
       <div data-tour="rid-metricas" className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
         <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
-          <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total de RIDs</span>
+          <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total de RIDs</span>
           <p className="mt-1 font-display text-2xl font-bold text-slate-900 dark:text-slate-100">
             {metricas?.total || 0}
           </p>
-          <span className="text-[11px] text-slate-400">registrados</span>
+          <span className="text-[11px] text-slate-500">registrados</span>
         </div>
 
         <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-4 shadow-2xs dark:border-emerald-900/40 dark:bg-emerald-950/20">
@@ -468,7 +468,7 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
             <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
               {/* Campo de Busca Livre */}
               <div className="relative flex-1 min-w-[200px]">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
                   placeholder="Buscar por código, informante, área ou descrição..."
@@ -631,7 +631,7 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
                     </div>
 
                     {/* Rodapé do Card */}
-                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-[11px] text-slate-400 dark:border-slate-800">
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-[11px] text-slate-500 dark:border-slate-800">
                       <span>
                         {desvio.data_registro
                           ? new Date(desvio.data_registro + 'T12:00:00Z').toLocaleDateString('pt-BR')
@@ -646,7 +646,7 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
                             {desvio.fotos.length}
                           </span>
                         )}
-                        <ChevronRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                        <ChevronRight className="h-4 w-4 text-slate-500 group-hover:translate-x-0.5 transition-transform" />
                       </div>
                     </div>
                   </div>

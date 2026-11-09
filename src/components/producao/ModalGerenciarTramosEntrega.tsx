@@ -245,10 +245,10 @@ export default function ModalGerenciarTramosEntrega({
               </p>
             </div>
           </div>
-          <button
+          <button aria-label="Fechar"
             type="button"
             onClick={aoFechar}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           >
             <X className="h-5 w-5" />
           </button>
@@ -290,7 +290,7 @@ export default function ModalGerenciarTramosEntrega({
               <div className="flex flex-wrap items-center gap-2">
                 {/* Busca rápida */}
                 <div className="relative min-w-[200px]">
-                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
                   <input
                     type="text"
                     value={busca}
@@ -593,7 +593,7 @@ export default function ModalGerenciarTramosEntrega({
                 <h3 className="font-bold text-slate-900 dark:text-slate-100">
                   Reatribuir Tramo · Série {tramoParaReatribuir.serie}
                 </h3>
-                <button
+                <button aria-label="Fechar"
                   type="button"
                   onClick={() => setTramoParaReatribuir(null)}
                   className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"

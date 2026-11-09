@@ -64,7 +64,7 @@ export default function KaizenFotosCampo({ value, onChange, max = 4, disabled = 
         <button type="button" className={botao} disabled={disabled || cheio} onClick={() => galeriaRef.current?.click()}>
           <ImagePlus className="h-3.5 w-3.5" /> Galeria
         </button>
-        <span className="text-[11px] text-slate-400">
+        <span className="text-[11px] text-slate-500">
           {value.length}/{max} fotos
         </span>
       </div>

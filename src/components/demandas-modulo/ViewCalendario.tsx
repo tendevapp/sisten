@@ -44,9 +44,9 @@ export default function ViewCalendario({ tarefas, porId, podeEditar, onAbrirTare
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-1.5">
-            <button onClick={() => setRef(m => addMonths(m, -1))} className="rounded-lg p-1.5" style={{ background: 'var(--surface-sunken)' }}><ChevronLeft className="h-4 w-4" /></button>
+            <button aria-label="Anterior" onClick={() => setRef(m => addMonths(m, -1))} className="rounded-lg p-1.5" style={{ background: 'var(--surface-sunken)' }}><ChevronLeft className="h-4 w-4" /></button>
             <button onClick={() => setRef(startOfMonth(new Date()))} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold" style={{ background: 'var(--surface-sunken)' }}>Hoje</button>
-            <button onClick={() => setRef(m => addMonths(m, 1))} className="rounded-lg p-1.5" style={{ background: 'var(--surface-sunken)' }}><ChevronRight className="h-4 w-4" /></button>
+            <button aria-label="Próximo" onClick={() => setRef(m => addMonths(m, 1))} className="rounded-lg p-1.5" style={{ background: 'var(--surface-sunken)' }}><ChevronRight className="h-4 w-4" /></button>
           </div>
           <h3 className="text-sm font-bold capitalize" style={{ color: 'var(--ink-primary)' }}>
             {format(ref, "MMMM 'de' yyyy", { locale: ptBR })}
@@ -77,7 +77,7 @@ export default function ViewCalendario({ tarefas, porId, podeEditar, onAbrirTare
                   {podeEditar && (
                     <button
                       onClick={() => onCriarNoDia(chave)}
-                      className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-[var(--brand)]"
+                      className="opacity-0 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 text-slate-500 hover:text-[var(--brand)]"
                       aria-label="Nova tarefa neste dia"
                     >
                       <Plus className="h-3 w-3" />
@@ -95,7 +95,7 @@ export default function ViewCalendario({ tarefas, porId, podeEditar, onAbrirTare
                     </button>
                   ))}
                   {lista.length > 3 && (
-                    <span className="text-[9px]" style={{ color: 'var(--ink-muted)' }}>+{lista.length - 3}</span>
+                    <span className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>+{lista.length - 3}</span>
                   )}
                 </div>
               </div>

@@ -136,7 +136,7 @@ export default function ValidacaoTecnicaPainel({
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
             <input
               value={busca}
               onChange={e => setBusca(e.target.value)}
@@ -174,7 +174,7 @@ export default function ValidacaoTecnicaPainel({
                 <span className="font-mono text-xs font-bold text-violet-700 dark:text-violet-400">{v.codigo}</span>
                 <span className="flex items-center gap-1.5">
                   {v.status === 'PENDENTE' && !podeDecidirValidacao(v, user) && (
-                    <span className="inline-flex items-center gap-1 rounded border border-slate-300 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-slate-500 dark:border-slate-700">
+                    <span className="inline-flex items-center gap-1 rounded border border-slate-300 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-500 dark:border-slate-700">
                       <Forward className="h-2.5 w-2.5" /> Redirecionado
                     </span>
                   )}

@@ -470,16 +470,16 @@ export default function SsmaRidDetalhesModal({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <button
+            <button aria-label="Imprimir"
               onClick={() => window.print()}
               title="Imprimir"
-              className="rounded-xl p-2 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+              className="rounded-xl p-2 text-slate-500 hover:bg-slate-200/60 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
             >
               <Printer className="h-4 w-4" />
             </button>
-            <button
+            <button aria-label="Fechar"
               onClick={onClose}
-              className="rounded-xl p-2 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+              className="rounded-xl p-2 text-slate-500 hover:bg-slate-200/60 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
@@ -491,7 +491,7 @@ export default function SsmaRidDetalhesModal({
           {/* Linha de Metadados: Informante, Setor, Data, Semana */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-2xl bg-slate-50 p-4 dark:bg-slate-950/40 border border-slate-100 dark:border-slate-800">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 Informante
               </span>
               <p className="mt-0.5 text-xs font-bold text-slate-800 dark:text-slate-100">
@@ -501,7 +501,7 @@ export default function SsmaRidDetalhesModal({
             </div>
 
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 Setor
               </span>
               <p className="mt-0.5 text-xs font-bold text-slate-800 dark:text-slate-100">
@@ -511,7 +511,7 @@ export default function SsmaRidDetalhesModal({
             </div>
 
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 Data do Registro
               </span>
               <p className="mt-0.5 text-xs font-bold text-slate-800 dark:text-slate-100">
@@ -523,7 +523,7 @@ export default function SsmaRidDetalhesModal({
             </div>
 
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 Área / Local
               </span>
               <p className="mt-0.5 text-xs font-bold text-slate-800 dark:text-slate-100">
@@ -539,7 +539,7 @@ export default function SsmaRidDetalhesModal({
 
           {/* Descrição do Desvio */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
               Descrição do Desvio
             </h4>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 text-xs font-medium leading-relaxed text-slate-800 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
@@ -602,7 +602,7 @@ export default function SsmaRidDetalhesModal({
 
           {/* Classificações de Risco */}
           <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Classificação do Risco Identificado
             </h4>
 
@@ -701,11 +701,11 @@ export default function SsmaRidDetalhesModal({
                                 className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                               />
                             ) : (
-                              <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
+                              <div className="flex h-full w-full items-center justify-center text-xs text-slate-500">
                                 Foto indisponível
                               </div>
                             )}
-                            <span className="absolute top-1.5 left-1.5 rounded bg-amber-600/90 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white shadow-xs">
+                            <span className="absolute top-1.5 left-1.5 rounded bg-amber-600/90 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white shadow-xs">
                               Antes
                             </span>
                             <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
@@ -742,11 +742,11 @@ export default function SsmaRidDetalhesModal({
                                 className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                               />
                             ) : (
-                              <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
+                              <div className="flex h-full w-full items-center justify-center text-xs text-slate-500">
                                 Foto indisponível
                               </div>
                             )}
-                            <span className="absolute top-1.5 left-1.5 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white shadow-xs">
+                            <span className="absolute top-1.5 left-1.5 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white shadow-xs">
                               Depois
                             </span>
                             <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
@@ -825,10 +825,10 @@ export default function SsmaRidDetalhesModal({
                                 {foto.preview_url ? (
                                   <img src={foto.preview_url} alt={foto.name} className="h-full w-full object-cover" />
                                 ) : (
-                                  <span className="flex h-full w-full items-center justify-center text-[9px] text-slate-400">sem preview</span>
+                                  <span className="flex h-full w-full items-center justify-center text-[10px] text-slate-500">sem preview</span>
                                 )}
                                 <span
-                                  className={`absolute bottom-0 left-0 right-0 px-1 py-0.5 text-[8px] font-bold uppercase text-white ${
+                                  className={`absolute bottom-0 left-0 right-0 px-1 py-0.5 text-[10px] font-bold uppercase text-white ${
                                     foto.tipo === 'depois' ? 'bg-emerald-600/90' : 'bg-amber-600/90'
                                   }`}
                                 >
@@ -932,7 +932,7 @@ export default function SsmaRidDetalhesModal({
                         >
                           <img src={f.preview} alt={f.file.name} className="h-full w-full object-cover" />
                           <div className="absolute right-1 top-1 flex gap-1">
-                            <button
+                            <button aria-label={f.tipo === 'antes' ? "Marcar como 'Depois'" : "Marcar como 'Antes'"}
                               type="button"
                               onClick={() => alternarTipoPendente(idx)}
                               title={f.tipo === 'antes' ? "Marcar como 'Depois'" : "Marcar como 'Antes'"}
@@ -940,7 +940,7 @@ export default function SsmaRidDetalhesModal({
                             >
                               <RotateCcw className="h-2.5 w-2.5" />
                             </button>
-                            <button
+                            <button aria-label="Remover foto"
                               type="button"
                               onClick={() => removerPendente(idx)}
                               title="Remover foto"
@@ -950,7 +950,7 @@ export default function SsmaRidDetalhesModal({
                             </button>
                           </div>
                           <span
-                            className={`absolute bottom-0 left-0 right-0 px-1 py-0.5 text-[8px] font-bold uppercase text-white ${
+                            className={`absolute bottom-0 left-0 right-0 px-1 py-0.5 text-[10px] font-bold uppercase text-white ${
                               f.tipo === 'depois' ? 'bg-emerald-600/90' : 'bg-amber-600/90'
                             }`}
                           >
@@ -1088,7 +1088,7 @@ export default function SsmaRidDetalhesModal({
                   Prazo para Conclusão
                 </label>
                 <div className="relative">
-                  <Calendar className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <Calendar className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                   <input
                     type="date"
                     disabled={!podeEditar}
@@ -1131,10 +1131,10 @@ export default function SsmaRidDetalhesModal({
                   <div className="absolute left-2 bottom-full mb-1 z-30 w-72 max-h-56 overflow-y-auto rounded-2xl border border-indigo-200 bg-white p-1.5 shadow-xl dark:border-indigo-900 dark:bg-slate-900 animate-in fade-in slide-in-from-bottom-2">
                     <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                       <span>Marcar Usuário do SISTEN</span>
-                      <span className="text-[9px] font-normal text-slate-400">Esc para fechar</span>
+                      <span className="text-[10px] font-normal text-slate-500">Esc para fechar</span>
                     </div>
                     {usuariosFiltradosPopover.length === 0 ? (
-                      <div className="p-3 text-center text-xs text-slate-400 italic">
+                      <div className="p-3 text-center text-xs text-slate-500 italic">
                         Nenhum usuário do SISTEN encontrado
                       </div>
                     ) : (
@@ -1152,7 +1152,7 @@ export default function SsmaRidDetalhesModal({
                             <p className="font-bold text-slate-800 dark:text-slate-100 truncate text-[11px]">
                               {u.nome}
                             </p>
-                            <p className="text-[10px] text-slate-400 truncate">
+                            <p className="text-[10px] text-slate-500 truncate">
                               {u.cargo || u.setor || 'SISTEN'}
                             </p>
                           </div>
@@ -1165,11 +1165,11 @@ export default function SsmaRidDetalhesModal({
 
               {/* Responsáveis Marcados com @ */}
               <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase mr-1 flex items-center gap-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase mr-1 flex items-center gap-1">
                   <AtSign className="h-3 w-3 text-indigo-500" /> Marcados:
                 </span>
                 {responsaveisMencionados.length === 0 ? (
-                  <span className="text-[11px] text-slate-400 italic">
+                  <span className="text-[11px] text-slate-500 italic">
                     Nenhum usuário marcado ainda.
                   </span>
                 ) : (
@@ -1180,7 +1180,7 @@ export default function SsmaRidDetalhesModal({
                     >
                       <span>@{resp}</span>
                       {podeEditar && (
-                        <button
+                        <button aria-label={`Remover @${resp}`}
                           type="button"
                           onClick={() => removerResponsavelMencao(resp)}
                           className="ml-0.5 rounded p-0.5 hover:bg-rose-100 hover:text-rose-700 dark:hover:bg-rose-950 transition-colors cursor-pointer"
@@ -1225,7 +1225,7 @@ export default function SsmaRidDetalhesModal({
                               <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 truncate">
                                 {u.nome}
                               </span>
-                              <span className="text-[10px] text-slate-400 truncate">
+                              <span className="text-[10px] text-slate-500 truncate">
                                 {u.setor || u.cargo || ''}
                               </span>
                             </button>
@@ -1363,7 +1363,7 @@ export default function SsmaRidDetalhesModal({
           ) : (
             <div className="rounded-2xl border border-slate-200/80 bg-slate-50/40 p-3.5 dark:border-slate-800 dark:bg-slate-950/30">
               <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                <Lock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <Lock className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                 <span>Visualização em modo somente leitura (edição restrita ao autor do registro ou administradores).</span>
               </div>
               {desvio.parecer_ssma && (

@@ -250,13 +250,13 @@ export default function SsmaRidPlanosAcaoView({
       {/* Barra de Métricas dos Planos de Ação */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
-          <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+          <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">
             Total Direcionados
           </span>
           <p className="mt-1 font-display text-2xl font-bold text-slate-900 dark:text-slate-100">
             {metricasPlanos.total}
           </p>
-          <span className="text-[11px] text-slate-400">demandas cadastradas</span>
+          <span className="text-[11px] text-slate-500">demandas cadastradas</span>
         </div>
 
         <div className="rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4 shadow-2xs dark:border-amber-900/40 dark:bg-amber-950/20">
@@ -325,7 +325,7 @@ export default function SsmaRidPlanosAcaoView({
         <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           {/* Busca Livre */}
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               placeholder="Buscar por RID, área, demanda, responsável @ ou conclusão..."
@@ -448,7 +448,7 @@ export default function SsmaRidPlanosAcaoView({
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="text-xs text-slate-400 font-medium">
+          <div className="text-xs text-slate-500 font-medium">
             Exibindo {desviosFiltrados.length} de {desviosComPlano.length} planos de ação
           </div>
 
@@ -525,7 +525,7 @@ export default function SsmaRidPlanosAcaoView({
                     {/* Bloco 1: Metadados do Direcionamento */}
                     <div className="space-y-2.5 rounded-xl bg-slate-50/70 p-3.5 dark:bg-slate-950/40 border border-slate-100 dark:border-slate-800">
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
                           Área de Destino
                         </span>
                         <div className="mt-0.5 flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-100">
@@ -537,7 +537,7 @@ export default function SsmaRidPlanosAcaoView({
                       </div>
 
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
                           Contagem em Aberto
                         </span>
                         <p
@@ -553,11 +553,11 @@ export default function SsmaRidPlanosAcaoView({
                       </div>
 
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
                           Prazo Estabelecido
                         </span>
                         <p className="mt-0.5 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                          <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                          <Calendar className="h-3.5 w-3.5 text-slate-500" />
                           {plano.prazo
                             ? new Date(plano.prazo + 'T12:00:00Z').toLocaleDateString('pt-BR')
                             : 'Não estipulado'}
@@ -565,13 +565,13 @@ export default function SsmaRidPlanosAcaoView({
                       </div>
 
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
                           Colaboradores Marcados (@)
                         </span>
                         <div className="mt-1 flex flex-wrap gap-1">
                           {!plano.responsaveis_mencionados ||
                           plano.responsaveis_mencionados.length === 0 ? (
-                            <span className="text-[11px] text-slate-400 italic">
+                            <span className="text-[11px] text-slate-500 italic">
                               Nenhum @ marcado
                             </span>
                           ) : (
@@ -591,7 +591,7 @@ export default function SsmaRidPlanosAcaoView({
                     {/* Bloco 2: A Demanda / O que foi direcionado */}
                     <div className="lg:col-span-2 space-y-3">
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
                           Demanda / Ação de Fechamento Solicitada
                         </span>
                         <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs leading-relaxed text-slate-800 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 font-medium whitespace-pre-wrap">
@@ -617,7 +617,7 @@ export default function SsmaRidPlanosAcaoView({
                             {plano.conclusao}
                           </p>
                           {plano.concluido_por_nome && (
-                            <span className="block text-[10px] text-slate-400 pt-1">
+                            <span className="block text-[10px] text-slate-500 pt-1">
                               Registrado por: <strong>{plano.concluido_por_nome}</strong>
                             </span>
                           )}

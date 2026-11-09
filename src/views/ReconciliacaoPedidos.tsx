@@ -536,7 +536,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
         </div>
         {lastUpdated && (
           <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-100/80 dark:bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
-            <Clock className="h-3.5 w-3.5 text-slate-400" />
+            <Clock className="h-3.5 w-3.5 text-slate-500" />
             <span>Atualizado: {localDb.getDatasetUpdateBadge('zl0170_miro')}</span>
           </div>
         )}
@@ -602,7 +602,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
         <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar -mx-2 px-2 sm:mx-0 sm:px-0 flex-wrap">
           {/* Busca Rápida (Nº PO, Fornecedor ou Material) */}
           <div className="relative shrink-0 w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
             <input
               type="text"
               value={searchQuery}
@@ -611,9 +611,9 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
               className="pl-9 pr-8 py-2 border rounded-lg text-xs h-9 w-full bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-600 transition-all shadow-xs"
             />
             {searchQuery && (
-              <button
+              <button aria-label="Limpar busca"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                 title="Limpar busca"
               >
                 <X className="h-3.5 w-3.5" />
@@ -710,7 +710,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
               <TableSkeleton columns={7} rows={12} />
             ) : sorted.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-16 text-slate-400 font-medium">
+                <td colSpan={7} className="text-center py-16 text-slate-500 font-medium">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <FileCheck className="h-10 w-10 text-slate-300 dark:text-slate-600" />
                     <span>Nenhum pedido encontrado com os filtros aplicados.</span>
@@ -754,7 +754,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                             className={`p-1 rounded-md transition-colors shrink-0 ${
                               isExpanded
                                 ? 'bg-emerald-200/70 text-emerald-800 dark:bg-emerald-800/60 dark:text-emerald-200'
-                                : 'text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                                : 'text-slate-500 hover:bg-slate-200/60 dark:hover:bg-slate-800'
                             }`}
                           >
                             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -781,7 +781,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                             </div>
                           )}
 
-                          <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                          <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-500 font-mono">
                             {p.fornecedor && <span>Cód. SAP: {p.fornecedor}</span>}
                             {p.empresa && <span>• Empr: {p.empresa}</span>}
                             {p.centro && <span>• Cen: {p.centro}</span>}
@@ -806,7 +806,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                         {Number(p.total_pago) > 0 ? (
                           formatBRL(p.total_pago)
                         ) : (
-                          <span className="text-slate-400 dark:text-slate-600 font-normal">—</span>
+                          <span className="text-slate-500 dark:text-slate-600 font-normal">—</span>
                         )}
                       </td>
 
@@ -815,7 +815,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                         {Number(p.total_em_aberto) > 0 ? (
                           formatBRL(p.total_em_aberto)
                         ) : (
-                          <span className="text-slate-400 dark:text-slate-600 font-normal">—</span>
+                          <span className="text-slate-500 dark:text-slate-600 font-normal">—</span>
                         )}
                       </td>
 
@@ -879,12 +879,12 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
 
                             {/* Subtabela de NFs e Materiais */}
                             {isLoadingDet ? (
-                              <div className="py-8 text-center text-xs text-slate-400 font-semibold flex items-center justify-center gap-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                              <div className="py-8 text-center text-xs text-slate-500 font-semibold flex items-center justify-center gap-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
                                 <RefreshCw className="h-4 w-4 animate-spin text-emerald-600" />
                                 Carregando notas fiscais e materiais...
                               </div>
                             ) : !detalhes || detalhes.length === 0 ? (
-                              <div className="py-6 text-center text-xs text-slate-400 font-medium bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                              <div className="py-6 text-center text-xs text-slate-500 font-medium bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
                                 Nenhuma fatura fiscal (MIRO) detalhada encontrada para este pedido.
                               </div>
                             ) : (
@@ -922,7 +922,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                                               {item.material_descricao || item.material || 'Material s/ descrição'}
                                             </span>
                                             {item.material_codigo && (
-                                              <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                                              <span className="text-[10px] font-mono text-slate-500 dark:text-slate-500">
                                                 Cód: {item.material_codigo} {item.item ? `(Item ${item.item})` : ''}
                                               </span>
                                             )}
@@ -934,7 +934,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                                           {item.doc_miro ? (
                                             <span>
                                               {item.doc_miro}
-                                              {item.ano_miro ? <span className="text-[10px] text-slate-400">/{item.ano_miro}</span> : ''}
+                                              {item.ano_miro ? <span className="text-[10px] text-slate-500">/{item.ano_miro}</span> : ''}
                                             </span>
                                           ) : (
                                             '—'
@@ -992,7 +992,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                                   {getSituacaoFiscalBadge(situacaoFiscal)}
                                 </div>
                                 {!detalhesFiscais || detalhesFiscais.length === 0 ? (
-                                  <div className="py-5 text-center text-xs text-slate-400 font-medium bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                                  <div className="py-5 text-center text-xs text-slate-500 font-medium bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
                                     Nenhuma NF fiscal vinculada a este pedido.
                                   </div>
                                 ) : (
@@ -1015,14 +1015,14 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                                             <td className="px-3.5 py-2.5 font-mono font-bold text-slate-900 dark:text-slate-100">{item.numero_nf_normalizado || '—'}</td>
                                             <td className="px-3.5 py-2.5">
                                               <div className="font-semibold text-slate-800 dark:text-slate-200">{item.descricao_item || item.material || item.numero_servico || 'Item sem descrição'}</div>
-                                              <div className="text-[10px] font-mono text-slate-400 dark:text-slate-500">{[item.material, item.numero_servico, item.item_pedido && `Item ${item.item_pedido}`].filter(Boolean).join(' · ') || '—'}</div>
+                                              <div className="text-[10px] font-mono text-slate-500 dark:text-slate-500">{[item.material, item.numero_servico, item.item_pedido && `Item ${item.item_pedido}`].filter(Boolean).join(' · ') || '—'}</div>
                                             </td>
                                             <td className="px-3.5 py-2.5 text-right font-mono text-slate-700 dark:text-slate-300">{Number(item.quantidade || 0).toLocaleString('pt-BR')} {item.unidade_medida || ''}</td>
                                             <td className="px-3.5 py-2.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">{formatBRL(item.valor_item_nf)}</td>
                                             <td className="px-3.5 py-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatBRL(item.valor_pago_rateado)}</td>
                                             <td className="px-3.5 py-2.5 text-slate-700 dark:text-slate-300">{formatDateBR(item.data_ultimo_pagamento)}</td>
                                             <td className="px-3.5 py-2.5 text-center">
-                                              {Number(item.qtd_linhas_zf0076 || 0) > 0 ? <span className="text-emerald-700 dark:text-emerald-300 font-bold">ZF0076</span> : <span className="text-slate-400">—</span>}
+                                              {Number(item.qtd_linhas_zf0076 || 0) > 0 ? <span className="text-emerald-700 dark:text-emerald-300 font-bold">ZF0076</span> : <span className="text-slate-500">—</span>}
                                             </td>
                                           </tr>
                                         ))}

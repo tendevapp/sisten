@@ -42,7 +42,7 @@ export default function Helpdesk({ user, onNavigate, initialView }: HelpdeskProp
           </div>
           <div className="min-w-0">
             <h1 className="font-bold text-sm text-slate-800 leading-tight truncate">Helpdesk & Atendimento</h1>
-            <p className="hidden sm:block text-[10px] text-slate-400">Central unificada de chamados e gestão operacional</p>
+            <p className="hidden sm:block text-[10px] text-slate-500">Central unificada de chamados e gestão operacional</p>
           </div>
         </div>
 

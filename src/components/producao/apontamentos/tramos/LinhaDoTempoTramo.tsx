@@ -169,7 +169,7 @@ export default function LinhaDoTempoTramo({ tramo, situacoes, hoje, user, onCorr
       </ol>
 
       {!eventos ? (
-        <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
+        <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-slate-500" /></div>
       ) : (
         <>
           <ul className="space-y-2">

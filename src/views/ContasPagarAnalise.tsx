@@ -931,7 +931,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             className="bg-transparent text-xs text-slate-800 dark:text-slate-200 outline-none cursor-pointer"
             title="Período Inicial"
           />
-          <span className="text-slate-400 font-medium">até</span>
+          <span className="text-slate-500 font-medium">até</span>
           <input
             type="date"
             value={periodoAte}
@@ -1190,7 +1190,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
               </div>
               <button
                 onClick={() => setSelectedPeriodModal(null)}
-                className="shrink-0 p-2 -m-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                className="shrink-0 p-2 -m-1 rounded-lg text-slate-500 hover:text-slate-600 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Fechar janela"
                 aria-label="Fechar"
               >
@@ -1240,7 +1240,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
               {/* Barra de Pesquisa e Ordenação */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                 <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                   <input
                     type="text"
                     placeholder="Pesquisar fornecedor, nº documento ou tipo de doc..."
@@ -1249,9 +1249,9 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                     className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
                   />
                   {modalSearchQuery && (
-                    <button
+                    <button aria-label="Limpar pesquisa"
                       onClick={() => setModalSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
                       title="Limpar pesquisa"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -1376,7 +1376,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                                     {isExpanded ? (
                                       <ChevronDown className="h-4 w-4 text-emerald-600 dark:text-emerald-400 font-bold" />
                                     ) : (
-                                      <ChevronRight className="h-4 w-4 text-slate-400" />
+                                      <ChevronRight className="h-4 w-4 text-slate-500" />
                                     )}
                                   </span>
                                   <div className="min-w-0">
@@ -1384,7 +1384,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                                       {group.supplierName}
                                     </span>
                                     {group.fornecedorCodigo && (
-                                      <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                                      <span className="text-[10px] font-mono text-slate-500 dark:text-slate-500">
                                         Cód. SAP: {group.fornecedorCodigo}
                                       </span>
                                     )}
@@ -1402,7 +1402,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                                     {formatBRL(group.totalExposicaoAberto)}
                                   </span>
                                 ) : (
-                                  <span className="text-slate-400 font-normal">—</span>
+                                  <span className="text-slate-500 font-normal">—</span>
                                 )}
                               </Td>
                               <Td align="right" numeric strong className="text-slate-900 dark:text-slate-100 font-extrabold">

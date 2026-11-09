@@ -392,7 +392,7 @@ function Donut({ resumo }: { resumo: ResumoDia }) {
         </svg>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">{resumo.total}</span>
-          <span className="text-[9px] font-bold uppercase leading-tight tracking-wide text-slate-500 dark:text-slate-400">
+          <span className="text-[10px] font-bold uppercase leading-tight tracking-wide text-slate-500 dark:text-slate-400">
             Atividades
             <br />
             totais
@@ -436,7 +436,7 @@ function RelatorioCompleto({ tv }: { tv: boolean }) {
           <div className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-slate-900">
             <CalendarDays className="h-5 w-5 text-blue-600" aria-hidden />
             <div className="leading-tight">
-              <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Data</p>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Data</p>
               <p className="font-display text-base font-bold">{formatarDataDDMMAA(relatorio.data)}</p>
             </div>
           </div>

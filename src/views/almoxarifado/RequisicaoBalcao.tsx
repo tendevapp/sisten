@@ -59,6 +59,7 @@ import LeitorQrModal from '../../components/ui/LeitorQrModal';
 import SeletorColaborador from '../../components/almoxarifado/SeletorColaborador';
 import { BotaoRelatorioSolExtra } from '../../components/almoxarifado/RelatorioSolExtra';
 import type { EstoqueItem, Profile, RhPessoa, RhTurno } from '../../types';
+import { confirmar } from '../../lib/confirmar';
 
 interface Props {
   user: Profile;
@@ -262,7 +263,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     }
     const jaExportadas = sel.filter((r) => r.exportacao_id).length;
     if (jaExportadas > 0
-        && !window.confirm(`${jaExportadas} das selecionadas já foram exportadas. Exportar de novo mesmo assim?`)) return;
+        && !await confirmar({ titulo: 'Exportar de novo?', mensagem: `${jaExportadas} das selecionadas já foram exportadas. Exportar de novo mesmo assim?`, confirmarLabel: 'Exportar de novo' })) return;
 
     // Alerta de itens sem saldo na ZL0024 para confirmação prévia antes de importar no SAP
     const comSemSaldo = sel.filter((r) =>
@@ -274,13 +275,16 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
           .filter((i) => (i.saldo_zl0024 != null && i.saldo_zl0024 <= 0) || i.sem_saldo)
           .map((i) => `• [${r.codigo}] Material ${i.material} - ${i.descricao || ''} (Qtd: ${i.quantidade}, Saldo ZL0024: ${i.saldo_zl0024 ?? 0})`),
       );
-      const conf = window.confirm(
-        `⚠️ ATENÇÃO: Confirmação antes de importar no SAP\n\n` +
+      const conf = await confirmar({
+        titulo: 'Itens sem saldo na ZL0024',
+        confirmarLabel: 'Exportar mesmo assim',
+        cancelarLabel: 'Voltar e revisar',
+        mensagem:
         `Foram selecionadas ${comSemSaldo.length} requisição(ões) contendo ${itensSemSaldo.length} item(ns) sem saldo na ZL0024 (possível defasagem de importação):\n\n` +
         itensSemSaldo.slice(0, 6).join('\n') +
         (itensSemSaldo.length > 6 ? `\n... e mais ${itensSemSaldo.length - 6} item(ns)` : '') +
         `\n\nConfirme se estes itens estão autorizados antes de importar no SAP. Deseja prosseguir com a exportação da planilha?`,
-      );
+      });
       if (!conf) return;
     }
 
@@ -313,7 +317,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
 
   const reabrir = async (ids: string[], rotulo: string) => {
     if (ids.length === 0) return;
-    if (!window.confirm(`Reabrir ${rotulo}? Volta para "Não exportadas" e poderá ser editada e exportada de novo.`)) return;
+    if (!await confirmar({ titulo: 'Reabrir requisição?', mensagem: `Reabrir ${rotulo}? Volta para "Não exportadas" e poderá ser editada e exportada de novo.`, confirmarLabel: 'Reabrir' })) return;
     try {
       const n = await reabrirExportacaoBalcao(ids);
       toast.success(`${n} requisição(ões) de volta à fila de exportação.`);
@@ -346,7 +350,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
    */
   const liberarExportada = async (r: ReqBalcaoRow, acao: string): Promise<boolean> => {
     if (!r.exportacao_id) return true;
-    if (!window.confirm(`${r.codigo} já foi exportada. Para ${acao}, ela volta para "Não exportadas" e precisará ser exportada de novo. Continuar?`)) return false;
+    if (!await confirmar({ titulo: 'Requisição já exportada', mensagem: `${r.codigo} já foi exportada. Para ${acao}, ela volta para "Não exportadas" e precisará ser exportada de novo. Continuar?`, confirmarLabel: 'Continuar' })) return false;
     try {
       await reabrirExportacaoBalcao([r.id]);
       return true;
@@ -364,7 +368,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   };
 
   const excluir = async (r: ReqBalcaoRow) => {
-    if (!r.exportacao_id && !window.confirm(`Excluir a requisição ${r.codigo}? Sai da tela, mas permanece no banco.`)) return;
+    if (!r.exportacao_id && !await confirmar({ titulo: 'Excluir requisição?', mensagem: `Excluir a requisição ${r.codigo}? Sai da tela, mas permanece no banco.`, confirmarLabel: 'Excluir', variante: 'perigo' })) return;
     if (!(await liberarExportada(r, 'excluir'))) return;
     try {
       await excluirRequisicaoBalcao(r.id, user.name);

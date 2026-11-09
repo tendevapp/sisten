@@ -111,7 +111,7 @@ export default function UsageAnalyticsSection({ nomesPorApiId }: UsageAnalyticsS
               </button>
             ))}
           </div>
-          <button type="button" onClick={() => carregar(periodo)} disabled={carregando} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-50">
+          <button aria-label="Atualizar" type="button" onClick={() => carregar(periodo)} disabled={carregando} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-50">
             <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'animate-spin' : ''}`} />
           </button>
         </div>
@@ -122,7 +122,7 @@ export default function UsageAnalyticsSection({ nomesPorApiId }: UsageAnalyticsS
       )}
 
       {carregando ? (
-        <div className="flex items-center justify-center py-12 text-slate-400">
+        <div className="flex items-center justify-center py-12 text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : registros.length === 0 ? (
@@ -132,21 +132,21 @@ export default function UsageAnalyticsSection({ nomesPorApiId }: UsageAnalyticsS
           {/* Cartões de resumo */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-xl border border-slate-200 p-3">
-              <p className="text-[11px] text-slate-400">Chamadas</p>
+              <p className="text-[11px] text-slate-500">Chamadas</p>
               <p className="text-lg font-bold text-slate-800">{totais.totalChamadas.toLocaleString('pt-BR')}</p>
             </div>
             <div className="rounded-xl border border-slate-200 p-3">
-              <p className="text-[11px] text-slate-400">Taxa de sucesso</p>
+              <p className="text-[11px] text-slate-500">Taxa de sucesso</p>
               <p className={`text-lg font-bold ${totais.taxaSucesso != null && totais.taxaSucesso < 0.9 ? 'text-amber-600' : 'text-emerald-600'}`}>
                 {totais.taxaSucesso != null ? `${Math.round(totais.taxaSucesso * 100)}%` : '—'}
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 p-3">
-              <p className="flex items-center gap-1 text-[11px] text-slate-400"><Coins className="h-3 w-3" /> Tokens</p>
+              <p className="flex items-center gap-1 text-[11px] text-slate-500"><Coins className="h-3 w-3" /> Tokens</p>
               <p className="text-lg font-bold text-slate-800">{totais.tokens.toLocaleString('pt-BR')}</p>
             </div>
             <div className="rounded-xl border border-slate-200 p-3">
-              <p className="flex items-center gap-1 text-[11px] text-slate-400"><DollarSign className="h-3 w-3" /> Custo estimado (R$)</p>
+              <p className="flex items-center gap-1 text-[11px] text-slate-500"><DollarSign className="h-3 w-3" /> Custo estimado (R$)</p>
               <p className="text-lg font-bold text-slate-800">{totais.custoBrl != null ? formatCustoBrl(totais.custoBrl) : '—'}</p>
             </div>
           </div>
@@ -201,7 +201,7 @@ export default function UsageAnalyticsSection({ nomesPorApiId }: UsageAnalyticsS
                       <Td>{formatDateTimeBR(r.createdAt)}</Td>
                       <Td>
                         <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-200" title={r.userName ?? 'Sistema'}>
-                          <User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <User className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                           <span className="truncate max-w-[130px]">{r.userName || 'Sistema'}</span>
                         </span>
                       </Td>
@@ -223,7 +223,7 @@ export default function UsageAnalyticsSection({ nomesPorApiId }: UsageAnalyticsS
               </table>
             </TableShell>
             {registros.length > 100 && (
-              <p className="mt-1.5 text-[11px] text-slate-400">Mostrando as 100 mais recentes de {registros.length.toLocaleString('pt-BR')}.</p>
+              <p className="mt-1.5 text-[11px] text-slate-500">Mostrando as 100 mais recentes de {registros.length.toLocaleString('pt-BR')}.</p>
             )}
           </div>
         </>

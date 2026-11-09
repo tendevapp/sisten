@@ -161,7 +161,7 @@ export function BuscaColaborador({
   return (
     <div>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
         <input
           ref={ref}
           type="search"
@@ -327,7 +327,7 @@ export function SeloTermo({ teste }: { teste: PortAlcoolemiaTeste }) {
       </span>
     );
   }
-  return <span className="text-[11px] text-slate-400">{teste.termo_impresso_em ? 'Termo impresso' : 'Termo não impresso'}</span>;
+  return <span className="text-[11px] text-slate-500">{teste.termo_impresso_em ? 'Termo impresso' : 'Termo não impresso'}</span>;
 }
 
 /** Teste excluído: fica guardado e aparece só no filtro Excluídos. */
@@ -444,7 +444,7 @@ export function CartaoTeste({
       <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
         {excluido ? <SeloExcluido teste={teste} /> : <SeloRazao razao={teste.razao_teste || 'ALEATORIO'} />}
         {rodape}
-        <span className="ml-auto font-mono text-[11px] text-slate-400">{teste.codigo_formulario}</span>
+        <span className="ml-auto font-mono text-[11px] text-slate-500">{teste.codigo_formulario}</span>
       </div>
 
       {(principal || acoes) && (

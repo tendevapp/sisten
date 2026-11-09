@@ -183,10 +183,10 @@ export default function UserEditGovernanceModal({
               <p className="text-xs text-slate-300 mt-0.5">{profile.email}</p>
             </div>
           </div>
-          <button
+          <button aria-label="Fechar"
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
             title="Fechar"
           >
             <X className="w-5 h-5" />
@@ -256,7 +256,7 @@ export default function UserEditGovernanceModal({
                       disabled
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-500 bg-slate-50 cursor-not-allowed font-mono"
                     />
-                    <span className="text-[10px] text-slate-400 mt-1 block">O e-mail é a chave de autenticação exclusiva.</span>
+                    <span className="text-[10px] text-slate-500 mt-1 block">O e-mail é a chave de autenticação exclusiva.</span>
                   </div>
 
                   <div>
@@ -365,7 +365,7 @@ export default function UserEditGovernanceModal({
                       placeholder="Ex: 314, 358"
                       className="w-48 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-600 bg-white"
                     />
-                    <span className="text-[11px] text-slate-400">Vincular a demandas e pedidos deste código SAP.</span>
+                    <span className="text-[11px] text-slate-500">Vincular a demandas e pedidos deste código SAP.</span>
                   </div>
                 </div>
 
@@ -425,7 +425,7 @@ export default function UserEditGovernanceModal({
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs transition-all"
                           >
                             <span>{sec?.name || id}</span>
-                            <button
+                            <button aria-label={`Remover ${sec?.name || id}`}
                               type="button"
                               onClick={() => handleToggleSetor(id)}
                               className="rounded-full p-0.5 hover:bg-emerald-200 text-emerald-700 hover:text-emerald-950 cursor-pointer"
@@ -442,7 +442,7 @@ export default function UserEditGovernanceModal({
                   {/* Barra de busca e ações rápidas */}
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <div className="relative flex-1 min-w-[200px]">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
                       <input
                         type="text"
                         value={filtroSetores}
@@ -451,10 +451,10 @@ export default function UserEditGovernanceModal({
                         className="w-full pl-8 pr-8 py-1.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
                       />
                       {filtroSetores && (
-                        <button
+                        <button aria-label="Fechar"
                           type="button"
                           onClick={() => setFiltroSetores('')}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 cursor-pointer"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -484,7 +484,7 @@ export default function UserEditGovernanceModal({
                   <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
                     <div className="max-h-52 overflow-y-auto p-2">
                       {setoresFiltrados.length === 0 ? (
-                        <p className="py-6 text-center text-xs text-slate-400">
+                        <p className="py-6 text-center text-xs text-slate-500">
                           Nenhum setor encontrado para "{filtroSetores}".
                         </p>
                       ) : (

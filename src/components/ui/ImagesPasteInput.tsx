@@ -127,7 +127,7 @@ export default function ImagesPasteInput({ value, onChange, hint, max = 8 }: Ima
               ) : (
                 <img src={anexo.previewUrl} alt={anexo.name || `Imagem ${idx + 1}`} className="h-28 w-full object-cover" />
               )}
-              <button
+              <button aria-label="Remover anexo"
                 type="button"
                 onClick={() => remover(idx)}
                 title="Remover anexo"

@@ -200,7 +200,7 @@ export default function PreviewMarkdownModal({
                     </div>
                   ) : (
                     <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-slate-500">
-                      <FileText className="h-8 w-8 text-slate-400" />
+                      <FileText className="h-8 w-8 text-slate-500" />
                       <p className="text-xs font-medium">Arquivo carregado ({formato?.toUpperCase() ?? 'Geral'})</p>
                       <button
                         type="button"
@@ -253,7 +253,7 @@ export default function PreviewMarkdownModal({
                   <Code2 className="h-4 w-4 text-emerald-500" />
                   Markdown Convertido (GFM)
                 </span>
-                <span className="text-[11px] text-slate-400">
+                <span className="text-[11px] text-slate-500">
                   {markdown.length.toLocaleString('pt-BR')} caracteres
                 </span>
               </div>

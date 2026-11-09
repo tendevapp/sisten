@@ -111,7 +111,7 @@ const AlertaBadge = ({ linha }: { linha: LinhaDossie }) => {
     linha.ultimoMovimento ? `Último movimento na MB51: ${formatDateBR(linha.ultimoMovimento)}.` : null,
   ].filter(Boolean).join(' ');
   return (
-    <span className="mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider whitespace-nowrap" style={{ color: cor, background: tom(cor, 12) }} title={detalhes || undefined}>
+    <span className="mt-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider whitespace-nowrap" style={{ color: cor, background: tom(cor, 12) }} title={detalhes || undefined}>
       {ROTULO_ALERTA_ZERADO[linha.alertaZerado]}
     </span>
   );
@@ -122,7 +122,7 @@ const TagRm = ({ linha }: { linha: LinhaDossie }) => {
   const atendida = linha.situacaoRm === 'ATENDIDA';
   return (
     <span
-      className="ml-1.5 rounded px-1 py-0.5 text-[9px] font-sans font-bold whitespace-nowrap"
+      className="ml-1.5 rounded px-1 py-0.5 text-[10px] font-sans font-bold whitespace-nowrap"
       style={atendida ? { background: 'var(--surface-sunken)', color: 'var(--ink-muted)' } : { background: tom('var(--status-warning)', 12), color: 'var(--status-warning)' }}
       title={atendida ? 'A RM segue aberta na ME5A, mas o pedido dela já foi entregue ou encerrado: não há reposição a caminho.' : 'RM ainda sem pedido.'}
     >
@@ -135,7 +135,7 @@ const TagAtrasado = ({ linha }: { linha: LinhaDossie }) => (
   linha.pedidoAtrasado
     ? (
       <span
-        className="ml-1.5 rounded px-1 py-0.5 text-[9px] font-sans font-bold whitespace-nowrap"
+        className="ml-1.5 rounded px-1 py-0.5 text-[10px] font-sans font-bold whitespace-nowrap"
         style={{ background: tom('var(--status-critical)', 12), color: 'var(--status-critical)' }}
         title={linha.remessaPrevista ? `Remessa prevista para ${formatDateBR(linha.remessaPrevista)} e ainda falta chegar.` : undefined}
       >
@@ -443,7 +443,7 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                             <span>{linha.material}</span>
                             {linha.primeiraDoMaterial && (
                               <span
-                                className="inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider"
+                                className="inline-flex rounded px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider"
                                 style={{
                                   background: isProjetoItem(linha.material) ? 'color-mix(in srgb, var(--brand) 15%, transparent)' : 'var(--surface-sunken)',
                                   color: isProjetoItem(linha.material) ? 'var(--brand)' : 'var(--ink-muted)',
@@ -484,7 +484,7 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                             ? <>{linha.pedido}{linha.itemPedido && <span style={{ color: 'var(--ink-muted)' }}> /{linha.itemPedido}</span>}</>
                             : vazio}
                           <TagAtrasado linha={linha} />
-                          {linha.pedidoCompartilhado && <span className="ml-1.5 rounded px-1 py-0.5 text-[9px] font-sans font-bold" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }} title="Este pedido atende mais de uma RM do material; é contado uma vez nos totais.">compartilhado</span>}
+                          {linha.pedidoCompartilhado && <span className="ml-1.5 rounded px-1 py-0.5 text-[10px] font-sans font-bold" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }} title="Este pedido atende mais de uma RM do material; é contado uma vez nos totais.">compartilhado</span>}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">{linha.dataPedido ? formatDateBR(linha.dataPedido) : vazio}</td>
                         <td className="px-3 py-2 text-right tabular">{qtd(linha.quantidadePedida)}</td>
@@ -519,7 +519,7 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                       <div className="flex items-center gap-1.5">
                         <p className="font-mono text-sm font-black truncate" style={{ color: 'var(--ink-primary)' }}>{linha.material}</p>
                         <span
-                          className="inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider"
+                          className="inline-flex rounded px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider"
                           style={{
                             background: isProjetoItem(linha.material) ? 'color-mix(in srgb, var(--brand) 15%, transparent)' : 'var(--surface-sunken)',
                             color: isProjetoItem(linha.material) ? 'var(--brand)' : 'var(--ink-muted)',
@@ -537,14 +537,14 @@ export default function ControleEstoqueDossie({ linhas, loading, onSelecionar }:
                   </div>
                   <div className="mt-3 grid grid-cols-4 gap-2 text-center">
                     {([['Saldo', qtd(linha.saldo)], ['Mínimo', qtd(linha.minimo)], ['Comprar', qtd(linha.propostaRm)], ['Cobert.', linha.coberturaDias === null ? vazio : `${formatInt(linha.coberturaDias)} d`]] as const).map(([rotulo, valor]) => (
-                      <div key={rotulo}><p className="text-[9px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>{rotulo}</p><p className="font-black tabular text-xs">{valor}</p></div>
+                      <div key={rotulo}><p className="text-[10px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>{rotulo}</p><p className="font-black tabular text-xs">{valor}</p></div>
                     ))}
                   </div>
                   <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                    <div><dt className="text-[9px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>RM</dt><dd className="font-mono">{linha.rmRepetida ? 'mesma RM' : linha.rm ?? 'Sem RM'}{!linha.rmRepetida && linha.dataRm ? ` · ${formatDateBR(linha.dataRm)}` : ''}<TagRm linha={linha} /></dd></div>
-                    <div><dt className="text-[9px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>Solicitado</dt><dd>{linha.rmRepetida ? '—' : <>{qtd(linha.quantidadeSolicitada)}{linha.requisitante ? ` · ${linha.requisitante}` : ''}</>}</dd></div>
-                    <div><dt className="text-[9px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>Pedido</dt><dd className="font-mono">{linha.pedido ?? '—'}{linha.itemPedido ? ` /${linha.itemPedido}` : ''}{linha.dataPedido ? ` · ${formatDateBR(linha.dataPedido)}` : ''}<TagAtrasado linha={linha} /></dd></div>
-                    <div><dt className="text-[9px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>Chegada</dt><dd><SituacaoBadge situacao={linha.situacao} /> {linha.quantidadePedida !== null ? `${formatQtd(linha.quantidadeChegou ?? 0)} / ${formatQtd(linha.quantidadePedida)}` : ''}</dd></div>
+                    <div><dt className="text-[10px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>RM</dt><dd className="font-mono">{linha.rmRepetida ? 'mesma RM' : linha.rm ?? 'Sem RM'}{!linha.rmRepetida && linha.dataRm ? ` · ${formatDateBR(linha.dataRm)}` : ''}<TagRm linha={linha} /></dd></div>
+                    <div><dt className="text-[10px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>Solicitado</dt><dd>{linha.rmRepetida ? '—' : <>{qtd(linha.quantidadeSolicitada)}{linha.requisitante ? ` · ${linha.requisitante}` : ''}</>}</dd></div>
+                    <div><dt className="text-[10px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>Pedido</dt><dd className="font-mono">{linha.pedido ?? '—'}{linha.itemPedido ? ` /${linha.itemPedido}` : ''}{linha.dataPedido ? ` · ${formatDateBR(linha.dataPedido)}` : ''}<TagAtrasado linha={linha} /></dd></div>
+                    <div><dt className="text-[10px] uppercase font-bold" style={{ color: 'var(--ink-muted)' }}>Chegada</dt><dd><SituacaoBadge situacao={linha.situacao} /> {linha.quantidadePedida !== null ? `${formatQtd(linha.quantidadeChegou ?? 0)} / ${formatQtd(linha.quantidadePedida)}` : ''}</dd></div>
                   </dl>
                 </button>
                 {linha.entregas.length > 0 && (

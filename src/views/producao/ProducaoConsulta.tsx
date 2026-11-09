@@ -121,7 +121,7 @@ export default function ProducaoConsulta({}: Props) {
           className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
         />
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
             value={termo}
@@ -134,7 +134,7 @@ export default function ProducaoConsulta({}: Props) {
 
       {carregando ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+          <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
         </div>
       ) : linhas.length === 0 ? (
         <TableEmpty icon={FileSearch} title="Nenhum lançamento encontrado" hint="Ajuste os filtros para ver mais resultados." />

@@ -276,7 +276,7 @@ export default function SolicitacaoExtraordinaria({ user, onNavigate }: Props) {
         <div className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <input
                 value={busca}
                 onChange={e => setBusca(e.target.value)}
@@ -564,7 +564,7 @@ function DetalheModal({
           <Info rotulo="Registrado por" valor={registro.criado_por_nome} />
           <Info rotulo="PEP" valor={registro.aplicacao_pep ? `${registro.aplicacao || ''} — ${registro.aplicacao_pep}` : null} />
           <div className="col-span-2 sm:col-span-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Situação</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Situação</p>
             <Status status={registro.status} />
           </div>
         </div>
@@ -584,7 +584,7 @@ function DetalheModal({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {registro.itens.map((it, i) => (
                   <tr key={`${it.material}-${i}`}>
-                    <td className="px-3 py-1.5 text-slate-400">{i + 1}</td>
+                    <td className="px-3 py-1.5 text-slate-500">{i + 1}</td>
                     <td className="px-3 py-1.5 font-mono font-semibold text-slate-800 dark:text-slate-100">{it.material}</td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-slate-800 dark:text-slate-100">{formatQtd(it.quantidade)} {it.unidade}</td>
                     <td className="px-3 py-1.5 text-slate-700 dark:text-slate-200">{it.descricao || '—'}</td>
@@ -832,7 +832,7 @@ function EscolhaTipo({ onEscolher }: { onEscolher: (tipo: TipoSolExtra) => void 
 function Info({ rotulo, valor }: { rotulo: string; valor: string | null | undefined }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{rotulo}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{rotulo}</p>
       <p className="truncate font-medium text-slate-800 dark:text-slate-100">{valor || '—'}</p>
     </div>
   );

@@ -23,7 +23,7 @@ export default function CoberturaEscopoPanel({ escopo, itens }: CoberturaEscopoP
 
   return (
     <div className="flex flex-wrap items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-900">
-      <ListChecks className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+      <ListChecks className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500" />
       <span className="text-slate-600 dark:text-slate-300">
         {escopo.length} {escopo.length === 1 ? 'item no processo' : 'itens no processo'} ·{' '}
         <strong className="text-emerald-600 dark:text-emerald-400">{cobertos.length} cotado(s)</strong> por este fornecedor

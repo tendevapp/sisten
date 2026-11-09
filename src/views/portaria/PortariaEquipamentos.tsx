@@ -464,22 +464,22 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                             Baixar Saída
                           </button>
                         )}
-                        <button
+                        <button aria-label="Visualizar / Exportar comprovante em PDF"
                           type="button"
                           onClick={() => setPdfPreview({
                             gerar: () => gerarEquipamentoPdf(item),
                             titulo: `Comprovante de Equipamentos - ${item.numero_protocolo}`,
                           })}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                           title="Visualizar / Exportar comprovante em PDF"
                         >
                           <FileDown className="h-4 w-4" />
                         </button>
                         {podeEditarFormulario(user, item) && (
-                          <button
+                          <button aria-label="Excluir registro"
                             type="button"
                             onClick={() => setItemParaExcluir(item)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
+                            className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
                             title="Excluir registro"
                           >
                             <Trash2 className="h-4 w-4" />

@@ -66,7 +66,7 @@ function TrilhaItem({ item }: { item: ItemFinMl }) {
           {i > 0 && <span className={`h-px w-2 sm:w-3 ${i <= atual ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'}`} />}
           <span
             title={e.rotulo}
-            className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap ${
+            className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${
               i < atual ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
                 : i === atual ? 'bg-emerald-600 text-white'
                 : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
@@ -103,19 +103,19 @@ function LinhaItem({ item, onBaixar }: { item: ItemFinMl; onBaixar?: () => void 
 
       <div className="min-w-0 text-[11px] text-slate-600 dark:text-slate-300 space-y-0.5">
         <p className="truncate">
-          <span className="text-slate-400">PO </span>
+          <span className="text-slate-500">PO </span>
           {item.pedidos?.length ? <span className="font-mono font-semibold">{item.pedidos.join(', ')}</span> : <span className="text-amber-600">aguardando NF / PO</span>}
-          {item.fornecedores?.length ? <span className="text-slate-400"> · {item.fornecedores.join(', ')}</span> : null}
+          {item.fornecedores?.length ? <span className="text-slate-500"> · {item.fornecedores.join(', ')}</span> : null}
         </p>
-        {!!item.notas_fiscais?.length && <p><span className="text-slate-400">NF </span><span className="font-mono">{item.notas_fiscais.join(', ')}</span></p>}
+        {!!item.notas_fiscais?.length && <p><span className="text-slate-500">NF </span><span className="font-mono">{item.notas_fiscais.join(', ')}</span></p>}
         <p>
-          <span className="text-slate-400">Almox </span>
+          <span className="text-slate-500">Almox </span>
           {item.qtd_recebida != null
             ? <>{formatQtd(item.qtd_recebida)}{qtdRef != null && <> de {formatQtd(qtdRef)}</>} em {formatDateBR(item.data_recebimento)}</>
             : item.data_chegada ? <>chegou {formatDateBR(item.data_chegada)}</> : '—'}
         </p>
         <p>
-          <span className="text-slate-400">MIGO </span>
+          <span className="text-slate-500">MIGO </span>
           {item.data_migo
             ? <>{formatDateBR(item.data_migo)}{item.qtd_fornecida != null && qtdRef != null && <> · {formatQtd(item.qtd_fornecida)} de {formatQtd(qtdRef)}</>}</>
             : '—'}
@@ -123,9 +123,9 @@ function LinhaItem({ item, onBaixar }: { item: ItemFinMl; onBaixar?: () => void 
       </div>
 
       <div className="text-[11px] grid grid-cols-3 gap-2 lg:text-right">
-        <div><p className="text-slate-400">PO</p><p className="font-semibold tabular text-slate-800 dark:text-slate-100">{formatBRL(item.valor_pedido)}</p></div>
-        <div><p className="text-slate-400">Baixado</p><p className="font-semibold tabular text-emerald-700 dark:text-emerald-400">{formatBRL(item.valor_baixado)}</p></div>
-        <div><p className="text-slate-400">Saldo</p><p className="font-semibold tabular text-slate-800 dark:text-slate-100">{item.valor_pedido != null ? formatBRL(saldo) : '—'}</p></div>
+        <div><p className="text-slate-500">PO</p><p className="font-semibold tabular text-slate-800 dark:text-slate-100">{formatBRL(item.valor_pedido)}</p></div>
+        <div><p className="text-slate-500">Baixado</p><p className="font-semibold tabular text-emerald-700 dark:text-emerald-400">{formatBRL(item.valor_baixado)}</p></div>
+        <div><p className="text-slate-500">Saldo</p><p className="font-semibold tabular text-slate-800 dark:text-slate-100">{item.valor_pedido != null ? formatBRL(saldo) : '—'}</p></div>
       </div>
 
       <div className="flex lg:justify-end">
@@ -170,7 +170,7 @@ function HistoricoBaixas({ resumo, user, onEstornar }: {
               {b.nota_fiscal && <span className="text-slate-500">NF {b.nota_fiscal}</span>}
               {b.doc_compensacao && <span className="text-slate-500">Doc {b.doc_compensacao}</span>}
               {b.observacao && <span className="text-slate-500 italic truncate max-w-[220px]" title={b.observacao}>{b.observacao}</span>}
-              <span className="text-slate-400">por {b.criado_por_nome || '—'}</span>
+              <span className="text-slate-500">por {b.criado_por_nome || '—'}</span>
               {estornada && (
                 <span className="text-rose-600" title={b.motivo_estorno ?? ''}>
                   estornada por {b.estornado_por_nome} em {formatDateTimeBR(b.estornado_em)}
@@ -216,24 +216,24 @@ function DadosDaCompra({ compra }: { compra: CompraFinMl }) {
       </p>
       {temDetalhe && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1.5 text-[11px]">
-          <div><span className="block text-slate-400">Data</span><b className="text-slate-800 dark:text-slate-100">{formatDateBR(compra.data_compra)}</b></div>
+          <div><span className="block text-slate-500">Data</span><b className="text-slate-800 dark:text-slate-100">{formatDateBR(compra.data_compra)}</b></div>
           <div>
-            <span className="block text-slate-400">Produtos{compra.qtd_produtos != null && ` (${compra.qtd_produtos})`}</span>
+            <span className="block text-slate-500">Produtos{compra.qtd_produtos != null && ` (${compra.qtd_produtos})`}</span>
             <b className="tabular text-slate-800 dark:text-slate-100">{formatBRL(compra.valor_produtos)}</b>
           </div>
-          <div><span className="block text-slate-400">Frete</span><b className="tabular text-slate-800 dark:text-slate-100">{compra.valor_frete === 0 ? 'Grátis' : formatBRL(compra.valor_frete)}</b></div>
-          <div><span className="block text-slate-400">Total</span><b className="tabular text-slate-800 dark:text-slate-100">{formatBRL(compra.valor_total)}</b></div>
-          <div><span className="block text-slate-400">Pagamento</span><b className="text-slate-800 dark:text-slate-100">{compra.forma_pagamento ?? '—'}</b></div>
-          <div><span className="block text-slate-400">Nº pagamento</span><b className="font-mono text-slate-800 dark:text-slate-100">{compra.numero_pagamento ?? '—'}</b></div>
-          <div className="col-span-2"><span className="block text-slate-400">Situação no ML (quando colado)</span><b className="text-slate-800 dark:text-slate-100">{compra.status_pagamento_ml ?? '—'}</b></div>
+          <div><span className="block text-slate-500">Frete</span><b className="tabular text-slate-800 dark:text-slate-100">{compra.valor_frete === 0 ? 'Grátis' : formatBRL(compra.valor_frete)}</b></div>
+          <div><span className="block text-slate-500">Total</span><b className="tabular text-slate-800 dark:text-slate-100">{formatBRL(compra.valor_total)}</b></div>
+          <div><span className="block text-slate-500">Pagamento</span><b className="text-slate-800 dark:text-slate-100">{compra.forma_pagamento ?? '—'}</b></div>
+          <div><span className="block text-slate-500">Nº pagamento</span><b className="font-mono text-slate-800 dark:text-slate-100">{compra.numero_pagamento ?? '—'}</b></div>
+          <div className="col-span-2"><span className="block text-slate-500">Situação no ML (quando colado)</span><b className="text-slate-800 dark:text-slate-100">{compra.status_pagamento_ml ?? '—'}</b></div>
           {compra.endereco_entrega && (
-            <div className="col-span-2 sm:col-span-4"><span className="block text-slate-400">Entrega</span><span className="text-slate-700 dark:text-slate-200">{compra.endereco_entrega}</span></div>
+            <div className="col-span-2 sm:col-span-4"><span className="block text-slate-500">Entrega</span><span className="text-slate-700 dark:text-slate-200">{compra.endereco_entrega}</span></div>
           )}
         </div>
       )}
       {compra.linha_digitavel && (
         <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="text-slate-400">Linha digitável</span>
+          <span className="text-slate-500">Linha digitável</span>
           <span className="font-mono text-slate-800 dark:text-slate-100 break-all">{formatarLinhaDigitavel(compra.linha_digitavel)}</span>
           <button type="button" onClick={copiarLinha} className="inline-flex items-center gap-0.5 text-sky-600 hover:underline cursor-pointer">
             <Copy className="h-3 w-3" /> copiar
@@ -249,7 +249,7 @@ function DadosDaCompra({ compra }: { compra: CompraFinMl }) {
             <ul className="mt-1 text-[11px] divide-y divide-yellow-200/70 dark:divide-yellow-900/50">
               {pacotes.map((p, i) => (
                 <li key={i} className="flex items-center gap-2 py-1">
-                  <span className="text-slate-400 w-5 shrink-0">{i + 1}</span>
+                  <span className="text-slate-500 w-5 shrink-0">{i + 1}</span>
                   <span className="flex-1 min-w-0 truncate text-slate-700 dark:text-slate-200" title={p.descricao}>{p.descricao}</span>
                   <span className="shrink-0 text-slate-500">{p.quantidade ?? '—'} un</span>
                   <span className="shrink-0 w-24 text-right font-semibold tabular text-slate-800 dark:text-slate-100">{formatBRL(p.valor)}</span>
@@ -301,18 +301,18 @@ function CartaoCompra({ resumo, user, aberto, onAlternar, onBoleto, onBaixa, onE
           </div>
           <div className="flex items-start gap-4">
             <div className="text-right text-[11px]">
-              <p className="text-slate-400">Boleto</p>
+              <p className="text-slate-500">Boleto</p>
               <p className="text-sm font-bold tabular text-slate-900 dark:text-slate-50">{formatBRL(boleto)}</p>
               <p className="text-slate-500">
                 {c?.pago_em ? <>pago {formatDateBR(c.pago_em)}</> : c?.vencimento ? <>vence {formatDateBR(c.vencimento)}</> : '—'}
               </p>
             </div>
             <div className="text-right text-[11px]">
-              <p className="text-slate-400">Saldo</p>
+              <p className="text-slate-500">Saldo</p>
               <p className="text-sm font-bold tabular text-slate-900 dark:text-slate-50">{formatBRL(resumo.saldoAdiantamento)}</p>
               <p className="text-emerald-700 dark:text-emerald-400">baixado {formatBRL(resumo.valorBaixado)}</p>
             </div>
-            <ChevronDown className={`h-5 w-5 mt-1 text-slate-400 transition-transform ${aberto ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`h-5 w-5 mt-1 text-slate-500 transition-transform ${aberto ? 'rotate-180' : ''}`} />
           </div>
         </div>
         {boleto != null && boleto > 0 && (
@@ -507,7 +507,7 @@ export default function FinMercadoLivre({ user }: Props) {
 
       <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-2.5 lg:p-4 shadow-xs space-y-2.5 lg:space-y-3">
         <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
           <input
             type="text"
             value={busca}

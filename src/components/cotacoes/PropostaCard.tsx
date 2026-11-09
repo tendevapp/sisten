@@ -71,7 +71,7 @@ function CampoMoeda({ valor, onChange, faltando }: { valor: number | null; onCha
 
   return (
     <div className={`mt-0.5 flex items-center gap-1 rounded border px-1.5 focus-within:border-indigo-500 ${faltando ? 'border-rose-300 dark:border-rose-800' : 'border-slate-200 dark:border-slate-700'}`}>
-      <span className="text-xs text-slate-400">R$</span>
+      <span className="text-xs text-slate-500">R$</span>
       <input
         inputMode="decimal"
         value={texto}
@@ -264,7 +264,7 @@ export default function PropostaCard({
           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Salva</span>
         )}
         {proposta._extraido_em && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-slate-400" title="Quando esta proposta foi extraída pela IA">
+          <span className="inline-flex items-center gap-1 text-[11px] text-slate-500" title="Quando esta proposta foi extraída pela IA">
             <Clock className="h-3 w-3" />
             {formatDateTimeBR(proposta._extraido_em)}
           </span>
@@ -297,12 +297,12 @@ export default function PropostaCard({
             <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{validacao.preenchidos}/{validacao.total}</span>
           </div>
           {!proposta._salvo && (
-            <button type="button" onClick={handleClicarRemover} title="Remover esta proposta da revisão" className="text-slate-300 hover:text-rose-500">
+            <button aria-label="Remover esta proposta da revisão" type="button" onClick={handleClicarRemover} title="Remover esta proposta da revisão" className="text-slate-300 hover:text-rose-500">
               <Trash2 className="h-4 w-4" />
             </button>
           )}
           {proposta._salvo && (
-            <button
+            <button aria-label="Excluir esta proposta salva"
               type="button"
               onClick={handleClicarExcluir}
               title="Excluir esta proposta salva"
@@ -342,7 +342,7 @@ export default function PropostaCard({
             || c.key === 'valor_frete' || c.key === 'valor_desconto';
           return (
             <div key={c.key} className="min-w-0">
-              <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{c.label}</dt>
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-500">{c.label}</dt>
               {c.tipo === 'select' ? (
                 <select
                   value={(valor as string) ?? ''}
@@ -397,7 +397,7 @@ export default function PropostaCard({
             </span>
           )}
           {itensDesconsiderados.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-slate-400">
+            <span className="inline-flex items-center gap-1.5 text-slate-500">
               <Ban className="h-3.5 w-3.5 shrink-0" />
               {itensDesconsiderados.length} desconsiderado(s)
             </span>

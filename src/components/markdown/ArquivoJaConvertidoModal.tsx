@@ -139,7 +139,7 @@ export default function ArquivoJaConvertidoModal({
                       <Calendar className="h-3.5 w-3.5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider">Convertido em</span>
+                      <span className="block text-[10px] font-medium text-slate-500 uppercase tracking-wider">Convertido em</span>
                       <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">
                         {dataFormatada}
                       </span>
@@ -151,7 +151,7 @@ export default function ArquivoJaConvertidoModal({
                       <User className="h-3.5 w-3.5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <span className="block text-[10px] font-medium text-slate-400 uppercase tracking-wider">Convertido por</span>
+                      <span className="block text-[10px] font-medium text-slate-500 uppercase tracking-wider">Convertido por</span>
                       <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block" title={nomeUsuario}>
                         {nomeUsuario}
                       </span>
@@ -163,7 +163,7 @@ export default function ArquivoJaConvertidoModal({
                 <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400 px-0.5">
                   {dup.via && (
                     <span className="inline-flex items-center gap-1">
-                      {dup.via === 'ia' ? <Sparkles className="h-3 w-3 text-indigo-500" /> : <Cpu className="h-3 w-3 text-slate-400" />}
+                      {dup.via === 'ia' ? <Sparkles className="h-3 w-3 text-indigo-500" /> : <Cpu className="h-3 w-3 text-slate-500" />}
                       {dup.modelo ?? (dup.via === 'local' ? 'Local (Sem IA)' : 'IA')}
                     </span>
                   )}

@@ -504,10 +504,10 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                           </button>
                         )}
                         {podeEditarFormulario(user, item) && (
-                          <button
+                          <button aria-label="Excluir registro"
                             type="button"
                             onClick={() => setItemParaExcluir(item)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
+                            className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
                             title="Excluir registro"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -790,7 +790,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     onClick={() => setModalAssinaturaAberto(true)}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-3 text-xs font-semibold text-slate-700 hover:border-blue-400 hover:bg-blue-50/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
                   >
-                    <PenTool className="h-4 w-4 text-slate-400" />
+                    <PenTool className="h-4 w-4 text-slate-500" />
                     Coletar Assinatura do Motorista
                   </button>
                 )}

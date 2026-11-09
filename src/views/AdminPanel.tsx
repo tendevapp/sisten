@@ -1588,7 +1588,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         >
                           <Check className="w-3.5 h-3.5" /> Aprovar
                         </button>
-                        <button
+                        <button aria-label="Definir setor e papel antes de aprovar"
                           type="button"
                           onClick={() => setGovernanceModalUser(p)}
                           className="rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs py-1.5 px-2.5 transition-colors flex items-center justify-center gap-1 cursor-pointer"
@@ -1596,7 +1596,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         >
                           <Settings2 className="w-3.5 h-3.5" />
                         </button>
-                        <button
+                        <button aria-label="Recusar cadastro"
                           type="button"
                           onClick={() => handleApproveUser(p.id, false)}
                           className="rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs py-1.5 px-2.5 transition-colors flex items-center justify-center cursor-pointer"
@@ -1793,10 +1793,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   className="w-full pl-10 pr-9 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 bg-white placeholder:text-slate-400"
                 />
                 {userSearchQuery && (
-                  <button
+                  <button aria-label="Limpar busca"
                     type="button"
                     onClick={() => setUserSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 cursor-pointer"
                     title="Limpar busca"
                   >
                     <X className="h-4 w-4" />
@@ -1806,7 +1806,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
               <div className="flex items-center gap-2 shrink-0">
                 <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
-                  <Filter className="w-3.5 h-3.5 text-slate-400" />
+                  <Filter className="w-3.5 h-3.5 text-slate-500" />
                   <span className="text-slate-500 font-semibold">Setor:</span>
                   <select
                     value={userSectorFilter}
@@ -1931,26 +1931,26 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`font-bold text-slate-900 ${p.status === 'inativo' ? 'line-through text-slate-400' : ''}`}>
+                                <span className={`font-bold text-slate-900 ${p.status === 'inativo' ? 'line-through text-slate-500' : ''}`}>
                                   {p.name}
                                 </span>
                                 {isSelf && (
-                                  <span className="bg-sky-100 text-sky-800 text-[9px] font-bold px-1.5 py-0.2 rounded border border-sky-200">
+                                  <span className="bg-sky-100 text-sky-800 text-[10px] font-bold px-1.5 py-0.2 rounded border border-sky-200">
                                     Você
                                   </span>
                                 )}
                                 {p.status === 'pendente' && (
-                                  <span className="bg-amber-100 text-amber-800 text-[9px] font-extrabold px-1.5 py-0.2 rounded border border-amber-300">
+                                  <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-1.5 py-0.2 rounded border border-amber-300">
                                     Pendente
                                   </span>
                                 )}
                                 {p.status === 'inativo' && (
-                                  <span className="bg-rose-100 text-rose-700 text-[9px] font-bold px-1.5 py-0.2 rounded border border-rose-200">
+                                  <span className="bg-rose-100 text-rose-700 text-[10px] font-bold px-1.5 py-0.2 rounded border border-rose-200">
                                     Inativo
                                   </span>
                                 )}
                                 {p.status === 'ativo' && isRecentlyCreated(p.created_at) && (
-                                  <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.2 rounded border border-emerald-200 flex items-center gap-0.5">
+                                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded border border-emerald-200 flex items-center gap-0.5">
                                     <Sparkles className="w-2.5 h-2.5 text-emerald-600" /> Novo
                                   </span>
                                 )}
@@ -1960,7 +1960,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               <p className="text-[11px] text-slate-500 mt-0.5 truncate flex items-center gap-1.5" title={rotuloIdentificador(p.email)}>
                                 {rotuloIdentificador(p.email)}
                                 {ehEmailInterno(p.email) && (
-                                  <span className="shrink-0 rounded border border-slate-200 bg-slate-100 px-1 py-0.2 text-[9px] font-bold text-slate-500">
+                                  <span className="shrink-0 rounded border border-slate-200 bg-slate-100 px-1 py-0.2 text-[10px] font-bold text-slate-500">
                                     SEM E-MAIL
                                   </span>
                                 )}
@@ -1978,7 +1978,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                             className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-slate-600 hover:text-emerald-800 transition-colors cursor-pointer group"
                             title="Clique para editar dados ou setor deste colaborador"
                           >
-                            <Building2 className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 shrink-0" />
+                            <Building2 className="w-3 h-3 text-slate-500 group-hover:text-emerald-600 shrink-0" />
                             <span className="group-hover:underline">{secName || 'Sem setor vinculado'}</span>
                           </button>
                         </td>
@@ -2023,7 +2023,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               </span>
                             )}
                             {!hasSectorsApproval && !hasSapApproval && (
-                              <span className="text-slate-400 text-xs font-normal">Nenhuma</span>
+                              <span className="text-slate-500 text-xs font-normal">Nenhuma</span>
                             )}
                           </div>
                         </td>
@@ -2041,7 +2041,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               <span>Editar</span>
                             </button>
 
-                            <button
+                            <button aria-label="Configurar permissão granular por módulo"
                               type="button"
                               onClick={() => setPageAccessProfileId(p.id)}
                               className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer border border-transparent hover:border-slate-200"
@@ -2051,7 +2051,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                             </button>
 
                             {p.status === 'inativo' ? (
-                              <button
+                              <button aria-label="Reativar colaborador"
                                 type="button"
                                 onClick={() => handleToggleUserStatus(p.id, 'ativo')}
                                 className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
@@ -2060,11 +2060,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                 <UserCheck className="w-4 h-4" />
                               </button>
                             ) : (
-                              <button
+                              <button aria-label={isSelf ? 'Você não pode inativar sua própria conta' : 'Inativar acesso deste usuário'}
                                 type="button"
                                 onClick={() => handleToggleUserStatus(p.id, 'inativo')}
                                 disabled={isSelf}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                                 title={isSelf ? 'Você não pode inativar sua própria conta' : 'Inativar acesso deste usuário'}
                               >
                                 <UserX className="w-4 h-4" />
@@ -2079,10 +2079,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   {filteredUsers.length === 0 && (
                     <tr>
                       <td colSpan={7} className="py-12 text-center">
-                        <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                        <div className="flex flex-col items-center justify-center gap-2 text-slate-500">
                           <Users className="w-8 h-8 opacity-30" />
                           <p className="font-semibold text-sm text-slate-600">Nenhum colaborador encontrado</p>
-                          <p className="text-xs text-slate-400">Tente ajustar a busca ou os filtros aplicados acima.</p>
+                          <p className="text-xs text-slate-500">Tente ajustar a busca ou os filtros aplicados acima.</p>
                           {(userSearchQuery || userSectorFilter !== 'all' || userStatusFilter !== 'all') && (
                             <button
                               type="button"
@@ -2177,7 +2177,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
+                    <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider">
                       <th className="py-3">ID Setor</th>
                       <th className="py-3">Nome do Setor</th>
                       <th className="py-3 text-center">É Apoio? (Suporte)</th>
@@ -2192,7 +2192,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         <td className="py-3 text-center">
                           <button
                             onClick={() => handleToggleSectorSupport(s.id)}
-                            className={`inline-flex items-center px-2 py-1 rounded font-bold text-[10px] uppercase border transition-all cursor-pointer ${s.is_support ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
+                            className={`inline-flex items-center px-2 py-1 rounded font-bold text-[10px] uppercase border transition-all cursor-pointer ${s.is_support ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}
                           >
                             {s.is_support ? 'Suporte Ativo' : 'Não'}
                           </button>
@@ -2200,7 +2200,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         <td className="py-3 text-center">
                           <button
                             onClick={() => handleToggleSectorHelpdesk(s.id)}
-                            className={`inline-flex items-center px-2 py-1 rounded font-bold text-[10px] uppercase border transition-all cursor-pointer ${s.helpdesk_enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
+                            className={`inline-flex items-center px-2 py-1 rounded font-bold text-[10px] uppercase border transition-all cursor-pointer ${s.helpdesk_enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}
                           >
                             {s.helpdesk_enabled ? 'Helpdesk Ativo' : 'Inativo'}
                           </button>
@@ -2246,7 +2246,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               {/* Filtros e Busca */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
                   <input
                     type="text"
                     placeholder="Buscar por nome do setor..."
@@ -2255,10 +2255,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-emerald-500 focus:outline-none"
                   />
                   {buscaRhSetores && (
-                    <button
+                    <button aria-label="Fechar"
                       type="button"
                       onClick={() => setBuscaRhSetores('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 cursor-pointer"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -2288,7 +2288,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider bg-slate-50/50">
+                    <tr className="border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider bg-slate-50/50">
                       <th className="py-3 px-3">Nome do Setor</th>
                       <th className="py-3 px-3 text-center">Status</th>
                       <th className="py-3 px-3 text-center">Criado em</th>
@@ -2301,7 +2301,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full shrink-0 bg-slate-300" />
-                            <span className={`font-bold ${s.ativo ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
+                            <span className={`font-bold ${s.ativo ? 'text-slate-800' : 'text-slate-500 line-through'}`}>
                               {s.nome}
                             </span>
                           </div>
@@ -2344,10 +2344,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               <span>{s.ativo ? 'Inativar' : 'Reativar'}</span>
                             </button>
 
-                            <button
+                            <button aria-label="Excluir setor"
                               type="button"
                               onClick={() => setConfirmDeleteRhSetor(s)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                               title="Excluir setor"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -2359,9 +2359,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
                     {filteredRhSetores.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="py-10 text-center text-slate-400">
+                        <td colSpan={4} className="py-10 text-center text-slate-500">
                           <p className="font-semibold text-sm">Nenhum setor da ASE encontrado</p>
-                          <p className="text-xs text-slate-400 mt-1">
+                          <p className="text-xs text-slate-500 mt-1">
                             {buscaRhSetores || filtroStatusRhSetores !== 'todos'
                               ? 'Tente limpar a busca ou os filtros de status.'
                               : 'Clique em "Novo Setor ASE" para cadastrar.'}
@@ -2414,7 +2414,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-bold uppercase text-slate-800 placeholder-slate-400 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                       autoFocus
                     />
-                    <p className="text-[11px] text-slate-400 mt-1">
+                    <p className="text-[11px] text-slate-500 mt-1">
                       O nome será salvo padronizado em caixa alta.
                     </p>
                   </div>
@@ -2501,7 +2501,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse min-w-[700px]">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <tr className="border-b border-slate-100 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                   <th className="py-3 px-3">Módulo</th>
                   <th className="py-3 px-3">Ação Autorizada</th>
                   <th className="py-3 px-3 text-center">Admin</th>
@@ -2595,7 +2595,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200/60">
                       <Hash className="h-3.5 w-3.5 text-emerald-700" /> Consulta 1: Código Padrão (7 dígitos)
                     </span>
-                    <span className="text-[10px] text-slate-400 font-mono">Faixa 1.000.000 a 1.999.999</span>
+                    <span className="text-[10px] text-slate-500 font-mono">Faixa 1.000.000 a 1.999.999</span>
                   </div>
 
                   <div className="space-y-1 pt-1">
@@ -2644,7 +2644,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </div>
 
                 <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center gap-1.5">
-                  <Info className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <Info className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                   <span>Consulta de materiais gerais, insumos e peças com numeração padrão de 7 dígitos.</span>
                 </div>
               </div>
@@ -2656,7 +2656,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-800 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200/60">
                       <Layers className="h-3.5 w-3.5 text-blue-700" /> Consulta 2: Código Longo (18 dígitos)
                     </span>
-                    <span className="text-[10px] text-slate-400 font-mono">Iniciados em 100000...</span>
+                    <span className="text-[10px] text-slate-500 font-mono">Iniciados em 100000...</span>
                   </div>
 
                   <div className="space-y-1 pt-1">
@@ -2705,7 +2705,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </div>
 
                 <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center gap-1.5">
-                  <Info className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <Info className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                   <span>Consulta SAP específica para a série estendida de 18 dígitos com prefixo 100000.</span>
                 </div>
               </div>
@@ -2717,7 +2717,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200/60">
                       <Building2 className="h-3.5 w-3.5 text-amber-700" /> Consulta 3: Ativos (5 dígitos)
                     </span>
-                    <span className="text-[10px] text-slate-400 font-mono">Faixa 40.000 a 49.999</span>
+                    <span className="text-[10px] text-slate-500 font-mono">Faixa 40.000 a 49.999</span>
                   </div>
 
                   <div className="space-y-1 pt-1">
@@ -2766,7 +2766,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </div>
 
                 <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center gap-1.5">
-                  <Info className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <Info className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                   <span>Itens de ativo (equipamentos, ferramentas, mobiliário), cadastrados no SAP com 5 dígitos iniciados em 4.</span>
                 </div>
               </div>
@@ -2779,12 +2779,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   Total no catálogo: <strong className="text-slate-800 font-bold">{catalogCodeStats?.totalMaterials ? Number(catalogCodeStats.totalMaterials).toLocaleString('pt-BR') : '452.072'}</strong> materiais
                 </span>
                 {catalogCodeStats?.lastCreatedAt && (
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-slate-500">
                     • Última inclusão em {new Date(catalogCodeStats.lastCreatedAt).toLocaleDateString('pt-BR')} às {new Date(catalogCodeStats.lastCreatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 )}
               </div>
-              <span className="text-[11px] text-slate-400 italic">
+              <span className="text-[11px] text-slate-500 italic">
                 Dica: Realize as três extrações no SAP separadamente e importe as planilhas aqui.
               </span>
             </div>
@@ -2852,7 +2852,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     />
                     <Upload className="mx-auto h-7 w-7 text-emerald-600 group-hover:scale-110 transition-transform" />
                     <p className="text-xs font-bold text-slate-700 mt-2">Carregar planilha ZL0169</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Aceita .xlsx, .xls ou .csv (delimitado por ;) • Máx 10 MB</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Aceita .xlsx, .xls ou .csv (delimitado por ;) • Máx 10 MB</p>
                   </div>
 
                   {zl0169Error && (
@@ -2922,7 +2922,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     />
                     <Upload className="mx-auto h-7 w-7 text-blue-600 group-hover:scale-110 transition-transform" />
                     <p className="text-xs font-bold text-slate-700 mt-2">Carregar planilha ZL0162</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Aceita .xlsx, .xls ou .csv (delimitado por ;) • Máx 10 MB</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Aceita .xlsx, .xls ou .csv (delimitado por ;) • Máx 10 MB</p>
                   </div>
 
                   {zl0162Error && (
@@ -3073,7 +3073,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         <td className="py-2 px-3 font-mono text-blue-800 font-bold align-top">{item.material_code}</td>
                         <td className="py-2 px-3 font-medium text-slate-700 align-top">{item.description || '—'}</td>
                         <td className="py-2 px-3 text-slate-600 font-mono text-[11px] leading-relaxed break-words max-w-xl">
-                          {item.technical_text || <span className="text-slate-400 italic">Vazio</span>}
+                          {item.technical_text || <span className="text-slate-500 italic">Vazio</span>}
                         </td>
                       </tr>
                     ))}
@@ -3102,7 +3102,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" /> Transação ME5A (Requisições)
                 </h4>
-                <p className="text-[10px] text-slate-400">Arraste ou cole o arquivo exportado do SAP para atualizar as demandas em aberto.</p>
+                <p className="text-[10px] text-slate-500">Arraste ou cole o arquivo exportado do SAP para atualizar as demandas em aberto.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
@@ -3159,7 +3159,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <Upload className="mx-auto h-6 w-6 text-slate-500" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ME5A</p>
                 </div>
               </div>
@@ -3169,7 +3169,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-amber-500" /> Transação ZL0024 (Posição de Estoque)
                 </h4>
-                <p className="text-[10px] text-slate-400">Substitui integralmente a posição de estoque anterior — a última carga é sempre a mais atual.</p>
+                <p className="text-[10px] text-slate-500">Substitui integralmente a posição de estoque anterior — a última carga é sempre a mais atual.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
@@ -3226,7 +3226,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <Upload className="mx-auto h-6 w-6 text-slate-500" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ZL0024</p>
                 </div>
               </div>
@@ -3236,7 +3236,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" /> Transação ZL0132 (Histórico de Pedidos)
                 </h4>
-                <p className="text-[10px] text-slate-400">Arraste ou cole o arquivo para atualizar o histórico de fornecedores por material.</p>
+                <p className="text-[10px] text-slate-500">Arraste ou cole o arquivo para atualizar o histórico de fornecedores por material.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
@@ -3298,7 +3298,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <Upload className="mx-auto h-6 w-6 text-slate-500" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ZL0132</p>
                 </div>
               </div>
@@ -3310,13 +3310,13 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     <span className="h-2 w-2 rounded-full bg-orange-500" /> Transação MB51 (Mov. Estoque)
                   </h4>
                 </div>
-                <p className="text-[10px] text-slate-400">
+                <p className="text-[10px] text-slate-500">
                   Importa entradas, saídas, baixas de projeto (PEP) e transferências de estoque.
                 </p>
 
                 {/* Seletor de Modo de Importação */}
                 <div className="bg-slate-50 p-2 rounded-lg border border-slate-200/80 space-y-1.5">
-                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Modo de Carga</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Modo de Carga</span>
                   <div className="grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
@@ -3399,9 +3399,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <Upload className="mx-auto h-6 w-6 text-slate-500" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV MB51</p>
-                  <span className="text-[9px] text-slate-400 mt-0.5 block">
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
                     {mb51ImportMode === 'upsert' ? 'Modo: Upsert de novos registros' : 'Modo: Substituição completa da tabela'}
                   </span>
                 </div>
@@ -3412,7 +3412,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-purple-500" /> Cidades & Endereços (CidadeForn)
                 </h4>
-                <p className="text-[10px] text-slate-400">Arraste ou cole o arquivo para atualizar ruas, países e localidades dos fornecedores.</p>
+                <p className="text-[10px] text-slate-500">Arraste ou cole o arquivo para atualizar ruas, países e localidades dos fornecedores.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
@@ -3469,7 +3469,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <Upload className="mx-auto h-6 w-6 text-slate-500" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV CidadeForn</p>
                 </div>
               </div>
@@ -3479,7 +3479,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-rose-500" /> Transação ME3N (Contratos)
                 </h4>
-                <p className="text-[10px] text-slate-400">Substitui integralmente os contratos anteriores — a última carga é sempre a mais atual.</p>
+                <p className="text-[10px] text-slate-500">Substitui integralmente os contratos anteriores — a última carga é sempre a mais atual.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
@@ -3536,7 +3536,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <Upload className="mx-auto h-6 w-6 text-slate-500" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ME3N</p>
                 </div>
               </div>
@@ -3546,7 +3546,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-fuchsia-500" /> Transação ME2L (Pedidos de Compra)
                 </h4>
-                <p className="text-[10px] text-slate-400">Substitui integralmente os pedidos anteriores — a última carga é sempre a mais atual.</p>
+                <p className="text-[10px] text-slate-500">Substitui integralmente os pedidos anteriores — a última carga é sempre a mais atual.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
@@ -3603,7 +3603,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <Upload className="mx-auto h-6 w-6 text-slate-500" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ME2L</p>
                 </div>
               </div>
@@ -3613,7 +3613,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-teal-500" /> ZL0170 (Reconciliação Pedido x MIGO x MIRO)
                 </h4>
-                <p className="text-[10px] text-slate-400">Substitui integralmente os dados anteriores — a última carga é sempre a mais atual. Permite identificar a qual Pedido (PO) cada fatura MIRO se refere.</p>
+                <p className="text-[10px] text-slate-500">Substitui integralmente os dados anteriores — a última carga é sempre a mais atual. Permite identificar a qual Pedido (PO) cada fatura MIRO se refere.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
@@ -3670,7 +3670,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <Upload className="mx-auto h-6 w-6 text-slate-500" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ZL0170</p>
                 </div>
               </div>
@@ -3680,7 +3680,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-cyan-500" /> Tabela de Frete (Rodoviário)
                 </h4>
-                <p className="text-[10px] text-slate-400">Importa a tabela de frete com faixas de peso, taxas (CAT, ITR/TAS, Pedágio), ICMS e tipos de veículos.</p>
+                <p className="text-[10px] text-slate-500">Importa a tabela de frete com faixas de peso, taxas (CAT, ITR/TAS, Pedágio), ICMS e tipos de veículos.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
@@ -3740,7 +3740,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <Upload className="mx-auto h-6 w-6 text-slate-500" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Tabela de Frete</p>
                 </div>
               </div>
@@ -3750,7 +3750,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-blue-500" /> Cadastro de Contatos (Contatos)
                 </h4>
-                <p className="text-[10px] text-slate-400">Arraste ou cole o arquivo para atualizar os contatos de fornecedores.</p>
+                <p className="text-[10px] text-slate-500">Arraste ou cole o arquivo para atualizar os contatos de fornecedores.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
@@ -3807,7 +3807,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <Upload className="mx-auto h-6 w-6 text-slate-500" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Contatos</p>
                 </div>
               </div>
@@ -3817,7 +3817,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-amber-500" /> Bahia Sul (Entregas CTe)
                 </h4>
-                <p className="text-[10px] text-slate-400">Planilha de CTe da transportadora Bahia Sul com dados de entregas das compras.</p>
+                <p className="text-[10px] text-slate-500">Planilha de CTe da transportadora Bahia Sul com dados de entregas das compras.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
@@ -3877,7 +3877,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <Upload className="mx-auto h-6 w-6 text-slate-500" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Bahia Sul</p>
                 </div>
               </div>
@@ -3894,7 +3894,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 >
                   <FolderTree className="mx-auto h-6 w-6 text-emerald-600 group-hover:scale-110 transition-transform" />
                   <p className="text-[10px] font-semibold text-slate-700 mt-1">Gerenciar & Importar PEP</p>
-                  <span className="text-[9px] text-slate-400 mt-0.5 block">Acessar tela e importador PEP no Financeiro</span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Acessar tela e importador PEP no Financeiro</span>
                 </div>
               </div>
             </div>
@@ -3916,19 +3916,19 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[10px]">
                   <div className="bg-white border border-emerald-100 p-2.5 rounded-lg">
-                    <p className="text-slate-400 font-semibold">Arquivo</p>
+                    <p className="text-slate-500 font-semibold">Arquivo</p>
                     <p className="text-slate-700 font-bold font-mono mt-0.5 break-all">{lastUploadLog.filename}</p>
                   </div>
                   <div className="bg-white border border-emerald-100 p-2.5 rounded-lg">
-                    <p className="text-slate-400 font-semibold">Linhas Lidas</p>
+                    <p className="text-slate-500 font-semibold">Linhas Lidas</p>
                     <p className="text-slate-700 font-black text-sm mt-0.5">{lastUploadLog.records_read}</p>
                   </div>
                   <div className="bg-white border border-emerald-100 p-2.5 rounded-lg">
-                    <p className="text-slate-400 font-semibold">Novas Inseridas</p>
+                    <p className="text-slate-500 font-semibold">Novas Inseridas</p>
                     <p className="text-emerald-700 font-black text-sm mt-0.5">+{lastUploadLog.records_inserted}</p>
                   </div>
                   <div className="bg-white border border-emerald-100 p-2.5 rounded-lg">
-                    <p className="text-slate-400 font-semibold">Atualizadas / Inativas</p>
+                    <p className="text-slate-500 font-semibold">Atualizadas / Inativas</p>
                     <p className="text-slate-600 font-black text-sm mt-0.5">{lastUploadLog.records_updated} / {lastUploadLog.records_eliminated}</p>
                   </div>
                 </div>
@@ -3961,7 +3961,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                           a.download = `ris_ausentes_${lastUploadLog.id}.txt`;
                           a.click();
                         }}
-                        className="text-[9px] font-bold text-blue-600 hover:underline"
+                        className="text-[10px] font-bold text-blue-600 hover:underline"
                       >
                         Exportar Lista (.txt)
                       </button>
@@ -4026,7 +4026,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-violet-500" /> Transação ZF0076 (Notas Fiscais x PO)
             </h4>
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-slate-500">
               Substitui integralmente a fotografia anterior de notas fiscais de compras relacionadas aos pedidos SAP.
             </p>
             <PlanilhaSapUploadButton
@@ -4042,7 +4042,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-rose-500" /> Transação ZL0136 (Notas Fiscais)
             </h4>
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-slate-500">
               Substitui integralmente a fotografia anterior de notas fiscais e seus valores tributários no SAP.
             </p>
             <PlanilhaSapUploadButton
@@ -4115,7 +4115,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 }}
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
-              <Upload className="mx-auto h-6 w-6 text-slate-400" />
+              <Upload className="mx-auto h-6 w-6 text-slate-500" />
               <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV FBL1N</p>
             </div>
           </div>
@@ -4140,7 +4140,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-emerald-500" /> Colaboradores (rh_pessoas)
             </h4>
-            <p className="text-[10px] text-slate-400">
+            <p className="text-[10px] text-slate-500">
               MATRÍCULA, COLABORADOR, CHAVE DO NOME, MACROÁREA, ÁREA, SUBSETOR, CARGO, LIDERANÇA, TURNO, SITUAÇÃO.
               Só MATRÍCULA e COLABORADOR são obrigatórias. Linhas existentes (mesma MATRÍCULA) são atualizadas.
             </p>
@@ -4194,7 +4194,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 }}
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
-              <Upload className="mx-auto h-6 w-6 text-slate-400" />
+              <Upload className="mx-auto h-6 w-6 text-slate-500" />
               <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Colaboradores</p>
             </div>
           </div>
@@ -4204,7 +4204,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-blue-500" /> Setores (rh_setores)
             </h4>
-            <p className="text-[10px] text-slate-400">Coluna única de setores (com ou sem cabeçalho "SETOR").</p>
+            <p className="text-[10px] text-slate-500">Coluna única de setores (com ou sem cabeçalho "SETOR").</p>
             <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
               <input
                 type="file"
@@ -4261,7 +4261,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 }}
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
-              <Upload className="mx-auto h-6 w-6 text-slate-400" />
+              <Upload className="mx-auto h-6 w-6 text-slate-500" />
               <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Setores</p>
             </div>
           </div>
@@ -4271,7 +4271,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-purple-500" /> Horário (rh_hora_extra)
             </h4>
-            <p className="text-[10px] text-slate-400">DIA, %HEX — calendário de percentual de hora extra por dia.</p>
+            <p className="text-[10px] text-slate-500">DIA, %HEX — calendário de percentual de hora extra por dia.</p>
             <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
               <input
                 type="file"
@@ -4330,7 +4330,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 }}
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
-              <Upload className="mx-auto h-6 w-6 text-slate-400" />
+              <Upload className="mx-auto h-6 w-6 text-slate-500" />
               <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Horário</p>
             </div>
           </div>
@@ -4377,7 +4377,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   {sortedSapLogs.length === 0 ? (
                     <tr>
                       <td colSpan={10} className="py-12 text-center">
-                        <div className="flex flex-col items-center gap-2 text-slate-400">
+                        <div className="flex flex-col items-center gap-2 text-slate-500">
                           <FileSpreadsheet className="h-8 w-8 opacity-30" />
                           <p className="font-medium text-sm">Nenhum registro de carga encontrado.</p>
                           <p className="text-xs">Importe uma planilha ME5A ou ZL0132 para ver o histórico aqui.</p>
@@ -4404,7 +4404,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                             onClick={() => handleToggleLog(log.id)}
                             className={`hover:bg-slate-50/80 cursor-pointer select-none border-b border-slate-100 transition-colors ${isExpanded ? 'bg-indigo-50/30' : ''}`}
                           >
-                            <td className="py-3 px-3 text-slate-400">
+                            <td className="py-3 px-3 text-slate-500">
                               {isExpanded
                                 ? <ChevronDown className="h-3.5 w-3.5 text-indigo-500" />
                                 : <ChevronRight className="h-3.5 w-3.5" />
@@ -4442,7 +4442,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                             </td>
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-1.5">
-                                <FileSpreadsheet className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                <FileSpreadsheet className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                                 <span className="font-semibold text-slate-700 truncate max-w-[160px]">{log.filename}</span>
                               </div>
                             </td>
@@ -4466,7 +4466,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               {log.records_eliminated > 0 ? log.records_eliminated : <span className="text-slate-300">—</span>}
                             </td>
                             <td className="py-3 px-4 font-medium text-slate-600">{log.user_name}</td>
-                            <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString('pt-BR')}</td>
+                            <td className="py-3 px-4 text-slate-500 whitespace-nowrap">{new Date(log.created_at).toLocaleString('pt-BR')}</td>
                           </tr>
 
                           {isExpanded && (
@@ -4477,29 +4477,29 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                   {/* Resumo em cards */}
                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                     <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm">
-                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ID da Carga</p>
+                                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">ID da Carga</p>
                                       <p className="font-mono font-bold text-slate-700 mt-0.5 text-[11px]">{log.id}</p>
                                     </div>
                                     <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm">
-                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Data / Hora</p>
+                                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Data / Hora</p>
                                       <p className="font-bold text-slate-700 mt-0.5">{new Date(log.created_at).toLocaleString('pt-BR')}</p>
                                     </div>
                                     <div className="bg-emerald-50 rounded-lg border border-emerald-200 p-3 shadow-sm">
-                                      <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Importados com Sucesso</p>
+                                      <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Importados com Sucesso</p>
                                       <p className="font-bold text-emerald-700 text-lg mt-0.5">{totalImported}</p>
-                                      <p className="text-[9px] text-emerald-500 mt-0.5">{log.records_inserted || 0} novos · {log.records_updated || 0} atualizados</p>
+                                      <p className="text-[10px] text-emerald-500 mt-0.5">{log.records_inserted || 0} novos · {log.records_updated || 0} atualizados</p>
                                     </div>
                                     <div className={`rounded-lg border p-3 shadow-sm ${
                                       totalIgnored > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'
                                     }`}>
-                                      <p className={`text-[9px] font-bold uppercase tracking-wider ${
-                                        totalIgnored > 0 ? 'text-amber-600' : 'text-slate-400'
+                                      <p className={`text-[10px] font-bold uppercase tracking-wider ${
+                                        totalIgnored > 0 ? 'text-amber-600' : 'text-slate-500'
                                       }`}>Ignorados / Filtrados</p>
                                       <p className={`font-bold text-lg mt-0.5 ${
                                         totalIgnored > 0 ? 'text-amber-700' : 'text-slate-300'
                                       }`}>{totalIgnored}</p>
                                       {totalIgnored > 0 && (
-                                        <p className="text-[9px] text-amber-500 mt-0.5">
+                                        <p className="text-[10px] text-amber-500 mt-0.5">
                                           de {log.records_read} linhas lidas ({Math.round((totalIgnored / log.records_read) * 100)}%)
                                         </p>
                                       )}
@@ -4509,7 +4509,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                   {/* Barra de progresso de importação */}
                                   {log.records_read > 0 && (
                                     <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm space-y-2">
-                                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Aproveitamento da Carga</p>
+                                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Aproveitamento da Carga</p>
                                       <div className="flex gap-0.5 rounded-full overflow-hidden h-2.5 bg-slate-100">
                                         <div
                                           className="bg-emerald-500 h-full transition-all"
@@ -4520,7 +4520,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                           style={{ width: `${Math.round((totalIgnored / log.records_read) * 100)}%` }}
                                         />
                                       </div>
-                                      <div className="flex gap-4 text-[9px] font-semibold">
+                                      <div className="flex gap-4 text-[10px] font-semibold">
                                         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Importados ({Math.round((totalImported / log.records_read) * 100)}%)</span>
                                         {totalIgnored > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Ignorados ({Math.round((totalIgnored / log.records_read) * 100)}%)</span>}
                                         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-200 inline-block" /> Restante</span>
@@ -4530,7 +4530,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
                                   {/* Detalhe (linhas ignoradas / RIs ausentes) buscado sob demanda */}
                                   {isLoadingDetail && (
-                                    <div className="flex items-center gap-2 text-slate-400 bg-white border border-slate-200 rounded-lg p-3 text-[10px] font-semibold">
+                                    <div className="flex items-center gap-2 text-slate-500 bg-white border border-slate-200 rounded-lg p-3 text-[10px] font-semibold">
                                       <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Carregando detalhes da carga...
                                     </div>
                                   )}
@@ -4559,7 +4559,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                               a.download = `ignorados_${log.id}.txt`;
                                               a.click();
                                             }}
-                                            className="flex items-center gap-1 text-[9px] font-bold text-amber-700 hover:text-amber-900 cursor-pointer"
+                                            className="flex items-center gap-1 text-[10px] font-bold text-amber-700 hover:text-amber-900 cursor-pointer"
                                           >
                                             <Download className="h-3 w-3" /> Exportar
                                           </button>
@@ -4567,12 +4567,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                         <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
                                           {Object.entries(byReason).map(([reason, rows]: [string, any]) => (
                                             <div key={reason} className="p-3 space-y-1.5">
-                                              <p className="text-[9px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1">
+                                              <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1">
                                                 <AlertTriangle className="h-3 w-3" /> {reason} ({rows.length}x)
                                               </p>
                                               <div className="flex flex-wrap gap-1.5">
                                                 {rows.map((r: any, i: number) => (
-                                                  <span key={i} className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 font-mono text-[9px]">
+                                                  <span key={i} className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 font-mono text-[10px]">
                                                     L{r.row} · {r.identifier}
                                                   </span>
                                                 ))}
@@ -4597,7 +4597,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                           const increased = (qc.newQty || 0) > (qc.oldQty || 0);
                                           return (
                                             <div key={idx} className="py-2 px-3 flex items-center justify-between font-mono text-[10px]">
-                                              <span className="text-slate-500 font-medium">{qc.item} <span className="text-slate-400 text-[9px]">RI: {qc.ri}</span></span>
+                                              <span className="text-slate-500 font-medium">{qc.item} <span className="text-slate-500 text-[10px]">RI: {qc.ri}</span></span>
                                               <span className={`flex items-center gap-1 font-bold ${
                                                 increased ? 'text-emerald-600' : 'text-red-500'
                                               }`}>
@@ -4627,7 +4627,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                             a.download = `ris_ausentes_${log.id}.txt`;
                                             a.click();
                                           }}
-                                          className="flex items-center gap-1 text-[9px] font-bold text-red-600 hover:text-red-800 cursor-pointer"
+                                          className="flex items-center gap-1 text-[10px] font-bold text-red-600 hover:text-red-800 cursor-pointer"
                                         >
                                           <Download className="h-3 w-3" /> Exportar
                                         </button>
@@ -4635,7 +4635,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                       <div className="p-3">
                                         <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
                                           {fullLog.missing_ris.map((ri: string, i: number) => (
-                                            <span key={i} className="inline-block bg-red-50 text-red-600 border border-red-200 rounded px-1.5 py-0.5 font-mono text-[9px]">{ri}</span>
+                                            <span key={i} className="inline-block bg-red-50 text-red-600 border border-red-200 rounded px-1.5 py-0.5 font-mono text-[10px]">{ri}</span>
                                           ))}
                                         </div>
                                       </div>
@@ -4652,7 +4652,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                           </p>
                                           <div className="flex flex-wrap gap-1">
                                             {log.columns_missing.map((c: string) => (
-                                              <span key={c} className="inline-block bg-amber-100 text-amber-700 border border-amber-300 rounded px-1.5 py-0.5 text-[9px] font-mono font-semibold">{c}</span>
+                                              <span key={c} className="inline-block bg-amber-100 text-amber-700 border border-amber-300 rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold">{c}</span>
                                             ))}
                                           </div>
                                         </div>
@@ -4664,7 +4664,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                           </p>
                                           <div className="flex flex-wrap gap-1">
                                             {log.columns_new.map((c: string) => (
-                                              <span key={c} className="inline-block bg-blue-100 text-blue-700 border border-blue-300 rounded px-1.5 py-0.5 text-[9px] font-mono font-semibold">{c}</span>
+                                              <span key={c} className="inline-block bg-blue-100 text-blue-700 border border-blue-300 rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold">{c}</span>
                                             ))}
                                           </div>
                                         </div>
@@ -4711,10 +4711,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               
               {/* Left Column: Buyers List */}
               <div className="space-y-3">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lista de Compradores Cadastrados</h4>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Lista de Compradores Cadastrados</h4>
                 <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white overflow-hidden">
                   {profiles.filter(p => p.roles.includes('comprador')).length === 0 ? (
-                    <div className="p-4 text-center text-xs text-slate-400">Nenhum comprador cadastrado no sistema.</div>
+                    <div className="p-4 text-center text-xs text-slate-500">Nenhum comprador cadastrado no sistema.</div>
                   ) : (
                     profiles.filter(p => p.roles.includes('comprador')).map((buyer) => {
                       const buyerGroups = localDb.getStorageItem<any[]>('sisten_buyer_groups', [])
@@ -4734,14 +4734,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         >
                           <div>
                             <p className="text-xs font-bold text-slate-800">{buyer.name}</p>
-                            <p className="text-[10px] text-slate-400 mt-0.5">{buyer.email}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">{buyer.email}</p>
                           </div>
                           <div className="flex flex-col items-end gap-1">
-                            <span className="text-[9px] font-bold bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full text-slate-600">
+                            <span className="text-[10px] font-bold bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full text-slate-600">
                               {buyerGroups.length} grupos
                             </span>
                             {buyerGroups.find(bg => bg.is_primary) && (
-                              <span className="text-[9px] font-bold text-blue-600">
+                              <span className="text-[10px] font-bold text-blue-600">
                                 Principal: {buyerGroups.find(bg => bg.is_primary)?.group_code}
                               </span>
                             )}
@@ -4770,7 +4770,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         placeholder="Ex: 314, 358, 447"
                         className="w-full rounded border border-slate-200 p-2.5 bg-white text-xs focus:outline-none focus:border-blue-500 font-mono"
                       />
-                      <p className="text-[9px] text-slate-400">Separe os códigos por vírgula.</p>
+                      <p className="text-[10px] text-slate-500">Separe os códigos por vírgula.</p>
                     </div>
 
                     <div className="space-y-1.5">
@@ -4782,7 +4782,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         placeholder="Ex: 314"
                         className="w-full rounded border border-slate-200 p-2.5 bg-white text-xs focus:outline-none focus:border-blue-500 font-mono"
                       />
-                      <p className="text-[9px] text-slate-400">Deve ser um dos códigos listados no campo superior.</p>
+                      <p className="text-[10px] text-slate-500">Deve ser um dos códigos listados no campo superior.</p>
                     </div>
 
                     <button
@@ -4829,7 +4829,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start pt-2">
               {/* Left Column: List of Sectors and toggles */}
               <div className="space-y-3">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Setores com Helpdesk Ativo</h4>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Setores com Helpdesk Ativo</h4>
                 
                 <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white overflow-hidden text-xs">
                   {sectors.map((sec) => (
@@ -4846,7 +4846,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     >
                       <div>
                         <p className="font-bold text-slate-800">{sec.name}</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">ID Setor: {sec.id}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">ID Setor: {sec.id}</p>
                       </div>
 
                       <div className="flex items-center gap-3">
@@ -4874,7 +4874,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       <h4 className="font-bold text-slate-800 text-sm">
                         Configurações de {sectors.find(s => s.id === selectedHelpdeskSectorId)?.name}
                       </h4>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Visualize a matriz de conformidade SLA padrão para atendimento.</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Visualize a matriz de conformidade SLA padrão para atendimento.</p>
                     </div>
 
                     {/* Matrix SLA list */}
@@ -4929,14 +4929,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                           ))
                         )}
                       </div>
-                      <p className="text-[9px] text-slate-400 mt-1 italic">Nota: As categorias de triagem integradas são mapeadas em conformidade com as regras operacionais do setor.</p>
+                      <p className="text-[10px] text-slate-500 mt-1 italic">Nota: As categorias de triagem integradas são mapeadas em conformidade com as regras operacionais do setor.</p>
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-slate-400 space-y-1.5 bg-slate-50/20">
+                  <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-slate-500 space-y-1.5 bg-slate-50/20">
                     <RefreshCw className="h-6 w-6 mx-auto text-slate-300" />
                     <p className="text-xs font-semibold">Nenhum Setor Selecionado</p>
-                    <p className="text-[11px] text-slate-400">Selecione um setor ativo de Helpdesk à esquerda para inspecionar categorias de triagem e tempos de conformidade SLA.</p>
+                    <p className="text-[11px] text-slate-500">Selecione um setor ativo de Helpdesk à esquerda para inspecionar categorias de triagem e tempos de conformidade SLA.</p>
                   </div>
                 )}
               </div>
@@ -4974,10 +4974,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
             <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
               {feedbackLoading && (
-                <p className="p-4 text-xs text-slate-400">Carregando...</p>
+                <p className="p-4 text-xs text-slate-500">Carregando...</p>
               )}
               {!feedbackLoading && filteredFeedbackReports.length === 0 && (
-                <p className="p-4 text-xs text-slate-400">Nenhum reporte encontrado.</p>
+                <p className="p-4 text-xs text-slate-500">Nenhum reporte encontrado.</p>
               )}
               {filteredFeedbackReports.map(r => (
                 <div
@@ -4989,7 +4989,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     {r.type === 'bug' ? <Bug className="h-3.5 w-3.5 text-red-600 shrink-0" /> : <Lightbulb className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
                     <span className="truncate">{r.description.slice(0, 60)}</span>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">{r.user_name} · {r.page_path} · {new Date(r.created_at).toLocaleString('pt-BR')}</p>
+                  <p className="text-[10px] text-slate-500 mt-1">{r.user_name} · {r.page_path} · {new Date(r.created_at).toLocaleString('pt-BR')}</p>
                   <span className={`inline-block mt-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                     r.status === 'novo' ? 'bg-rose-100 text-rose-700' :
                     r.status === 'em_analise' ? 'bg-amber-100 text-amber-700' :
@@ -5006,7 +5006,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           {/* Detalhe */}
           <div className="rounded-xl border border-slate-200 bg-white overflow-y-auto p-5">
             {!selectedFeedback ? (
-              <p className="text-xs text-slate-400">Selecione um reporte na lista.</p>
+              <p className="text-xs text-slate-500">Selecione um reporte na lista.</p>
             ) : (
               <div className="space-y-5 text-xs">
                 <div>

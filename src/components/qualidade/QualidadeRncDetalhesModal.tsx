@@ -132,7 +132,7 @@ export default function QualidadeRncDetalhesModal({
           className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-bold transition-colors ${
             aba === 'detalhes'
               ? 'border-rose-600 text-rose-700 dark:text-rose-400'
-              : 'border-transparent text-slate-400 hover:text-slate-600'
+              : 'border-transparent text-slate-500 hover:text-slate-600'
           }`}
         >
           <Info className="h-3.5 w-3.5" />
@@ -144,7 +144,7 @@ export default function QualidadeRncDetalhesModal({
           className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-bold transition-colors ${
             aba === 'plano_acao'
               ? 'border-rose-600 text-rose-700 dark:text-rose-400'
-              : 'border-transparent text-slate-400 hover:text-slate-600'
+              : 'border-transparent text-slate-500 hover:text-slate-600'
           }`}
         >
           <ListChecks className="h-3.5 w-3.5" />
@@ -174,14 +174,14 @@ export default function QualidadeRncDetalhesModal({
                 ['Tramo / Sequencial', rncAtual.tramo_sequencial || '-'],
               ].map(([label, valor]) => (
                 <div key={label}>
-                  <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
+                  <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
                   <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{valor}</span>
                 </div>
               ))}
             </div>
 
             <div>
-              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-400">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
                 Descrição
               </span>
               <p className="whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-800 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
@@ -191,7 +191,7 @@ export default function QualidadeRncDetalhesModal({
 
             {fotos.length > 0 && (
               <div>
-                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
                   Evidências Fotográficas ({fotos.length})
                 </span>
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -213,7 +213,7 @@ export default function QualidadeRncDetalhesModal({
 
             {documentos.length > 0 && (
               <div>
-                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
                   Documentos ({documentos.length})
                 </span>
                 <div className="flex flex-wrap gap-2">

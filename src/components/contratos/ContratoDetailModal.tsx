@@ -114,7 +114,7 @@ export default function ContratoDetailModal({ contrato, onClose, onSaved }: Cont
         <ModalBody className="space-y-6">
           {/* Dados do SAP — somente leitura */}
           <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Dados do SAP (ME3N)</h3>
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Dados do SAP (ME3N)</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <Campo label="Fornecedor" icon={Building2} value={contrato.fornecedor} />
               <Campo label="Centro" icon={Building2} value={contrato.centro} />
@@ -155,7 +155,7 @@ export default function ContratoDetailModal({ contrato, onClose, onSaved }: Cont
 
           {/* Campos complementares — editáveis */}
           <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Gestão do Contrato</h3>
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Gestão do Contrato</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label htmlFor="ctr_gestor" className={labelClass}>Gestor</label>
@@ -207,7 +207,7 @@ export default function ContratoDetailModal({ contrato, onClose, onSaved }: Cont
 
           {/* Anexos */}
           <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Documentos Anexados</h3>
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Documentos Anexados</h3>
             <AnexosContrato documentoCompras={contrato.documento_compras} />
           </div>
 

@@ -37,7 +37,7 @@ interface Props {
 function Field({ label, children, icon: Icon }: { label: string; children: React.ReactNode; icon?: any }) {
   return (
     <div className="min-w-0">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-500 flex items-center gap-1">
         {Icon && <Icon className="h-3 w-3" />}{label}
       </span>
       <div className="mt-0.5 text-sm text-slate-800 dark:text-slate-200 font-semibold break-words">{children}</div>
@@ -87,7 +87,7 @@ function ItemImages({ row }: { row: RastreioRow }) {
         <ImageIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-500" /> Imagem do item
       </h4>
       {loading ? (
-        <div className="flex items-center gap-2 text-xs text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Carregando imagens…</div>
+        <div className="flex items-center gap-2 text-xs text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Carregando imagens…</div>
       ) : (
         <div className="flex flex-wrap gap-3">
           {urls.map(u => (
@@ -297,7 +297,7 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
             </div>
             <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-300 truncate">{row.descricao}</p>
           </div>
-          <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors" aria-label="Fechar">
+          <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors" aria-label="Fechar">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -309,7 +309,7 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="font-mono">{row.material}</span>
                 {row.isGeneric && (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
                     <Tag className="h-2 w-2" /> Item Genérico
                   </span>
                 )}
@@ -363,7 +363,7 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
               <p className="text-[13px] text-slate-600 dark:text-slate-300">
                 A Bahia Sul prevê a entrega deste pedido em{' '}
                 <span className="font-bold text-slate-800 dark:text-slate-200">{formatDateBR(bsPrevisao)}</span>
-                {bsCtos.length > 0 && <span className="text-slate-400 dark:text-slate-500"> · CTe {bsCtos.join(', ')}</span>}.
+                {bsCtos.length > 0 && <span className="text-slate-500 dark:text-slate-500"> · CTe {bsCtos.join(', ')}</span>}.
               </p>
             </div>
           )}
@@ -434,9 +434,9 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
 
             <div ref={listRef} className="space-y-2.5 max-h-[34vh] overflow-y-auto pr-1">
               {loadingMsgs ? (
-                <div className="flex items-center justify-center py-8 text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /></div>
+                <div className="flex items-center justify-center py-8 text-slate-500"><Loader2 className="h-5 w-5 animate-spin" /></div>
               ) : timeline.length === 0 ? (
-                <p className="text-center text-xs text-slate-400 dark:text-slate-500 py-6">
+                <p className="text-center text-xs text-slate-500 dark:text-slate-500 py-6">
                   Nenhuma mensagem ou observação ainda. Escreva abaixo para iniciar a conversa com o comprador.
                 </p>
               ) : (
@@ -450,7 +450,7 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
                             <History className="h-3 w-3 shrink-0" /> Observação do comprador — {h.user_name}
                           </p>
                           <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">{h.obs_comprador}</p>
-                          <p className="mt-0.5 text-[9px] text-amber-600/80 dark:text-amber-500/70">{formatDateTimeBR(h.created_at)}</p>
+                          <p className="mt-0.5 text-[10px] text-amber-600/80 dark:text-amber-500/70">{formatDateTimeBR(h.created_at)}</p>
                         </div>
                       </div>
                     );
@@ -462,7 +462,7 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
                       <div className={`max-w-[80%] rounded-2xl px-3 py-2 ${mine ? 'bg-emerald-600 text-white rounded-br-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-sm'}`}>
                         {!mine && <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-0.5">{m.autor_nome}</p>}
                         <p className="text-sm whitespace-pre-wrap break-words">{m.mensagem}</p>
-                        <p className={`text-[9px] mt-0.5 ${mine ? 'text-emerald-100/80' : 'text-slate-400 dark:text-slate-500'}`}>{formatDateTimeBR(m.created_at)}</p>
+                        <p className={`text-[10px] mt-0.5 ${mine ? 'text-emerald-100/80' : 'text-slate-400 dark:text-slate-500'}`}>{formatDateTimeBR(m.created_at)}</p>
                       </div>
                     </div>
                   );

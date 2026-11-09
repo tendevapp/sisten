@@ -38,7 +38,7 @@ export default function PainelBuckets({ buckets, onCriar, onAtualizar, onReorden
       <div className="absolute right-0 z-40 mt-1.5 w-80 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-xl">
         <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
           <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Colunas do quadro</span>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>
+          <button aria-label="Fechar" onClick={onClose} className="text-slate-500 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>
         </div>
 
         <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
@@ -46,10 +46,10 @@ export default function PainelBuckets({ buckets, onCriar, onAtualizar, onReorden
             <div key={b.id} className="rounded-lg border border-slate-100 dark:border-slate-800 p-1.5 space-y-1.5">
               <div className="flex items-center gap-1.5">
                 <div className="flex flex-col shrink-0">
-                  <button type="button" disabled={idx === 0} onClick={() => mover(idx, -1)} className="disabled:opacity-25 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+                  <button aria-label="Mover para cima" type="button" disabled={idx === 0} onClick={() => mover(idx, -1)} className="disabled:opacity-25 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">
                     <ChevronUp className="h-3.5 w-3.5" />
                   </button>
-                  <button type="button" disabled={idx === buckets.length - 1} onClick={() => mover(idx, 1)} className="disabled:opacity-25 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+                  <button aria-label="Mover para baixo" type="button" disabled={idx === buckets.length - 1} onClick={() => mover(idx, 1)} className="disabled:opacity-25 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">
                     <ChevronDown className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -58,11 +58,11 @@ export default function PainelBuckets({ buckets, onCriar, onAtualizar, onReorden
                   onBlur={e => { const v = e.target.value.trim(); if (v && v !== b.nome) onAtualizar(b.id, { nome: v }); }}
                   className="flex-1 min-w-0 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200"
                 />
-                <button
+                <button aria-label="Excluir coluna (as tarefas ficam sem coluna)"
                   type="button"
                   onClick={() => onExcluir(b.id)}
                   title="Excluir coluna (as tarefas ficam sem coluna)"
-                  className="shrink-0 text-slate-400 hover:text-red-500"
+                  className="shrink-0 text-slate-500 hover:text-red-500"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -72,7 +72,7 @@ export default function PainelBuckets({ buckets, onCriar, onAtualizar, onReorden
               </div>
             </div>
           ))}
-          {buckets.length === 0 && <p className="text-xs italic text-slate-400 py-2 text-center">Nenhuma coluna ainda.</p>}
+          {buckets.length === 0 && <p className="text-xs italic text-slate-500 py-2 text-center">Nenhuma coluna ainda.</p>}
         </div>
 
         <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
@@ -83,7 +83,7 @@ export default function PainelBuckets({ buckets, onCriar, onAtualizar, onReorden
             placeholder="Nova coluna"
             className="flex-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-[var(--brand)]"
           />
-          <button
+          <button aria-label="Adicionar"
             type="button"
             onClick={() => { if (novo.trim()) { onCriar(novo.trim()); setNovo(''); } }}
             className="shrink-0 rounded-md p-1.5"

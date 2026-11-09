@@ -100,7 +100,7 @@ export default function AdminResetPasswordModal({ target, onClose, onDone }: Adm
                   type="button"
                   onClick={handleCopy}
                   aria-label="Copiar senha"
-                  className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors"
+                  className="p-1.5 text-slate-500 hover:text-slate-600 transition-colors"
                 >
                   {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
                 </button>
@@ -108,7 +108,7 @@ export default function AdminResetPasswordModal({ target, onClose, onDone }: Adm
                   type="button"
                   onClick={() => setShow(!show)}
                   aria-label={show ? 'Ocultar senha' : 'Mostrar senha'}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors"
+                  className="p-1.5 text-slate-500 hover:text-slate-600 transition-colors"
                 >
                   {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>

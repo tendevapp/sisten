@@ -138,7 +138,7 @@ export default function MapaCotacaoModal({
 
       <ModalBody className="p-3 sm:p-5 bg-slate-50/50 dark:bg-slate-900/40">
         {carregando ? (
-          <div className="flex flex-col items-center justify-center py-28 text-slate-400 gap-3">
+          <div className="flex flex-col items-center justify-center py-28 text-slate-500 gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
             <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
               Carregando mapa comparativo de cotação...

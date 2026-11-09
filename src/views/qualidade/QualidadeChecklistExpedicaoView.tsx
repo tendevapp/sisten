@@ -23,6 +23,7 @@ import FormularioPdfPreview from '../../components/qualidade/FormularioPdfPrevie
 import { ChipSincronizacao, PainelSincronizacao, useSincronizacaoOffline } from '../../components/qualidade/SincronizacaoOffline';
 import { useLightbox } from '../../components/ui/Lightbox';
 import { useToast } from '../../components/ui/Toast';
+import { confirmar } from '../../lib/confirmar';
 
 interface Props {
   user: Profile;
@@ -110,7 +111,7 @@ function tituloPendencia(p: api.PendenciaExpedicao): string {
   return `${p.base?.codigo_registro || 'Novo checklist'}${dados?.tramo_sequencial ? ` · ${dados.tramo_sequencial}` : ''}${dados?.numero_serie ? ` · Série ${dados.numero_serie}` : ''}`;
 }
 
-const semCodigo = <span className="font-sans font-semibold italic text-slate-400">Código gerado ao sincronizar</span>;
+const semCodigo = <span className="font-sans font-semibold italic text-slate-500">Código gerado ao sincronizar</span>;
 
 function StatusBadge({ status }: { status: QuaChecklistStatus }) {
   const info = STATUS_INFO[status] || STATUS_INFO.RASCUNHO;
@@ -122,7 +123,7 @@ function RespostaBotoes({ value, onChange, disabled }: { value: QuaChecklistResp
     const opcao = RESPOSTAS.find(item => item.value === value);
     return opcao
       ? <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${opcao.active}`}>{opcao.label}</span>
-      : <span className="inline-flex rounded-lg border border-dashed border-slate-300 px-3 py-1 text-xs font-semibold text-slate-400 dark:border-slate-700">Sem resposta</span>;
+      : <span className="inline-flex rounded-lg border border-dashed border-slate-300 px-3 py-1 text-xs font-semibold text-slate-500 dark:border-slate-700">Sem resposta</span>;
   }
   return <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Verificação final">
     {RESPOSTAS.map(opcao => <button key={opcao.value} type="button" aria-pressed={value === opcao.value} onClick={() => onChange(opcao.value)} className={`min-h-[40px] rounded-xl border text-xs font-bold transition ${value === opcao.value ? opcao.active : 'border-slate-200 bg-white text-slate-600 hover:border-blue-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300'}`}>{opcao.label}</button>)}
@@ -181,7 +182,7 @@ function ResumoCard({ item, acoes, detalhe, selecionado, onSelecionar }: { item:
     <div className="flex items-start justify-between gap-2">
       <div className="min-w-0">
         <p className="flex flex-wrap items-center gap-1.5 font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{item.codigo_registro || semCodigo} <ChipSincronizacao offline={item.offline} /></p>
-        <p className="mt-0.5 truncate text-sm font-bold text-slate-900 dark:text-slate-50">{item.tramo_sequencial} <span className="font-normal text-slate-400">· Série {item.numero_serie}</span></p>
+        <p className="mt-0.5 truncate text-sm font-bold text-slate-900 dark:text-slate-50">{item.tramo_sequencial} <span className="font-normal text-slate-500">· Série {item.numero_serie}</span></p>
         <p className="truncate text-xs text-slate-500">{item.cliente} · {item.projeto}</p>
       </div>
       {onSelecionar ? <input type="checkbox" checked={!!selecionado} onChange={onSelecionar} className="mt-1 h-5 w-5 accent-blue-600" aria-label={`Selecionar ${item.codigo_registro}`} /> : <StatusBadge status={item.status} />}
@@ -346,8 +347,8 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
   };
 
   const novoChecklist = () => { preencher(null); irPara('formulario'); };
-  const voltarInicio = () => {
-    if (Object.keys(pendentes).length && !window.confirm('Há assinaturas coletadas que ainda não foram salvas. Sair mesmo assim?')) return;
+  const voltarInicio = async () => {
+    if (Object.keys(pendentes).length && !await confirmar({ titulo: 'Assinaturas não salvas', mensagem: 'Há assinaturas coletadas que ainda não foram salvas. Sair mesmo assim?', confirmarLabel: 'Sair sem salvar', cancelarLabel: 'Ficar', variante: 'perigo' })) return;
     preencher(null);
     irPara('inicio');
     carregarLista();
@@ -726,9 +727,9 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
 
   const renderHistorico = () => <div className="space-y-4">
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-      <div className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={busca} onChange={event => setBusca(event.target.value)} placeholder="Buscar por código, cliente, projeto, tramo, série, site ou inspetor…" className={`${inputClass} pl-9`} /></div>
+      <div className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" /><input value={busca} onChange={event => setBusca(event.target.value)} placeholder="Buscar por código, cliente, projeto, tramo, série, site ou inspetor…" className={`${inputClass} pl-9`} /></div>
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
-        {([['FINALIZADO', 'Finalizados'], ['AGUARDANDO_ASSINATURAS', 'Aguardando assinaturas'], ['RASCUNHO', 'Rascunhos'], ['TODOS', 'Todos']] as const).map(([valor, label]) => <button key={valor} type="button" onClick={() => setFiltro(valor)} className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold ${filtro === valor ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-900 dark:text-blue-300' : 'text-slate-500'}`}>{label} <span className="text-slate-400">{contagem[valor]}</span></button>)}
+        {([['FINALIZADO', 'Finalizados'], ['AGUARDANDO_ASSINATURAS', 'Aguardando assinaturas'], ['RASCUNHO', 'Rascunhos'], ['TODOS', 'Todos']] as const).map(([valor, label]) => <button key={valor} type="button" onClick={() => setFiltro(valor)} className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold ${filtro === valor ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-900 dark:text-blue-300' : 'text-slate-500'}`}>{label} <span className="text-slate-500">{contagem[valor]}</span></button>)}
       </div>
     </div>
     {historico.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -777,7 +778,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
     <section className="space-y-3">
       <div className="flex items-end justify-between">
         <h2 className="font-display text-lg font-bold text-slate-900 dark:text-slate-50"><Bilingue inline pt="Verificação final" en="Final check" /></h2>
-        <span className="text-[11px] text-slate-400">{itensDaTela.length} itens</span>
+        <span className="text-[11px] text-slate-500">{itensDaTela.length} itens</span>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         {itensDaTela.map(item => <article key={item.chave} className={`${cardClass} flex flex-col gap-3 p-4 ${respostas[item.chave] === 'NOK' ? 'border-red-200 dark:border-red-900/60' : ''}`}>
@@ -827,7 +828,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
         const assinatura = aberto.assinaturas.find(item => item.papel === papel);
         return <div key={papel} className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
           <p className="text-xs"><Bilingue inline texto={label} ptClass="font-bold text-slate-700 dark:text-slate-200" /></p>
-          {assinatura?.preview_url ? <img src={assinatura.preview_url} alt={`Assinatura ${label}`} className="mt-2 h-16 w-full rounded-lg border border-slate-200 bg-white object-contain dark:border-slate-700" /> : <p className="mt-2 rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-400 dark:border-slate-700">Pendente</p>}
+          {assinatura?.preview_url ? <img src={assinatura.preview_url} alt={`Assinatura ${label}`} className="mt-2 h-16 w-full rounded-lg border border-slate-200 bg-white object-contain dark:border-slate-700" /> : <p className="mt-2 rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500 dark:border-slate-700">Pendente</p>}
           <p className="mt-2 text-xs font-bold text-slate-800 dark:text-slate-100">{assinatura?.nome || aberto.validacao_nomes?.[papel] || '-'}</p>
           {assinatura && <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Assinado em {fmtDataHora(assinatura.assinado_em || assinatura.created_at)}</p>}
           {assinatura?.coletado_por_nome && <p className="text-[11px] text-slate-500">Coletada por {assinatura.coletado_por_nome}</p>}
@@ -921,7 +922,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{aberto.codigo_registro || semCodigo}</span><StatusBadge status={aberto.status} /><ChipSincronizacao offline={aberto.offline} /></div>
-            <h2 className="mt-1 font-display text-lg font-bold text-slate-900 dark:text-slate-50">{aberto.tramo_sequencial} <span className="text-sm font-normal text-slate-400">· Série {aberto.numero_serie}</span></h2>
+            <h2 className="mt-1 font-display text-lg font-bold text-slate-900 dark:text-slate-50">{aberto.tramo_sequencial} <span className="text-sm font-normal text-slate-500">· Série {aberto.numero_serie}</span></h2>
             <p className="text-xs text-slate-500">{aberto.cliente} · {aberto.projeto} · Expedição {formatDate(aberto.data_expedicao)} · {aberto.site}</p>
             <p className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500"><Lock className="h-3.5 w-3.5 text-amber-500" /> Fechado por {aberto.fechado_por_nome || aberto.criado_por_nome || '-'} · {fmtDataHora(aberto.fechado_em)}</p>
           </div>
@@ -1032,7 +1033,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
       <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <button type="button" onClick={() => tela === 'inicio' || tela === 'historico' ? onNavigate('/qualidade') : voltarInicio()} className="mb-2 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white"><ArrowLeft className="h-4 w-4" /> {tela === 'inicio' || tela === 'historico' ? 'Voltar para Qualidade' : 'Voltar para a lista'}</button>
-          <div className="flex items-center gap-2"><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">FRM.QUA-0030</span><span className="text-xs text-slate-400">Rev. 14</span></div>
+          <div className="flex items-center gap-2"><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">FRM.QUA-0030</span><span className="text-xs text-slate-500">Rev. 14</span></div>
           <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Checklist de expedição de tramos</h1>
           <p className="text-sm italic text-slate-500 dark:text-slate-400">Checklist for sections dispatch</p>
         </div>

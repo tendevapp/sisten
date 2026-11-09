@@ -94,12 +94,12 @@ export default function FotoItemMiniatura({
         {url ? (
           <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
         ) : (
-          <span className="flex h-full w-full items-center justify-center text-slate-400">
+          <span className="flex h-full w-full items-center justify-center text-slate-500">
             {falhou ? <ImageIcon className="h-4 w-4" /> : <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           </span>
         )}
         {varias && (
-          <span className="absolute bottom-0 right-0 flex items-center gap-0.5 rounded-tl-md bg-slate-900/75 px-1 text-[9px] font-bold leading-4 text-white">
+          <span className="absolute bottom-0 right-0 flex items-center gap-0.5 rounded-tl-md bg-slate-900/75 px-1 text-[10px] font-bold leading-4 text-white">
             <Images className="h-2.5 w-2.5" />
             {fotos.length}
           </span>
@@ -194,13 +194,13 @@ function AlbumFotosItem({
                   {url ? (
                     <img src={url} alt={f.legenda} decoding="async" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="flex h-full w-full items-center justify-center text-slate-400">
+                    <span className="flex h-full w-full items-center justify-center text-slate-500">
                       {url === null ? <ImageIcon className="h-5 w-5" /> : <Loader2 className="h-4 w-4 animate-spin" />}
                     </span>
                   )}
                 </button>
                 <span
-                  className={`self-start rounded px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider ${
+                  className={`self-start rounded px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${
                     f.origem === 'solicitacao'
                       ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'
                       : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'

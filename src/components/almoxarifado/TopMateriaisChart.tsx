@@ -90,7 +90,7 @@ export default function TopMateriaisChart({ itens, mapaAbc, onSelecionar, loadin
                     claro demais para carregar texto branco em cima, e o passo A
                     inverte de claro para escuro entre os temas. */}
                 <span
-                  className="shrink-0 rounded px-1 py-0.5 text-[9px] font-black border"
+                  className="shrink-0 rounded px-1 py-0.5 text-[10px] font-black border"
                   style={{ borderColor: CLASSE_ABC_COR[m.classe], color: 'var(--ink-primary)' }}
                   title={`Classe ${m.classe}`}
                 >

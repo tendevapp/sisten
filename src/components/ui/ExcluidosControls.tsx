@@ -65,14 +65,14 @@ export function RestaurarButton({
   className?: string;
 }) {
   return (
-    <button
+    <button aria-label="Restaurar registro"
       type="button"
       onClick={(e) => {
         e.stopPropagation();
         onClick(e);
       }}
       title="Restaurar registro"
-      className={`rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-400 cursor-pointer ${className}`}
+      className={`rounded-lg p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-400 cursor-pointer ${className}`}
     >
       <RotateCcw className="h-4 w-4" />
     </button>

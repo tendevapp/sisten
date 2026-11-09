@@ -867,7 +867,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       <div>
         <div className="flex items-center gap-2">
           {fase !== 'lista' && (
-            <button type="button" onClick={fase === 'mapa' ? () => setFase('processo') : fase === 'pedidos' ? () => setFase('mapa') : voltarParaLista} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200">
+            <button aria-label="Voltar" type="button" onClick={fase === 'mapa' ? () => setFase('processo') : fase === 'pedidos' ? () => setFase('mapa') : voltarParaLista} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200">
               <ArrowLeft className="h-4 w-4" />
             </button>
           )}
@@ -939,7 +939,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
 
       {fase === 'processo' && (
         carregandoProcesso ? (
-          <div className="flex items-center justify-center py-16 text-slate-400">
+          <div className="flex items-center justify-center py-16 text-slate-500">
             <Loader2 className="h-6 w-6 animate-spin" />
           </div>
         ) : (
@@ -954,7 +954,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
                   title="Proposta do Mercado Livre a partir do print do anúncio — sem leitura por IA, os dados são digitados"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-yellow-300 bg-yellow-50 px-3 py-1.5 text-xs font-semibold text-yellow-900 transition-colors hover:bg-yellow-100 dark:border-yellow-700/60 dark:bg-yellow-950/30 dark:text-yellow-200"
                 >
-                  <span className="rounded bg-yellow-300 px-1 text-[9px] font-black text-slate-900">ML</span>
+                  <span className="rounded bg-yellow-300 px-1 text-[10px] font-black text-slate-900">ML</span>
                   Adicionar print Mercado Livre
                 </button>
                 <button

@@ -139,7 +139,7 @@ export default function QualidadePlanoAcaoEditor({
             className="rounded-2xl border border-slate-200/80 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 space-y-2.5"
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-[11px] font-bold text-slate-400">
+              <span className="font-mono text-[11px] font-bold text-slate-500">
                 {String(a.sequencial).padStart(6, '0')}
               </span>
               <div className="flex items-center gap-2">
@@ -148,10 +148,10 @@ export default function QualidadePlanoAcaoEditor({
                   {situacao.label}
                 </span>
                 {podeEditar && (
-                  <button
+                  <button aria-label="Excluir"
                     type="button"
                     onClick={() => remover(a.id)}
-                    className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50"
+                    className="rounded-lg p-1 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -160,7 +160,7 @@ export default function QualidadePlanoAcaoEditor({
             </div>
 
             <div>
-              <label className="mb-1 block text-[10px] font-bold uppercase text-slate-400">O quê?</label>
+              <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">O quê?</label>
               <textarea
                 disabled={!podeEditar}
                 rows={2}
@@ -173,7 +173,7 @@ export default function QualidadePlanoAcaoEditor({
 
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
               <div className="col-span-2 sm:col-span-1">
-                <label className="mb-1 block text-[10px] font-bold uppercase text-slate-400">Quem?</label>
+                <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Quem?</label>
                 <input
                   disabled={!podeEditar}
                   type="text"
@@ -183,7 +183,7 @@ export default function QualidadePlanoAcaoEditor({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[10px] font-bold uppercase text-slate-400">Início Prev.</label>
+                <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Início Prev.</label>
                 <input
                   disabled={!podeEditar}
                   type="date"
@@ -193,7 +193,7 @@ export default function QualidadePlanoAcaoEditor({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[10px] font-bold uppercase text-slate-400">Fim Prev.</label>
+                <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Fim Prev.</label>
                 <input
                   disabled={!podeEditar}
                   type="date"
@@ -203,7 +203,7 @@ export default function QualidadePlanoAcaoEditor({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[10px] font-bold uppercase text-slate-400">Início Real</label>
+                <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Início Real</label>
                 <input
                   disabled={!podeEditar}
                   type="date"
@@ -213,7 +213,7 @@ export default function QualidadePlanoAcaoEditor({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-[10px] font-bold uppercase text-slate-400">Término Real</label>
+                <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Término Real</label>
                 <input
                   disabled={!podeEditar}
                   type="date"
@@ -284,7 +284,7 @@ export default function QualidadePlanoAcaoEditor({
                           e.stopPropagation();
                           removerAnexo(a.id, anexo.id);
                         }}
-                        className="ml-0.5 text-slate-400 hover:text-rose-600"
+                        className="ml-0.5 text-slate-500 hover:text-rose-600"
                       >
                         ×
                       </span>

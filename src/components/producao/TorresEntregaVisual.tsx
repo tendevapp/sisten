@@ -195,7 +195,7 @@ export default function TorresEntregaVisual({
               Histórico
             </button>
             {recarregar && (
-              <button
+              <button aria-label="Recarregar dados"
                 type="button"
                 onClick={recarregar}
                 title="Recarregar dados"
@@ -338,7 +338,7 @@ export default function TorresEntregaVisual({
 
         {/* Busca Rápida por Torre ou Série */}
         <div className="relative min-w-[220px]">
-          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
           <input
             type="text"
             value={buscaTorre}
@@ -392,7 +392,7 @@ export default function TorresEntregaVisual({
                       </div>
                       <div className="mt-1 flex items-center justify-center gap-1">
                         <span
-                          className={`rounded px-1.5 py-0.2 text-[9px] font-bold ${
+                          className={`rounded px-1.5 py-0.2 text-[10px] font-bold ${
                             is100Expedida
                               ? 'bg-zinc-800 text-white dark:bg-black'
                               : isQuasePronta
@@ -454,20 +454,20 @@ export default function TorresEntregaVisual({
 
                             {/* Linha 3: Tempo de Espera (Aging) */}
                             {tramo && tramo.etapa_categoria === 'expedido' ? (
-                              <div className="mt-1.5 text-[9px] font-bold opacity-80">
+                              <div className="mt-1.5 text-[10px] font-bold opacity-80">
                                 ✓ Expedido
                               </div>
                             ) : tramo && tramo.etapa_categoria === 'pendente' ? (
-                              <div className="mt-1.5 text-[9px] font-bold text-slate-600 dark:text-slate-300">
+                              <div className="mt-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-300">
                                 ○ Aberto
                               </div>
                             ) : tramo ? (
                               <div className="mt-1.5 flex flex-col items-center justify-center gap-1">
                                 {tramo.etapa_categoria === 'pendencias' && (
-                                  <span className="text-[9px] font-black uppercase tracking-wide">⚠ Pendências</span>
+                                  <span className="text-[10px] font-black uppercase tracking-wide">⚠ Pendências</span>
                                 )}
                                 <span
-                                  className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold shadow-sm ${
+                                  className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold shadow-sm ${
                                     criticidade.nivel === 'critico'
                                       ? 'bg-rose-900 text-rose-100 ring-1 ring-rose-400'
                                       : criticidade.nivel === 'atencao'
@@ -480,7 +480,7 @@ export default function TorresEntregaVisual({
                                 </span>
                               </div>
                             ) : (
-                              <div className="mt-1.5 text-[9px] font-bold opacity-50">—</div>
+                              <div className="mt-1.5 text-[10px] font-bold opacity-50">—</div>
                             )}
 
                             {/* Tooltip rápida em hover */}

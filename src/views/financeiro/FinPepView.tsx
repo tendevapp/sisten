@@ -265,7 +265,7 @@ export default function FinPepView({ user }: Props) {
       {/* Filtros */}
       <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-2.5 lg:p-4 shadow-xs space-y-2.5 lg:space-y-3">
         <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
           <input
             type="text"
             value={busca}
@@ -277,7 +277,7 @@ export default function FinPepView({ user }: Props) {
 
         <div className="grid grid-cols-2 gap-2 lg:flex lg:items-center lg:flex-wrap">
           <div className="relative min-w-0 lg:shrink-0 lg:w-[130px]">
-            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
             <select
               value={nivelFilter}
               onChange={(e) => setNivelFilter(e.target.value)}
@@ -289,7 +289,7 @@ export default function FinPepView({ user }: Props) {
           </div>
 
           <div className="relative min-w-0 lg:shrink-0 lg:w-[160px]">
-            <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+            <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
             <select
               value={projetoFilter}
               onChange={(e) => setProjetoFilter(e.target.value)}
@@ -301,7 +301,7 @@ export default function FinPepView({ user }: Props) {
           </div>
 
           <div className="relative min-w-0 lg:shrink-0 lg:w-[160px]">
-            <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+            <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
             <select
               value={centroLucroFilter}
               onChange={(e) => setCentroLucroFilter(e.target.value)}

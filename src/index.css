@@ -1767,3 +1767,23 @@ body,
     display: none !important;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Alvo de toque mínimo (celular e tablet)                              */
+/* ------------------------------------------------------------------ */
+/* ~600 botões tinham 22–28px de altura (`p-1`, `py-1`): com luva ou com o
+   celular em movimento, tocava-se o vizinho. Só vale com ponteiro grosso
+   (dedo) — no desktop as tabelas densas ficam como estão. 32px de altura e
+   36×36 no botão só de ícone: acima do mínimo AA (24px) sem estourar barras
+   de altura fixa. Saída: classe `alvo-livre`. */
+@media (pointer: coarse) {
+  button:not(.alvo-livre),
+  [role="button"]:not(.alvo-livre) {
+    min-height: 32px;
+  }
+
+  button:has(> svg:only-child):not(.alvo-livre) {
+    min-height: 36px;
+    min-width: 36px;
+  }
+}

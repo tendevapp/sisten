@@ -298,7 +298,7 @@ export default function MatrizAutonomiaKits({ dados, user }: Props) {
                           title="Clique para ver a composição detalhada deste kit na BOM"
                         >
                           <span className="truncate">{SUBKITS[subkitId].rotulo}</span>
-                          <Eye className="h-3 w-3 opacity-0 group-hover:opacity-100 ml-1 text-[var(--brand)] shrink-0" />
+                          <Eye className="h-3 w-3 opacity-0 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 ml-1 text-[var(--brand)] shrink-0" />
                         </button>
                       </td>
 

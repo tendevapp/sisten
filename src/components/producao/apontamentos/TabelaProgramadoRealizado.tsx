@@ -42,7 +42,7 @@ function Realizado({ programado, realizado, futura = false }: { programado: numb
   return (
     <span className="font-bold tabular-nums" style={{ color: COR[s] }} title={s === 'atingido' ? 'Atingiu o programado' : s === 'abaixo' ? 'Abaixo do programado' : undefined}>
       {s === 'vazio' ? '—' : realizado}
-      {s === 'abaixo' && <span className="ml-0.5 text-[9px]">▼</span>}
+      {s === 'abaixo' && <span className="ml-0.5 text-[10px]">▼</span>}
     </span>
   );
 }
@@ -114,7 +114,7 @@ export default function TabelaProgramadoRealizado({ matriz, semanaAtual }: Props
                     className={`border-l border-slate-700 px-2 py-1.5 text-center text-xs font-bold ${mesmaSemana(s, semanaAtual) ? 'bg-blue-700' : ''}`}
                   >
                     {rotuloSemana(s)}
-                    {mesmaSemana(s, semanaAtual) && <span className="ml-1 rounded bg-blue-500 px-1 text-[9px]">atual</span>}
+                    {mesmaSemana(s, semanaAtual) && <span className="ml-1 rounded bg-blue-500 px-1 text-[10px]">atual</span>}
                     <span className="block text-[10px] font-normal text-slate-300">{intervaloSemana(s)}</span>
                   </th>
                 ))}

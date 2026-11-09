@@ -440,7 +440,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
                 ) : (
                   notificacoesAgrupadas.map(grupo => (
                     <div key={grupo.rotulo}>
-                      <p className="sticky top-0 bg-gray-50 dark:bg-slate-850 px-4 py-1 text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">
+                      <p className="sticky top-0 bg-gray-50 dark:bg-slate-850 px-4 py-1 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-slate-500">
                         {grupo.rotulo}
                       </p>
                       {grupo.itens.map(n => {
@@ -457,7 +457,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
                                 {n.title}
                               </p>
                               <p className="mt-0.5 text-sm text-gray-500 dark:text-slate-400 line-clamp-2">{n.description}</p>
-                              <span className="mt-1 block text-xs text-gray-400">
+                              <span className="mt-1 block text-xs text-gray-500">
                                 {haQuantoTempo(n.created_at)}
                                 {n.request_number ? ` · #${n.request_number}` : ''}
                               </span>
@@ -555,7 +555,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
                 }}
                 className="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-slate-350 hover:bg-gray-50 dark:hover:bg-slate-800 text-left"
               >
-                <User className="mr-3 h-4 w-4 text-gray-400" />
+                <User className="mr-3 h-4 w-4 text-gray-500" />
                 Meu Perfil
               </button>
 

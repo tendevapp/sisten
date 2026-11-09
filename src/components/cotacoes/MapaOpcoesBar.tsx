@@ -92,7 +92,7 @@ export default function MapaOpcoesBar({
   return (
     <div className="sticky top-0 z-30 space-y-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
         <input
           type="text"
           value={busca}
@@ -101,11 +101,11 @@ export default function MapaOpcoesBar({
           className="w-full rounded-xl border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-8 text-xs text-slate-700 outline-none transition-colors focus:border-indigo-400 focus:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:focus:bg-slate-800"
         />
         {busca && (
-          <button
+          <button aria-label="Limpar busca"
             type="button"
             onClick={() => onBusca('')}
             title="Limpar busca"
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -135,7 +135,7 @@ export default function MapaOpcoesBar({
         </button>
 
         <label className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
-          <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+          <ArrowUpDown className="h-3.5 w-3.5 text-slate-500" />
           <select
             value={ordenacao}
             onChange={e => onOrdenacao(e.target.value as OrdenacaoMapa)}

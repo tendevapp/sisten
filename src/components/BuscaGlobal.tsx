@@ -200,7 +200,7 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
         }`}
       >
         <div className="flex items-center gap-2 border-b border-slate-200 px-3 dark:border-slate-700">
-          <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+          <Search className="h-5 w-5 shrink-0 text-slate-500" aria-hidden="true" />
           <input
             ref={campoRef}
             type="text"
@@ -220,12 +220,12 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
             placeholder="Buscar página, formulário, solicitação, RM ou material…"
             className="h-14 min-w-0 flex-1 bg-transparent text-base text-slate-900 placeholder:text-slate-400 focus:outline-none dark:text-slate-100"
           />
-          {carregando && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" aria-label="Buscando materiais" />}
+          {carregando && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-500" aria-label="Buscando materiais" />}
           <button
             type="button"
             onClick={onFechar}
             aria-label="Fechar busca"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           >
             <X className="h-5 w-5" />
           </button>
@@ -273,7 +273,7 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
             return (
               <React.Fragment key={`${r.grupo}:${r.id}`}>
                 {novoGrupo && (
-                  <li role="presentation" className="px-2 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 first:pt-1">
+                  <li role="presentation" className="px-2 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 first:pt-1">
                     {titulo}
                   </li>
                 )}
@@ -314,7 +314,7 @@ export default function BuscaGlobal({ user, onFechar, onNavigate }: Props) {
         </ul>
         )}
 
-        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2 text-[11px] text-slate-400 dark:border-slate-700">
+        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2 text-[11px] text-slate-500 dark:border-slate-700">
           <span className="min-w-0 truncate">
             {materialAberto
               ? ehPeca ? 'Situação da peça: saldo no Projetos, autonomia por tramo e o que vai chegar.' : 'Situação do material: saldo, RM, pedido, entrega e MIGO.'

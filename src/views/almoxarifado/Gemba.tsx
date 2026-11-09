@@ -345,7 +345,7 @@ export default function Gemba({ user, onNavigate }: Props) {
             <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
             Almoxarifado
           </button>
-          <button
+          <button aria-label="Recarregar o estoque"
             type="button"
             onClick={() => void carregar(true)}
             disabled={carregando}
@@ -476,7 +476,7 @@ export default function Gemba({ user, onNavigate }: Props) {
                   {blocoSelecionado.bloco != null ? `Bloco ${doisDigitos(blocoSelecionado.bloco)}` : 'Sem endereço'}
                 </div>
               </div>
-              <button type="button" onClick={() => setSelecao(null)} title="Fechar" className="rounded-lg p-1" style={{ color: 'var(--ink-muted)' }}>
+              <button aria-label="Fechar" type="button" onClick={() => setSelecao(null)} title="Fechar" className="rounded-lg p-1" style={{ color: 'var(--ink-muted)' }}>
                 <X className="h-4 w-4" />
               </button>
             </div>

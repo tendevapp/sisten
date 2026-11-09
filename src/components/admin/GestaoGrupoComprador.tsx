@@ -985,7 +985,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
                     <span className="text-lg font-black text-slate-900 dark:text-slate-50">
                       {count}
                     </span>
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-[10px] text-slate-500">
                       {count === 1 ? 'setor' : 'setores'}
                     </span>
                   </div>
@@ -1001,7 +1001,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
           <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900">
             <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="relative min-w-[240px] flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
                   value={buscaSetor}
@@ -1012,7 +1012,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
               </div>
 
               <div className="flex items-center gap-1.5">
-                <Filter className="h-3.5 w-3.5 text-slate-400" />
+                <Filter className="h-3.5 w-3.5 text-slate-500" />
                 <select
                   value={filtroCompradorSetor}
                   onChange={(e) => setFiltroCompradorSetor(e.target.value)}
@@ -1064,7 +1064,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {setoresFiltrados.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-slate-400">
+                      <td colSpan={7} className="py-8 text-center text-slate-500">
                         Nenhum setor encontrado para os filtros selecionados.
                       </td>
                     </tr>
@@ -1073,7 +1073,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
                       const compInfo = compradores.find((c) => c.grupo_compras === item.grupo_compras);
                       return (
                         <tr key={item.setor_id} className="transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                          <td className="px-4 py-3 font-mono font-bold text-slate-400">
+                          <td className="px-4 py-3 font-mono font-bold text-slate-500">
                             {item.setor_id}
                           </td>
                           <td className="px-4 py-3">
@@ -1117,10 +1117,10 @@ export default function GestaoGrupoComprador({ user }: Props) {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <button
+                            <button aria-label="Editar comprador deste setor"
                               type="button"
                               onClick={() => abrirModalEditarSetor(item)}
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                              className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400 transition-colors cursor-pointer"
                               title="Editar comprador deste setor"
                             >
                               <Edit2 className="h-3.5 w-3.5" />
@@ -1252,7 +1252,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
                 </span>
                 <div className="flex items-center gap-1">
                   {isInativo && (
-                    <span className="rounded bg-rose-100 px-1 py-0.2 text-[9px] font-bold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+                    <span className="rounded bg-rose-100 px-1 py-0.2 text-[10px] font-bold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
                       Inativo
                     </span>
                   )}
@@ -1266,7 +1266,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
                 <span className="text-lg font-black text-slate-900 dark:text-slate-50">
                   {stats.total}
                 </span>
-                <span className="text-[10px] text-slate-400">
+                <span className="text-[10px] text-slate-500">
                   grupos
                 </span>
               </div>
@@ -1283,7 +1283,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
         <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           {/* Campo de Busca */}
           <div className="relative min-w-[200px] flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               value={busca}
@@ -1394,7 +1394,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
 
         {/* Botoes de Acao */}
         <div className="flex items-center gap-2">
-          <button
+          <button aria-label="Atualizar lista"
             type="button"
             onClick={carregarDados}
             disabled={carregando}
@@ -1485,7 +1485,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
             <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
               Nenhum grupo de mercadorias encontrado
             </p>
-            <p className="mt-0.5 text-xs text-slate-400">
+            <p className="mt-0.5 text-xs text-slate-500">
               {busca ? 'Tente ajustar os termos da sua pesquisa.' : 'Cadastre um novo vínculo usando o botão acima.'}
             </p>
           </div>
@@ -1587,7 +1587,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
                           {item.grupo_mercadoria_nome}
                         </div>
                         {item.observacao && (
-                          <div className="mt-0.5 text-[10px] text-slate-400 truncate max-w-xs">
+                          <div className="mt-0.5 text-[10px] text-slate-500 truncate max-w-xs">
                             {item.observacao}
                           </div>
                         )}
@@ -1613,7 +1613,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
                           </select>
 
                           {difereDaSugestao && compSugerido && (
-                            <button
+                            <button aria-label={`Sugerido por Níveis: ${sugLinha.grupo_compras} (${compSugerido.nome_comprador}) — ${sugLinha.motivo}. Clique para aplicar.`}
                               type="button"
                               onClick={() => mudarCompradorLinha(item, sugLinha.grupo_compras)}
                               title={`Sugerido por Níveis: ${sugLinha.grupo_compras} (${compSugerido.nome_comprador}) — ${sugLinha.motivo}. Clique para aplicar.`}
@@ -1672,18 +1672,18 @@ export default function GestaoGrupoComprador({ user }: Props) {
                     {/* Acoes */}
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button
+                        <button aria-label="Editar vínculo"
                           type="button"
                           onClick={() => abrirModalEditar(item)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400"
                           title="Editar vínculo"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
-                        <button
+                        <button aria-label="Remover vínculo"
                           type="button"
                           onClick={() => setItemParaExcluir(item)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
                           title="Remover vínculo"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1805,7 +1805,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
                             - <span className="font-semibold text-slate-800 dark:text-slate-200">{sap.denominacao}</span>
                           </div>
                           {(sap.classificacao_nivel1 || sap.classificacao_nivel2) && (
-                            <span className="text-[10px] text-slate-400">
+                            <span className="text-[10px] text-slate-500">
                               {[sap.classificacao_nivel1, sap.classificacao_nivel2].filter(Boolean).join(' • ')}
                             </span>
                           )}

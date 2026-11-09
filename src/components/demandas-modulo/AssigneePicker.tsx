@@ -78,7 +78,7 @@ export default function AssigneePicker({ selected, onChange, placeholder = 'Adic
       {open && (
         <div className="absolute z-40 mt-1.5 w-72 max-h-80 overflow-hidden flex flex-col rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl">
           <div className="relative border-b border-slate-100 dark:border-slate-800 p-2">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
             <input
               autoFocus
               value={q}
@@ -88,7 +88,7 @@ export default function AssigneePicker({ selected, onChange, placeholder = 'Adic
             />
           </div>
           <div className="overflow-y-auto flex-1 p-1">
-            {visiveis.length === 0 && <p className="px-3 py-4 text-xs text-slate-400 text-center">Ninguém encontrado</p>}
+            {visiveis.length === 0 && <p className="px-3 py-4 text-xs text-slate-500 text-center">Ninguém encontrado</p>}
             {visiveis.map(p => {
               const marcado = selected.includes(p.id);
               const travado = bloqueados.includes(p.id);

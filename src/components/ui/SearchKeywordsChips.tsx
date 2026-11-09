@@ -95,7 +95,7 @@ export default function SearchKeywordsChips({
         return {
           btn: 'bg-[var(--brand)] hover:opacity-90 active:scale-95 text-white',
           chip: 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200',
-          chipBtn: 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-100',
+          chipBtn: 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-100',
           focus: 'focus:border-[var(--brand)] focus:ring-1 focus:ring-[var(--brand)]/20',
         };
       case 'emerald':
@@ -116,7 +116,7 @@ export default function SearchKeywordsChips({
       {/* Barra de input com botão Adicionar */}
       <form onSubmit={handleAdd} className="flex gap-2">
         <div className="relative min-w-0 flex-1">
-          <Search className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-slate-400 pointer-events-none`} />
+          <Search className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-slate-500 pointer-events-none`} />
           <input
             ref={inputRef}
             type="text"
@@ -144,7 +144,7 @@ export default function SearchKeywordsChips({
       {/* Container de Chips Ativos */}
       {chips.length > 0 && (
         <div className="flex flex-wrap gap-2 items-center pt-0.5 animate-fade-in">
-          <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mr-1">
+          <span className="text-xs font-bold text-slate-500 dark:text-slate-500 uppercase tracking-wider mr-1">
             Termos ativos:
           </span>
           {chips.map((chip, idx) => (

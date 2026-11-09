@@ -106,7 +106,7 @@ export default function MetasMarco({ metas, prazos, podeEditar, anoInicial, onSa
             const mudar = (campo: 'total' | 'prazo', v: string) => setRascunhoPrazos(x => ({ ...x, [m]: { ...r, [campo]: v } }));
             return (
               <div key={m} className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{INDICADOR_MARCO[m]} <span className="font-normal text-slate-400">({ROTULO_MARCO[m]})</span></p>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{INDICADOR_MARCO[m]} <span className="font-normal text-slate-500">({ROTULO_MARCO[m]})</span></p>
                 <div className="mt-2 grid grid-cols-[5rem_1fr] gap-2">
                   <div>
                     <span className={labelCls}>Total</span>

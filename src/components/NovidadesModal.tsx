@@ -136,20 +136,20 @@ export default function NovidadesModal({ user, onClose }: NovidadesModalProps) {
         <h3 className="text-lg font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-[#0056c6] dark:text-blue-500" />
           Novidades {!isAdmin && myGroups && myGroups.length > 0 && (
-            <span className="text-xs font-semibold text-slate-400">
+            <span className="text-xs font-semibold text-slate-500">
               (grupo {myGroups.join(', ')})
             </span>
           )}
         </h3>
         {latestLog && (
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">
             Última importação ME5A: {formatDateTimeBR(latestLog.created_at)}
           </p>
         )}
       </ModalHeader>
       <ModalBody>
         {loading ? (
-          <div className="flex items-center justify-center py-16 text-slate-400">
+          <div className="flex items-center justify-center py-16 text-slate-500">
             <Loader2 className="h-6 w-6 animate-spin" />
           </div>
         ) : !latestLog ? (
@@ -158,11 +158,11 @@ export default function NovidadesModal({ user, onClose }: NovidadesModalProps) {
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4">
-                <p className="text-xs font-bold text-slate-400 uppercase">Itens sem PO</p>
+                <p className="text-xs font-bold text-slate-500 uppercase">Itens sem PO</p>
                 <p className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 mt-1">{semPoItens}</p>
               </div>
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4">
-                <p className="text-xs font-bold text-slate-400 uppercase">Itens sem MIGO</p>
+                <p className="text-xs font-bold text-slate-500 uppercase">Itens sem MIGO</p>
                 <p className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 mt-1">{semMigoItens}</p>
               </div>
             </div>
@@ -172,7 +172,7 @@ export default function NovidadesModal({ user, onClose }: NovidadesModalProps) {
                 <Sparkles className="h-4 w-4 text-emerald-500" /> Novas RMs e itens ({newItems.length})
               </h4>
               {newItems.length === 0 ? (
-                <p className="text-xs text-slate-400">Nenhum item novo nesta importação.</p>
+                <p className="text-xs text-slate-500">Nenhum item novo nesta importação.</p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
                   <table className="w-full text-xs">
@@ -214,7 +214,7 @@ export default function NovidadesModal({ user, onClose }: NovidadesModalProps) {
                 <Ban className="h-4 w-4 text-red-500" /> Excluídas ({missingItems.length})
               </h4>
               {missingItems.length === 0 ? (
-                <p className="text-xs text-slate-400">Nenhuma exclusão nesta importação.</p>
+                <p className="text-xs text-slate-500">Nenhuma exclusão nesta importação.</p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
                   <table className="w-full text-xs">
@@ -246,7 +246,7 @@ export default function NovidadesModal({ user, onClose }: NovidadesModalProps) {
                 <ArrowRightLeft className="h-4 w-4 text-amber-500" /> Mudança de quantidade ({quantityChanges.length})
               </h4>
               {quantityChanges.length === 0 ? (
-                <p className="text-xs text-slate-400">Nenhuma mudança de quantidade nesta importação.</p>
+                <p className="text-xs text-slate-500">Nenhuma mudança de quantidade nesta importação.</p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
                   <table className="w-full text-xs">

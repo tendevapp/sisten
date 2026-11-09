@@ -143,8 +143,8 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: () => void }
         aria-label="Fechar aviso"
         className={`shrink-0 rounded-lg p-1.5 -m-1 transition-colors cursor-pointer ${
           ehUndo
-            ? 'text-slate-400 hover:bg-white/10 hover:text-slate-100'
-            : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+            ? 'text-slate-500 hover:bg-white/10 hover:text-slate-100'
+            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200'
         }`}
       >
         <X className="h-4 w-4" />

@@ -254,7 +254,7 @@ export default function MercadoLivrePropostaModal({ escopo, onClose, onAdicionar
                             aria-label="Quantidade"
                             className={`${campo} text-right tabular-nums`}
                           />
-                          {e.unidade_medida && <p className="mt-0.5 text-right text-[10px] text-slate-400">{e.unidade_medida}</p>}
+                          {e.unidade_medida && <p className="mt-0.5 text-right text-[10px] text-slate-500">{e.unidade_medida}</p>}
                         </td>
                         <td className="px-2 py-2">
                           <input

@@ -181,11 +181,11 @@ export default function TramoCard({
                   className={`h-1.5 w-5 rounded-full ${h ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}
                 />
               ))}
-              <span className="ml-1 text-[11px] font-medium text-slate-400">{concluidas}/3 horários</span>
+              <span className="ml-1 text-[11px] font-medium text-slate-500">{concluidas}/3 horários</span>
             </span>
           </span>
           <ChevronDown
-            className={`h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 ${aberto ? 'rotate-180' : ''}`}
+            className={`h-5 w-5 shrink-0 text-slate-500 transition-transform duration-200 ${aberto ? 'rotate-180' : ''}`}
           />
         </button>
 
@@ -194,7 +194,7 @@ export default function TramoCard({
             type="button"
             onClick={onExcluir}
             aria-label={`Remover tramo ${tramo.tramo}`}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -300,7 +300,7 @@ export default function TramoCard({
 
           {/* Trilha de horários — o que é preenchido ao longo do dia */}
           <div className="mt-6 rounded-2xl bg-slate-50 p-4 dark:bg-slate-950/40" data-tour="expedicao-edicao-etapas">
-            <p className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-400">
+            <p className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-500">
               Horários e fotos
             </p>
             {ETAPAS.map((e, i) => (
@@ -377,20 +377,20 @@ export default function TramoCard({
               </div>
               <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                 <div className="rounded-lg bg-slate-50 p-2.5 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                  <p className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">
+                  <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-500">
                     Portaria ➔ Pátio
                   </p>
                   <p className="mt-0.5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                    {leadTimes.portariaAtePatio || <span className="font-normal text-slate-400">Aguardando etapas</span>}
+                    {leadTimes.portariaAtePatio || <span className="font-normal text-slate-500">Aguardando etapas</span>}
                   </p>
                 </div>
 
                 <div className="rounded-lg bg-slate-50 p-2.5 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                  <p className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">
+                  <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-500">
                     Pátio ➔ Expedição
                   </p>
                   <p className="mt-0.5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                    {leadTimes.patioAteExpedicao || <span className="font-normal text-slate-400">Aguardando etapas</span>}
+                    {leadTimes.patioAteExpedicao || <span className="font-normal text-slate-500">Aguardando etapas</span>}
                   </p>
                 </div>
 
@@ -399,7 +399,7 @@ export default function TramoCard({
                     Lead Time Total (Portaria ➔ Exp.)
                   </p>
                   <p className="mt-0.5 text-xs font-extrabold text-blue-700 dark:text-blue-300">
-                    {leadTimes.leadTimeTotal || <span className="font-normal text-slate-400">Aguardando conclusão</span>}
+                    {leadTimes.leadTimeTotal || <span className="font-normal text-slate-500">Aguardando conclusão</span>}
                   </p>
                 </div>
               </div>
@@ -501,10 +501,10 @@ export default function TramoCard({
                         >
                           <Paperclip className="h-2.5 w-2.5 text-blue-500" />
                           <span className="truncate max-w-[120px]">{arq.name}</span>
-                          <button
+                          <button aria-label="Fechar"
                             type="button"
                             onClick={() => setArquivos(prev => prev.filter((_, i) => i !== idx))}
-                            className="text-slate-400 hover:text-rose-600 ml-1 cursor-pointer"
+                            className="text-slate-500 hover:text-rose-600 ml-1 cursor-pointer"
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -535,11 +535,11 @@ export default function TramoCard({
                         <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
                           <div className="flex items-center gap-1.5">
                             <span className="font-bold text-slate-800 dark:text-slate-200">{obs.usuario_nome}</span>
-                            <span className={`rounded px-1.5 py-0.2 text-[9px] font-extrabold ${badgeCor}`}>
+                            <span className={`rounded px-1.5 py-0.2 text-[10px] font-extrabold ${badgeCor}`}>
                               {ehJustificativa ? 'Justificativa SLA' : ehOcorrencia ? 'Ocorrência' : 'Observação'}
                             </span>
                           </div>
-                          <span className="text-[10px] text-slate-400">
+                          <span className="text-[10px] text-slate-500">
                             {new Date(obs.criado_em).toLocaleDateString('pt-BR')} {new Date(obs.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
@@ -563,7 +563,7 @@ export default function TramoCard({
                                       <img src={evi.url} alt={evi.nome_arquivo} className="h-full w-full object-cover" />
                                     </div>
                                   ) : (
-                                    <FileText className="h-4 w-4 text-slate-400 ml-1" />
+                                    <FileText className="h-4 w-4 text-slate-500 ml-1" />
                                   )}
                                   <span className="truncate max-w-[100px] font-semibold text-slate-700 dark:text-slate-300">
                                     {evi.nome_arquivo}
@@ -589,7 +589,7 @@ export default function TramoCard({
                   })}
                 </div>
               ) : (
-                <p className="text-[11px] text-slate-400 italic">
+                <p className="text-[11px] text-slate-500 italic">
                   Nenhuma observação registrada para esta carreta.
                 </p>
               )}

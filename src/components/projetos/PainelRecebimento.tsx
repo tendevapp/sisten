@@ -25,6 +25,7 @@ import ImportarNotasEntrada from './ImportarNotasEntrada';
 import EntregasPendentes from './EntregasPendentes';
 import type { Profile } from '../../types';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
+import { confirmar } from '../../lib/confirmar';
 
 interface Props { dados: DadosProjetos; user: Profile; podeLancar: boolean }
 
@@ -212,7 +213,7 @@ export default function PainelRecebimento({ dados, user, podeLancar }: Props) {
   };
 
   const estornar = async (id: string, codigo: string) => {
-    if (!window.confirm(`Estornar a entrada ${codigo}? Os créditos saem do estoque e a nota fica no histórico como excluída.`)) return;
+    if (!await confirmar({ titulo: 'Estornar entrada?', mensagem: `Estornar a entrada ${codigo}? Os créditos saem do estoque e a nota fica no histórico como excluída.`, confirmarLabel: 'Estornar', variante: 'perigo' })) return;
     try {
       await estornarDocumento('proj_notas_entrada', id, user.id);
       toast.success(`Entrada ${codigo} estornada.`);

@@ -29,7 +29,22 @@
 
 **Antes de subir:** percorrer no escuro Início, Compras, Central de Compras, Portaria, Balcão, Inventário e Contas a Pagar. Cerca de 7.700 classes `dark:` que nunca tinham aparecido passam a valer, e alguma pode estar errada.
 
-**Falta (Fase 3, varreduras por tela):** `text-slate-400` → `500` no claro, piso de fonte, `aria-label` nos botões só-ícone, ações visíveis no toque, componente `<Campo>`, alvos de toque, xlsx 0.20.3, migração dos modais à mão e dos `confirm()`, P3.
+**Depois (commit `e67cc1e`):** barra de rolagem escura em todo o app; barra de rolagem horizontal **no topo de toda tabela larga** ([rolagemSuperiorTabelas.ts](../src/lib/rolagemSuperiorTabelas.ts), regra no CLAUDE.md §6; 13/13 no Chrome).
+
+**Fase 3 (varreduras):**
+
+| Item | Resultado | Verificado |
+|---|---|---|
+| `text-slate-400` → `500` no tema claro | 1.410 trocas em 213 arquivos; 101 puladas por estarem sobre superfície escura; menu, login, TV, Sobre e cenas excluídos | amostras conferidas |
+| Piso de fonte | `text-[7/8/9px]` → `10px` (263 usos, 79 arquivos) | — |
+| Nome nos botões só-ícone | 219 `aria-label` (164 do `title`, 55 pelo ícone); estrela de favorito com `aria-pressed` | re-varredura: 0 restantes (os 4 do relatório são componentes com texto) |
+| Ações só no hover | 9 visíveis no toque e no foco; 9 véus de foto mantidos (deixá-los sempre visíveis escureceria a miniatura) | CSS gerado |
+| Rótulo ligado ao campo | rede global [associarRotulos.ts](../src/lib/associarRotulos.ts) | 11/11 no Chrome |
+| Alvo de toque | 32px (36×36 só-ícone) com `pointer: coarse`; saída `alvo-livre` | não testado em aparelho |
+| `confirm()` nativo | 25 chamadas em 12 arquivos → [`confirmar()`](../src/lib/confirmar.tsx) com título e botões nomeados | 6/6 no Chrome |
+| Emoji nos filtros da Portaria | ícones lucide + `aria-pressed` | — |
+
+**Ainda falta:** `xlsx` 0.20.3 (instalação bloqueada no ambiente — rodar `npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`); `aria-invalid` + foco no primeiro erro (precisa de lógica por formulário); 24 modais à mão (migrar quando a tela for mexida); `window.alert` → toast; `transition-all`, escala de z-index, esqueletos de carregamento, emoji restante (Visão Geral de Suprimentos, Compras).
 
 ---
 

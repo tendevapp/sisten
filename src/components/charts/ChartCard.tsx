@@ -131,12 +131,12 @@ export default function ChartCard({
                 e.stopPropagation();
                 handleToggle();
               }}
-              className="mt-0.5 p-1 rounded-md text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              className="mt-0.5 p-1 rounded-md text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               aria-label={isCollapsed ? `Expandir ${title}` : `Recolher ${title}`}
               aria-expanded={!isCollapsed}
             >
               <ChevronDown
-                className={`h-4 w-4 transition-transform duration-200 ${isCollapsed ? '-rotate-90 text-slate-400' : 'rotate-0 text-indigo-600 dark:text-indigo-400'}`}
+                className={`h-4 w-4 transition-transform duration-200 ${isCollapsed ? '-rotate-90 text-slate-500' : 'rotate-0 text-indigo-600 dark:text-indigo-400'}`}
               />
             </button>
           )}
@@ -148,7 +148,7 @@ export default function ChartCard({
               {Icon && <Icon className="h-4 w-4 shrink-0" style={{ color: 'var(--ink-muted)' }} aria-hidden="true" />}
               <span>{title}</span>
               {collapsible && (
-                <span className="text-[10px] font-normal normal-case tracking-normal text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                <span className="text-[10px] font-normal normal-case tracking-normal text-slate-500 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
                   {isCollapsed ? 'recolhido · clique para expandir' : 'clique para recolher'}
                 </span>
               )}

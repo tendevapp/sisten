@@ -169,7 +169,7 @@ export default function ProcessosList({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-2 max-w-xl">
           <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               value={termoBusca}
@@ -178,11 +178,11 @@ export default function ProcessosList({
               className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
             />
             {termoBusca && (
-              <button
+              <button aria-label="Limpar pesquisa"
                 type="button"
                 onClick={() => setTermoBusca('')}
                 title="Limpar pesquisa"
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -247,7 +247,7 @@ export default function ProcessosList({
                     <span className="font-semibold text-slate-700 dark:text-slate-300">
                       Nenhum processo encontrado
                     </span>
-                    <span className="text-slate-400">
+                    <span className="text-slate-500">
                       Tente buscar por outro termo ou limpe os filtros aplicados.
                     </span>
                     <button
@@ -267,7 +267,7 @@ export default function ProcessosList({
               processosFiltrados.map(p => (
                 <Tr key={p.id} onClick={() => onAbrir(p.id)}>
                   <Td strong>{p.numero}</Td>
-                  <Td>{p.titulo || <span className="text-slate-400">—</span>}</Td>
+                  <Td>{p.titulo || <span className="text-slate-500">—</span>}</Td>
                   <Td>
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_CLASSES[p.status]}`}>
                       {STATUS_LABEL[p.status]}
@@ -277,7 +277,7 @@ export default function ProcessosList({
                   <Td>
                     <span className="inline-flex items-center gap-1">
                       {new Date(p.created_at).toLocaleDateString('pt-BR')}
-                      <ChevronRight className="h-3 w-3 text-slate-400" />
+                      <ChevronRight className="h-3 w-3 text-slate-500" />
                     </span>
                   </Td>
                   {podeGerenciarExclusao && (
@@ -303,11 +303,11 @@ export default function ProcessosList({
                           </button>
                         </span>
                       ) : (
-                        <button
+                        <button aria-label="Excluir este processo de cotação"
                           type="button"
                           title="Excluir este processo de cotação"
                           onClick={e => { e.stopPropagation(); setConfirmarId(p.id); }}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 transition-colors"
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 transition-colors"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>

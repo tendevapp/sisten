@@ -558,7 +558,7 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
       <div className="rounded-xl border p-4 shadow-xs space-y-3" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
             <input
               type="text"
               value={pesquisa}
@@ -644,7 +644,7 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
                         className={`cursor-pointer transition-colors ${expandida ? 'bg-slate-50/80 dark:bg-slate-800/40' : ''}`}
                       >
                         <Td>
-                          <span className="text-slate-400">
+                          <span className="text-slate-500">
                             {expandida ? <ChevronDown className="h-4 w-4 text-emerald-600" /> : <ChevronRight className="h-4 w-4" />}
                           </span>
                         </Td>
@@ -778,7 +778,7 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
                             onClick={() => setLinhaExpandidaModal(expandida ? null : p.wbs)}
                             className={`cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/40 ${expandida ? 'bg-slate-50/80 dark:bg-slate-800/40' : ''}`}
                           >
-                            <td className="p-2 text-slate-400">
+                            <td className="p-2 text-slate-500">
                               {expandida ? <ChevronDown className="h-3.5 w-3.5 text-emerald-600" /> : <ChevronRight className="h-3.5 w-3.5" />}
                             </td>
                             <td className="p-2 font-mono font-bold whitespace-nowrap">

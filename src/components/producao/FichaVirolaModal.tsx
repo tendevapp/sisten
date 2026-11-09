@@ -77,7 +77,7 @@ export default function FichaVirolaModal({ virolaId, torreNumero, tramo, virola,
       <ModalBody className="space-y-3 p-5">
         {carregando ? (
           <div className="flex justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+            <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
           </div>
         ) : lancamentos.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
@@ -139,11 +139,11 @@ export default function FichaVirolaModal({ virolaId, torreNumero, tramo, virola,
                   </div>
                 )}
                 {l.evidencias.length === 0 && l.status === 'reprovado' && (
-                  <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+                  <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
                     <Camera className="h-3 w-3" /> Sem foto anexada
                   </p>
                 )}
-                <p className="mt-1 text-[10px] text-slate-400">Registrado por {l.criado_por_nome ?? '—'} em {formatDateTimeBR(l.created_at)}</p>
+                <p className="mt-1 text-[10px] text-slate-500">Registrado por {l.criado_por_nome ?? '—'} em {formatDateTimeBR(l.created_at)}</p>
               </li>
             ))}
           </ol>

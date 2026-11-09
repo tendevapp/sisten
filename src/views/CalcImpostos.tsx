@@ -142,7 +142,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
               <Calculator className="h-3.5 w-3.5" />
               Suprimentos &bull; Engenharia Tributaria
             </span>
-            <span className="text-xs text-slate-400 dark:text-slate-500">
+            <span className="text-xs text-slate-500 dark:text-slate-500">
               Uso e Consumo &bull; Ativo Imobilizado
             </span>
           </div>
@@ -162,7 +162,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
             title="Restaurar parametros originais"
           >
-            <RotateCcw className="h-4 w-4 text-slate-400" />
+            <RotateCcw className="h-4 w-4 text-slate-500" />
             Restaurar Padroes
           </button>
 
@@ -251,14 +251,14 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
                   Preco com ICMS, PIS e COFINS (R$){' '}
                   <span className="text-rose-500 font-bold">*</span>
                 </label>
-                <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">
+                <span className="text-[11px] text-slate-500 dark:text-slate-500 font-mono">
                   Base mercadoria
                 </span>
               </div>
 
               <div className="relative mt-1.5 rounded-lg shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                  <span className="text-xs font-bold text-slate-400">R$</span>
+                  <span className="text-xs font-bold text-slate-500">R$</span>
                 </div>
                 <input
                   type="number"
@@ -285,7 +285,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
 
               {/* Botoes de adicao rapida */}
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-slate-400 dark:text-slate-500">Atalhos:</span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-500">Atalhos:</span>
                 {[100, 500, 1000, 5000].map(val => (
                   <button
                     key={val}
@@ -327,7 +327,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
                     onChange={e => atualizarCampo('aliqIcms', parseFloat(e.target.value) || 0)}
                     className="block w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-sm font-medium transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
-                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-slate-400">
+                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-slate-500">
                     %
                   </span>
                 </div>
@@ -369,7 +369,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
                     onChange={e => atualizarCampo('aliqIpi', parseFloat(e.target.value) || 0)}
                     className="block w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-sm font-medium transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
-                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-slate-400">
+                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-slate-500">
                     %
                   </span>
                 </div>
@@ -414,7 +414,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
                     onChange={e => atualizarCampo('aliqPis', parseFloat(e.target.value) || 0)}
                     className="block w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-sm font-medium transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
-                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-slate-400">
+                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-slate-500">
                     %
                   </span>
                 </div>
@@ -455,7 +455,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
                     onChange={e => atualizarCampo('aliqCofins', parseFloat(e.target.value) || 0)}
                     className="block w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-sm font-medium transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
-                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-slate-400">
+                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-slate-500">
                     %
                   </span>
                 </div>
@@ -496,7 +496,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
                   <span className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400">
                     {(inputs.fatorReducao * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% da Base
                   </span>
-                  <span className="block text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                  <span className="block text-[10px] text-slate-500 dark:text-slate-500 font-mono">
                     Fator: {inputs.fatorReducao.toFixed(4)}
                     {resultado.temReducaoBaseIcms && (
                       <span className="ml-1 text-emerald-600 dark:text-emerald-400 font-semibold">
@@ -538,14 +538,14 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
                     }}
                     className="w-full rounded-lg border border-slate-300 bg-white py-1.5 pl-2 pr-6 text-right font-mono text-xs font-bold dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
-                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-xs font-bold text-slate-400">
+                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-xs font-bold text-slate-500">
                     %
                   </span>
                 </div>
               </div>
 
               {/* Marcadores de escala do slider */}
-              <div className="mt-1 flex justify-between px-0.5 text-[9px] text-slate-400 font-mono">
+              <div className="mt-1 flex justify-between px-0.5 text-[10px] text-slate-500 font-mono">
                 <span>0% (Isento)</span>
                 <span>33,33%</span>
                 <span>50%</span>
@@ -597,7 +597,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
                   onChange={e => atualizarCampo('quantidade', parseFloat(e.target.value) || 0)}
                   className="mt-1 block w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-sm font-medium transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 />
-                <span className="mt-1 block text-[11px] text-slate-400">
+                <span className="mt-1 block text-[11px] text-slate-500">
                   Volume total do item
                 </span>
               </div>
@@ -619,7 +619,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
                     onChange={e => atualizarCampo('unidadePreco', parseFloat(e.target.value) || 1)}
                     className="block w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-sm font-medium transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
-                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-slate-400">
+                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-slate-500">
                     UN
                   </span>
                 </div>
@@ -799,7 +799,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
                   Demonstrativo Discriminado de Tributos
                 </h3>
               </div>
-              <span className="text-xs text-slate-400 font-mono">
+              <span className="text-xs text-slate-500 font-mono">
                 Total Tributos: {formatarMoeda(resultado.totalImpostos)}
               </span>
             </div>
@@ -880,7 +880,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
                   Memoria de Calculo &bull; Fórmulas Passo a Passo
                 </h3>
               </div>
-              <span className="text-slate-400 hover:text-slate-600">
+              <span className="text-slate-500 hover:text-slate-600">
                 {mostrarMemoriaDetalhada ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </span>
             </button>

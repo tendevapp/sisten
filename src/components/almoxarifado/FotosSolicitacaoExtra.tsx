@@ -111,7 +111,7 @@ export function SeletorFotosSolExtra({
       {total < MAX_FOTOS_SOL_EXTRA && !disabled && (
         <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-dashed border-slate-300 text-slate-500 hover:border-blue-400 hover:text-blue-700 dark:border-slate-700 dark:text-slate-400">
           {preparando ? <Loader2 className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}
-          <span className="text-[9px] font-bold">{total ? `${total}/${MAX_FOTOS_SOL_EXTRA}` : 'Foto'}</span>
+          <span className="text-[10px] font-bold">{total ? `${total}/${MAX_FOTOS_SOL_EXTRA}` : 'Foto'}</span>
           <input type="file" accept="image/*" capture="environment" multiple hidden onChange={e => { void anexar(e.target.files); e.target.value = ''; }} />
         </label>
       )}

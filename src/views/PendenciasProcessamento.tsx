@@ -880,7 +880,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 lg:gap-3">
           <div className="flex flex-1 min-w-0 gap-2">
           <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
@@ -889,10 +889,10 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
               className="w-full pl-10 pr-9 h-10 lg:h-auto lg:py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-[#0056c6] focus:outline-none transition-all"
             />
             {searchQuery && (
-              <button
+              <button aria-label="Fechar"
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 dark:hover:text-slate-200"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -1099,7 +1099,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
                       {todosGrupoSelecionados ? (
                         <CheckSquare className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       ) : (
-                        <Square className="h-4 w-4 text-slate-400" />
+                        <Square className="h-4 w-4 text-slate-500" />
                       )}
                     </button>
                   )}

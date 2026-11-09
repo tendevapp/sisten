@@ -47,7 +47,7 @@ export default function MapaTabelaPreco({ linhas, resumos, propostasPorKey, sele
               return (
                 <th key={r.propostaKey} className="min-w-[130px] border-l border-slate-200 p-2 text-right align-bottom font-semibold text-slate-600 dark:border-slate-800 dark:text-slate-300" title={r.nome}>
                   <div className="truncate">{nomeFornecedorCurto(r.nome)}</div>
-                  <div className="mt-1 space-y-0.5 text-right text-[9px] font-normal normal-case text-slate-400">
+                  <div className="mt-1 space-y-0.5 text-right text-[10px] font-normal normal-case text-slate-500">
                     <div>{proposta?.fornecedor_uf || '—'}</div>
                     <div className="truncate" title={r.condicaoPagamento ?? undefined}>{r.condicaoPagamento || '—'}</div>
                     <div>{r.prazoEntregaDias != null ? `${r.prazoEntregaDias}d entrega` : 'prazo n/i'}</div>

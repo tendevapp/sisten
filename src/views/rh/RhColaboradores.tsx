@@ -257,7 +257,7 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
       <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               placeholder="Buscar por nome, matrícula, CPF ou chave do nome..."
@@ -288,7 +288,7 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
 
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
               <Filter className="h-3 w-3" /> Filtros
             </span>
             {filtrosAtivos > 0 && (
@@ -336,11 +336,11 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
         </div>
 
         {carregando ? (
-          <div className="flex justify-center py-12 text-slate-400">
+          <div className="flex justify-center py-12 text-slate-500">
             <Loader2 className="h-6 w-6 animate-spin" />
           </div>
         ) : filtradas.length === 0 ? (
-          <p className="px-4 py-12 text-center text-sm text-slate-400">
+          <p className="px-4 py-12 text-center text-sm text-slate-500">
             Nenhum colaborador encontrado com esses filtros.
           </p>
         ) : (
@@ -361,7 +361,7 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
                         }`}
                         title={vinculo === 'PJ' ? `CPF: ${p.registro}` : `Matrícula: ${p.registro}`}
                       >
-                        <span className={`text-[9px] font-extrabold px-1 rounded ${
+                        <span className={`text-[10px] font-extrabold px-1 rounded ${
                           vinculo === 'PJ'
                             ? 'bg-amber-200/80 text-amber-900 dark:bg-amber-800 dark:text-amber-100'
                             : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
@@ -383,7 +383,7 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <span
-                      className="hidden items-center gap-1 text-[10px] text-slate-400 sm:inline-flex"
+                      className="hidden items-center gap-1 text-[10px] text-slate-500 sm:inline-flex"
                       title="Última atualização do cadastro"
                     >
                       <Clock className="h-3 w-3" />
@@ -396,12 +396,12 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
                       className={`rounded-lg p-1.5 transition-colors cursor-pointer ${
                         p.ativo
                           ? 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-                          : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
                       }`}
                     >
                       {p.ativo ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                     </button>
-                    <button
+                    <button aria-label="Editar cadastro"
                       type="button"
                       onClick={() => abrirEdicao(p)}
                       title="Editar cadastro"
@@ -543,7 +543,7 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
               <datalist id="lista-subsetor">{opcoes.subsetor.map(v => <option key={v} value={v} />)}</datalist>
               <datalist id="lista-turno">{opcoes.turno.map(v => <option key={v} value={v} />)}</datalist>
 
-              <p className="text-[10px] leading-relaxed text-slate-400">
+              <p className="text-[10px] leading-relaxed text-slate-500">
                 A situação define se o colaborador continua ativo: termos como DEMITIDO, DESLIGADO
                 ou RESCISÃO inativam o cadastro; AFASTADO, FÉRIAS e LICENÇA mantêm ativo.
               </p>

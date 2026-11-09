@@ -176,9 +176,9 @@ export default function RhPercentualHE({ onNavigate }: Props) {
 
       <div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         {carregando ? (
-          <div className="flex justify-center py-12 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
+          <div className="flex justify-center py-12 text-slate-500"><Loader2 className="h-6 w-6 animate-spin" /></div>
         ) : ordenados.length === 0 ? (
-          <p className="px-4 py-12 text-center text-sm text-slate-400">
+          <p className="px-4 py-12 text-center text-sm text-slate-500">
             Nenhuma data cadastrada — todas seguem o padrão do dia da semana.
           </p>
         ) : (
@@ -195,7 +195,7 @@ export default function RhPercentualHE({ onNavigate }: Props) {
                   {r.percentual_he}%
                 </span>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <button
+                  <button aria-label="Editar"
                     type="button"
                     onClick={() => {
                       setEditando(r);
@@ -208,7 +208,7 @@ export default function RhPercentualHE({ onNavigate }: Props) {
                   >
                     <Edit2 className="h-4 w-4" />
                   </button>
-                  <button
+                  <button aria-label="Excluir"
                     type="button"
                     onClick={() => setParaExcluir(r)}
                     title="Excluir"

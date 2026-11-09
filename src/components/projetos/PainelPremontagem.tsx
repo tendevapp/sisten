@@ -64,6 +64,7 @@ import {
 import { dividirRomaneio, interpretarNumeracaoTramos, itensRemoviveis, localizacaoDoItem, resumoSeparacao } from '../../lib/premontagemSeparacao';
 import type { Profile, ProjItem, ProjOrdemItem, ProjOrdemPremontagem } from '../../types';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
+import { confirmar as perguntarConfirmacao } from '../../lib/confirmar';
 
 interface Props { dados: DadosProjetos; user: Profile; podeLancar: boolean }
 
@@ -721,11 +722,9 @@ function ModalSeparacao({
   const remover = async (alvo: ProjOrdemItem[]) => {
     if (!alvo.length) return;
     const pn = (oi: ProjOrdemItem) => itemPorId.get(oi.item_id)?.part_number ?? oi.item_id;
-    const ok = window.confirm(
-      alvo.length === 1
+    const ok = await perguntarConfirmacao({ titulo: 'Tirar do romaneio?', mensagem: alvo.length === 1
         ? `Tirar ${pn(alvo[0])} do romaneio? Ele não será separado nem debitado nesta ordem.`
-        : `Tirar os ${alvo.length} itens que faltam separar do romaneio? Eles não serão separados nem debitados nesta ordem.`,
-    );
+        : `Tirar os ${alvo.length} itens que faltam separar do romaneio? Eles não serão separados nem debitados nesta ordem.`, confirmarLabel: 'Tirar do romaneio', variante: 'perigo' });
     if (!ok) return;
     setRemovendo(true);
     try {
@@ -747,9 +746,7 @@ function ModalSeparacao({
     // Passo 1: quantidade separada ≠ prevista → revisar as diferenças antes de debitar.
     if (divergencias.length > 0 && !revisao) { setRevisao(true); return; }
     if (resumo.faltam > 0) {
-      const ok = window.confirm(
-        `${resumo.faltam} de ${itens.length} item(ns) ainda sem check — eles NÃO serão debitados e ficam fora do kit. Confirmar mesmo assim?`,
-      );
+      const ok = await perguntarConfirmacao({ titulo: 'Itens sem check', mensagem: `${resumo.faltam} de ${itens.length} item(ns) ainda sem check — eles NÃO serão debitados e ficam fora do kit. Confirmar mesmo assim?`, confirmarLabel: 'Confirmar mesmo assim', cancelarLabel: 'Voltar e conferir' });
       if (!ok) return;
     }
     setConfirmando(true);

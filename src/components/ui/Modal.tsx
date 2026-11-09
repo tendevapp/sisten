@@ -196,7 +196,7 @@ export function ModalHeader({ children, onClose, className = '' }: ModalHeaderPr
           type="button"
           onClick={onClose}
           aria-label="Fechar"
-          className="shrink-0 rounded-xl p-2 -m-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          className="shrink-0 rounded-xl p-2 -m-1 text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
           <X className="h-5 w-5" />
         </button>

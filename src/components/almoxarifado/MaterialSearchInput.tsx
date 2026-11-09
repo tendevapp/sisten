@@ -215,7 +215,7 @@ export default function MaterialSearchInput({
       )}
 
       {valor && (
-        <button
+        <button aria-label="Limpar pesquisa"
           onClick={() => {
             onChange('');
             onSelecionarMaterial?.(null);
@@ -269,7 +269,7 @@ export default function MaterialSearchInput({
                   {s.descricao || '—'}
                 </span>
                 <span
-                  className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0"
+                  className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0"
                   style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}
                 >
                   {projeto ? 'Projeto' : 'Consumo'}

@@ -245,7 +245,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                       <h4 className="text-[11px] font-black text-slate-700 dark:text-slate-300 tracking-wider uppercase truncate">
                         {g.group}
                       </h4>
-                      <span className="text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-full shrink-0">
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-full shrink-0">
                         {editablePages.length} {editablePages.length === 1 ? 'item' : 'itens'}
                       </span>
                     </div>
@@ -275,7 +275,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                         <button
                           type="button"
                           onClick={() => handleResetGroup(g)}
-                          className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 px-1.5 py-0.5 rounded-md transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 px-1.5 py-0.5 rounded-md transition-colors cursor-pointer"
                           title={`Restaurar itens do módulo ${g.group} para o padrão do perfil`}
                         >
                           <RotateCcw className="h-2.5 w-2.5" />
@@ -304,18 +304,18 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                             />
                             <span className="truncate font-medium">{p.label}</span>
                             {!hasOverride && !p.alwaysAdmin && (
-                              <span className="text-[10px] text-slate-400 shrink-0">(padrão)</span>
+                              <span className="text-[10px] text-slate-500 shrink-0">(padrão)</span>
                             )}
                             {p.alwaysAdmin && (
-                              <span className="text-[10px] text-slate-400 shrink-0">(não editável)</span>
+                              <span className="text-[10px] text-slate-500 shrink-0">(não editável)</span>
                             )}
                           </label>
                           {hasOverride && !p.alwaysAdmin && (
-                            <button
+                            <button aria-label="Restaurar padrão do perfil"
                               type="button"
                               onClick={() => handleReset(p.id)}
                               title="Restaurar padrão do perfil"
-                              className="text-slate-400 hover:text-emerald-700 shrink-0"
+                              className="text-slate-500 hover:text-emerald-700 shrink-0"
                             >
                               <RotateCcw className="h-3.5 w-3.5" />
                             </button>
@@ -380,7 +380,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                         <button
                                           type="button"
                                           onClick={() => toggleGroupExpand(sub.grupoId)}
-                                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+                                          className="text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
                                           title={isGroupExpanded ? 'Recolher formulários' : 'Expandir formulários'}
                                         >
                                           {isGroupExpanded ? (
@@ -399,7 +399,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                           <span className="font-bold text-slate-900 dark:text-slate-100">
                                             {sub.label}
                                           </span>
-                                          <span className="text-[10px] text-slate-400 font-normal hidden sm:inline">
+                                          <span className="text-[10px] text-slate-500 font-normal hidden sm:inline">
                                             ({formsAtivos}/{formsDoGrupo.length} liberados)
                                           </span>
                                         </label>
@@ -424,11 +424,11 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                           Bloquear
                                         </button>
                                         {subHasOverride && (
-                                          <button
+                                          <button aria-label="Restaurar padrão do grupo"
                                             type="button"
                                             onClick={() => handleReset(sub.id)}
                                             title="Restaurar padrão do grupo"
-                                            className="text-slate-400 hover:text-emerald-700 p-0.5 ml-0.5"
+                                            className="text-slate-500 hover:text-emerald-700 p-0.5 ml-0.5"
                                           >
                                             <RotateCcw className="h-3 w-3" />
                                           </button>
@@ -447,7 +447,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                           );
 
                                           let badgeTexto = '';
-                                          let badgeCor = 'text-slate-400 dark:text-slate-500';
+                                          let badgeCor = 'text-slate-500 dark:text-slate-500';
 
                                           if (formHasOverride) {
                                             badgeTexto = isFormChecked ? '(liberado manual)' : '(bloqueado manual)';
@@ -483,7 +483,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                                   {form.label}
                                                 </span>
                                                 {form.codigo && (
-                                                  <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                                                  <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
                                                     {form.codigo}
                                                   </span>
                                                 )}
@@ -492,11 +492,11 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                                 </span>
                                               </label>
                                               {formHasOverride && (
-                                                <button
+                                                <button aria-label="Restaurar padrão do formulário"
                                                   type="button"
                                                   onClick={() => handleReset(form.id)}
                                                   title="Restaurar padrão do formulário"
-                                                  className="text-slate-400 hover:text-emerald-700 shrink-0 p-0.5"
+                                                  className="text-slate-500 hover:text-emerald-700 shrink-0 p-0.5"
                                                 >
                                                   <RotateCcw className="h-2.5 w-2.5" />
                                                 </button>
@@ -519,7 +519,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                               type="button"
                                               onClick={() => handleReset('rh_ase_ver_todas')}
                                               title="Restaurar padrão do perfil"
-                                              className="text-[10px] font-semibold text-slate-400 hover:text-emerald-700 inline-flex items-center gap-1"
+                                              className="text-[10px] font-semibold text-slate-500 hover:text-emerald-700 inline-flex items-center gap-1"
                                             >
                                               <RotateCcw className="h-2.5 w-2.5" /> Padrão
                                             </button>
@@ -574,7 +574,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                               type="button"
                                               onClick={() => handleReset('ssma_rid_editar_todas')}
                                               title="Restaurar padrão do perfil"
-                                              className="text-[10px] font-semibold text-slate-400 hover:text-emerald-700 inline-flex items-center gap-1"
+                                              className="text-[10px] font-semibold text-slate-500 hover:text-emerald-700 inline-flex items-center gap-1"
                                             >
                                               <RotateCcw className="h-2.5 w-2.5" /> Padrão
                                             </button>

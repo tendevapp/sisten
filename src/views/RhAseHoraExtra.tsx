@@ -607,7 +607,7 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
 
         {/* Campo de Busca */}
         <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
             value={termoBusca}
@@ -616,10 +616,10 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
             className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 pl-10 pr-9 text-xs text-slate-900 placeholder-slate-400 transition-all focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700/80 dark:bg-slate-950/50 dark:text-slate-100 dark:focus:bg-slate-900"
           />
           {termoBusca && (
-            <button
+            <button aria-label="Fechar"
               type="button"
               onClick={() => setTermoBusca('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 dark:hover:text-slate-200"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -629,7 +629,7 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
 
       {/* Conteúdo da Lista */}
       {itens === null ? (
-        <div className="flex justify-center py-16 text-slate-400">
+        <div className="flex justify-center py-16 text-slate-500">
           <Loader2 className="h-7 w-7 animate-spin" />
         </div>
       ) : gruposPorData.length === 0 ? (
@@ -815,7 +815,7 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
                         </div>
 
                         {s.justificativa?.trim() && (
-                          <p className="truncate text-xs text-slate-400 dark:text-slate-500 italic">
+                          <p className="truncate text-xs text-slate-500 dark:text-slate-500 italic">
                             Justificativa: {s.justificativa.trim()}
                           </p>
                         )}
@@ -826,20 +826,20 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
                           podeEditar && <RestaurarButton onClick={() => handleRestaurar(s)} />
                         ) : (
                           podeEditar && (
-                            <button
+                            <button aria-label="Excluir ASE"
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setItemParaExcluir(s);
                               }}
-                              className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
+                              className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
                               title="Excluir ASE"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
                           )
                         )}
-                        <button
+                        <button aria-label="Abrir detalhes"
                           type="button"
                           onClick={() => onAbrir(s.id)}
                           className="p-1 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-500 dark:text-slate-600 cursor-pointer"
@@ -1484,7 +1484,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               </span>
             )}
           </div>
-          <p className="mt-0.5 font-mono text-[11px] text-slate-400">{dados.numero_protocolo}</p>
+          <p className="mt-0.5 font-mono text-[11px] text-slate-500">{dados.numero_protocolo}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1784,7 +1784,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                             }}
                             className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                           />
-                          <span className="text-[9px] font-bold text-blue-700 dark:text-blue-300 mt-0.5">Todos</span>
+                          <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 mt-0.5">Todos</span>
                         </label>
                       </td>
                       <td className="px-2 py-2 text-center">
@@ -1799,7 +1799,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                             }}
                             className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                           />
-                          <span className="text-[9px] font-bold text-blue-700 dark:text-blue-300 mt-0.5">Todos</span>
+                          <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 mt-0.5">Todos</span>
                         </label>
                       </td>
                       <td className="px-2 py-2">
@@ -2218,7 +2218,7 @@ function CardColaboradorMobile({
                 <input value={item.registro} onChange={e => onChange({ registro: e.target.value.toUpperCase() })} placeholder="Registro" className={`${inputStyle} uppercase font-mono`} />
                 <input value={item.cargo || ''} onChange={e => onChange({ cargo: e.target.value.toUpperCase() || null })} placeholder="Função" className={`${inputStyle} uppercase`} />
               </div>
-              <span className="inline-block rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">NÃO CADASTRADO</span>
+              <span className="inline-block rounded bg-amber-100 px-1 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">NÃO CADASTRADO</span>
             </div>
           ) : (
             <>
@@ -2228,7 +2228,7 @@ function CardColaboradorMobile({
                   {item.registro}
                 </span>
                 {manual && (
-                  <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">NÃO CADASTRADO</span>
+                  <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">NÃO CADASTRADO</span>
                 )}
               </div>
               {item.cargo && (
@@ -2254,10 +2254,10 @@ function CardColaboradorMobile({
         </div>
 
         {!somenteLeitura && (
-          <button
+          <button aria-label="Remover colaborador"
             type="button"
             onClick={onRemover}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
             title="Remover colaborador"
           >
             <Trash2 className="h-4 w-4" />
@@ -2403,10 +2403,10 @@ function LinhaColaborador({
     <tr className="border-b border-slate-100 align-middle hover:bg-slate-50/50 dark:border-slate-800/70 dark:hover:bg-slate-800/30">
       {!somenteLeitura && (
         <td className="w-10 px-2 py-2 text-center">
-          <button
+          <button aria-label="Excluir da ASE"
             type="button"
             onClick={onRemover}
-            className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
+            className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
             title="Excluir da ASE"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -2425,7 +2425,7 @@ function LinhaColaborador({
           <span className="font-semibold">{item.nome}</span>
         )}
         {manual && (
-          <span className="ml-1.5 whitespace-nowrap rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+          <span className="ml-1.5 whitespace-nowrap rounded bg-amber-100 px-1 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
             NÃO CADASTRADO
           </span>
         )}
@@ -2436,7 +2436,7 @@ function LinhaColaborador({
               {item.horario_embarque_transporte && ` (${item.horario_embarque_transporte})`}
             </span>
             {item.contato_transporte && (
-              <span className="text-slate-400 dark:text-slate-500">📞 {item.contato_transporte}</span>
+              <span className="text-slate-500 dark:text-slate-500">📞 {item.contato_transporte}</span>
             )}
           </div>
         )}

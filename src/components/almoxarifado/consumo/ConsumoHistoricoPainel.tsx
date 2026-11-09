@@ -341,7 +341,7 @@ export default function ConsumoHistoricoPainel({ base, grupoPorMaterial, gruposD
                                     {rotuloSemana(p.semana)}
                                     {ehAtual && (
                                       <span
-                                        className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-[var(--brand)] text-white"
+                                        className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider bg-[var(--brand)] text-white"
                                         title="Semana atual em andamento"
                                       >
                                         Atual

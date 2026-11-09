@@ -332,7 +332,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
           >
             <Factory className="h-4 w-4 shrink-0 text-orange-600" />
             <span>Nave 1</span>
-            <span className="hidden sm:inline text-[11px] font-normal text-slate-400">(3 Fábricas)</span>
+            <span className="hidden sm:inline text-[11px] font-normal text-slate-500">(3 Fábricas)</span>
           </button>
 
           {/* Nave 2 */}
@@ -488,7 +488,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
                 >
                   <div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-slate-400">Etapa {proc.ordem}</span>
+                      <span className="text-xs font-bold text-slate-500">Etapa {proc.ordem}</span>
                       {proc.oficializaTramo && (
                         <span className="rounded bg-orange-600 px-2 py-0.5 text-[10px] font-black uppercase text-white shadow-xs">
                           Criação do Tramo TX-XXXX
@@ -514,7 +514,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
                             {ultimoApt.tramo_codigo ? ` • Tramo ${ultimoApt.tramo_codigo}` : ''}
                           </strong>
                         </span>
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[10px] text-slate-500">
                           {new Date(ultimoApt.data_apontamento).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
@@ -563,7 +563,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
               </h4>
               {filaNave2.length > 5 && (
                 <div className="relative w-full sm:w-56">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                   <input
                     type="text"
                     value={buscaTramoFila}
@@ -648,7 +648,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                     Processos da Nave 2 ({PROCESSOS_NAVE_2.length})
                   </h4>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-slate-500">
                     {PROCESSOS_NAVE_2.filter(p => processosConcluidosSet.has(p.id)).length} de {PROCESSOS_NAVE_2.length} concluídos
                   </span>
                 </div>
@@ -669,7 +669,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
                       >
                         <div>
                           <div className="flex items-center justify-between gap-1.5">
-                            <span className="text-xs font-bold text-slate-400">Etapa {proc.ordem}</span>
+                            <span className="text-xs font-bold text-slate-500">Etapa {proc.ordem}</span>
                             {concluido ? (
                               <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
                                 <Check className="h-3 w-3" /> Concluído
@@ -751,7 +751,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
               </h4>
               {filaNaveWhite.length > 5 && (
                 <div className="relative w-full sm:w-56">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                   <input
                     type="text"
                     value={buscaTramoFila}
@@ -836,7 +836,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                     Processos de Superfície e Acabamento ({PROCESSOS_NAVE_WHITE.length})
                   </h4>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-slate-500">
                     {PROCESSOS_NAVE_WHITE.filter(p => processosConcluidosSet.has(p.id)).length} de {PROCESSOS_NAVE_WHITE.length} concluídos
                   </span>
                 </div>
@@ -857,7 +857,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
                       >
                         <div>
                           <div className="flex items-center justify-between gap-1.5">
-                            <span className="text-xs font-bold text-slate-400">Etapa {proc.ordem}</span>
+                            <span className="text-xs font-bold text-slate-500">Etapa {proc.ordem}</span>
                             {concluido ? (
                               <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
                                 <Check className="h-3 w-3" /> Concluído
@@ -1012,7 +1012,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
 
           {/* Campo de Busca Rápida no Histórico */}
           <div className="mt-3 relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               value={buscaHistorico}
@@ -1075,7 +1075,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
                           {f.url ? (
                             <img src={f.url} alt={f.nome} className="h-full w-full object-cover" />
                           ) : (
-                            <FileImage className="h-5 w-5 text-slate-400" />
+                            <FileImage className="h-5 w-5 text-slate-500" />
                           )}
                         </button>
                       ))}
@@ -1117,7 +1117,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
               <button
                 type="button"
                 onClick={() => setProcessoModal(null)}
-                className="flex h-11 w-11 items-center justify-center rounded-xl p-1 text-slate-400 hover:bg-slate-100 active:scale-[0.95] dark:hover:bg-slate-800"
+                className="flex h-11 w-11 items-center justify-center rounded-xl p-1 text-slate-500 hover:bg-slate-100 active:scale-[0.95] dark:hover:bg-slate-800"
                 aria-label="Fechar"
               >
                 <X className="h-5 w-5" />
@@ -1339,7 +1339,7 @@ export default function ApontamentosTorresFluxo({ user, onNavegarAlmoxarifado }:
               <button
                 type="button"
                 onClick={() => setFotoAmpliada(null)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 ✕
               </button>

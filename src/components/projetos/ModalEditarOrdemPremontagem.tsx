@@ -39,6 +39,7 @@ import {
 } from '../../lib/projetosApi';
 import { dividirRomaneio, itensRemoviveis, localizacaoDoItem, resumoSeparacao } from '../../lib/premontagemSeparacao';
 import type { Profile, ProjItem, ProjOrdemItem, ProjOrdemPremontagem } from '../../types';
+import { confirmar } from '../../lib/confirmar';
 
 interface Props {
   ordem: ProjOrdemPremontagem;
@@ -138,11 +139,9 @@ export default function ModalEditarOrdemPremontagem({
   const removerItens = async (alvo: ProjOrdemItem[]) => {
     if (!alvo.length) return;
     const pn = (oi: ProjOrdemItem) => itemPorId.get(oi.item_id)?.part_number ?? oi.item_id;
-    const ok = window.confirm(
-      alvo.length === 1
+    const ok = await confirmar({ titulo: 'Tirar do romaneio?', mensagem: alvo.length === 1
         ? `Tirar ${pn(alvo[0])} do romaneio? Ele não será separado nem debitado nesta ordem.`
-        : `Tirar os ${alvo.length} itens que faltam separar do romaneio? Eles não serão separados nem debitados nesta ordem.`,
-    );
+        : `Tirar os ${alvo.length} itens que faltam separar do romaneio? Eles não serão separados nem debitados nesta ordem.`, confirmarLabel: 'Tirar do romaneio', variante: 'perigo' });
     if (!ok) return;
     setRemovendo(true);
     try {
@@ -261,9 +260,7 @@ export default function ModalEditarOrdemPremontagem({
     if (!itensNovos) return;
     if (!itensNovos.length) { toast.error('A zona escolhida não tem itens no romaneio.'); return; }
 
-    const ok = window.confirm(
-      `Trocar para "${zona.rotulo}" desfaz toda a separação já feita nesta ordem — o estoque debitado será devolvido e será preciso separar de novo. Confirmar?`,
-    );
+    const ok = await confirmar({ titulo: 'Trocar de zona?', mensagem: `Trocar para "${zona.rotulo}" desfaz toda a separação já feita nesta ordem — o estoque debitado será devolvido e será preciso separar de novo. Confirmar?`, confirmarLabel: 'Trocar e desfazer separação', variante: 'perigo' });
     if (!ok) return;
 
     setTrocandoZona(true);

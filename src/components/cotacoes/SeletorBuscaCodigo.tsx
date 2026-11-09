@@ -115,13 +115,13 @@ export default function SeletorBuscaCodigo({ opcoes, valor, onSelecionar, placeh
         >
           <span className="truncate">
             <span className="font-semibold">{selecionada.codigo}</span>
-            <span className="text-slate-400"> — {selecionada.descricao}</span>
+            <span className="text-slate-500"> — {selecionada.descricao}</span>
           </span>
           <X className="h-3 w-3 shrink-0 text-slate-300 hover:text-rose-500" onClick={e => { e.stopPropagation(); limpar(); }} />
         </button>
       ) : (
         <div className="relative">
-          <Search className="pointer-events-none absolute left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-500" />
           <input
             ref={inputRef}
             type="text"
@@ -143,7 +143,7 @@ export default function SeletorBuscaCodigo({ opcoes, valor, onSelecionar, placeh
           className="z-[200] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
         >
           {sugestoes.length === 0 && (
-            <li className="px-2.5 py-2 text-[11px] text-slate-400">Nenhum resultado.</li>
+            <li className="px-2.5 py-2 text-[11px] text-slate-500">Nenhum resultado.</li>
           )}
           {sugestoes.map(o => (
             <li key={o.codigo}>

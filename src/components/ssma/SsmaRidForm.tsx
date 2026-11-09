@@ -515,7 +515,7 @@ export default function SsmaRidForm({
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
                   FRM.SSMA-0001
                 </span>
-                <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-500">
                   • RID Operacional
                 </span>
               </div>
@@ -631,7 +631,7 @@ export default function SsmaRidForm({
             ) : (
               <div className="relative">
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <input
                     type="text"
                     placeholder="Digite o nome ou a matrícula para buscar em rh_pessoas..."
@@ -664,7 +664,7 @@ export default function SsmaRidForm({
                 {/* Dropdown de Sugestões de rh_pessoas */}
                 {dropdownAberto && (
                   <div className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-800 dark:bg-slate-900">
-                    <div className="flex items-center justify-between px-2.5 py-1 text-[11px] font-bold text-slate-400">
+                    <div className="flex items-center justify-between px-2.5 py-1 text-[11px] font-bold text-slate-500">
                       <span>Colaboradores Cadastrados (rh_pessoas)</span>
                       <button
                         type="button"
@@ -771,7 +771,7 @@ export default function SsmaRidForm({
                   </option>
                 ))}
               </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
             </div>
             {erros.setor && <p className="mt-1 text-[11px] text-rose-500">{erros.setor}</p>}
           </div>
@@ -801,7 +801,7 @@ export default function SsmaRidForm({
                 {getPergunta('semana')?.titulo || '5. SEMANA DO MÊS'}
               </label>
               <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
-                <Calendar className="h-4 w-4 text-slate-400" />
+                <Calendar className="h-4 w-4 text-slate-500" />
                 <span>{calcularSemanaDoMes(dataRegistro)}</span>
               </div>
             </div>
@@ -887,7 +887,7 @@ export default function SsmaRidForm({
                   <span className="text-rose-500">*</span>
                 )}
               </label>
-              <span className="text-[10px] font-semibold text-slate-400">
+              <span className="text-[10px] font-semibold text-slate-500">
                 Ordem alfabética (A-Z)
               </span>
             </div>
@@ -902,14 +902,14 @@ export default function SsmaRidForm({
                   <MapPin className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                   {areaDesvio || 'SELECIONE A ÁREA...'}
                 </span>
-                <ChevronDown className="h-4 w-4 text-slate-400" />
+                <ChevronDown className="h-4 w-4 text-slate-500" />
               </button>
 
               {dropdownAreaAberto && (
                 <div className="absolute z-30 mt-1 max-h-64 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
                   <div className="p-2 border-b border-slate-100 dark:border-slate-800">
                     <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
                       <input
                         type="text"
                         placeholder="Filtrar áreas (ex: calandra, pátio, pintura)..."
@@ -974,12 +974,12 @@ export default function SsmaRidForm({
                   <span className="text-rose-500">*</span>
                 )}
               </label>
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-slate-500">
                 {descricaoDesvio.length} caracteres
               </span>
             </div>
             {getPergunta('descricao_desvio')?.subtitulo && (
-              <p className="text-[11px] text-slate-400 mb-2">
+              <p className="text-[11px] text-slate-500 mb-2">
                 {getPergunta('descricao_desvio')?.subtitulo}
               </p>
             )}
@@ -1248,7 +1248,7 @@ export default function SsmaRidForm({
                   </span>
                   <span>{getPergunta('comportamentos_inseguros')?.titulo || 'CLASSIFICAÇÃO DO DESVIO — COMPORTAMENTO INSEGURO'}</span>
                 </label>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[11px] text-slate-500 mt-0.5">
                   {getPergunta('comportamentos_inseguros')?.subtitulo || 'Selecione uma ou mais práticas ou atos inseguros observados:'}
                 </p>
               </div>
@@ -1261,7 +1261,7 @@ export default function SsmaRidForm({
                   <button
                     type="button"
                     onClick={() => setComportamentosInseguros([])}
-                    className="text-[11px] font-semibold text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
+                    className="text-[11px] font-semibold text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                   >
                     Limpar
                   </button>
@@ -1311,7 +1311,7 @@ export default function SsmaRidForm({
                   </span>
                   <span>{getPergunta('condicoes_inseguras')?.titulo || 'CLASSIFICAÇÃO DO DESVIO — CONDIÇÃO INSEGURA'}</span>
                 </label>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[11px] text-slate-500 mt-0.5">
                   {getPergunta('condicoes_inseguras')?.subtitulo || 'Selecione uma ou mais condições físicas ou ambientais irregulares:'}
                 </p>
               </div>
@@ -1324,7 +1324,7 @@ export default function SsmaRidForm({
                   <button
                     type="button"
                     onClick={() => setCondicoesInseguras([])}
-                    className="text-[11px] font-semibold text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer"
+                    className="text-[11px] font-semibold text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer"
                   >
                     Limpar
                   </button>
@@ -1394,7 +1394,7 @@ export default function SsmaRidForm({
                   {getPergunta('fotos')?.titulo || '14. Registro Fotográfico (Antes e Depois)'}
                 </h3>
                 {getPergunta('fotos')?.subtitulo && (
-                  <p className="text-[11px] text-slate-400">{getPergunta('fotos')?.subtitulo}</p>
+                  <p className="text-[11px] text-slate-500">{getPergunta('fotos')?.subtitulo}</p>
                 )}
               </div>
             </div>
@@ -1516,11 +1516,11 @@ export default function SsmaRidForm({
                             alt="Evidência Antes"
                             className="h-full w-full object-cover"
                           />
-                          <span className="absolute top-1.5 left-1.5 rounded-md bg-amber-600/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-xs">
+                          <span className="absolute top-1.5 left-1.5 rounded-md bg-amber-600/90 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-xs">
                             Antes
                           </span>
                           <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
-                            <button
+                            <button aria-label="Mover para 'Depois'"
                               type="button"
                               onClick={() => alternarTipoFoto(originalIdx)}
                               title="Mover para 'Depois'"
@@ -1528,7 +1528,7 @@ export default function SsmaRidForm({
                             >
                               <RotateCcw className="h-3 w-3" />
                             </button>
-                            <button
+                            <button aria-label="Excluir foto"
                               type="button"
                               onClick={() => setFotoParaRemover(originalIdx)}
                               title="Excluir foto"
@@ -1606,11 +1606,11 @@ export default function SsmaRidForm({
                             alt="Evidência Depois"
                             className="h-full w-full object-cover"
                           />
-                          <span className="absolute top-1.5 left-1.5 rounded-md bg-emerald-600/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-xs">
+                          <span className="absolute top-1.5 left-1.5 rounded-md bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-xs">
                             Depois
                           </span>
                           <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
-                            <button
+                            <button aria-label="Mover para 'Antes'"
                               type="button"
                               onClick={() => alternarTipoFoto(originalIdx)}
                               title="Mover para 'Antes'"
@@ -1618,7 +1618,7 @@ export default function SsmaRidForm({
                             >
                               <RotateCcw className="h-3 w-3" />
                             </button>
-                            <button
+                            <button aria-label="Excluir foto"
                               type="button"
                               onClick={() => setFotoParaRemover(originalIdx)}
                               title="Excluir foto"

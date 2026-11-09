@@ -551,7 +551,7 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
       {/* Lista */}
       <div id="ssma-alc-table">
         {carregando && testes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+          <div className="flex flex-col items-center justify-center py-16 text-slate-500">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
             <span className="mt-3 text-sm font-medium">Carregando testes…</span>
           </div>
@@ -635,13 +635,13 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
                         <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-700 dark:text-slate-300">
                           {!umDia && <div className="text-xs font-semibold text-slate-500">{item.data.slice(8, 10)}/{item.data.slice(5, 7)}</div>}
                           <div className="font-bold">{item.horario}</div>
-                          <div className="text-xs text-slate-400">{(item.turno || '').toLowerCase()}</div>
+                          <div className="text-xs text-slate-500">{(item.turno || '').toLowerCase()}</div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-bold text-slate-900 dark:text-slate-100">{item.nome}</div>
                           <div className="text-xs text-slate-500">
                             {item.matricula ? `Matr. ${item.matricula}` : item.documento ? `Doc. ${item.documento}` : ''}
-                            <span className="ml-2 font-mono text-slate-400">{item.codigo_formulario}</span>
+                            <span className="ml-2 font-mono text-slate-500">{item.codigo_formulario}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3">

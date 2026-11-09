@@ -76,7 +76,7 @@ export default function FornecedorMatchBadge({ cnpj, fornecedorMatch, codVendor,
     return (
       <div className="relative">
         <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-900">
-          <Search className="h-3.5 w-3.5 text-slate-400" />
+          <Search className="h-3.5 w-3.5 text-slate-500" />
           <input
             autoFocus
             value={termo}
@@ -96,7 +96,7 @@ export default function FornecedorMatchBadge({ cnpj, fornecedorMatch, codVendor,
                 className="block w-full px-3 py-1.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 <div className="font-medium text-slate-800 dark:text-slate-100">{r.fornecedor}</div>
-                <div className="text-slate-400">{r.cod_vendor || '—'} · {formatarCnpj(r.cnpj)}</div>
+                <div className="text-slate-500">{r.cod_vendor || '—'} · {formatarCnpj(r.cnpj)}</div>
               </button>
             ))}
           </div>

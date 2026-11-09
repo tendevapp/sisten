@@ -219,10 +219,10 @@ export default function ModalDetalheTramoEntrega({
               </p>
             </div>
           </div>
-          <button
+          <button aria-label="Fechar"
             type="button"
             onClick={aoFechar}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           >
             <X className="h-5 w-5" />
           </button>
@@ -430,7 +430,7 @@ export default function ModalDetalheTramoEntrega({
                   dias contínuos na etapa atual
                 </span>
               </div>
-              <p className="mt-1.5 text-[11px] text-slate-400">
+              <p className="mt-1.5 text-[11px] text-slate-500">
                 {diasEspera >= 5
                   ? '⚠️ Atenção: Tramo em fila prolongada (> 4 dias). Representa gargalo na linha.'
                   : diasEspera >= 3

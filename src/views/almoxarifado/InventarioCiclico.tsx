@@ -64,6 +64,7 @@ import { CAUSAS_INVENTARIO, rotuloCausa, sugerirEscopoRapido, type CausaInventar
 import { contextoAuditoriaInventario } from '../../lib/inventarioCiclicoApi';
 import { useReservasInventario } from '../../lib/useReservasInventario';
 import { gravarPreferenciasInventario, lerPreferenciasInventario, prepararContagemDoMaterial } from '../../lib/inventarioAtalho';
+import { confirmar } from '../../lib/confirmar';
 
 /** Itens com contagem guardada no aparelho (sem rede) — ainda sem resultado do servidor. */
 function useItensContadosNaFila(): Set<string> {
@@ -264,7 +265,7 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
     const msg = algumContado
       ? `Excluir o inventário ${inv.codigo}? Ele possui contagens registradas. Esta exclusão só é permitida para administradores. O inventário sairá da listagem, mas continuará registrado no banco.`
       : `Excluir o inventário ${inv.codigo}? Sai da tela, mas permanece no banco.`;
-    if (!window.confirm(msg)) return;
+    if (!await confirmar({ titulo: 'Excluir inventário?', mensagem: msg, confirmarLabel: 'Excluir', variante: 'perigo' })) return;
     try {
       await excluirInventario(inv.id, user.name);
       toast.success(`Inventário ${inv.codigo} excluído com sucesso.`);
@@ -578,7 +579,7 @@ function CartaoInventario({
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>{formatDateBR(inv.data)}</span>
           {podeExcluir && onExcluir && (
-            <button
+            <button aria-label="Excluir inventário"
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
@@ -1072,7 +1073,7 @@ function VistaInventario({
   };
 
   const remover = async (item: ItemInventario) => {
-    if (!window.confirm(`Tirar ${item.material} (${item.descricao}) da lista?`)) return;
+    if (!await confirmar({ titulo: 'Tirar da lista?', mensagem: `Tirar ${item.material} (${item.descricao}) da lista?`, confirmarLabel: 'Tirar da lista', variante: 'perigo' })) return;
     try { await removerItemInventario(item.id); await onRecarregar(); }
     catch (err: any) { toast.error(err?.message || 'Falha ao remover.'); }
   };
@@ -1081,7 +1082,7 @@ function VistaInventario({
     const msg = algumContado
       ? `Excluir o inventário ${inv.codigo}? Ele possui contagens registradas. Esta exclusão só é permitida para administradores. O inventário sairá da tela, mas continuará registrado no histórico do banco.`
       : `Excluir o inventário ${inv.codigo}? Sai da tela, mas permanece no banco.`;
-    if (!window.confirm(msg)) return;
+    if (!await confirmar({ titulo: 'Excluir inventário?', mensagem: msg, confirmarLabel: 'Excluir', variante: 'perigo' })) return;
     try { await excluirInventario(inv.id, user.name); toast.success(`${inv.codigo} excluído.`); await onExcluido(); }
     catch (err: any) { toast.error(err?.message || 'Falha ao excluir.'); }
   };
@@ -1262,7 +1263,7 @@ function LinhaItem({
             title="Sem foto no catálogo — clique para abrir contagem e cadastrar foto"
           >
             <Camera className="h-4 w-4" />
-            <span className="text-[8px] font-bold mt-0.5 leading-none">+foto</span>
+            <span className="text-[10px] font-bold mt-0.5 leading-none">+foto</span>
           </button>
         )}
       </div>
@@ -1273,11 +1274,11 @@ function LinhaItem({
           <span className="min-w-0 flex-1 truncate text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{item.descricao || '—'}</span>
           {fotoItem?.url_imagem && (
             fotoItem.codigo_registro?.startsWith('EPI-') ? (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                 <ShieldCheck className="h-2.5 w-2.5" /> EPI
               </span>
             ) : (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                 <Check className="h-2.5 w-2.5" /> Foto
               </span>
             )
@@ -1304,7 +1305,7 @@ function LinhaItem({
         </div>
       </button>
       {podeRemover && (
-        <button type="button" onClick={onRemover} title="Tirar da lista" className="shrink-0 px-3 cursor-pointer hover:text-rose-600 transition" style={{ color: 'var(--ink-muted)' }}>
+        <button aria-label="Tirar da lista" type="button" onClick={onRemover} title="Tirar da lista" className="shrink-0 px-3 cursor-pointer hover:text-rose-600 transition" style={{ color: 'var(--ink-muted)' }}>
           <Trash2 className="h-4 w-4" />
         </button>
       )}
@@ -1487,7 +1488,7 @@ export function ModalContagem({
           ) : (
             <div className="h-20 w-20 rounded-lg border border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 flex flex-col items-center justify-center text-amber-700 dark:text-amber-400 shrink-0">
               <Camera className="h-6 w-6 stroke-1 mb-0.5" />
-              <span className="text-[9px] font-bold text-center leading-tight">Sem foto</span>
+              <span className="text-[10px] font-bold text-center leading-tight">Sem foto</span>
             </div>
           )}
 
@@ -1841,7 +1842,7 @@ function ModalCapturaFotoInventario({
             {previewUrl ? (
               <div className="relative rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 flex items-center justify-center h-56">
                 <img src={previewUrl} alt="Preview" className="h-full w-full object-contain" />
-                <button
+                <button aria-label="Trocar foto"
                   type="button"
                   onClick={() => {
                     if (previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);

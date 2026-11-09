@@ -206,7 +206,7 @@ export default function TarefaModal({ tarefa, quadro, buckets, podeEditar, user,
                 </button>
                 <span className={`flex-1 text-sm ${item.feito ? 'line-through opacity-60' : ''}`} style={{ color: 'var(--ink-secondary)' }}>{item.texto}</span>
                 {!ro && (
-                  <button type="button" onClick={() => persistirChecklist(checklist.filter(i => i.id !== item.id))} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-[var(--status-critical)]">
+                  <button aria-label="Fechar" type="button" onClick={() => persistirChecklist(checklist.filter(i => i.id !== item.id))} className="opacity-0 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 text-slate-500 hover:text-[var(--status-critical)]">
                     <X className="h-3.5 w-3.5" />
                   </button>
                 )}
@@ -220,7 +220,7 @@ export default function TarefaModal({ tarefa, quadro, buckets, podeEditar, user,
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addChecklist(); } }}
                 placeholder="Adicionar item" className={`${inputClass} py-1.5 text-xs`}
               />
-              <button type="button" onClick={addChecklist} className="shrink-0 rounded-lg p-1.5" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}>
+              <button aria-label="Adicionar" type="button" onClick={addChecklist} className="shrink-0 rounded-lg p-1.5" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}>
                 <Plus className="h-4 w-4" />
               </button>
             </div>
@@ -238,10 +238,10 @@ export default function TarefaModal({ tarefa, quadro, buckets, podeEditar, user,
                   ? <a href={a.preview_url} target="_blank" rel="noreferrer" className="flex-1 truncate hover:underline" style={{ color: 'var(--brand-strong)' }}>{a.name}</a>
                   : <span className="flex-1 truncate" style={{ color: 'var(--ink-secondary)' }}>{a.name}</span>}
                 {!ro && (
-                  <button
+                  <button aria-label="Fechar"
                     type="button"
                     onClick={async () => { const at = await removerAnexo({ ...tarefaRef.current, anexos }, a); setAnexos(at.anexos); onSaved(at); }}
-                    className="text-slate-400 hover:text-[var(--status-critical)]"
+                    className="text-slate-500 hover:text-[var(--status-critical)]"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -269,7 +269,7 @@ export default function TarefaModal({ tarefa, quadro, buckets, podeEditar, user,
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); enviarComentario(); } }}
                 placeholder="Escrever um comentário" className={`${inputClass} py-2`}
               />
-              <button type="button" onClick={enviarComentario} className="shrink-0 rounded-lg p-2" style={{ background: 'var(--brand)', color: '#fff' }}>
+              <button aria-label="Enviar" type="button" onClick={enviarComentario} className="shrink-0 rounded-lg p-2" style={{ background: 'var(--brand)', color: '#fff' }}>
                 <Send className="h-4 w-4" />
               </button>
             </div>

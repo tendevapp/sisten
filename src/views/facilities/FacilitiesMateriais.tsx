@@ -274,7 +274,7 @@ export default function FacilitiesMateriais({ user: _user, onNavigate }: Props) 
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               placeholder="Buscar material por nome ou observação..."
@@ -329,17 +329,17 @@ export default function FacilitiesMateriais({ user: _user, onNavigate }: Props) 
                     {catInfo.label}
                   </span>
                   <div className="flex items-center gap-1">
-                    <span className="font-mono text-xs text-slate-400">#{item.ordem}</span>
+                    <span className="font-mono text-xs text-slate-500">#{item.ordem}</span>
                     <button
                       type="button"
                       onClick={() => handleToggleStatus(item)}
                       title={item.ativo ? 'Clique para inativar' : 'Clique para ativar'}
-                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
                     >
                       {item.ativo ? (
                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                       ) : (
-                        <XCircle className="h-4 w-4 text-slate-400" />
+                        <XCircle className="h-4 w-4 text-slate-500" />
                       )}
                     </button>
                   </div>
@@ -364,7 +364,7 @@ export default function FacilitiesMateriais({ user: _user, onNavigate }: Props) 
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800/80">
-                <span className="text-[11px] text-slate-400">
+                <span className="text-[11px] text-slate-500">
                   {item.ativo ? 'Ativo no checklist' : 'Inativo (oculto)'}
                 </span>
                 <div className="flex items-center gap-1">
@@ -376,10 +376,10 @@ export default function FacilitiesMateriais({ user: _user, onNavigate }: Props) 
                     <Edit2 className="h-3.5 w-3.5" />
                     Editar
                   </button>
-                  <button
+                  <button aria-label="Excluir"
                     type="button"
                     onClick={() => setItemParaExcluir(item)}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                    className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -392,7 +392,7 @@ export default function FacilitiesMateriais({ user: _user, onNavigate }: Props) 
 
       {materiaisFiltrados.length === 0 && !loading && (
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-slate-900">
-          <Shield className="mx-auto h-8 w-8 text-slate-400" />
+          <Shield className="mx-auto h-8 w-8 text-slate-500" />
           <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Nenhum material encontrado</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">Tente ajustar os filtros de busca ou cadastre um novo item.</p>
         </div>

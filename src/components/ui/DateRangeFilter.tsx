@@ -164,7 +164,7 @@ export default function DateRangeFilter({
         <ChevronDown
           className={`absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none transition-transform ${
             open ? 'rotate-180' : ''
-          } ${isActive ? 'text-[#0056c6]' : 'text-slate-400'}`}
+          } ${isActive ? 'text-[#0056c6]' : 'text-slate-500'}`}
         />
       </button>
 
@@ -220,7 +220,7 @@ export default function DateRangeFilter({
 
             {/* Status da Promessa */}
             <div className="space-y-1.5 mb-3">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-500">
                 Estado da Data
               </span>
               <div className="grid grid-cols-2 gap-1.5">

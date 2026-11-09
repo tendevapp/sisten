@@ -44,7 +44,7 @@ function Linha({ l, par }: { l: LinhaRelatorioEtapa; par: boolean }) {
     <tr className={par ? 'bg-slate-50/80 dark:bg-slate-800/40' : ''}>
       <td className="px-4 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100">
         {l.nome}
-        {l.escopo === 'T1' && <span className="ml-1.5 text-[10px] font-medium text-slate-400">(T1, 1 por torre)</span>}
+        {l.escopo === 'T1' && <span className="ml-1.5 text-[10px] font-medium text-slate-500">(T1, 1 por torre)</span>}
         {!l.regraValida && <span className="ml-1.5 text-[10px] font-medium text-rose-500">regra sem situação cadastrada</span>}
       </td>
       <td className="px-3 py-3 text-center text-sm tabular-nums text-slate-600 dark:text-slate-300">{l.prontos}</td>
@@ -92,7 +92,7 @@ function CartaoEtapa({ l }: { l: LinhaRelatorioEtapa }) {
         <div className="min-w-0">
           <p className="text-sm font-bold text-slate-900 dark:text-slate-50">
             {l.nome}
-            {l.escopo === 'T1' && <span className="ml-1 text-[10px] font-medium text-slate-400">(só T1)</span>}
+            {l.escopo === 'T1' && <span className="ml-1 text-[10px] font-medium text-slate-500">(só T1)</span>}
           </p>
           <p className="text-xs text-slate-500">
             {l.prontos} prontos · falta <strong className="text-slate-900 dark:text-slate-100">{l.falta}</strong>
@@ -101,7 +101,7 @@ function CartaoEtapa({ l }: { l: LinhaRelatorioEtapa }) {
         </div>
         <span className={`inline-flex shrink-0 flex-col items-center rounded-2xl px-3 py-1 ${PILULA[l.status]}`} title={ROTULO_STATUS[l.status]}>
           <span className="font-display text-lg font-extrabold leading-none tabular-nums">{l.status === 'concluida' ? '✓' : l.diasRestantes ?? '—'}</span>
-          <span className="text-[9px] font-semibold uppercase">dias</span>
+          <span className="text-[10px] font-semibold uppercase">dias</span>
         </span>
       </div>
       <div className="flex items-center gap-2">
@@ -173,7 +173,7 @@ export default function RelatorioPrazoEtapas() {
               {contagem[s]} {ROTULO_STATUS[s].toLowerCase()}
             </span>
           ))}
-          <button
+          <button aria-label="Atualizar"
             type="button"
             onClick={() => void carregar()}
             className="rounded-xl border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400"
@@ -202,12 +202,12 @@ export default function RelatorioPrazoEtapas() {
               <tr>
                 <th className={`${th} text-left`}>Atividade</th>
                 <th className={th}>Tramos<br />prontos</th>
-                <th className={th}>Falta<br /><span className="text-[9px] font-medium normal-case">(tramos)</span></th>
+                <th className={th}>Falta<br /><span className="text-[10px] font-medium normal-case">(tramos)</span></th>
                 <th className={th}>Progresso</th>
                 <th className={th}>Data<br />final</th>
-                <th className={`${th} hidden md:table-cell`}>Ritmo<br /><span className="text-[9px] font-medium normal-case">(necessário / real, tramos/dia)</span></th>
-                <th className={`${th} hidden lg:table-cell`}>Previsão<br /><span className="text-[9px] font-medium normal-case">(no ritmo real)</span></th>
-                <th className={th}>Faltam<br /><span className="text-[9px] font-medium normal-case">(dias)</span></th>
+                <th className={`${th} hidden md:table-cell`}>Ritmo<br /><span className="text-[10px] font-medium normal-case">(necessário / real, tramos/dia)</span></th>
+                <th className={`${th} hidden lg:table-cell`}>Previsão<br /><span className="text-[10px] font-medium normal-case">(no ritmo real)</span></th>
+                <th className={th}>Faltam<br /><span className="text-[10px] font-medium normal-case">(dias)</span></th>
               </tr>
             </thead>
             <tbody>

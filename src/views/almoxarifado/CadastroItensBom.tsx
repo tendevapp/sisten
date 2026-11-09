@@ -688,7 +688,7 @@ function ModalPecaBom({
                   <button type="button" onClick={() => onAmpliar(preview)} className="h-full w-full cursor-zoom-in" title="Ampliar">
                     <img src={preview} alt="Foto da peça" className="h-full w-full object-contain p-2" />
                   </button>
-                  <button
+                  <button aria-label={foto ? 'Descartar a foto escolhida' : 'Remover a foto do cadastro'}
                     type="button"
                     onClick={() => { if (foto) { setFoto(null); setPreview(cadastro?.url_imagem ?? null); } else { setRemoverFoto(true); } }}
                     className="absolute right-2 top-2 rounded-lg bg-rose-600 p-1.5 text-white shadow-md hover:bg-rose-700 cursor-pointer"
