@@ -15,6 +15,8 @@
  * anual passaria disso sem avisar.
  */
 
+import { useTelaEstreita } from '../../lib/useTelaEstreita';
+import { cortarRotuloCelular, LARGURA_EIXO_CELULAR } from '../../lib/rotuloEixo';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, RefreshCw, FileSpreadsheet, Users, Timer, CalendarDays, Building2,
@@ -671,6 +673,7 @@ function GraficoHoras({
   metrica?: 'horas' | 'colaboradores';
   aoSelecionar?: (nome: string) => void;
 }) {
+  const estreita = useTelaEstreita();
   const c = useChartConfig();
   const altura = Math.max(180, data.length * 30 + 42);
   const maxValor = Math.max(1, ...data.map(d => (metrica === 'horas' ? d.horas : d.colaboradores)));
@@ -711,7 +714,7 @@ function GraficoHoras({
       }
     >
       <ResponsiveContainer width="100%" height={altura}>
-        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 52, left: 0, bottom: 4 }}>
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: estreita ? 40 : 52, left: 0, bottom: 4 }}>
           <CartesianGrid {...c.grid} vertical horizontal={false} />
           <XAxis type="number" {...c.yAxis} />
           <YAxis
@@ -719,9 +722,9 @@ function GraficoHoras({
             dataKey="nome"
             {...c.xAxis}
             tick={{ fontSize: 11, fill: c.tokens.labelStrong, fontWeight: 600 }}
-            tickFormatter={encurtar}
+            tickFormatter={estreita ? cortarRotuloCelular : encurtar}
             tickMargin={8}
-            width={196}
+            width={estreita ? LARGURA_EIXO_CELULAR : 196}
             interval={0}
           />
           <Tooltip content={<Tip />} cursor={c.cursor} />

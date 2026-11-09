@@ -20,6 +20,7 @@ import FiltrosSheet, { BotaoFiltros, CampoFiltro, classeCampoFiltro } from '../c
 import { LinhaPartida } from '../components/financeiro/ContasPagarMobile';
 import { hojeISO, somarDias } from '../lib/contasPagar';
 import { useTelaEstreita } from '../lib/useTelaEstreita';
+import { cortarRotulo } from '../lib/rotuloEixo';
 
 interface ContasPagarAnaliseProps {
   user: Profile;
@@ -106,8 +107,6 @@ const PRESETS_PERIODO: { rotulo: string; de: string; ate: string }[] = [
   { rotulo: 'Todas', de: '', ate: '' },
 ];
 
-/** Corta o rótulo de categoria do eixo para caber na coluna estreita do celular. */
-const cortarRotulo = (max: number) => (v: string) => (v && v.length > max ? `${v.slice(0, max - 1)}…` : v);
 
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 

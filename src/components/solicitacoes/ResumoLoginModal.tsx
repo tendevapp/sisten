@@ -25,10 +25,11 @@ import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import { formatDateTimeBR } from '../../lib/format';
 import { rotuloStatus, rotuloTipo } from '../../lib/solicitacoes';
 import { ItemResumo, ResumoUsuario } from '../../lib/solicitacoesCentral';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 const chaveExibicao = (userId: string) => `sisten_sol_resumo_visto_${userId}`;
 
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => dataHojeLocal();
 
 /** Já mostramos o resumo para este usuário hoje? */
 export const resumoJaVistoHoje = (userId: string): boolean =>

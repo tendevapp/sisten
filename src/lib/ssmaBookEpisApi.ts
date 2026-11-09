@@ -2,6 +2,7 @@ import type { RequestAttachment } from '../types';
 import { supabase } from '../db/supabaseClient';
 import { comprimirImagemUpload } from './imageCompression';
 import { deduplicarVariantesBookEpis, type FotoBookEpi, type VarianteBookEpi } from './bookEpisImportacao';
+import { dataHojeLocal } from './dataLocal';
 
 export const SSMA_BOOK_EPIS_BUCKET = 'ssma-book-epis';
 
@@ -206,7 +207,7 @@ export async function importarBookEpis(itens: VarianteBookEpi[]): Promise<{ impo
   const payload = await Promise.all(variantes.map(async item => {
     const imagem = item.foto
       ? (fotos.get(item.foto) ?? (() => {
-        const upload = enviarFoto(item.foto!, `epis/importacao-${new Date().toISOString().slice(0, 10)}`);
+        const upload = enviarFoto(item.foto!, `epis/importacao-${dataHojeLocal()}`);
         fotos.set(item.foto!, upload);
         return upload;
       })())

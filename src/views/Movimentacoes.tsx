@@ -47,6 +47,7 @@ import MovimentacoesSerieChart from '../components/almoxarifado/MovimentacoesSer
 import EstoqueLegadoBanner from '../components/almoxarifado/EstoqueLegadoBanner';
 import IdadeEstoqueChart from '../components/almoxarifado/IdadeEstoqueChart';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
+import FiltrosSheet, { BotaoFiltros } from '../components/ui/FiltrosSheet';
 import CoberturaPanel from '../components/almoxarifado/CoberturaPanel';
 import PermanenciaPanel from '../components/almoxarifado/PermanenciaPanel';
 import KpiCard from '../components/charts/KpiCard';
@@ -357,6 +358,21 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
     || tipoItemFiltro !== 'Todos' || recomendacaoFiltro !== 'Todos'
     || grupoFiltro !== 'Todos' || !!materialSel;
 
+  // Celular: os filtros ficavam numa trilha que rola de lado, quase todos fora
+  // da tela; lá abrem num painel e o botão diz quantos estão ligados.
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const filtrosLigados = [
+    centroFiltro !== 'Todos', depositoFiltro.size > 0, categoriaFiltro !== 'Todos', tipoFiltro !== 'Todos',
+    dataInicio !== '' || dataFim !== '', coberturaFiltro !== 'Todos', faixaIdadeFiltro !== 'Todos',
+    classePermFiltro !== 'Todos', recomendacaoFiltro !== 'Todos', tipoItemFiltro !== 'Todos', grupoFiltro !== 'Todos',
+  ].filter(Boolean).length;
+  const limparFiltrosPainel = () => {
+    setCentroFiltro('Todos'); setDepositoFiltro(new Set()); setTipoFiltro('Todos');
+    setCategoriaFiltro('Todos'); setDataInicio(''); setDataFim(''); setTipoItemFiltro('Todos');
+    setCoberturaFiltro('Todos'); setFaixaIdadeFiltro('Todos'); setClassePermFiltro('Todos');
+    setRecomendacaoFiltro('Todos'); setGrupoFiltro('Todos');
+  };
+
   const limparFiltros = useCallback(() => {
     setCentroFiltro('Todos'); setDepositoFiltro(new Set()); setTipoFiltro('Todos');
     setCategoriaFiltro('Todos'); setDataInicio(''); setDataFim('');
@@ -519,6 +535,112 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
   const selectClass = 'rounded-lg border py-2 px-3 text-xs font-bold cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1 border-[var(--hairline)] bg-[var(--surface-raised)] text-[var(--ink-secondary)] focus:outline-[var(--brand)]';
   const semDados = !loading && !error && movs.length === 0;
 
+  // Mesmos controles na trilha do desktop e no painel do celular (largura toda).
+  const controlesFiltro = (painel: boolean) => {
+    const cf = (desktop: string, celular: string) => (painel ? celular : desktop);
+    return (
+      <>
+
+        {(aba === 'geral' || aba === 'pep') && (
+          <>
+            <select value={centroFiltro} onChange={e => setCentroFiltro(e.target.value)} className={cf(`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`, `${selectClass} w-full h-11 truncate`)}>
+              <option value="Todos">Centro: Todos</option>
+              {opcoes.centros.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <MultiSelectFilter
+              label="Depósito"
+              icon={Warehouse}
+              options={opcoes.depositos}
+              selected={depositoFiltro}
+              onChange={setDepositoFiltro}
+              renderOption={formatDeposito}
+              searchable
+              className={cf('shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]', 'w-full')}
+              panelClassName="w-80 sm:w-96"
+            />
+            {aba === 'geral' && (
+              <>
+                <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)} className={cf(`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`, `${selectClass} w-full h-11 truncate`)}>
+                  <option value="Todos">Categoria: Todas</option>
+                  {opcoes.categorias.map(c => (
+                    <option key={c} value={c}>{ROTULO_CATEGORIA[c as keyof typeof ROTULO_CATEGORIA] ?? c}</option>
+                  ))}
+                </select>
+                <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} className={cf(`${selectClass} shrink-0 w-[140px] lg:w-auto truncate`, `${selectClass} w-full h-11 truncate`)}>
+                  <option value="Todos">TMV: Todos</option>
+                  {opcoes.tipos.map(([tmv, desc]) => <option key={tmv} value={tmv}>{tmv} — {desc}</option>)}
+                </select>
+              </>
+            )}
+            <label className={cf('shrink-0 flex items-center gap-1.5 text-[11px] font-bold', 'flex items-center gap-2 text-[11px] font-bold [&>input]:h-11 [&>input]:flex-1')} style={{ color: 'var(--ink-secondary)' }}>
+              <span className="uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>De</span>
+              <input
+                type="date"
+                value={dataInicio}
+                max={dataFim || undefined}
+                onChange={e => setDataInicio(e.target.value)}
+                className={selectClass}
+              />
+            </label>
+            <label className={cf('shrink-0 flex items-center gap-1.5 text-[11px] font-bold', 'flex items-center gap-2 text-[11px] font-bold [&>input]:h-11 [&>input]:flex-1')} style={{ color: 'var(--ink-secondary)' }}>
+              <span className="uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Até</span>
+              <input
+                type="date"
+                value={dataFim}
+                min={dataInicio || undefined}
+                onChange={e => setDataFim(e.target.value)}
+                className={selectClass}
+              />
+            </label>
+          </>
+        )}
+
+        {aba === 'giro' && (
+          <select value={coberturaFiltro} onChange={e => setCoberturaFiltro(e.target.value as any)} className={cf(`${selectClass} shrink-0 w-[160px] lg:w-auto truncate`, `${selectClass} w-full h-11 truncate`)}>
+            <option value="Todos">Situação: Todas</option>
+            {Object.values(FAIXAS_COBERTURA).map(f => <option key={f.id} value={f.id}>{f.rotulo}</option>)}
+          </select>
+        )}
+
+        {aba === 'idade' && (
+          <select value={faixaIdadeFiltro} onChange={e => setFaixaIdadeFiltro(e.target.value)} className={cf(`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`, `${selectClass} w-full h-11 truncate`)}>
+            <option value="Todos">Faixa: Todas</option>
+            {idade.map(f => <option key={f.faixa} value={f.faixa}>{f.rotulo}</option>)}
+          </select>
+        )}
+
+        {aba === 'urgencia' && (
+          <select value={classePermFiltro} onChange={e => setClassePermFiltro(e.target.value)} className={cf(`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`, `${selectClass} w-full h-11 truncate`)}>
+            <option value="Todos">Classe: Todas</option>
+            {permanencia.map(p => <option key={p.classe} value={p.classe}>{p.rotulo}</option>)}
+          </select>
+        )}
+
+        {aba === 'minimo' && (
+          <select value={recomendacaoFiltro} onChange={e => setRecomendacaoFiltro(e.target.value as any)} className={cf(`${selectClass} shrink-0 w-[170px] lg:w-auto truncate`, `${selectClass} w-full h-11 truncate`)}>
+            <option value="Todos">Recomendação: Todas</option>
+            {resumoReposicao.map(r => (
+              <option key={r.recomendacao} value={r.recomendacao}>{r.rotulo} ({r.materiais})</option>
+            ))}
+          </select>
+        )}
+
+        {/* Vale para todas as abas: projeto e consumo têm política de
+            estoque diferente, e o giro de um contamina a leitura do outro. */}
+        <select value={tipoItemFiltro} onChange={e => setTipoItemFiltro(e.target.value as any)} className={cf(`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`, `${selectClass} w-full h-11 truncate`)}>
+          <option value="Todos">Item: Todos</option>
+          <option value="projeto">Projeto (100000…)</option>
+          <option value="consumo">Outros</option>
+        </select>
+
+        <select value={grupoFiltro} onChange={e => setGrupoFiltro(e.target.value)} className={cf(`${selectClass} shrink-0 w-[180px] lg:w-auto truncate`, `${selectClass} w-full h-11 truncate`)}>
+          <option value="Todos">Grupo de mercadorias: Todos</option>
+          {gruposDisponiveis.map(g => <option key={g} value={g}>{g}</option>)}
+        </select>
+      </>
+    );
+  };
+
   return (
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
       {/* Cabeçalho */}
@@ -635,114 +757,18 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
               O overflow fica num wrapper interno para não colidir com o
               position:sticky do container externo. */}
           <div
-            className="rounded-xl border p-4 sticky top-2 z-10 backdrop-blur-sm"
+            className="rounded-xl border p-2.5 lg:p-4 sticky top-2 z-10 backdrop-blur-sm"
             style={{
               borderColor: 'var(--hairline)',
               background: 'color-mix(in srgb, var(--surface-card) 92%, transparent)',
               boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.04)',
             }}
           >
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
-              <span className="shrink-0 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+            <div className="flex items-center gap-2 lg:flex-wrap">
+              <span className="hidden lg:flex shrink-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
                 <Filter className="h-3 w-3" /> Filtros
               </span>
-
-              {(aba === 'geral' || aba === 'pep') && (
-                <>
-                  <select value={centroFiltro} onChange={e => setCentroFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
-                    <option value="Todos">Centro: Todos</option>
-                    {opcoes.centros.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <MultiSelectFilter
-                    label="Depósito"
-                    icon={Warehouse}
-                    options={opcoes.depositos}
-                    selected={depositoFiltro}
-                    onChange={setDepositoFiltro}
-                    renderOption={formatDeposito}
-                    searchable
-                    className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
-                    panelClassName="w-80 sm:w-96"
-                  />
-                  {aba === 'geral' && (
-                    <>
-                      <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`}>
-                        <option value="Todos">Categoria: Todas</option>
-                        {opcoes.categorias.map(c => (
-                          <option key={c} value={c}>{ROTULO_CATEGORIA[c as keyof typeof ROTULO_CATEGORIA] ?? c}</option>
-                        ))}
-                      </select>
-                      <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[140px] lg:w-auto truncate`}>
-                        <option value="Todos">TMV: Todos</option>
-                        {opcoes.tipos.map(([tmv, desc]) => <option key={tmv} value={tmv}>{tmv} — {desc}</option>)}
-                      </select>
-                    </>
-                  )}
-                  <label className="shrink-0 flex items-center gap-1.5 text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>
-                    <span className="uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>De</span>
-                    <input
-                      type="date"
-                      value={dataInicio}
-                      max={dataFim || undefined}
-                      onChange={e => setDataInicio(e.target.value)}
-                      className={selectClass}
-                    />
-                  </label>
-                  <label className="shrink-0 flex items-center gap-1.5 text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>
-                    <span className="uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Até</span>
-                    <input
-                      type="date"
-                      value={dataFim}
-                      min={dataInicio || undefined}
-                      onChange={e => setDataFim(e.target.value)}
-                      className={selectClass}
-                    />
-                  </label>
-                </>
-              )}
-
-              {aba === 'giro' && (
-                <select value={coberturaFiltro} onChange={e => setCoberturaFiltro(e.target.value as any)} className={`${selectClass} shrink-0 w-[160px] lg:w-auto truncate`}>
-                  <option value="Todos">Situação: Todas</option>
-                  {Object.values(FAIXAS_COBERTURA).map(f => <option key={f.id} value={f.id}>{f.rotulo}</option>)}
-                </select>
-              )}
-
-              {aba === 'idade' && (
-                <select value={faixaIdadeFiltro} onChange={e => setFaixaIdadeFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`}>
-                  <option value="Todos">Faixa: Todas</option>
-                  {idade.map(f => <option key={f.faixa} value={f.faixa}>{f.rotulo}</option>)}
-                </select>
-              )}
-
-              {aba === 'urgencia' && (
-                <select value={classePermFiltro} onChange={e => setClassePermFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`}>
-                  <option value="Todos">Classe: Todas</option>
-                  {permanencia.map(p => <option key={p.classe} value={p.classe}>{p.rotulo}</option>)}
-                </select>
-              )}
-
-              {aba === 'minimo' && (
-                <select value={recomendacaoFiltro} onChange={e => setRecomendacaoFiltro(e.target.value as any)} className={`${selectClass} shrink-0 w-[170px] lg:w-auto truncate`}>
-                  <option value="Todos">Recomendação: Todas</option>
-                  {resumoReposicao.map(r => (
-                    <option key={r.recomendacao} value={r.recomendacao}>{r.rotulo} ({r.materiais})</option>
-                  ))}
-                </select>
-              )}
-
-              {/* Vale para todas as abas: projeto e consumo têm política de
-                  estoque diferente, e o giro de um contamina a leitura do outro. */}
-              <select value={tipoItemFiltro} onChange={e => setTipoItemFiltro(e.target.value as any)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
-                <option value="Todos">Item: Todos</option>
-                <option value="projeto">Projeto (100000…)</option>
-                <option value="consumo">Outros</option>
-              </select>
-
-              <select value={grupoFiltro} onChange={e => setGrupoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[180px] lg:w-auto truncate`}>
-                <option value="Todos">Grupo de mercadorias: Todos</option>
-                {gruposDisponiveis.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
+              <div className="hidden lg:contents">{controlesFiltro(false)}</div>
 
               {aba !== 'pep' && (
                 <MaterialSearchInput
@@ -751,17 +777,30 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                   materiais={universoMateriais}
                   materialSelecionado={materialSel}
                   onSelecionarMaterial={setMaterialSel}
-                  className="shrink-0 w-[220px] lg:flex-1 lg:min-w-[220px] lg:max-w-sm lg:shrink"
+                  className="min-w-0 flex-1 lg:min-w-[220px] lg:max-w-sm lg:shrink"
                 />
               )}
+              {aba === 'pep' && <div className="flex-1 lg:hidden" />}
+              <BotaoFiltros ativos={filtrosLigados} onClick={() => setFiltrosAbertos(true)} className="lg:hidden" />
 
               {filtroAtivo && (
-                <button onClick={limparFiltros} className="shrink-0 text-xs font-bold text-rose-500 hover:text-rose-600 dark:text-rose-400 underline lg:ml-auto cursor-pointer whitespace-nowrap">
+                <button onClick={limparFiltros} className="hidden lg:inline shrink-0 text-xs font-bold text-rose-500 hover:text-rose-600 dark:text-rose-400 underline lg:ml-auto cursor-pointer whitespace-nowrap">
                   Limpar Filtros
                 </button>
               )}
             </div>
           </div>
+
+          {filtrosAbertos && (
+            <FiltrosSheet
+              onClose={() => setFiltrosAbertos(false)}
+              ativos={filtrosLigados}
+              onLimpar={limparFiltrosPainel}
+              rotuloAplicar="Ver resultado"
+            >
+              <div className="grid gap-3">{controlesFiltro(true)}</div>
+            </FiltrosSheet>
+          )}
 
           {/* ---------------------------------------------------------------- */}
           {/* Aba: Visão Geral                                                  */}

@@ -30,6 +30,7 @@ import { AlmoxarifadoChegada, CidadeForn, DiligenciamentoItem, EnrichedSAPRecord
 import { isServicoItem } from './rastreio';
 import { ehItemDeContrato } from './contratoPedido';
 import { normalizePoNumber, type ResumoBahiaSulPorPo } from './bahiasul';
+import { dataHojeLocal } from './dataLocal';
 
 /**
  * Item que não conta como "sem MIGO": remessa final dada (CRF) ou pedido de contrato
@@ -455,7 +456,7 @@ export interface FiltroPromessaValor {
 export function itemAtendeFiltroPromessa(
   item: ItemDiligenciamento,
   filtro?: FiltroPromessaValor | null,
-  hojeISO = new Date().toISOString().slice(0, 10),
+  hojeISO = dataHojeLocal(),
 ): boolean {
   if (!filtro) return true;
   const { from, to, preset } = filtro;
@@ -492,7 +493,7 @@ export function itemAtendeFiltroPromessa(
 export function itemAtendeFiltroFatTransportadora(
   item: ItemDiligenciamento,
   filtro?: FiltroPromessaValor | null,
-  hojeISO = new Date().toISOString().slice(0, 10),
+  hojeISO = dataHojeLocal(),
 ): boolean {
   if (!filtro) return true;
   const { from, to, preset } = filtro;
@@ -553,7 +554,7 @@ export function filtrarItensDiligenciamento(
     const { from, to, preset } = filtros.promessa;
     const isActive = (preset && preset !== 'all') || Boolean(from) || Boolean(to);
     if (isActive) {
-      const hoje = filtros.hojeISO || new Date().toISOString().slice(0, 10);
+      const hoje = filtros.hojeISO || dataHojeLocal();
       resultado = resultado.filter(item => itemAtendeFiltroPromessa(item, filtros.promessa, hoje));
     }
   }
@@ -562,13 +563,13 @@ export function filtrarItensDiligenciamento(
     const { from, to, preset } = filtros.fatTransportadora;
     const isActive = (preset && preset !== 'all') || Boolean(from) || Boolean(to);
     if (isActive) {
-      const hoje = filtros.hojeISO || new Date().toISOString().slice(0, 10);
+      const hoje = filtros.hojeISO || dataHojeLocal();
       resultado = resultado.filter(item => itemAtendeFiltroFatTransportadora(item, filtros.fatTransportadora, hoje));
     }
   }
 
   if (filtros.apenasVencidos) {
-    const hoje = filtros.hojeISO || new Date().toISOString().slice(0, 10);
+    const hoje = filtros.hojeISO || dataHojeLocal();
     resultado = resultado.filter(item => !item.chegou && !!item.previsaoEfetiva && item.previsaoEfetiva < hoje);
   } else if (filtros.apenasSemPrevisao) {
     resultado = resultado.filter(item => !item.chegou && !item.previsaoEfetiva);

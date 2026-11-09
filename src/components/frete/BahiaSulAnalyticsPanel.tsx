@@ -31,6 +31,7 @@ import {
 } from '../../lib/bahiasul';
 import { useToast } from '../ui/Toast';
 import BahiaSulUploadModal from './BahiaSulUploadModal';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface BahiaSulAnalyticsPanelProps {
   user: Profile;
@@ -440,7 +441,7 @@ export default function BahiaSulAnalyticsPanel({
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Entregas Bahia Sul');
-    XLSX.writeFile(workbook, `Bahia_Sul_Entregas_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(workbook, `Bahia_Sul_Entregas_${dataHojeLocal()}.xlsx`);
     toast.success('Relatório Excel exportado com sucesso!');
   };
 

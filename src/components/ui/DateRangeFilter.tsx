@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, ChevronDown, X, Clock, AlertTriangle, CalendarDays } from 'lucide-react';
 import { useFilterDropdownPosition } from './useFilterDropdownPosition';
+import { dataHojeLocal, dataLocalMaisDias, paraISOLocal } from '../../lib/dataLocal';
 
 export interface DateRangeValue {
   from: string;
@@ -19,19 +20,13 @@ export interface DateRangeFilterProps {
   panelClassName?: string;
 }
 
-const getTodayISO = (): string => new Date().toISOString().slice(0, 10);
+const getTodayISO = (): string => dataHojeLocal();
 
-const addDaysISO = (days: number): string => {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-};
+const addDaysISO = (days: number): string => dataLocalMaisDias(days);
 
 const getMonthEndISO = (): string => {
   const d = new Date();
-  const nextMonthFirst = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-  const lastDay = new Date(nextMonthFirst.getTime() - 86400000);
-  return lastDay.toISOString().slice(0, 10);
+  return paraISOLocal(new Date(d.getFullYear(), d.getMonth() + 1, 0));
 };
 
 const formatDateDisplay = (isoDate: string): string => {

@@ -10,6 +10,8 @@
  * recorrentes, além da evolução mês a mês (abertas x baixadas).
  */
 
+import { useTelaEstreita } from '../lib/useTelaEstreita';
+import { cortarRotuloCelular, LARGURA_EIXO_CELULAR } from '../lib/rotuloEixo';
 import React, { useMemo, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -515,6 +517,7 @@ function GraficoBarras({
   ordemFixa?: boolean;
   vazioMsg?: string;
 }) {
+  const estreita = useTelaEstreita();
   const c = useChartConfig();
   const semDados = data.length === 0 || data.every(d => d.valor === 0);
   const altura = Math.max(160, data.length * 30 + 42);
@@ -537,7 +540,7 @@ function GraficoBarras({
       emptyMessage={vazioMsg || 'Sem dados na seleção atual.'}
     >
       <ResponsiveContainer width="100%" height={altura}>
-        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 44, left: 0, bottom: 4 }}>
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: estreita ? 32 : 44, left: 0, bottom: 4 }}>
           <CartesianGrid {...c.grid} vertical horizontal={false} />
           <XAxis type="number" allowDecimals={false} {...c.yAxis} />
           <YAxis
@@ -545,9 +548,9 @@ function GraficoBarras({
             dataKey="nome"
             {...c.xAxis}
             tick={{ fontSize: 11, fill: c.tokens.labelStrong, fontWeight: 600 }}
-            tickFormatter={(v: string) => encurtar(v)}
+            tickFormatter={(v: string) => (estreita ? cortarRotuloCelular(v) : encurtar(v))}
             tickMargin={8}
-            width={186}
+            width={estreita ? LARGURA_EIXO_CELULAR : 186}
             interval={0}
             reversed={ordemFixa}
           />

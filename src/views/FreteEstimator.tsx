@@ -17,6 +17,7 @@ import { calcularFreteTabela } from '../lib/bahiasul';
 import type { VeiculoDedicado } from '../lib/bahiasul';
 import { useToast } from '../components/ui/Toast';
 import BahiaSulAnalyticsPanel from '../components/frete/BahiaSulAnalyticsPanel';
+import { dataHojeLocal } from '../lib/dataLocal';
 
 interface FreteEstimatorProps {
   user: Profile;
@@ -253,7 +254,7 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Estimativa de Frete');
-    XLSX.writeFile(workbook, `Estimativa_Frete_${rotaAtiva.origem}_${rotaAtiva.destino}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(workbook, `Estimativa_Frete_${rotaAtiva.origem}_${rotaAtiva.destino}_${dataHojeLocal()}.xlsx`);
     toast.success('Relatório Excel exportado com sucesso!');
   };
 

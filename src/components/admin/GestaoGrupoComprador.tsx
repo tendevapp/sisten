@@ -20,6 +20,7 @@ import * as apiSetor from '../../lib/setorCompradorApi';
 import { useToast } from '../ui/Toast';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface Props {
   user: Profile;
@@ -696,7 +697,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `grupos_compradores_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `grupos_compradores_${dataHojeLocal()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

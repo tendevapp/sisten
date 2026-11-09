@@ -31,6 +31,7 @@ import {
 import type { Profile, SsmaRidDesvio, SsmaPlanoAcaoStatus } from '../../types';
 import { calcularDiasEmAberto } from '../../lib/ssmaApi';
 import { useToast } from '../ui/Toast';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface SsmaRidPlanosAcaoViewProps {
   desvios: SsmaRidDesvio[];
@@ -96,7 +97,7 @@ export default function SsmaRidPlanosAcaoView({
     let somaDiasAbertos = 0;
     let qtdAtivos = 0;
 
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = dataHojeLocal();
 
     desviosComPlano.forEach((d) => {
       const st = d.plano_acao?.status;
@@ -224,7 +225,7 @@ export default function SsmaRidPlanosAcaoView({
     link.href = url;
     link.setAttribute(
       'download',
-      `SISTEN_SSMA_Planos_Acao_RID_${new Date().toISOString().slice(0, 10)}.csv`
+      `SISTEN_SSMA_Planos_Acao_RID_${dataHojeLocal()}.csv`
     );
     document.body.appendChild(link);
     link.click();
@@ -454,7 +455,7 @@ export default function SsmaRidPlanosAcaoView({
           <div className="grid grid-cols-1 gap-4">
             {desviosFiltrados.map((desvio) => {
               const plano = desvio.plano_acao!;
-              const hoje = new Date().toISOString().slice(0, 10);
+              const hoje = dataHojeLocal();
               const estaAtrasado =
                 plano.status !== 'CONCLUIDO' && Boolean(plano.prazo && plano.prazo < hoje);
               const infoDias = calcularDiasEmAberto(

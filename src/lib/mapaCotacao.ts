@@ -24,6 +24,7 @@ import { estimarCreditosPossiveis, estimarDifal } from './calcImpostos';
 import { formatBRL } from './format';
 import type { CreditosPossiveis, EstimativaDifal } from './calcImpostos';
 import type { CotacaoProcessoItem, CotacaoPropostaDraft, CotacaoPropostaItemDraft } from '../types';
+import { dataHojeLocal } from './dataLocal';
 
 // =====================================================================
 // Similaridade de descrição
@@ -705,7 +706,7 @@ export interface ResumoFornecedor {
 
 export function diasAteValidade(validadeISO: string | null, hojeISO?: string): number | null {
   if (!validadeISO) return null;
-  const hoje = hojeISO ?? new Date().toISOString().slice(0, 10);
+  const hoje = hojeISO ?? dataHojeLocal();
   const ms = Date.parse(`${validadeISO}T00:00:00Z`) - Date.parse(`${hoje}T00:00:00Z`);
   if (!Number.isFinite(ms)) return null;
   return Math.round(ms / 86_400_000);

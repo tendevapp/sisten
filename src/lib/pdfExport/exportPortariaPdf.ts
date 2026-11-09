@@ -12,6 +12,7 @@
  */
 
 import { createDoc, PdfTextWriter, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+import { dataHojeLocal } from '../dataLocal';
 export type { PdfGerado };
 import type {
   PortControleEquipamento,
@@ -157,7 +158,7 @@ export async function gerarCarretasPdf(carretas: PortControleCarreta[], periodoS
   writer.drawDocumentHeader({
     title: 'Controle de Chegada e Saída de Carretas de Chapas',
     formCode: 'FRM.SGP-0020 (Rev. 00)',
-    protocol: `CRT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`,
+    protocol: `CRT-${dataHojeLocal().replace(/-/g, '')}`,
   });
 
   writer.drawInfoGrid([
@@ -451,7 +452,7 @@ export async function gerarPassagensPlantaoConsolidadoPdf(plantoes: PortPassagem
   writer.drawDocumentHeader({
     title: 'Relatório Consolidado de Passagem de Plantão',
     formCode: 'FRM.SGP-0010 (Rev. 00)',
-    protocol: `CSL-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`,
+    protocol: `CSL-${dataHojeLocal().replace(/-/g, '')}`,
   });
 
   writer.drawInfoGrid([

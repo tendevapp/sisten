@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import type { ControleEstoqueItem } from '../types';
 import type { FiltrosControleEstoque } from './controleEstoqueApi';
 import { calcularFaixaDoItem as faixaDoItem } from './controleEstoque';
+import { dataHojeLocal } from './dataLocal';
 
 export interface ParametrosControleEstoqueExport {
   janela_inicio: string;
@@ -150,5 +151,5 @@ export function exportarControleEstoqueExcel(
   parametros: ParametrosControleEstoqueExport,
 ): void {
   const workbook = criarWorkbookControleEstoque(dataset, filtros, parametros);
-  XLSX.writeFile(workbook, `controle-estoque-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(workbook, `controle-estoque-${dataHojeLocal()}.xlsx`);
 }

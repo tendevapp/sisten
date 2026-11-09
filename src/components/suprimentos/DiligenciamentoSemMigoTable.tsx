@@ -65,6 +65,7 @@ import {
   excluirPrazoTransporte, trocarTransportadora,
 } from '../../lib/diligenciamentoApi';
 import CobrancaPoModal from './CobrancaPoModal';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface Props {
   registros: EnrichedSAPRecord[];
@@ -243,7 +244,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     return a.docCompra.localeCompare(b.docCompra);
   }), [itens]);
 
-  const hojeISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const hojeISO = useMemo(() => dataHojeLocal(), []);
 
   /**
    * Recorte base = fila ordenada filtrada por transportadora (seleção múltipla),

@@ -15,6 +15,7 @@ import { Profile, Request, RequestAttachment, RequestItem, RequestStatus, Reques
 import { localDb } from '../db/localDb';
 import { formatDateBR, formatDateTimeBR } from './format';
 import { isChamadoSuprimentosPendencia } from './supPendenciasProcessamento';
+import { dataHojeLocal } from './dataLocal';
 
 /** Papéis que enxergam a fila coletiva. Espelha os defaultRoles da página. */
 export const PAPEIS_FILA: string[] = [
@@ -423,7 +424,7 @@ export async function exportarSolicitacoes(selecionadas: Request[], sectors: Sec
   const ws = XLSX.utils.json_to_sheet(linhas);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Solicitações');
-  const carimbo = new Date().toISOString().slice(0, 10);
+  const carimbo = dataHojeLocal();
   XLSX.writeFile(wb, `solicitacoes_${carimbo}.xlsx`);
 }
 

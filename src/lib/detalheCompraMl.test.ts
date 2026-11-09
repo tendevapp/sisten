@@ -240,3 +240,74 @@ describe('interpretarDetalheCompraMl — Detalhes da transação', () => {
     expect(r.avisos.some(a => a.includes('total pago'))).toBe(true);
   });
 });
+
+// Texto real colado em 06/11/2026: o 1º produto termina em "Unidades" (antes
+// era descartado) e a página leva caracteres invisíveis para a área de transferência.
+const TRANSACAO_PILHAS = `Detalhes da transação
+6 de novembro |
+
+#2000015901343333
+Bat. Cr2032 3v Cartela C/5 Unidades
+
+2 unidades
+
+R$ 38
+
+Sequenciador Temporizador Para Solenoide 20 Canais 100-240v
+
+2 unidades
+
+R$ 2.370
+
+Extensao Eletrica Cabo Pp Grosso 20 Metros 2,5mm Domestica Preto
+
+5 unidades
+
+R$ 418,95
+
+48 Pilhas Alcalina Elgin Aa Longa Duração Com 3 Cartelas
+
+1 unidade
+
+R$ 93,89
+
+90 Pilhas Baterias Alcalina Elgin Lr44 Ag13 9 Cartelas C/10
+
+1 unidade
+
+R$ 54,90
+
+Desconto
+
+- R$ 2,28
+
+Frete
+
+Grátis
+
+Total pago
+
+R$ 2.973,46`;
+
+describe('interpretarDetalheCompraMl — descrição terminando em Unidades e caracteres invisíveis', () => {
+  it('lê os 5 itens e a conta fecha com o total pago', () => {
+    const d = interpretarDetalheCompraMl(TRANSACAO_PILHAS, new Date(2026, 10, 6));
+    expect(d.pacotes).toHaveLength(5);
+    expect(d.pacotes[0]).toEqual({ descricao: 'Bat. Cr2032 3v Cartela C/5 Unidades', valor: 38, quantidade: 2 });
+    expect(d.pacotes[4]).toEqual({ descricao: '90 Pilhas Baterias Alcalina Elgin Lr44 Ag13 9 Cartelas C/10', valor: 54.9, quantidade: 1 });
+    expect(d.valorProdutos).toBe(2975.74);
+    expect(d.qtdProdutos).toBe(11);
+    expect(d.valorTotal).toBe(2973.46);
+    expect(d.avisos).toEqual([]);
+  });
+
+  it('espaço de largura zero e espaço não separável não escondem o valor', () => {
+    const sujo = TRANSACAO_PILHAS
+      .replace('R$ 54,90', '​R$ 54,90')
+      .replace('R$ 93,89', '﻿R$ 93,89');
+    const d = interpretarDetalheCompraMl(sujo, new Date(2026, 10, 6));
+    expect(d.pacotes.map(p => p.valor)).toEqual([38, 2370, 418.95, 93.89, 54.9]);
+    expect(d.avisos).toEqual([]);
+  });
+});
+

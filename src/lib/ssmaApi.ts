@@ -24,6 +24,7 @@ import type {
 import { apenasVigentes, marcarExcluido, marcarRestaurado } from './softDelete';
 import { comprimirImagemUpload } from './imageCompression';
 import { formatarDataDDMMYY, gerarCodigoFormulario } from './codigosFormulario';
+import { dataHojeLocal } from './dataLocal';
 
 const BUCKET = 'ssma-desvios';
 
@@ -211,7 +212,7 @@ export function gerarNumeroRegistroRid(
 export async function obterProximoNumeroRegistroRid(
   dataISO?: string | null
 ): Promise<string> {
-  const dataRef = dataISO ? dataISO.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const dataRef = dataISO ? dataISO.slice(0, 10) : dataHojeLocal();
   const partes = dataRef.split('-');
   const ano = partes[0] || String(new Date().getFullYear());
   const mes = partes[1] || String(new Date().getMonth() + 1).padStart(2, '0');
@@ -851,7 +852,7 @@ export async function obterMetricasRid(): Promise<SsmaRidMetricas> {
     (r) => r.status === 'REGISTRADO' || r.status === 'EM_TRATAMENTO'
   ).length;
 
-  const semanaAtual = calcularSemanaDoMes(new Date().toISOString().slice(0, 10));
+  const semanaAtual = calcularSemanaDoMes(dataHojeLocal());
   const totalEstaSemana = lista.filter((r) => r.semana === semanaAtual).length;
 
   const taxaResolucaoImediata = total > 0 ? Math.round((sanadosImediato / total) * 100) : 0;

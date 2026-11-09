@@ -10,6 +10,7 @@
  */
 
 import { createDoc, PdfTextWriter, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
+import { dataHojeLocal } from '../dataLocal';
 export type { PdfGerado };
 import type { QuaRnc, QuaRelatorioCampos } from '../../types';
 import { renovarUrlsAnexos } from '../qualidadeApi';
@@ -168,7 +169,7 @@ export async function gerarRncConsolidadoPdf(
   writer.drawDocumentHeader({
     title: 'Apanhado Geral de Não Conformidades',
     formCode: 'FRM.QUA-0026',
-    protocol: `CSL-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`,
+    protocol: `CSL-${dataHojeLocal().replace(/-/g, '')}`,
   });
 
   writer.drawInfoGrid(

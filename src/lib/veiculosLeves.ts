@@ -3,6 +3,8 @@
  * de ocorrências da Portaria.
  */
 
+import { dataHojeLocal } from './dataLocal';
+
 export interface VeiculoLeveBusca {
   id: string;
   modelo: string;
@@ -34,7 +36,7 @@ function timestampDataISO(dataISO: string): number {
 
 export function obterStatusLicenciamento(
   dataLicenciamento: string | null | undefined,
-  hojeISO = new Date().toISOString().slice(0, 10),
+  hojeISO = dataHojeLocal(),
 ): ResultadoLicenciamento {
   if (!dataLicenciamento) return { status: 'sem_data', diasRestantes: null };
 

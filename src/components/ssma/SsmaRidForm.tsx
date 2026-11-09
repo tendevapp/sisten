@@ -59,6 +59,7 @@ import {
 } from '../../lib/ssmaApi';
 import { useToast } from '../ui/Toast';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface SsmaRidFormProps {
   user: Profile;
@@ -175,7 +176,7 @@ export default function SsmaRidForm({
     : [...CONDICOES_INSEGURAS_SSMA];
 
   // Estados principais do formulário
-  const [dataRegistro, setDataRegistro] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dataRegistro, setDataRegistro] = useState(() => dataHojeLocal());
   const [empresa, setEmpresa] = useState<'TEN' | 'CONTRATADA'>('TEN');
   const [empresaContratadaNome, setEmpresaContratadaNome] = useState('');
 

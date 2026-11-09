@@ -30,6 +30,7 @@ import { nomeFornecedorCurto } from './cotacoes';
 import type { LinhaMapa } from './mapaCotacao';
 import type { SugestaoCodigoImposto } from './sugestaoCodigoImposto';
 import type { CotacaoProcessoItem, CotacaoPropostaDraft } from '../types';
+import { dataHojeLocal } from './dataLocal';
 
 export interface LinhaSapExport {
   /** `_key` do item cotado — só para reconciliar com a matriz, não vai para o Excel. */
@@ -305,5 +306,5 @@ export function exportarSapXlsx(linhas: LinhaSapExport[], numeroProcesso: string
     XLSX.utils.book_append_sheet(wb, montarAba(linhasFornecedor), aba);
   }
 
-  XLSX.writeFile(wb, `sap-${numeroProcesso}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `sap-${numeroProcesso}-${dataHojeLocal()}.xlsx`);
 }

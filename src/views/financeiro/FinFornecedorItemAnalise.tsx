@@ -17,6 +17,7 @@ import ChartCard from '../../components/charts/ChartCard';
 import ChartTooltip from '../../components/charts/ChartTooltip';
 import KpiCard from '../../components/charts/KpiCard';
 import MultiSelectFilter from '../../components/ui/MultiSelectFilter';
+import FiltrosSheet, { BotaoFiltros, CampoFiltro, classeCampoFiltro } from '../../components/ui/FiltrosSheet';
 import { TableBody, TableHeadRow, TableShell, TableSkeleton, Td, Th } from '../../components/ui/DataTable';
 
 interface FinFornecedorItemAnaliseProps {
@@ -93,6 +94,7 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fornecedores, setFornecedores] = useState<Set<string>>(new Set());
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [busca, setBusca] = useState('');
   const [tipoItem, setTipoItem] = useState<'Todos' | LinhaFornecedorItem['tipoItem']>('Todos');
   const [status, setStatus] = useState<'Todos' | StatusPagamentoRastreado>('Todos');
@@ -328,45 +330,81 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
     }
   };
 
+  // Celular: os filtros ficavam numa trilha que rola de lado; lá abrem num painel.
+  const filtrosLigados = (fornecedores.size > 0 ? 1 : 0) + (tipoItem !== 'Todos' ? 1 : 0) + (status !== 'Todos' ? 1 : 0) + (periodoDe || periodoAte ? 1 : 0);
+
   return (
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
-      <div className="border-b border-slate-200/80 dark:border-slate-800 pb-5 flex items-start justify-between flex-wrap gap-4">
+      <div className="border-b border-slate-200/80 dark:border-slate-800 pb-3 lg:pb-5 flex items-start justify-between flex-wrap gap-3 lg:gap-4">
         <div>
-          <h2 className="text-2xl font-extrabold text-slate-900 dark:text-slate-50 flex items-center gap-3">
-            <span className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80"><TrendingUp className="h-6 w-6 text-indigo-600 dark:text-indigo-400" /></span>
+          <h2 className="text-xl lg:text-2xl font-extrabold text-slate-900 dark:text-slate-50 flex items-center gap-3">
+            <span className="hidden lg:inline-flex p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80"><TrendingUp className="h-6 w-6 text-indigo-600 dark:text-indigo-400" /></span>
             Análise por Fornecedor e Item
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5">
+          <p className="hidden sm:block text-sm text-slate-500 dark:text-slate-400 mt-1.5">
             Notas fiscais de fornecedor (ZL0136), pagamento rastreado no FBL1N e evidência complementar da ZF0076.
           </p>
         </div>
         <button onClick={loadData} className="text-xs font-bold px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">Atualizar dados</button>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
+      <div className="flex items-center gap-2 lg:flex-wrap">
         <MultiSelectFilter label="Fornecedor" icon={Building2} allLabel="Todos" searchable options={fornecedorOptions} selected={fornecedores} onChange={setFornecedores}
-          renderOption={(nome) => `${nome} (${fornecedorCodigo.get(nome) || ''})`} className="shrink-0 w-64 lg:w-auto lg:min-w-[250px]" panelClassName="w-96 max-h-80" />
-        <div className="relative shrink-0 w-72">
+          renderOption={(nome) => `${nome} (${fornecedorCodigo.get(nome) || ''})`} className="hidden lg:block shrink-0 lg:min-w-[250px]" panelClassName="w-96 max-h-80" />
+        <div className="relative min-w-0 flex-1 lg:flex-none lg:shrink-0 lg:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input value={busca} onChange={event => setBusca(event.target.value)} placeholder="NF, material, serviço ou fornecedor" className="pl-9 pr-8 py-2 border rounded-lg text-xs h-9 w-full bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700" />
+          <input value={busca} onChange={event => setBusca(event.target.value)} placeholder="NF, material, serviço ou fornecedor" className="pl-9 pr-8 py-2 border rounded-lg text-sm lg:text-xs h-10 lg:h-9 w-full bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700" />
           {busca && <button onClick={() => setBusca('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 cursor-pointer"><X className="h-3.5 w-3.5" /></button>}
         </div>
-        <select value={tipoItem} onChange={event => setTipoItem(event.target.value as typeof tipoItem)} className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700">
+        <select value={tipoItem} onChange={event => setTipoItem(event.target.value as typeof tipoItem)} className="hidden lg:block px-3 py-2 border rounded-lg text-xs h-9 shrink-0 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700">
           <option value="Todos">Todos os itens</option><option value="MATERIAL">Materiais</option><option value="SERVICO">Serviços</option><option value="SEM_ITEM">Sem item identificado</option>
         </select>
-        <select value={status} onChange={event => setStatus(event.target.value as typeof status)} className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700">
+        <select value={status} onChange={event => setStatus(event.target.value as typeof status)} className="hidden lg:block px-3 py-2 border rounded-lg text-xs h-9 shrink-0 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700">
           <option value="Todos">Todos os pagamentos</option>{Object.entries(STATUS_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
         </select>
-        <div className="flex items-center gap-1.5 border rounded-lg px-3 py-1 text-xs h-9 shrink-0 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900">
+        <div className="hidden lg:flex items-center gap-1.5 border rounded-lg px-3 py-1 text-xs h-9 shrink-0 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900">
           <input type="date" value={periodoDe} onChange={event => setPeriodoDe(event.target.value)} className="bg-transparent outline-none" aria-label="Data inicial" />
           <span className="text-slate-400">até</span>
           <input type="date" value={periodoAte} onChange={event => setPeriodoAte(event.target.value)} className="bg-transparent outline-none" aria-label="Data final" />
         </div>
+        <BotaoFiltros ativos={filtrosLigados} onClick={() => setFiltrosAbertos(true)} className="lg:hidden" />
       </div>
+
+      {filtrosAbertos && (
+        <FiltrosSheet
+          onClose={() => setFiltrosAbertos(false)}
+          ativos={filtrosLigados}
+          onLimpar={() => { setFornecedores(new Set()); setTipoItem('Todos'); setStatus('Todos'); setPeriodoDe(''); setPeriodoAte(''); }}
+          rotuloAplicar="Ver análise"
+        >
+          <CampoFiltro rotulo="Fornecedor">
+            <MultiSelectFilter label="Fornecedor" icon={Building2} allLabel="Todos" searchable options={fornecedorOptions} selected={fornecedores} onChange={setFornecedores}
+              renderOption={(nome) => `${nome} (${fornecedorCodigo.get(nome) || ''})`} className="w-full" />
+          </CampoFiltro>
+          <CampoFiltro rotulo="Tipo de item">
+            <select value={tipoItem} onChange={event => setTipoItem(event.target.value as typeof tipoItem)} className={classeCampoFiltro}>
+              <option value="Todos">Todos os itens</option><option value="MATERIAL">Materiais</option><option value="SERVICO">Serviços</option><option value="SEM_ITEM">Sem item identificado</option>
+            </select>
+          </CampoFiltro>
+          <CampoFiltro rotulo="Pagamento">
+            <select value={status} onChange={event => setStatus(event.target.value as typeof status)} className={classeCampoFiltro}>
+              <option value="Todos">Todos os pagamentos</option>{Object.entries(STATUS_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </CampoFiltro>
+          <div className="grid grid-cols-2 gap-3">
+            <CampoFiltro rotulo="De">
+              <input type="date" value={periodoDe} onChange={event => setPeriodoDe(event.target.value)} className={classeCampoFiltro} />
+            </CampoFiltro>
+            <CampoFiltro rotulo="Até">
+              <input type="date" value={periodoAte} onChange={event => setPeriodoAte(event.target.value)} className={classeCampoFiltro} />
+            </CampoFiltro>
+          </div>
+        </FiltrosSheet>
+      )}
 
       {error && <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold bg-rose-50 dark:bg-rose-950/50 text-rose-600 border border-rose-200 dark:border-rose-900/60"><AlertTriangle className="h-4 w-4" />{error}</div>}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 lg:gap-3.5">
         <KpiCard label="Faturado fiscal" value={kpis.valorFaturado} format={formatBRL} icon={Receipt} accent="#0284c7" />
         <KpiCard label="Pago rastreado" value={kpis.valorPago} format={formatBRL} detail={`${formatPct(kpis.cobertura)} do faturado`} icon={Wallet} accent="#10b981" emphasize />
         <KpiCard label="A conciliar" value={kpis.emConciliacao} format={formatBRL} icon={Clock} accent="#f59e0b" />

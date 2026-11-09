@@ -14,6 +14,7 @@ import { Camera, Loader2, Paperclip, Save, Upload, X } from 'lucide-react';
 import type { Profile, QuaRncOrigem } from '../../types';
 import * as api from '../../lib/qualidadeApi';
 import { useToast } from '../ui/Toast';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 /** Sem restrição de tipo — o usuário decide o que conta como evidência da NC. */
 const MAX_ANEXOS_RNC = 30;
@@ -40,7 +41,7 @@ const CAMPOS_SUGERIDOS: CampoComSugestoes[] = [
 const estadoInicial = (userName: string) => ({
   numero_rnc_externo: '',
   emissor_nome: userName.toUpperCase(),
-  data_emissao: new Date().toISOString().slice(0, 10),
+  data_emissao: dataHojeLocal(),
   data_ocorrencia: '',
   origem_nc: 'FORNECEDOR' as QuaRncOrigem,
   documento_origem: '',

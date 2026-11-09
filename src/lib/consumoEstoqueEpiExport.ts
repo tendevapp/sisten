@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { DEPOSITO_EPI, type FiltrosSaidaEstoque, type JanelaAnalise, type LinhaItemSaida, type SaidaEstoque } from './consumoEstoqueEpi';
+import { dataHojeLocal } from './dataLocal';
 
 export const COLUNAS_ITENS_SAIDA = [
   'Material', 'Descrição', 'UM', 'Saldo atual (dep. 0002)', 'Valor em estoque', 'Saída líquida (un.)',
@@ -61,6 +62,6 @@ export function exportarSaidasEstoqueExcel(
 ): void {
   XLSX.writeFile(
     criarWorkbookSaidasEstoque(itens, movimentos, filtros, janela),
-    `saidas-estoque-epi-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    `saidas-estoque-epi-${dataHojeLocal()}.xlsx`,
   );
 }

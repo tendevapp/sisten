@@ -22,6 +22,7 @@ import type { Profile } from '../../types';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
 import MatrizAutonomiaKits from './MatrizAutonomiaKits';
 import { SELECT_CLS } from './campos';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface Props { dados: DadosProjetos; user: Profile }
 
@@ -141,7 +142,7 @@ export default function PainelPosicao({ dados, user }: Props) {
     }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(planilha), 'Posição');
-    XLSX.writeFile(wb, `posicao-projetos-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `posicao-projetos-${dataHojeLocal()}.xlsx`);
   };
 
   const [modoAutonomia, setModoAutonomia] = useState<'matriz' | 'resumo'>('resumo');

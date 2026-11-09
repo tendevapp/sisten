@@ -49,12 +49,14 @@ import {
 } from '../lib/fornecedoresMaterial';
 import MapaCotacaoModal from '../components/cotacoes/MapaCotacaoModal';
 import { MercadoLivreCompraModal, MercadoLivreLinkModal } from '../components/suprimentos/MercadoLivreModais';
+import PainelComprasMl, { EditarItensCompraMlModal } from '../components/suprimentos/PainelComprasMl';
 import {
   FILTRO_ML_SEM_COMPRA, FILTRO_ML_TODOS, itemEntraEmSemPo, itemFoiComprado, observacaoComCompraMl, passaFiltroCompraMl,
   resumirComprasMl, rotuloCompraMl, statusAposCompraMl, tituloTagMercadoLivrePo, type FiltroCompraMl, type ItemMercadoLivre,
+  observacaoSemCompraMl, passaFiltroPedidoMl, statusAposRetirarCompraMl, type DadosCompraMl, type FiltroPedidoMl,
 } from '../lib/compraMercadoLivre';
 import {
-  listarItensMercadoLivre, registrarCompraMercadoLivre, registrarDetalheCompraMl, removerItemMercadoLivre, salvarLinkMercadoLivre,
+  listarDadosComprasMl, listarItensMercadoLivre, obterDadosCompraMl, type DadosCompraMlGravados, registrarCompraMercadoLivre, registrarDetalheCompraMl, removerItemMercadoLivre, salvarLinkMercadoLivre,
   type DadosCompraMlFinanceiro,
 } from '../lib/compraMercadoLivreApi';
 import { AbrirValidacaoModal, ValidacaoTag } from '../components/suprimentos/ValidacaoTecnica';
@@ -72,6 +74,8 @@ import RequestDetailPanel from '../components/solicitacoes/RequestDetailPanel';
 import { TIPO_VISUAL } from '../components/solicitacoes/tipoVisual';
 import DiligenciamentoSemMigoTable from '../components/suprimentos/DiligenciamentoSemMigoTable';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
+import { useTelaCelular } from '../lib/useTelaEstreita';
+import FiltrosSheet, { BotaoFiltros } from '../components/ui/FiltrosSheet';
 import Modal, { ModalHeader, ModalBody } from '../components/ui/Modal';
 import DateRangeFilter, { DateRangeValue } from '../components/ui/DateRangeFilter';
 import { TableShell, TableHeadRow, Th } from '../components/ui/DataTable';
@@ -79,6 +83,7 @@ import { useToast } from '../components/ui/Toast';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
+import { dataHojeLocal } from '../lib/dataLocal';
 
 interface ComprasProps {
   user: Profile;
@@ -375,7 +380,7 @@ const BOTAO_ACAO_BASE = 'inline-flex items-center justify-center whitespace-nowr
 // Na tabela ficam em grade 2×2 e baixos (h-6): a coluna Ações não pode deixar
 // a linha mais alta que os campos de status/promessa/observação.
 const BOTAO_ACAO_TABELA = `${BOTAO_ACAO_BASE} w-[66px] h-6 gap-0.5 px-1 rounded-md text-[9px]`;
-const BOTAO_ACAO_CARD = `${BOTAO_ACAO_BASE} min-w-[104px] h-8 gap-1.5 px-3 rounded-xl text-xs shadow-xs`;
+const BOTAO_ACAO_CARD = `${BOTAO_ACAO_BASE} h-7 gap-1 px-2 rounded-lg text-[11px] shadow-xs lg:min-w-[104px] lg:h-8 lg:gap-1.5 lg:px-3 lg:rounded-xl lg:text-xs`;
 const COR_BOTAO_COTACAO = 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600';
 const COR_BOTAO_ML = 'bg-yellow-300 hover:bg-yellow-400 text-slate-900 border-yellow-400';
 const COR_BOTAO_VALIDACAO = 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600';
@@ -393,7 +398,7 @@ type PoFilter = 'Todos' | 'Sem PO' | 'Sem MIGO' | 'Contrato' | 'M Livre';
  * Link do anúncio (abrir + copiar) e número da compra de um item destinado
  * ao Mercado Livre — coluna da subpágina M Livre e bloco do card.
  */
-const MercadoLivreLinkInfo = ({ item }: { item: ItemMercadoLivre }) => (
+const MercadoLivreLinkInfo = ({ item, onEditarCompra }: { item: ItemMercadoLivre; onEditarCompra?: (numero: string) => void }) => (
   <div className="flex flex-col gap-1 items-start text-[11px]">
     <div className="inline-flex items-center gap-1 max-w-full">
       <a
@@ -419,6 +424,16 @@ const MercadoLivreLinkInfo = ({ item }: { item: ItemMercadoLivre }) => (
       </span>
     ) : (
       <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Aguardando compra</span>
+    )}
+    {item.numero_compra && onEditarCompra && (
+      <button
+        type="button"
+        onClick={() => onEditarCompra(item.numero_compra!)}
+        className="text-[10px] font-bold text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline dark:text-slate-400 cursor-pointer"
+        title="Incluir ou retirar itens desta compra"
+      >
+        Editar itens da compra
+      </button>
     )}
   </div>
 );
@@ -828,17 +843,35 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // Itens destinados ao Mercado Livre (sup_ml_itens), por ri. Complementar:
   // se falhar, a Central segue sem a subpágina M Livre preenchida.
   const [mlItens, setMlItens] = useState<Map<string, ItemMercadoLivre>>(new Map());
+  // Data e total de cada compra (fin_ml_compras): ordenam as compras na aba M Livre.
+  const [dadosComprasMl, setDadosComprasMl] = useState<Map<string, DadosCompraMl>>(new Map());
   const carregarMlItens = useCallback(() => {
     listarItensMercadoLivre()
       .then(lista => setMlItens(new Map(lista.map(it => [it.ri, it]))))
       .catch(e => console.warn('Itens do Mercado Livre indisponíveis na Central de Compras:', e));
+    listarDadosComprasMl()
+      .then(lista => setDadosComprasMl(new Map(lista.map(d => [d.numero_compra, d]))))
+      .catch(e => console.warn('Datas das compras do Mercado Livre indisponíveis:', e));
   }, []);
   useEffect(() => { carregarMlItens(); }, [carregarMlItens]);
   const [mlFiltro, setMlFiltro] = useState<FiltroCompraMl>(FILTRO_ML_SEM_COMPRA);
   const [mlLinkModal, setMlLinkModal] = useState<{ record: EnrichedSAPRecord; rm: string } | null>(null);
   const [mlCompraModalAberto, setMlCompraModalAberto] = useState(false);
   const usuarioMl = useMemo(() => ({ id: user.id, nome: user.name }), [user.id, user.name]);
-  const comprasMl = useMemo(() => resumirComprasMl(Array.from(mlItens.values())), [mlItens]);
+  const [mlPedido, setMlPedido] = useState<FiltroPedidoMl>('todos');
+  const [editarCompraMl, setEditarCompraMl] = useState<string | null>(null);
+  // Edição dos dados da compra (texto colado + boleto) de uma compra já gravada.
+  const [dadosCompraMlModal, setDadosCompraMlModal] = useState<{ numero: string; atual: DadosCompraMlGravados | null } | null>(null);
+  // Item da RM com pedido no SAP (algum ri_po processado).
+  const risComPedido = useMemo(() => {
+    const ris = new Set<string>();
+    rawRmGroups.forEach(g => g.items.forEach(it => { if (it.record.status_requisicao === 'Processado') ris.add(it.record.ri); }));
+    return ris;
+  }, [rawRmGroups]);
+  const comprasMl = useMemo(
+    () => resumirComprasMl(Array.from(mlItens.values()), { dados: dadosComprasMl, temPedido: ri => risComPedido.has(ri) }),
+    [mlItens, dadosComprasMl, risComPedido],
+  );
 
   // Chamados de validação técnica (sup_validacao_tecnica); o mais recente de
   // cada item dá a tag Em validação / Aprovado / Reprovado.
@@ -878,6 +911,21 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       && window.matchMedia('(max-width: 640px)').matches;
     return estreita ? 'cards' : 'table';
   });
+
+  // Abaixo de lg a tabela plana (~13 colunas) virava os cartões genéricos da
+  // regra global, com descrição, quantidade e fornecedor espalhados em duas
+  // colunas. Lá vale sempre a visão Cards, feita para essa largura; a
+  // preferência salva continua valendo no desktop.
+  const telaCelularCompras = useTelaCelular();
+  // Celular: a lista de fornecedores sugeridos do cartão vem recolhida (ocupava
+  // até 220px por item); abre por item. No desktop fica sempre aberta.
+  const [fornecedoresAbertos, setFornecedoresAbertos] = useState<Set<string>>(new Set());
+  const alternarFornecedores = (ri: string) => setFornecedoresAbertos(prev => {
+    const n = new Set(prev);
+    if (n.has(ri)) n.delete(ri); else n.add(ri);
+    return n;
+  });
+  const modoVisual: 'cards' | 'table' = telaCelularCompras ? 'cards' : viewMode;
 
   // Salva preferência do modo de visualização
   const handleViewModeChange = (mode: 'cards' | 'table') => {
@@ -933,6 +981,21 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     [situacaoEstoqueDe],
   );
   const [promessaFilter, setPromessaFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
+  // Celular: os 12 filtros ficavam numa trilha que rola de lado, quase todos
+  // fora da tela. Lá eles abrem num painel; o botão diz quantos estão ligados.
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const filtrosLigados =
+    [rmFilter, numPoFilter, buyerFilter, statusFilter, itemStatusFilter, alertFilter, grupoMercFilter, prioridadeFilter, estoqueFilter]
+      .filter(c => c.size > 0).length
+    + (compradoFilter !== 'todos' ? 1 : 0)
+    + (tipoItemFilter !== 'todos' ? 1 : 0)
+    + ((promessaFilter.preset && promessaFilter.preset !== 'all') || promessaFilter.from || promessaFilter.to ? 1 : 0);
+  const limparFiltrosPainel = () => {
+    setRmFilter(new Set()); setNumPoFilter(new Set()); setBuyerFilter(new Set()); setStatusFilter(new Set());
+    setItemStatusFilter(new Set()); setCompradoFilter('todos'); setAlertFilter(new Set()); setGrupoMercFilter(new Set());
+    setTipoItemFilter('todos'); setPrioridadeFilter(new Set()); setEstoqueFilter(new Set());
+    setPromessaFilter({ from: '', to: '', preset: 'all' });
+  };
   const [semMigoCount, setSemMigoCount] = useState<number | null>(null);
 
   // Prioridades solicitadas pelos usuários (Rastreio Compras), nível atual por RI.
@@ -1047,10 +1110,25 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     // Itens destinados ao Mercado Livre (com ou sem PO), recortados por
     // "aguardando compra" ou por uma compra específica do ML.
     if (poFilter === 'M Livre') {
-      return rawRmGroups.map(g => ({ rm: g.rm, items: g.items.filter(it => passaFiltroCompraMl(mlItens.get(it.record.ri), mlFiltro)) }))
+      return rawRmGroups.map(g => ({
+        rm: g.rm,
+        items: g.items.filter(it => passaFiltroCompraMl(mlItens.get(it.record.ri), mlFiltro)
+          && passaFiltroPedidoMl(it.record.status_requisicao === 'Processado', mlPedido)),
+      }))
         .filter(g => g.items.length > 0);
     }
     return rawRmGroups;
+  }, [rawRmGroups, poFilter, mlItens, mlFiltro, mlPedido]);
+
+  // Contagem com/sem pedido no recorte de compra escolhido (antes do filtro de pedido).
+  const contagemPedidoMl = useMemo(() => {
+    let com = 0; let sem = 0;
+    if (poFilter !== 'M Livre') return { com, sem };
+    rawRmGroups.forEach(g => g.items.forEach(it => {
+      if (!passaFiltroCompraMl(mlItens.get(it.record.ri), mlFiltro)) return;
+      if (it.record.status_requisicao === 'Processado') com++; else sem++;
+    }));
+    return { com, sem };
   }, [rawRmGroups, poFilter, mlItens, mlFiltro]);
 
   // Resolve o escopo escolhido ("apenas este item" ou "todos do fornecedor") e monta o
@@ -1848,6 +1926,65 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // "Compra ML #..." na Observação e passa o status para "Comprado" (sem
   // voltar quem já está em pedido/coleta/rota/entregue). Mesmo caminho do
   // "Salvar" da linha, então uma promessa de entrega pendente vai junto.
+  // Grava o número nos itens e ajusta Observação/status. Item que estava em
+  // outra compra perde o "Compra ML #antiga" da observação (foi movido).
+  // Devolve quantos itens não tiveram Observação/status salvos.
+  const aplicarCompraMlNosItens = async (ris: string[], numero: string): Promise<number> => {
+    const anteriores = new Map(ris.map(ri => [ri, mlItens.get(ri)?.numero_compra ?? null]));
+    await registrarCompraMercadoLivre(ris, numero, usuarioMl);
+    const results = await Promise.all(ris.map(ri => {
+      const antiga = anteriores.get(ri);
+      const base = obsInputState[ri] ?? recordByRi.get(ri)?.obs_comprador;
+      const obs = observacaoComCompraMl(antiga && antiga !== numero ? observacaoSemCompraMl(base, antiga) : base, numero);
+      const status = statusAposCompraMl<ItemStatus>(statusInputState[ri] || recordByRi.get(ri)?.item_status);
+      return localDb.updateBuyerFields(ri, obs, dateInputState[ri] || '', status);
+    }));
+    return results.filter(ok => !ok).length;
+  };
+
+  const handleIncluirNaCompraMl = async (numero: string, ris: string[]) => {
+    const falhas = await aplicarCompraMlNosItens(ris, numero);
+    if (falhas > 0) toast.error(`Itens incluídos, mas a Observação/status de ${falhas} item(ns) não foi salvo.`);
+    else toast.success(`${ris.length} ${ris.length === 1 ? 'item incluído' : 'itens incluídos'} na ${rotuloCompraMl(numero)}.`);
+    carregarMlItens();
+    buildSuppliersData();
+  };
+
+  // Item entrou na compra por engano: sai da compra (volta a "Aguardando
+  // compra"), perde a linha "Compra ML #..." da observação e o status
+  // "Comprado" posto por ela. O pedido do SAP, se houver, não é tocado.
+  const handleRetirarDaCompraMl = async (ri: string) => {
+    const numero = mlItens.get(ri)?.numero_compra;
+    if (!numero) return;
+    await registrarCompraMercadoLivre([ri], null, usuarioMl);
+    const obs = observacaoSemCompraMl(obsInputState[ri] ?? recordByRi.get(ri)?.obs_comprador, numero);
+    const status = statusAposRetirarCompraMl<ItemStatus>(statusInputState[ri] || recordByRi.get(ri)?.item_status);
+    const ok = await localDb.updateBuyerFields(ri, obs, dateInputState[ri] || '', status);
+    if (ok) {
+      setObsInputState(prev => { const n = { ...prev }; delete n[ri]; return n; });
+      setStatusInputState(prev => { const n = { ...prev }; delete n[ri]; return n; });
+      toast.success(`Item retirado da ${rotuloCompraMl(numero)}.`);
+    } else {
+      toast.error(`Item retirado da compra, mas a Observação/status não foi salvo. Apague "${rotuloCompraMl(numero)}" da Observação à mão.`);
+    }
+    carregarMlItens();
+    buildSuppliersData();
+  };
+
+  const abrirDadosCompraMl = async (numero: string) => {
+    try {
+      setDadosCompraMlModal({ numero, atual: await obterDadosCompraMl(numero) });
+    } catch (e: any) {
+      toast.error(`Não foi possível abrir os dados da compra: ${e?.message || 'erro desconhecido'}`);
+    }
+  };
+
+  const handleSalvarDadosCompraMl = async (numero: string, financeiro: DadosCompraMlFinanceiro) => {
+    await registrarDetalheCompraMl(numero, financeiro, usuarioMl);
+    toast.success(`Dados da ${rotuloCompraMl(numero)} atualizados — já aparecem no Financeiro.`);
+    carregarMlItens();
+  };
+
   const handleRegistrarCompraMl = async (numero: string, financeiro: DadosCompraMlFinanceiro) => {
     const { ris } = mlSelecionados;
     await registrarCompraMercadoLivre(ris, numero, usuarioMl);
@@ -1943,7 +2080,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     }
     if (preset === 'atrasadas') {
       if (!dateStr) return false;
-      const today = new Date().toISOString().slice(0, 10);
+      const today = dataHojeLocal();
       return dateStr < today;
     }
 
@@ -2227,8 +2364,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const filteredItemCount = useMemo(() => filteredGroups.reduce((s, g) => s + g.items.length, 0), [filteredGroups]);
 
   const totalFilteredCount = useMemo(() => {
-    return viewMode === 'table' ? flatTableItems.length : filteredFlatItems.length;
-  }, [viewMode, flatTableItems.length, filteredFlatItems.length]);
+    return modoVisual === 'table' ? flatTableItems.length : filteredFlatItems.length;
+  }, [modoVisual, flatTableItems.length, filteredFlatItems.length]);
 
   const toggleRM = (rm: string) => setExpandedRMs(prev => ({ ...prev, [rm]: !prev[rm] }));
   const toggleItem = (ri: string) => setExpandedItems(prev => ({ ...prev, [ri]: !prev[ri] }));
@@ -2717,13 +2854,140 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     );
   };
 
+  // Mesmos controles na trilha do desktop e no painel do celular (largura toda).
+  const controlesFiltro = (painel: boolean) => {
+    const cf = (desktop: string, celular = 'w-full') => (painel ? celular : desktop);
+    return (
+      <>
+              <MultiSelectFilter
+                label="RM"
+                icon={FileText}
+                allLabel="Todas"
+                options={rmOptions}
+                selected={rmFilter}
+                onChange={setRmFilter}
+                className={cf('shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]')}
+              />
+              <MultiSelectFilter
+                label="PO"
+                icon={Tag}
+                allLabel="Todos"
+                options={poOptions}
+                selected={numPoFilter}
+                onChange={setNumPoFilter}
+                className={cf('shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]')}
+              />
+              <MultiSelectFilter
+                label="Comprador"
+                icon={User}
+                options={buyerOptions}
+                selected={buyerFilter}
+                onChange={setBuyerFilter}
+                renderOption={g => `Grupo ${g}`}
+                className={cf('shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]')}
+              />
+              <MultiSelectFilter
+                label="Situação"
+                icon={Filter}
+                options={statusOptions}
+                selected={statusFilter}
+                onChange={setStatusFilter}
+                className={cf('shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]')}
+              />
+              <MultiSelectFilter
+                label="Status"
+                icon={List}
+                options={itemStatusOptions}
+                selected={itemStatusFilter}
+                onChange={setItemStatusFilter}
+                searchable={false}
+                className={cf('shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]')}
+              />
+              {/* Comprado = PO emitido no SAP, número de compra do ML ou status "Comprado". */}
+              <div className={cf('relative shrink-0 w-[170px] lg:w-auto lg:min-w-[170px]', 'relative w-full')}>
+                <PackageCheck className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                <select
+                  value={compradoFilter}
+                  onChange={(e) => setCompradoFilter(e.target.value as typeof compradoFilter)}
+                  aria-label="Filtrar por comprado ou não comprado"
+                  title="Comprado: item com PO emitido no SAP, com número de compra do Mercado Livre ou com status Comprado"
+                  className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none truncate"
+                >
+                  <option value="todos">Compra: Todos</option>
+                  <option value="comprado">Comprado</option>
+                  <option value="nao_comprado">Não comprado</option>
+                </select>
+              </div>
+              <MultiSelectFilter
+                label="Alertas"
+                icon={AlertTriangle}
+                options={alertOptions}
+                selected={alertFilter}
+                onChange={setAlertFilter}
+                className={cf('shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]')}
+              />
+              <MultiSelectFilter
+                label="Grupo de materiais"
+                icon={Boxes}
+                options={grupoMercOptions}
+                selected={grupoMercFilter}
+                onChange={setGrupoMercFilter}
+                className={cf('shrink-0 w-[160px] lg:w-auto lg:min-w-[160px]')}
+              />
+              {/* Consumo x Projeto — material 100000… é item de projeto. */}
+              <div className={cf('relative shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]', 'relative w-full')}>
+                <Boxes className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                <select
+                  value={tipoItemFilter}
+                  onChange={(e) => setTipoItemFilter(e.target.value as TipoItemFilter)}
+                  aria-label="Filtrar por tipo de item"
+                  className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none truncate"
+                >
+                  <option value="todos">Tipo: Todos</option>
+                  <option value="consumo">Consumo</option>
+                  <option value="projeto">Projeto</option>
+                </select>
+              </div>
+              <MultiSelectFilter
+                label="Prioridade"
+                icon={Flag}
+                allLabel="Todas"
+                options={prioridadeOptions}
+                selected={prioridadeFilter}
+                onChange={setPrioridadeFilter}
+                renderOption={n => (n === 'Nenhuma' ? 'Sem solicitação' : `Grau ${n}`)}
+                searchable={false}
+                className={cf('shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]')}
+              />
+              <MultiSelectFilter
+                label="Estoque"
+                icon={Warehouse}
+                allLabel="Todos"
+                options={estoqueOptions}
+                selected={estoqueFilter}
+                onChange={setEstoqueFilter}
+                renderOption={t => (t === SEM_TAG_ESTOQUE ? 'Sem alerta' : ROTULO_TAG_ESTOQUE[t as TagEstoque])}
+                searchable={false}
+                className={cf('shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]')}
+              />
+              <DateRangeFilter
+                label="Promessa"
+                icon={Calendar}
+                value={promessaFilter}
+                onChange={setPromessaFilter}
+                className={cf('shrink-0 w-[160px] lg:w-auto lg:min-w-[160px]')}
+              />
+      </>
+    );
+  };
+
   return (
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
       {/* Header */}
-      <div data-tour="compras-header" className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
+      <div data-tour="compras-header" className="flex flex-col md:flex-row md:items-center justify-between gap-3 lg:gap-4 border-b border-slate-100 dark:border-slate-800 pb-3 lg:pb-5">
         <div className="min-w-0 flex-1">
-          <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
-            <PackageSearch className="h-7 w-7 text-[#0056c6] dark:text-blue-500" />
+          <h2 className="text-xl lg:text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
+            <PackageSearch className="h-6 w-6 lg:h-7 lg:w-7 text-[#0056c6] dark:text-blue-500" />
             Central de Compras
           </h2>
           {lastUpdated && (
@@ -2733,47 +2997,47 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Filtro PO (Todos / Sem PO / Sem MIGO) */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
+          {/* Filtro PO (Todos / Sem PO / Sem MIGO) — no celular ocupa a linha e desliza. */}
+          <div className="flex w-full lg:w-auto min-w-0 overflow-x-auto no-scrollbar items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 lg:mr-2 border border-slate-200/50 dark:border-slate-850">
             <button
               onClick={() => setPoFilter('Todos')}
-              className={`px-3 py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Todos' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              className={`shrink-0 whitespace-nowrap px-3 py-2 lg:py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Todos' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
               title="Exibir todos os registros enriquecidos (com e sem PO)"
             >
               Todos
             </button>
             <button
               onClick={() => setPoFilter('Sem PO')}
-              className={`px-3 py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Sem PO' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              className={`shrink-0 whitespace-nowrap px-3 py-2 lg:py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Sem PO' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
               title="Exibir apenas registros que não possuem documento de compra (pedido)"
             >
               Sem PO
             </button>
             <button
               onClick={() => setPoFilter('Sem MIGO')}
-              className={`px-3 py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Sem MIGO' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              className={`shrink-0 whitespace-nowrap px-3 py-2 lg:py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Sem MIGO' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
               title="Exibir apenas registros que possuem pedido (PO) mas sem data de MIGO (ainda não entregues)"
             >
               Sem MIGO
             </button>
             <button
               onClick={() => setPoFilter('Contrato')}
-              className={`px-3 py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Contrato' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              className={`shrink-0 whitespace-nowrap px-3 py-2 lg:py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Contrato' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
               title="Exibir apenas itens atendidos por contrato guarda-chuva (pedido criado com referência a contrato, ou item categoria D no ME5A) — não passam por cotação"
             >
               Contrato
             </button>
             <button
               onClick={() => setPoFilter('M Livre')}
-              className={`px-3 py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'M Livre' ? 'bg-yellow-300 text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              className={`shrink-0 whitespace-nowrap px-3 py-2 lg:py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'M Livre' ? 'bg-yellow-300 text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
               title="Itens destinados à compra pelo Mercado Livre, com o link do anúncio e o número da compra"
             >
               M Livre{mlItens.size > 0 ? ` (${mlItens.size})` : ''}
             </button>
           </div>
 
-          {/* View Toggles */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
+          {/* View Toggles — só no desktop (no celular é sempre Cards) */}
+          <div className="hidden lg:flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
             <button
               onClick={() => handleViewModeChange('table')}
               className={`p-2 rounded-lg transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer ${viewMode === 'table' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
@@ -2792,9 +3056,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             </button>
           </div>
 
+          <BotaoFiltros ativos={filtrosLigados} onClick={() => setFiltrosAbertos(true)} className="lg:hidden ml-auto order-last" />
           <button
             onClick={() => setShowNovidades(true)}
-            className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all h-9 cursor-pointer active:scale-95 active:translate-y-[1px]"
+            className="hidden lg:flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all h-9 cursor-pointer active:scale-95 active:translate-y-[1px]"
           >
             <Sparkles className="h-3.5 w-3.5" /> Novidades
           </button>
@@ -2803,7 +3068,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all disabled:opacity-50 h-9 cursor-pointer active:scale-95 active:translate-y-[1px]"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> <span className="hidden sm:inline">Atualizar</span>
           </button>
           {filteredItemCount > 0 && (
             <button
@@ -2813,7 +3078,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               <FileSpreadsheet className="h-4 w-4" /> Exportar
             </button>
           )}
-          {viewMode === 'table' && filteredItemCount > 0 && (
+          {modoVisual === 'table' && filteredItemCount > 0 && (
             <button
               onClick={() => handleTableShowSupplierFirstChange(!tableShowSupplierFirst)}
               className={`flex items-center gap-2 px-3 py-2 border rounded-xl text-xs font-bold transition-all h-9 cursor-pointer active:scale-95 active:translate-y-[1px] ${tableShowSupplierFirst
@@ -2831,115 +3096,97 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
       {/* M Livre: recorte por compra. Fica fora do bloco da lista para não
           sumir quando o recorte escolhido não tem item. */}
-      {poFilter === 'M Livre' && (() => {
-        const semCompra = Array.from(mlItens.values()).filter(it => !it.numero_compra).length;
-        const chip = (ativo: boolean) => `inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${ativo
-          ? 'bg-yellow-300 border-yellow-400 text-slate-900 shadow-xs'
-          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-yellow-400'}`;
-        return (
-          <div className="rounded-xl border border-yellow-300 dark:border-yellow-900/60 bg-yellow-50/60 dark:bg-yellow-950/10 p-3.5 space-y-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => setMlFiltro(FILTRO_ML_SEM_COMPRA)} className={chip(mlFiltro === FILTRO_ML_SEM_COMPRA)}>
-                Aguardando compra ({semCompra})
-              </button>
-              <button type="button" onClick={() => setMlFiltro(FILTRO_ML_TODOS)} className={chip(mlFiltro === FILTRO_ML_TODOS)}>
-                Todos ({mlItens.size})
-              </button>
-              {comprasMl.map(c => (
-                <button
-                  key={c.numero}
-                  type="button"
-                  onClick={() => setMlFiltro(c.numero)}
-                  className={chip(mlFiltro === c.numero)}
-                  title={`${rotuloCompraMl(c.numero)} — RM ${c.rms.join(', ')}${c.registradaEm ? ` · registrada em ${formatDateBR(c.registradaEm)}` : ''}`}
-                >
-                  <span className="font-mono">#{c.numero}</span>
-                  <span className="font-semibold opacity-70">· {c.itens} {c.itens === 1 ? 'item' : 'itens'} · {c.rms.length} RM</span>
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-              Destine itens pelo botão amarelo <b>Mercado Livre</b> na coluna Ações. Fechou o carrinho? Marque os itens comprados e use <b>Nº da compra ML</b> na barra de seleção.
-            </p>
-          </div>
-        );
-      })()}
+      {poFilter === 'M Livre' && (
+        <PainelComprasMl
+          compras={comprasMl}
+          totalItens={mlItens.size}
+          aguardandoCompra={Array.from(mlItens.values()).filter(it => !it.numero_compra).length}
+          filtro={mlFiltro}
+          onFiltro={setMlFiltro}
+          pedido={mlPedido}
+          onPedido={setMlPedido}
+          comPedido={contagemPedidoMl.com}
+          semPedido={contagemPedidoMl.sem}
+          onEditarCompra={setEditarCompraMl}
+          onDadosCompra={abrirDadosCompraMl}
+        />
+      )}
 
       {/* KPIs Grid */}
       {!loading && !error && rmGroups.length > 0 && (
-        <div data-tour="compras-kpis" className="grid grid-cols-2 lg:grid-cols-6 gap-3.5">
+        <div data-tour="compras-kpis" className="grid grid-cols-3 lg:grid-cols-6 gap-2 lg:gap-3.5">
           {/* Card 1: RMs em aberto / Total RMs (Info) */}
-          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-2.5 pl-3.5 lg:p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block leading-tight">
               {poFilter === 'Sem MIGO' ? 'RMs sem MIGO' : poFilter === 'Sem PO' ? 'RMs em aberto' : poFilter === 'Contrato' ? 'RMs de contrato' : poFilter === 'M Livre' ? 'RMs no ML' : 'Total RMs'}
             </span>
-            <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.rms}</p>
+            <p className="text-xl lg:text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.rms}</p>
           </div>
 
           {/* Card 2: Itens Sem PO (Filtra 'Todos') */}
           <div
             onClick={() => setKpiFilter('Todos')}
-            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Todos'
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-2.5 pl-3.5 lg:p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Todos'
                 ? 'border-[#0056c6] ring-1 ring-[#0056c6]/20'
                 : 'border-slate-200/80 dark:border-slate-850'
               }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-[#0056c6]" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block leading-tight">
               {poFilter === 'Sem MIGO' ? 'Itens Sem MIGO' : poFilter === 'Sem PO' ? 'Itens Sem PO' : poFilter === 'Contrato' ? 'Itens de Contrato' : poFilter === 'M Livre' ? 'Itens no ML' : 'Total Itens'}
             </span>
-            <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.itens}</p>
+            <p className="text-xl lg:text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.itens}</p>
             {kpiFilter === 'Todos' && (
-              <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-blue-50 text-[#0056c6] dark:bg-blue-950/40">Filtro Ativo</span>
+              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-blue-50 text-[#0056c6] dark:bg-blue-950/40">Filtro Ativo</span>
             )}
           </div>
 
           {/* Card 3: Com Fornecedor */}
           <div
             onClick={() => setKpiFilter('Com Fornecedor')}
-            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Com Fornecedor'
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-2.5 pl-3.5 lg:p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Com Fornecedor'
                 ? 'border-emerald-500 ring-1 ring-emerald-500/20'
                 : 'border-slate-200/80 dark:border-slate-850'
               }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 dark:bg-emerald-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Com Fornecedor</span>
-            <p className="text-3xl font-black text-emerald-600 dark:text-emerald-500 mt-1">{kpis.com}</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block leading-tight">Com Fornecedor</span>
+            <p className="text-xl lg:text-3xl font-black text-emerald-600 dark:text-emerald-500 mt-1">{kpis.com}</p>
             {kpiFilter === 'Com Fornecedor' && (
-              <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">Filtro Ativo</span>
+              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">Filtro Ativo</span>
             )}
           </div>
 
           {/* Card 4: Sem Histórico */}
           <div
             onClick={() => setKpiFilter('Sem Histórico')}
-            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Sem Histórico'
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-2.5 pl-3.5 lg:p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Sem Histórico'
                 ? 'border-rose-500 ring-1 ring-rose-500/20'
                 : 'border-slate-200/80 dark:border-slate-850'
               }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-rose-500 dark:bg-rose-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Sem Histórico</span>
-            <p className="text-3xl font-black text-rose-600 dark:text-rose-500 mt-1">{kpis.sem}</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block leading-tight">Sem Histórico</span>
+            <p className="text-xl lg:text-3xl font-black text-rose-600 dark:text-rose-500 mt-1">{kpis.sem}</p>
             {kpiFilter === 'Sem Histórico' && (
-              <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-rose-50 text-rose-600 dark:bg-rose-955/35">Filtro Ativo</span>
+              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-rose-50 text-rose-600 dark:bg-rose-955/35">Filtro Ativo</span>
             )}
           </div>
 
           {/* Card 5: Críticos / Em Atraso */}
           <div
             onClick={() => setKpiFilter('Críticos')}
-            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden col-span-2 lg:col-span-1 cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Críticos'
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-2.5 pl-3.5 lg:p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Críticos'
                 ? 'border-amber-500 ring-1 ring-amber-500/20'
                 : 'border-slate-200/80 dark:border-slate-850'
               }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 dark:bg-amber-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Críticos / Em Atraso</span>
-            <p className="text-3xl font-black text-amber-600 dark:text-amber-500 mt-1">{kpis.criticos}</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block leading-tight">Críticos / Em Atraso</span>
+            <p className="text-xl lg:text-3xl font-black text-amber-600 dark:text-amber-500 mt-1">{kpis.criticos}</p>
             {kpiFilter === 'Críticos' && (
-              <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-amber-50 text-amber-650 dark:bg-amber-955/20">Filtro Ativo</span>
+              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-amber-50 text-amber-650 dark:bg-amber-955/20">Filtro Ativo</span>
             )}
           </div>
 
@@ -2947,22 +3194,22 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               menos (ou mais) do que a RM pediu. É o recorte de cobrança de saldo. */}
           <div
             onClick={() => setKpiFilter('Parciais')}
-            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden col-span-2 lg:col-span-1 cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Parciais'
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-2.5 pl-3.5 lg:p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${kpiFilter === 'Parciais'
                 ? 'border-orange-500 ring-1 ring-orange-500/20'
                 : 'border-slate-200/80 dark:border-slate-850'
               }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-500 dark:bg-orange-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Itens Parciais</span>
-            <p className="text-3xl font-black text-orange-600 dark:text-orange-500 mt-1">{kpis.parciais}</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block leading-tight">Itens Parciais</span>
+            <p className="text-xl lg:text-3xl font-black text-orange-600 dark:text-orange-500 mt-1">{kpis.parciais}</p>
             {kpiFilter === 'Parciais' && (
-              <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-orange-50 text-orange-600 dark:bg-orange-950/40">Filtro Ativo</span>
+              <span className="hidden lg:block absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-orange-50 text-orange-600 dark:bg-orange-950/40">Filtro Ativo</span>
             )}
           </div>
         </div>
       )}
       {/* Filtros */}
-      <div data-tour="compras-filtros" className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs">
+      <div data-tour="compras-filtros" className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-2.5 lg:p-4 shadow-xs">
         {/* Busca sempre em sua própria linha, sem disputar espaço com os
             filtros: um <div> flex-1 ao lado de uma trilha overflow-x-auto na
             mesma linha (flex-row) faz um dos dois encolher de forma
@@ -2989,128 +3236,22 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               filtros já quebram em linha (lg:flex-wrap) e não precisam mais
               rolar na horizontal, então dá pra voltar a overflow:visible e
               deixar os painéis abrirem por cima do resto da tela. */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
-            <MultiSelectFilter
-              label="RM"
-              icon={FileText}
-              allLabel="Todas"
-              options={rmOptions}
-              selected={rmFilter}
-              onChange={setRmFilter}
-              className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
-            />
-            <MultiSelectFilter
-              label="PO"
-              icon={Tag}
-              allLabel="Todos"
-              options={poOptions}
-              selected={numPoFilter}
-              onChange={setNumPoFilter}
-              className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
-            />
-            <MultiSelectFilter
-              label="Comprador"
-              icon={User}
-              options={buyerOptions}
-              selected={buyerFilter}
-              onChange={setBuyerFilter}
-              renderOption={g => `Grupo ${g}`}
-              className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
-            />
-            <MultiSelectFilter
-              label="Situação"
-              icon={Filter}
-              options={statusOptions}
-              selected={statusFilter}
-              onChange={setStatusFilter}
-              className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
-            />
-            <MultiSelectFilter
-              label="Status"
-              icon={List}
-              options={itemStatusOptions}
-              selected={itemStatusFilter}
-              onChange={setItemStatusFilter}
-              searchable={false}
-              className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
-            />
-            {/* Comprado = PO emitido no SAP, número de compra do ML ou status "Comprado". */}
-            <div className="relative shrink-0 w-[170px] lg:w-auto lg:min-w-[170px]">
-              <PackageCheck className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-              <select
-                value={compradoFilter}
-                onChange={(e) => setCompradoFilter(e.target.value as typeof compradoFilter)}
-                aria-label="Filtrar por comprado ou não comprado"
-                title="Comprado: item com PO emitido no SAP, com número de compra do Mercado Livre ou com status Comprado"
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none truncate"
-              >
-                <option value="todos">Compra: Todos</option>
-                <option value="comprado">Comprado</option>
-                <option value="nao_comprado">Não comprado</option>
-              </select>
-            </div>
-            <MultiSelectFilter
-              label="Alertas"
-              icon={AlertTriangle}
-              options={alertOptions}
-              selected={alertFilter}
-              onChange={setAlertFilter}
-              className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
-            />
-            <MultiSelectFilter
-              label="Grupo de materiais"
-              icon={Boxes}
-              options={grupoMercOptions}
-              selected={grupoMercFilter}
-              onChange={setGrupoMercFilter}
-              className="shrink-0 w-[160px] lg:w-auto lg:min-w-[160px]"
-            />
-            {/* Consumo x Projeto — material 100000… é item de projeto. */}
-            <div className="relative shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]">
-              <Boxes className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-              <select
-                value={tipoItemFilter}
-                onChange={(e) => setTipoItemFilter(e.target.value as TipoItemFilter)}
-                aria-label="Filtrar por tipo de item"
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none truncate"
-              >
-                <option value="todos">Tipo: Todos</option>
-                <option value="consumo">Consumo</option>
-                <option value="projeto">Projeto</option>
-              </select>
-            </div>
-            <MultiSelectFilter
-              label="Prioridade"
-              icon={Flag}
-              allLabel="Todas"
-              options={prioridadeOptions}
-              selected={prioridadeFilter}
-              onChange={setPrioridadeFilter}
-              renderOption={n => (n === 'Nenhuma' ? 'Sem solicitação' : `Grau ${n}`)}
-              searchable={false}
-              className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
-            />
-            <MultiSelectFilter
-              label="Estoque"
-              icon={Warehouse}
-              allLabel="Todos"
-              options={estoqueOptions}
-              selected={estoqueFilter}
-              onChange={setEstoqueFilter}
-              renderOption={t => (t === SEM_TAG_ESTOQUE ? 'Sem alerta' : ROTULO_TAG_ESTOQUE[t as TagEstoque])}
-              searchable={false}
-              className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
-            />
-            <DateRangeFilter
-              label="Promessa"
-              icon={Calendar}
-              value={promessaFilter}
-              onChange={setPromessaFilter}
-              className="shrink-0 w-[160px] lg:w-auto lg:min-w-[160px]"
-            />
+          <div className="hidden lg:flex items-center gap-2 lg:flex-wrap">
+            {controlesFiltro(false)}
           </div>
         </div>
       </div>
+
+      {filtrosAbertos && (
+        <FiltrosSheet
+          onClose={() => setFiltrosAbertos(false)}
+          ativos={filtrosLigados}
+          onLimpar={limparFiltrosPainel}
+          rotuloAplicar={`Ver ${filteredItemCount} ${filteredItemCount === 1 ? 'item' : 'itens'}`}
+        >
+          <div className="grid gap-3">{controlesFiltro(true)}</div>
+        </FiltrosSheet>
+      )}
 
       {/* Loading & Empty States */}
       {loading && (
@@ -3271,7 +3412,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           ) : (
             <>
               {/* VIEW: CARDS (Default) */}
-              {viewMode === 'cards' && (
+              {modoVisual === 'cards' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {filteredFlatItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores, poFornecedor } }) => {
                     const ilvl = alertLevel(r.alerta || '');
@@ -3290,7 +3431,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                 type="checkbox"
                                 checked={selectedRis.has(r.ri_po)}
                                 onChange={() => toggleSelectRi(r.ri_po)}
-                                className="cursor-pointer"
+                                className="h-5 w-5 lg:h-4 lg:w-4 cursor-pointer"
                                 aria-label={`Selecionar item ${r.item_reqc}`}
                               />
                               <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 dark:text-slate-500">RM {rm}</span>
@@ -3440,13 +3581,28 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
                           {/* Fornecedores Históricos — só interessa enquanto o item não tem PO.
                           Com o pedido fechado, o fornecedor relevante é o do PO acima. */}
-                          {r.status_requisicao !== 'Processado' && (
+                          {r.status_requisicao !== 'Processado' && (() => {
+                            const fornAberto = !telaCelularCompras || fornecedoresAbertos.has(r.ri_po);
+                            return (
                             <div className="space-y-1.5 pt-1">
+                              {telaCelularCompras ? (
+                                <button
+                                  type="button"
+                                  onClick={() => alternarFornecedores(r.ri_po)}
+                                  aria-expanded={fornAberto}
+                                  className="flex w-full items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 cursor-pointer"
+                                >
+                                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${fornAberto ? '' : '-rotate-90'}`} />
+                                  Fornecedores sugeridos ({fornecedores.length})
+                                  {!encontrado && <span className="ml-1 normal-case tracking-normal font-bold text-rose-600 dark:text-rose-400">· sem histórico</span>}
+                                </button>
+                              ) : (
                               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
                                 Fornecedores sugeridos ({fornecedores.length})
                               </span>
+                              )}
 
-                              {!encontrado ? (
+                              {!fornAberto ? null : !encontrado ? (
                                 <div className="flex items-center gap-2 p-3 rounded-xl border border-dashed border-rose-150 dark:border-rose-900/40 bg-rose-50/20 dark:bg-rose-955/5 text-rose-800 dark:text-rose-455 text-xs">
                                   <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
                                   <span>Sem PO, cotação ou catálogo anterior para este material.</span>
@@ -3459,7 +3615,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                 </div>
                               )}
                             </div>
-                          )}
+                            );
+                          })()}
                         </div>
 
                         {/* Card Actions — edição inline de status/previsão/observação do item. */}
@@ -3505,7 +3662,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                               <span className="px-1.5 py-0.5 rounded border border-yellow-400 bg-yellow-300 text-slate-900 text-[9px] font-black tracking-wide uppercase whitespace-nowrap">
                                 Mercado Livre
                               </span>
-                              <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} />
+                              <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} onEditarCompra={setEditarCompraMl} />
                             </div>
                           )}
 
@@ -3595,7 +3752,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                   });
                 };
                 return (
-                  viewMode === 'table' && (
+                  modoVisual === 'table' && (
                     <TableShell>
                       <table className="min-w-full text-left text-xs">
                         {/* Cabeçalho fixo: esta lista chega a centenas de itens com
@@ -3785,7 +3942,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
                                 {poFilter === 'M Livre' && (
                                   <td className="py-3 px-3 w-[200px]">
-                                    {mlItens.get(r.ri) && <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} />}
+                                    {mlItens.get(r.ri) && <MercadoLivreLinkInfo item={mlItens.get(r.ri)!} onEditarCompra={setEditarCompraMl} />}
                                   </td>
                                 )}
 
@@ -4070,6 +4227,31 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           onAberta={handleValidacaoAberta}
         />
       )}
+
+      {editarCompraMl && (
+        <EditarItensCompraMlModal
+          numero={editarCompraMl}
+          itens={Array.from(mlItens.values())}
+          temPedido={ri => risComPedido.has(ri)}
+          onRetirar={handleRetirarDaCompraMl}
+          onIncluir={ris => handleIncluirNaCompraMl(editarCompraMl, ris)}
+          onClose={() => setEditarCompraMl(null)}
+        />
+      )}
+
+      {dadosCompraMlModal && (() => {
+        const itensDaCompra = Array.from(mlItens.values()).filter(it => it.numero_compra === dadosCompraMlModal.numero);
+        return (
+          <MercadoLivreCompraModal
+            edicao={dadosCompraMlModal}
+            quantidadeItens={itensDaCompra.length}
+            rms={Array.from(new Set(itensDaCompra.map(it => it.rm).filter(Boolean) as string[])).sort()}
+            foraDoMl={0}
+            onConfirmar={handleSalvarDadosCompraMl}
+            onClose={() => setDadosCompraMlModal(null)}
+          />
+        );
+      })()}
 
       {mlCompraModalAberto && (
         <MercadoLivreCompraModal

@@ -46,7 +46,16 @@ const MIN_DIGITOS_COMPRA = 10;
  */
 export function normalizarNumeroCompraMl(texto: string): string | null {
   const digitos = (texto ?? '').replace(/\D/g, '');
-  return digitos.length >= MIN_DIGITOS_COMPRA ? digitos : null;
+  if (digitos.length < MIN_DIGITOS_COMPRA || ehNumeroPedidoSap(digitos)) return null;
+  return digitos;
+}
+
+/**
+ * Número de pedido (PO) do SAP — 10 dígitos começando em 4 (41…, 45…). Já foi
+ * gravado por engano como nº da compra do ML; não é compra e não vira cartão.
+ */
+export function ehNumeroPedidoSap(numero: string): boolean {
+  return /^4\d{9}$/.test(numero);
 }
 
 /**
@@ -126,19 +135,51 @@ export interface ResumoCompraMl {
   itens: number;
   rms: string[];
   registradaEm: string | null;
+  /** Data da compra no ML (do "Detalhe da compra" colado), AAAA-MM-DD. */
+  dataCompra: string | null;
+  /** Total da compra no ML (produtos + frete), quando informado. */
+  valorTotal: number | null;
+  /** Itens da compra que já têm pedido (PO) no SAP. */
+  comPedido: number;
 }
 
-/** Compras do ML com os itens e RMs de cada uma, a mais recente primeiro. */
-export function resumirComprasMl(itens: ItemMercadoLivre[]): ResumoCompraMl[] {
+/** Dados da compra guardados para o Financeiro (fin_ml_compras). */
+export interface DadosCompraMl {
+  numero_compra: string;
+  data_compra: string | null;
+  valor_total: number | null;
+}
+
+/**
+ * Dia que ordena a compra: a data da compra no ML; sem ela (detalhe não
+ * colado), o dia em que o comprador gravou o número na Central.
+ */
+export function diaDaCompraMl(r: Pick<ResumoCompraMl, 'dataCompra' | 'registradaEm'>): string {
+  return r.dataCompra ?? (r.registradaEm ? r.registradaEm.slice(0, 10) : '');
+}
+
+/**
+ * Compras do ML com os itens e RMs de cada uma, da compra mais recente para a
+ * mais antiga (pela data da compra no ML; desempate pelo registro na Central).
+ */
+export function resumirComprasMl(
+  itens: ItemMercadoLivre[],
+  extras: { dados?: Map<string, DadosCompraMl>; temPedido?: (ri: string) => boolean } = {},
+): ResumoCompraMl[] {
   const porNumero = new Map<string, ResumoCompraMl & { rmSet: Set<string> }>();
   for (const it of itens) {
-    if (!it.numero_compra) continue;
+    if (!it.numero_compra || ehNumeroPedidoSap(it.numero_compra)) continue;
     let resumo = porNumero.get(it.numero_compra);
     if (!resumo) {
-      resumo = { numero: it.numero_compra, itens: 0, rms: [], registradaEm: null, rmSet: new Set() };
+      const dados = extras.dados?.get(it.numero_compra);
+      resumo = {
+        numero: it.numero_compra, itens: 0, rms: [], registradaEm: null, rmSet: new Set(),
+        dataCompra: dados?.data_compra ?? null, valorTotal: dados?.valor_total ?? null, comPedido: 0,
+      };
       porNumero.set(it.numero_compra, resumo);
     }
     resumo.itens++;
+    if (extras.temPedido?.(it.ri)) resumo.comPedido++;
     if (it.rm) resumo.rmSet.add(it.rm);
     if (it.compra_registrada_em && (!resumo.registradaEm || it.compra_registrada_em > resumo.registradaEm)) {
       resumo.registradaEm = it.compra_registrada_em;
@@ -146,7 +187,41 @@ export function resumirComprasMl(itens: ItemMercadoLivre[]): ResumoCompraMl[] {
   }
   return Array.from(porNumero.values())
     .map(({ rmSet, ...r }) => ({ ...r, rms: Array.from(rmSet).sort() }))
-    .sort((a, b) => (b.registradaEm ?? '').localeCompare(a.registradaEm ?? '') || b.numero.localeCompare(a.numero));
+    .sort((a, b) => diaDaCompraMl(b).localeCompare(diaDaCompraMl(a))
+      || (b.registradaEm ?? '').localeCompare(a.registradaEm ?? '')
+      || b.numero.localeCompare(a.numero));
+}
+
+/** Recorte "já tem pedido" da aba M Livre. */
+export type FiltroPedidoMl = 'todos' | 'com_pedido' | 'sem_pedido';
+
+export function passaFiltroPedidoMl(temPedido: boolean, filtro: FiltroPedidoMl): boolean {
+  if (filtro === 'com_pedido') return temPedido;
+  if (filtro === 'sem_pedido') return !temPedido;
+  return true;
+}
+
+/**
+ * Tira "Compra ML #<numero>" da observação do comprador — o inverso de
+ * `observacaoComCompraMl`, para quando o item sai da compra (foi incluído
+ * por engano ou mudou de carrinho). O resto da observação fica intacto.
+ */
+export function observacaoSemCompraMl(obs: string | null | undefined, numero: string): string {
+  const rotulo = rotuloCompraMl(numero);
+  return (obs ?? '')
+    .split('\n')
+    .map(linha => (linha.includes(rotulo) ? linha.replace(rotulo, '').trim() : linha))
+    .filter((linha, i, todas) => linha.trim() !== '' || (i > 0 && i < todas.length - 1 && todas[i - 1].trim() !== ''))
+    .join('\n')
+    .trim();
+}
+
+/**
+ * Status do comprador quando o item sai da compra do ML: "Comprado" (posto
+ * pela compra) volta a vazio; qualquer outro status é do comprador e fica.
+ */
+export function statusAposRetirarCompraMl<T extends string>(atual: T | '' | null | undefined): T | '' {
+  return !atual || atual === STATUS_COMPRADO ? '' : atual;
 }
 
 /** O item passa no filtro da subpágina M Livre? */

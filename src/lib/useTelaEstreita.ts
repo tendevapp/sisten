@@ -29,3 +29,27 @@ const getServerSnapshot = () => false;
 export function useTelaEstreita(): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
+
+// Abaixo do breakpoint `lg` (1024px): celular em pé ou deitado e tablet. É onde
+// as telas de duas colunas (lista + detalhe) empilham e precisam de outro arranjo.
+const QUERY_CELULAR = '(max-width: 1023px)';
+
+function subscribeCelular(listener: () => void): () => void {
+  if (typeof window === 'undefined' || !window.matchMedia) return () => {};
+  const mql = window.matchMedia(QUERY_CELULAR);
+  mql.addEventListener('change', listener);
+  return () => mql.removeEventListener('change', listener);
+}
+
+const getSnapshotCelular = () =>
+  typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(QUERY_CELULAR).matches;
+
+/** `true` abaixo de `lg` — o mesmo corte das classes `lg:hidden` / `hidden lg:block`. */
+export function useTelaCelular(): boolean {
+  return useSyncExternalStore(subscribeCelular, getSnapshotCelular, getServerSnapshot);
+}
+
+/** Leitura pontual (sem assinar), para valor inicial de estado. */
+export function ehTelaCelular(): boolean {
+  return getSnapshotCelular();
+}

@@ -115,7 +115,7 @@ export default function SearchKeywordsChips({
     <div className={`space-y-2 ${className}`}>
       {/* Barra de input com botão Adicionar */}
       <form onSubmit={handleAdd} className="flex gap-2">
-        <div className="relative flex-1">
+        <div className="relative min-w-0 flex-1">
           <Search className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-slate-400 pointer-events-none`} />
           <input
             ref={inputRef}
@@ -134,10 +134,10 @@ export default function SearchKeywordsChips({
         </div>
         <button
           type="submit"
-          className={`${ocultarBotaoNoCelular ? 'hidden sm:flex' : 'flex'} items-center gap-1.5 px-4 ${compact ? 'py-1.5 text-[11px]' : 'py-2.5 text-xs'} font-bold rounded-xl shadow-xs transition-all cursor-pointer shrink-0 ${theme.btn}`}
+          className={`${ocultarBotaoNoCelular ? 'hidden sm:flex' : 'flex'} items-center gap-1.5 px-3 sm:px-4 ${compact ? 'py-1.5 text-[11px]' : 'py-2.5 text-xs'} font-bold rounded-xl shadow-xs transition-all cursor-pointer shrink-0 ${theme.btn}`}
         >
           <Plus className="h-3.5 w-3.5" />
-          <span>{buttonLabel}</span>
+          <span className="sr-only sm:not-sr-only">{buttonLabel}</span>
         </button>
       </form>
 

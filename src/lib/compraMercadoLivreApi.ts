@@ -9,7 +9,7 @@
  */
 
 import { supabase } from '../db/supabaseClient';
-import type { ItemMercadoLivre } from './compraMercadoLivre';
+import type { DadosCompraMl, ItemMercadoLivre } from './compraMercadoLivre';
 import { comprimirImagemUpload } from './imageCompression';
 import type { DetalheCompraMl } from './detalheCompraMl';
 
@@ -19,6 +19,36 @@ export async function listarItensMercadoLivre(): Promise<ItemMercadoLivre[]> {
   const { data, error } = await (supabase as any).from('sup_ml_itens').select('*');
   if (error) throw new Error(error.message);
   return (data || []) as ItemMercadoLivre[];
+}
+
+/**
+ * Data e total de cada compra (fin_ml_compras, preenchidos quando o comprador
+ * cola o "Detalhe da compra"). Leitura liberada a todo usuário autenticado.
+ */
+export async function listarDadosComprasMl(): Promise<DadosCompraMl[]> {
+  const { data, error } = await (supabase as any).from('fin_ml_compras').select('numero_compra, data_compra, valor_total');
+  if (error) throw new Error(error.message);
+  return (data || []) as DadosCompraMl[];
+}
+
+/** O que já está gravado da compra — preenche a edição dos dados na Central. */
+export interface DadosCompraMlGravados {
+  detalhe_texto: string | null;
+  valor_boleto: number | null;
+  vencimento: string | null;
+  linha_digitavel: string | null;
+  pago_em: string | null;
+  detalhe_registrado_por_nome: string | null;
+}
+
+export async function obterDadosCompraMl(numero: string): Promise<DadosCompraMlGravados | null> {
+  const { data, error } = await (supabase as any)
+    .from('fin_ml_compras')
+    .select('detalhe_texto, valor_boleto, vencimento, linha_digitavel, pago_em, detalhe_registrado_por_nome')
+    .eq('numero_compra', numero)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data ?? null) as DadosCompraMlGravados | null;
 }
 
 export interface DadosItemMl {

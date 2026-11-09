@@ -17,8 +17,10 @@ import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Mod
 import Pagination from '../components/ui/Pagination';
 import { TableShell } from '../components/ui/DataTable';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
+import FiltrosSheet, { BotaoFiltros } from '../components/ui/FiltrosSheet';
 import { extrairPalavrasChave, casarTokens } from '../lib/buscaKeywords';
 import SearchKeywordsChips from '../components/ui/SearchKeywordsChips';
+import { dataHojeLocal } from '../lib/dataLocal';
 
 interface FornecedoresProps {
   user: Profile;
@@ -1394,7 +1396,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Não Cadastrados');
-    XLSX.writeFile(wb, `Fornecedores_Nao_Cadastrados_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `Fornecedores_Nao_Cadastrados_${dataHojeLocal()}.xlsx`);
   };
 
   const handleStatusChange = async (supplierId: string, newStatus: string) => {
@@ -1440,6 +1442,77 @@ export default function Fornecedores({ user }: FornecedoresProps) {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
   const hasFilters = !!search.trim() || classificacaoSel.size > 0 || statusSel.size > 0 || ufSel.size > 0 || cidadeSel.size > 0 || hasPhone || hasEmail;
+
+  // Celular: os filtros ficavam numa trilha que rola de lado; lá abrem num painel.
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const filtrosLigados = [classificacaoSel, statusSel, ufSel, cidadeSel].filter(c => c.size > 0).length + (hasPhone ? 1 : 0) + (hasEmail ? 1 : 0);
+  const limparFiltrosPainel = () => {
+    setClassificacaoSel(new Set()); setStatusSel(new Set()); setUfSel(new Set()); setCidadeSel(new Set());
+    setHasPhone(false); setHasEmail(false);
+  };
+  const controlesFiltro = (painel: boolean) => {
+    const cf = (desktop: string) => (painel ? 'w-full' : desktop);
+    return (
+      <>
+        <MultiSelectFilter
+          label="Classificação"
+          icon={Filter}
+          allLabel="Todas"
+          options={[...classificacaoOpts.filter(Boolean), VAZIO]}
+          selected={classificacaoSel}
+          onChange={setClassificacaoSel}
+          renderOption={o => (o === VAZIO ? 'Sem classificação' : o)}
+          className={cf('shrink-0 w-[168px] lg:w-auto lg:min-w-[168px]')}
+          panelClassName="w-72 sm:w-80"
+        />
+
+        <MultiSelectFilter
+          label="Status"
+          icon={Filter}
+          allLabel="Todos"
+          options={[...STATUS_OPTS, VAZIO]}
+          selected={statusSel}
+          onChange={setStatusSel}
+          renderOption={o => (o === VAZIO ? 'Sem status' : o)}
+          className={cf('shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]')}
+        />
+
+        <MultiSelectFilter
+          label="UF"
+          icon={MapPin}
+          allLabel="Todos"
+          options={ufOpts}
+          selected={ufSel}
+          onChange={next => { setUfSel(next); setCidadeSel(new Set()); }}
+          className={cf('shrink-0 w-[150px] lg:w-auto lg:min-w-[130px]')}
+        />
+
+        <MultiSelectFilter
+          label="Cidade"
+          icon={MapPin}
+          allLabel="Todas"
+          searchable
+          options={cidadeOpts}
+          selected={cidadeSel}
+          onChange={setCidadeSel}
+          className={cf('shrink-0 w-[180px] lg:w-auto lg:min-w-[180px]')}
+          panelClassName="w-72 sm:w-80"
+        />
+
+        <label className="shrink-0 whitespace-nowrap flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+          <input type="checkbox" checked={hasPhone} onChange={e => setHasPhone(e.target.checked)} className="accent-blue-500" />
+          <Phone className="h-3.5 w-3.5" />
+          Com telefone
+        </label>
+
+        <label className="shrink-0 whitespace-nowrap flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+          <input type="checkbox" checked={hasEmail} onChange={e => setHasEmail(e.target.checked)} className="accent-blue-500" />
+          <Mail className="h-3.5 w-3.5" />
+          Com e-mail
+        </label>
+      </>
+    );
+  };
 
   const clearFilters = () => {
     setSearchChips([]);
@@ -1540,10 +1613,10 @@ export default function Fornecedores({ user }: FornecedoresProps) {
         </div>
 
         {/* Sub-navegação por SubPáginas / Tabs */}
-        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">
+        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-3 overflow-x-auto no-scrollbar min-w-0">
           <button
             onClick={() => setSubTab('cadastrados')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+            className={`shrink-0 whitespace-nowrap flex items-center gap-2 px-3 lg:px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
               subTab === 'cadastrados'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -1558,7 +1631,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
 
           <button
             onClick={() => setSubTab('nao_cadastrados')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+            className={`shrink-0 whitespace-nowrap flex items-center gap-2 px-3 lg:px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
               subTab === 'nao_cadastrados'
                 ? 'bg-amber-600 text-white shadow-sm'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -1580,79 +1653,39 @@ export default function Fornecedores({ user }: FornecedoresProps) {
         {subTab === 'cadastrados' && (
           <>
             {/* Barra de filtros */}
-            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
-              <SearchKeywordsChips
-                chips={searchChips}
-                onChangeChips={(chips) => {
-                  setSearchChips(chips);
-                  setSearchRaw(chips.join(' '));
-                  setPage(0);
-                }}
-                accent="blue"
-                placeholder="Digite um termo (código, CNPJ, razão social, fantasia ou e-mail) e pressione Enter..."
-              />
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 lg:p-4 shadow-sm">
+              {filtrosAbertos && (
+                <FiltrosSheet
+                  onClose={() => setFiltrosAbertos(false)}
+                  ativos={filtrosLigados}
+                  onLimpar={limparFiltrosPainel}
+                  rotuloAplicar="Ver fornecedores"
+                >
+                  <div className="grid gap-3">{controlesFiltro(true)}</div>
+                </FiltrosSheet>
+              )}
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <SearchKeywordsChips
+                    chips={searchChips}
+                    onChangeChips={(chips) => {
+                      setSearchChips(chips);
+                      setSearchRaw(chips.join(' '));
+                      setPage(0);
+                    }}
+                    accent="blue"
+                    placeholder="Digite um termo (código, CNPJ, razão social, fantasia ou e-mail) e pressione Enter..."
+                  />
+                </div>
+                <BotaoFiltros ativos={filtrosLigados} onClick={() => setFiltrosAbertos(true)} className="lg:hidden" />
+              </div>
 
               {/* lg:overflow-visible: em telas pequenas a trilha rola na horizontal
                   (overflow-x-auto), o que também recorta verticalmente os painéis
                   abertos dos MultiSelectFilter; a partir de lg os filtros quebram
                   em linha e o painel pode abrir por cima do resto. */}
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap lg:gap-3 lg:overflow-visible">
-              <MultiSelectFilter
-                label="Classificação"
-                icon={Filter}
-                allLabel="Todas"
-                options={[...classificacaoOpts.filter(Boolean), VAZIO]}
-                selected={classificacaoSel}
-                onChange={setClassificacaoSel}
-                renderOption={o => (o === VAZIO ? 'Sem classificação' : o)}
-                className="shrink-0 w-[168px] lg:w-auto lg:min-w-[168px]"
-                panelClassName="w-72 sm:w-80"
-              />
-
-              <MultiSelectFilter
-                label="Status"
-                icon={Filter}
-                allLabel="Todos"
-                options={[...STATUS_OPTS, VAZIO]}
-                selected={statusSel}
-                onChange={setStatusSel}
-                renderOption={o => (o === VAZIO ? 'Sem status' : o)}
-                className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
-              />
-
-              <MultiSelectFilter
-                label="UF"
-                icon={MapPin}
-                allLabel="Todos"
-                options={ufOpts}
-                selected={ufSel}
-                onChange={next => { setUfSel(next); setCidadeSel(new Set()); }}
-                className="shrink-0 w-[150px] lg:w-auto lg:min-w-[130px]"
-              />
-
-              <MultiSelectFilter
-                label="Cidade"
-                icon={MapPin}
-                allLabel="Todas"
-                searchable
-                options={cidadeOpts}
-                selected={cidadeSel}
-                onChange={setCidadeSel}
-                className="shrink-0 w-[180px] lg:w-auto lg:min-w-[180px]"
-                panelClassName="w-72 sm:w-80"
-              />
-
-              <label className="shrink-0 whitespace-nowrap flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                <input type="checkbox" checked={hasPhone} onChange={e => setHasPhone(e.target.checked)} className="accent-blue-500" />
-                <Phone className="h-3.5 w-3.5" />
-                Com telefone
-              </label>
-
-              <label className="shrink-0 whitespace-nowrap flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                <input type="checkbox" checked={hasEmail} onChange={e => setHasEmail(e.target.checked)} className="accent-blue-500" />
-                <Mail className="h-3.5 w-3.5" />
-                Com e-mail
-              </label>
+              <div className="hidden lg:flex items-center gap-2 lg:flex-wrap lg:gap-3">
+              {controlesFiltro(false)}
 
               {hasFilters && (
                 <button

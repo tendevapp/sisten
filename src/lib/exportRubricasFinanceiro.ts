@@ -15,6 +15,7 @@ import {
   consolidarPorFornecedor, LinhaArvoreRubrica, LinhaNfRealizado, NATUREZAS, RelatorioRealizadoNf,
   resumirPorNatureza, rotuloOrigemRubrica,
 } from './realizadoRubricaNf';
+import { dataHojeLocal } from './dataLocal';
 
 const ESTILO_CABECALHO = {
   fill: { fgColor: { rgb: '0F2952' } },
@@ -167,5 +168,5 @@ export function exportarRealizadoPorRubricaXlsx(
     'Itens de NF',
   );
 
-  XLSX.writeFile(wb, `realizado-por-rubrica-nf${sufixoArquivo}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `realizado-por-rubrica-nf${sufixoArquivo}-${dataHojeLocal()}.xlsx`);
 }

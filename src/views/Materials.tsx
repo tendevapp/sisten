@@ -14,6 +14,7 @@ import { TableShell } from '../components/ui/DataTable';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
+import { dataHojeLocal } from '../lib/dataLocal';
 
 interface MaterialsProps {
   user: Profile;
@@ -380,7 +381,7 @@ export default function Materials({ user }: MaterialsProps) {
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `catalogo_materiais_sisten_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute("download", `catalogo_materiais_sisten_${dataHojeLocal()}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

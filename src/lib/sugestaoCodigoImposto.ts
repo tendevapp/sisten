@@ -27,6 +27,8 @@
  * Sempre é sugestão: nada aqui grava o código; a tela pede a confirmação.
  */
 
+import { dataHojeLocal } from './dataLocal';
+
 export type ConfiancaCodigoImposto = 'alta' | 'media' | 'baixa';
 
 /** Um uso anterior do código num pedido (linha da ZL0132). */
@@ -269,7 +271,7 @@ function prefixoDoMaterial(usosOrdenados: readonly UsoCodigoImposto[], hoje: str
 const NIVEIS: ConfiancaCodigoImposto[] = ['baixa', 'media', 'alta'];
 const rebaixar = (c: ConfiancaCodigoImposto): ConfiancaCodigoImposto => NIVEIS[Math.max(0, NIVEIS.indexOf(c) - 1)];
 
-const hojeISO = () => new Date().toISOString().slice(0, 10);
+const hojeISO = () => dataHojeLocal();
 
 /**
  * Sugere o código de imposto de um item. `null` quando não há como sugerir

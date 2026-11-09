@@ -7,11 +7,12 @@ import TabelaComRolagemSuperior from '../../components/ui/TabelaComRolagemSuperi
 import * as api from '../../lib/rhPlanoTreinamentosApi';
 import { exportarPlanoTreinamentosExcel, formatarHorarioTabela } from '../../lib/rhPlanoTreinamentosExport';
 import { filtrarPlanos, quantidadeParticipantes, type FiltrosPlanoTreinamentos } from '../../lib/rhPlanoTreinamentosViewModel';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface Props { user: Profile; onNavigate: (path: string) => void; }
 const situacoes: api.StatusPlano[] = ['programado', 'realizado', 'atrasado', 'reagendado', 'cancelado'];
 const filtroInicial: FiltrosPlanoTreinamentos = { busca: '', ano: 'todos', status: 'todos', tipo: 'todos', responsavel: 'todos' };
-const vazio = (): Partial<api.PlanoRh> => ({ codigo: '', treinamento_id: null, titulo: '', responsavel: '', data_inicio: new Date().toISOString().slice(0, 10), data_termino: '', horario: '', carga_horaria: null, participantes_planejados: null, local: '', tipo_informacao: 'nao_informado', modalidade: '', objetivo: '', custo_total: 0, data_realizada: '', status: 'programado', comentarios: '', categoria: '' });
+const vazio = (): Partial<api.PlanoRh> => ({ codigo: '', treinamento_id: null, titulo: '', responsavel: '', data_inicio: dataHojeLocal(), data_termino: '', horario: '', carga_horaria: null, participantes_planejados: null, local: '', tipo_informacao: 'nao_informado', modalidade: '', objetivo: '', custo_total: 0, data_realizada: '', status: 'programado', comentarios: '', categoria: '' });
 const dataPt = (valor?: string | null) => valor ? new Date(`${valor}T12:00:00`).toLocaleDateString('pt-BR') : '—';
 const dinheiro = (valor?: number | null) => Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const duracao = (inicio?: string | null, termino?: string | null) => inicio && termino ? Math.max(1, Math.floor((new Date(`${termino}T12:00:00`).getTime() - new Date(`${inicio}T12:00:00`).getTime()) / 86400000) + 1) : 0;

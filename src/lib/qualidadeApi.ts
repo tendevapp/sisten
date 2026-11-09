@@ -18,6 +18,7 @@ import { apenasVigentes, marcarExcluido, marcarRestaurado } from './softDelete';
 import { comprimirImagemUpload } from './imageCompression';
 import { gerarCodigoFormulario, proximoIndiceCodigo } from './codigosFormulario';
 import { buscarHistoricoCampoPortaria } from './portariaApi';
+import { dataHojeLocal } from './dataLocal';
 
 const BUCKET = 'qua-rnc-evidencias';
 const PREFIXO = 'RNC';
@@ -47,7 +48,7 @@ const dbRnc = () => (supabase as any).from('qua_rnc');
  * índice por recorte — aqui o recorte escolhido é o mês, igual ao RID.
  */
 export async function obterProximoNumeroRegistroRnc(dataISO?: string | null): Promise<string> {
-  const dataRef = dataISO ? dataISO.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const dataRef = dataISO ? dataISO.slice(0, 10) : dataHojeLocal();
   const [ano, mes] = dataRef.split('-');
   const ultimoDia = new Date(Number(ano), Number(mes), 0).getDate();
   const inicioMes = `${ano}-${mes}-01`;
@@ -131,7 +132,7 @@ export async function obterMetricasRnc(): Promise<QuaRncMetricas> {
   }
 
   const lista = (data as { status: string; plano_acao: QuaPlanoAcaoAtividade[] }[]) || [];
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = dataHojeLocal();
 
   let atividadesAtrasadas = 0;
   for (const r of lista) {

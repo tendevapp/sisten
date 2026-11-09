@@ -7,6 +7,8 @@
  * e Matriz de Conformidade / Vencimentos de NRs por Setor e Colaborador.
  */
 
+import { useTelaEstreita } from '../../lib/useTelaEstreita';
+import { cortarRotuloCelular, LARGURA_EIXO_CELULAR } from '../../lib/rotuloEixo';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
@@ -111,6 +113,7 @@ const formatarData = (iso?: string | null): string => {
 };
 
 export default function RhRelatorioTreinamentos({ onNavigate }: Props) {
+  const estreita = useTelaEstreita();
   const toast = useToast();
 
   const [abaAtiva, setAbaAtiva] = useState<AbaAtiva>('executiva');
@@ -891,10 +894,10 @@ export default function RhRelatorioTreinamentos({ onNavigate }: Props) {
                 >
                   <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={resumoMatriz.porArea} layout="vertical" margin={{ left: 40, right: 30 }}>
+                      <BarChart data={resumoMatriz.porArea} layout="vertical" margin={{ left: 0, right: estreita ? 16 : 30 }}>
                         <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                         <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} stroke="#64748b" />
-                        <YAxis dataKey="area" type="category" tickLine={false} axisLine={false} fontSize={11} stroke="#64748b" />
+                        <YAxis dataKey="area" type="category" tickLine={false} axisLine={false} fontSize={11} stroke="#64748b" interval={0} width={estreita ? LARGURA_EIXO_CELULAR : 180} tickFormatter={estreita ? cortarRotuloCelular : undefined} />
                         <Tooltip
                           formatter={(v) => [`${v}%`, 'Conformidade']}
                           contentStyle={{

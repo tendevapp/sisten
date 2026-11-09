@@ -17,6 +17,7 @@ import type { QuaPlanoAcaoAtividade, QuaAtividadeStatus, QuaRncAnexo } from '../
 import * as api from '../../lib/qualidadeApi';
 import { useLightbox } from '../ui/Lightbox';
 import { useToast } from '../ui/Toast';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface QualidadePlanoAcaoEditorProps {
   rncId: string;
@@ -47,7 +48,7 @@ function situacaoAtividade(a: QuaPlanoAcaoAtividade): { label: string; cor: stri
       ? { label: 'Concluída no prazo', cor: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800', icon: CheckCircle2 }
       : { label: 'Concluída com atraso', cor: 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800', icon: AlertTriangle };
   }
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = dataHojeLocal();
   if (a.quando_fim && a.quando_fim < hoje) {
     return { label: 'Atrasada', cor: 'text-rose-700 bg-rose-50 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800', icon: AlertTriangle };
   }

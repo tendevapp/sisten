@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx';
 import { ROTULO_STATUS_ITEM } from './inventarioCiclico';
 import { ROTULO_ORIGEM, type LinhaAnalise, type ResumoAnalise } from './inventarioAnalise';
 import { rotuloCausa } from './inventarioAuditoria';
+import { dataHojeLocal } from './dataLocal';
 
 const dataBR = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/');
 
@@ -68,7 +69,7 @@ export function exportarPlanilhaAnalise(linhas: LinhaAnalise[], resumo: ResumoAn
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Itens');
   XLSX.utils.book_append_sheet(wb, cab, 'Resumo');
-  const arquivo = `analise-inventario-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const arquivo = `analise-inventario-${dataHojeLocal()}.xlsx`;
   XLSX.writeFile(wb, arquivo);
   return arquivo;
 }

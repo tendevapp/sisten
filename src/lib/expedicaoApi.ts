@@ -25,6 +25,7 @@ import type {
 } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
 import { comprimirImagemUpload } from './imageCompression';
+import { dataHojeLocal } from './dataLocal';
 
 const BUCKET = 'expedicao-fotos';
 
@@ -297,7 +298,7 @@ export async function criarTramo(params: {
       carregamento_id: params.carregamentoId,
       tramo: params.tramo,
       ordem: params.ordem,
-      data: new Date().toISOString().slice(0, 10),
+      data: dataHojeLocal(),
     })
     .select()
     .single();

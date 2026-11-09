@@ -1343,22 +1343,35 @@ function FotosAssinadas({
   );
 }
 
-/** Log de alterações do registro — sempre no fim da janela de detalhe. */
+/**
+ * Log de alterações do registro — sempre no fim da janela de detalhe, recolhido:
+ * é consulta eventual e empurrava o resto da ficha para baixo. O cabeçalho já
+ * diz quantas edições houve.
+ */
 function LogAlteracoes({ entidade, entidadeId }: { entidade: 'carga' | 'conferencia' | 'nc'; entidadeId: string }) {
   const [linhas, setLinhas] = useState<AlteracaoRow[] | null>(null);
+  const [aberto, setAberto] = useState(false);
   useEffect(() => {
     listarAlteracoes(entidade, entidadeId).then(setLinhas).catch(() => setLinhas([]));
   }, [entidade, entidadeId]);
+  const resumo = linhas === null ? 'carregando…' : linhas.length === 0 ? 'sem edições' : `${linhas.length} ${linhas.length === 1 ? 'edição' : 'edições'}`;
   return (
-    <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--hairline)' }}>
-      <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: 'var(--ink-muted)' }}>
+    <div className="mt-4 border-t pt-2" style={{ borderColor: 'var(--hairline)' }}>
+      <button
+        type="button"
+        onClick={() => setAberto(v => !v)}
+        aria-expanded={aberto}
+        className="flex w-full items-center gap-1.5 py-1.5 text-left text-[11px] font-extrabold uppercase tracking-wide cursor-pointer"
+        style={{ color: 'var(--ink-muted)' }}
+      >
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${aberto ? '' : '-rotate-90'}`} aria-hidden="true" />
         Log de alterações
-      </p>
-      {linhas === null && <div className="h-16 rounded-lg animate-pulse" style={{ background: 'var(--hairline)' }} />}
-      {linhas?.length === 0 && (
+        <span className="font-semibold normal-case tracking-normal">· {resumo}</span>
+      </button>
+      {aberto && linhas?.length === 0 && (
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Sem edições — está como foi criado.</p>
       )}
-      <ul className="space-y-2">
+      {aberto && <ul className="mt-1 space-y-2">
         {(linhas ?? []).map((a) => (
           <li key={a.id} className="rounded-lg border p-2.5" style={{ borderColor: 'var(--hairline)' }}>
             <div className="flex items-center justify-between text-[11px]" style={{ color: 'var(--ink-muted)' }}>
@@ -1375,7 +1388,7 @@ function LogAlteracoes({ entidade, entidadeId }: { entidade: 'carga' | 'conferen
             </ul>
           </li>
         ))}
-      </ul>
+      </ul>}
     </div>
   );
 }

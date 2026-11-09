@@ -20,6 +20,7 @@ import QualidadeRncDetalhesModal from '../../components/qualidade/QualidadeRncDe
 import QualidadeRelatorioSelecaoModal from '../../components/qualidade/QualidadeRelatorioSelecaoModal';
 import { MostrarExcluidosToggle, BadgeExcluido, classeLinhaExcluida } from '../../components/ui/ExcluidosControls';
 import { useToast } from '../../components/ui/Toast';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface QualidadeRncViewProps {
   user: Profile;
@@ -130,7 +131,7 @@ export default function QualidadeRncView({ user, onNavigate, abaInicial = 'novo'
 
   // Atividades de plano de ação de todas as RNCs em aberto/tratamento, para a aba agregada.
   const atividadesAgregadas = useMemo(() => {
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = dataHojeLocal();
     return rncs
       .filter((r) => !r.excluido_em && (r.status === 'ABERTA' || r.status === 'EM_TRATAMENTO'))
       .flatMap((rnc) =>

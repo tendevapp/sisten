@@ -56,6 +56,7 @@ import SsmaRidPlanosAcaoView from '../../components/ssma/SsmaRidPlanosAcaoView';
 import { MostrarExcluidosToggle } from '../../components/ui/ExcluidosControls';
 import { useToast } from '../../components/ui/Toast';
 import { canAccessPage } from '../../lib/pages';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface SsmaRidViewProps {
   user: Profile;
@@ -286,7 +287,7 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `SISTEN_SSMA_RIDs_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `SISTEN_SSMA_RIDs_${dataHojeLocal()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

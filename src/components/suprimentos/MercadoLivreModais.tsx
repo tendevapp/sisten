@@ -14,11 +14,11 @@ import { assinarArquivoCotacao } from '../../lib/cotacoesApi';
 import { useLightbox } from '../ui/Lightbox';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import {
-  ehLinkMercadoLivre, normalizarLinkMl, normalizarNumeroCompraMl, rotuloCompraMl,
+  ehLinkMercadoLivre, ehNumeroPedidoSap, normalizarLinkMl, normalizarNumeroCompraMl, rotuloCompraMl,
   type ItemMercadoLivre,
 } from '../../lib/compraMercadoLivre';
 import { interpretarDetalheCompraMl, lerValorMl } from '../../lib/detalheCompraMl';
-import type { DadosCompraMlFinanceiro } from '../../lib/compraMercadoLivreApi';
+import type { DadosCompraMlFinanceiro, DadosCompraMlGravados } from '../../lib/compraMercadoLivreApi';
 
 const BOTAO_AMARELO = 'bg-yellow-300 hover:bg-yellow-400 text-slate-900 border border-yellow-400';
 
@@ -182,6 +182,12 @@ interface CompraModalProps {
   foraDoMl: number;
   onConfirmar: (numero: string, financeiro: DadosCompraMlFinanceiro) => Promise<void>;
   onClose: () => void;
+  /**
+   * Edição de uma compra já gravada: o número fica travado, o texto colado e o
+   * boleto vêm preenchidos e salvar só atualiza os dados da compra (Financeiro).
+   * Serve para colar de novo quando o detalhe saiu errado ou incompleto.
+   */
+  edicao?: { numero: string; atual: DadosCompraMlGravados | null };
 }
 
 const brl = (v: number | null | undefined): string =>
@@ -195,12 +201,14 @@ const dataBR = (iso: string | null): string => (iso ? iso.split('-').reverse().j
 const campoCls = 'w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-slate-200 py-2 px-3 focus:border-[#0056c6] focus:outline-none';
 const rotuloCls = 'block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1';
 
-export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConfirmar, onClose }: CompraModalProps) {
-  const [texto, setTexto] = useState('');
-  const [detalheTexto, setDetalheTexto] = useState('');
-  const [valorBoleto, setValorBoleto] = useState('');
-  const [vencimento, setVencimento] = useState('');
-  const [linhaDigitavel, setLinhaDigitavel] = useState('');
+export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConfirmar, onClose, edicao }: CompraModalProps) {
+  const atual = edicao?.atual ?? null;
+  const [texto, setTexto] = useState(edicao?.numero ?? '');
+  const [detalheTexto, setDetalheTexto] = useState(atual?.detalhe_texto ?? '');
+  const [valorBoleto, setValorBoleto] = useState(paraInputBRL(atual?.valor_boleto));
+  const [vencimento, setVencimento] = useState(atual?.vencimento ?? '');
+  const [linhaDigitavel, setLinhaDigitavel] = useState(atual?.linha_digitavel ?? '');
+  const boletoTravado = !!atual?.pago_em;
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const numero = normalizarNumeroCompraMl(texto);
@@ -246,10 +254,10 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
   };
 
   return (
-    <Modal onClose={onClose} maxWidth="max-w-2xl" ariaLabel="Número da compra do Mercado Livre" disableOutsideClose>
+    <Modal onClose={onClose} maxWidth="max-w-2xl" ariaLabel={edicao ? 'Dados da compra no Mercado Livre' : 'Número da compra do Mercado Livre'} disableOutsideClose>
       <ModalHeader onClose={onClose}>
         <div>
-          <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Número da compra no Mercado Livre</h3>
+          <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">{edicao ? 'Dados da compra no Mercado Livre' : 'Número da compra no Mercado Livre'}</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {quantidadeItens} {quantidadeItens === 1 ? 'item' : 'itens'} · {rms.length === 1 ? 'RM' : 'RMs'} {rms.join(', ')}
           </p>
@@ -258,21 +266,34 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
       <form onSubmit={e => { e.preventDefault(); confirmar(); }} className="flex flex-col flex-1 min-h-0">
         <ModalBody className="space-y-3">
           <input
-            autoFocus
+            autoFocus={!edicao}
+            readOnly={!!edicao}
             type="text"
             value={texto}
             onChange={e => setTexto(e.target.value)}
             placeholder="# 2000015616071149"
-            className="w-full text-lg font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-2 px-3 focus:border-[#0056c6] focus:outline-none"
+            className={`w-full text-lg font-mono rounded-xl border border-slate-200 dark:border-slate-700 py-2 px-3 focus:border-[#0056c6] focus:outline-none ${edicao ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200'}`}
           />
           {texto.trim() && !numero && (
-            <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">Número incompleto — o ML mostra 16 dígitos depois do #.</p>
+            <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+              {ehNumeroPedidoSap(texto.replace(/\D/g, ''))
+                ? 'Isso é um número de pedido (PO) do SAP. Aqui vai o número da compra no ML: 16 dígitos depois do #, começando em 2000.'
+                : 'Número incompleto — o ML mostra 16 dígitos depois do #.'}
+            </p>
           )}
+          {edicao ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Cole de novo o "Detalhe da compra" se algo saiu errado no Financeiro. O que o texto novo trouxer substitui o
+              gravado; o que ele não trouxer continua como está. Os itens da compra não mudam — para isso use <b>Incluir ou retirar itens</b>.
+              {atual?.detalhe_registrado_por_nome && <> Última gravação: {atual.detalhe_registrado_por_nome}.</>}
+            </p>
+          ) : (
           <p className="text-xs text-slate-500 dark:text-slate-400">
             O número fica gravado nos itens, entra na Observação de cada um
             {numero ? <> como <b className="text-slate-700 dark:text-slate-200">{rotuloCompraMl(numero)}</b></> : ''} e
             o status passa para <b className="text-slate-700 dark:text-slate-200">Comprado</b>.
           </p>
+          )}
           {foraDoMl > 0 && (
             <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -323,6 +344,13 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
                   ))}
                 </ul>
               )}
+              {edicao && detalhe.pacotes.length > 0 && detalhe.pacotes.length !== quantidadeItens && (
+                <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                  O ML mostra {detalhe.pacotes.length} {detalhe.pacotes.length === 1 ? 'anúncio' : 'anúncios'}
+                  {detalhe.qtdProdutos != null && <> ({detalhe.qtdProdutos} un.)</>} e a compra tem {quantidadeItens} {quantidadeItens === 1 ? 'item' : 'itens'} de RM
+                  — um anúncio pode atender mais de um item, e vice-versa. Confira se a soma bate com o valor dos produtos.
+                </p>
+              )}
               {detalhe.avisos.map(a => (
                 <p key={a} className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {a}
@@ -333,6 +361,9 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
 
           <div>
             <p className={rotuloCls}>Boleto</p>
+            {boletoTravado && (
+              <p className="mb-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400">O Financeiro já marcou o boleto como pago — valor, vencimento e linha só mudam por lá.</p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr] gap-2">
               <div>
                 <input
@@ -340,17 +371,19 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
                   value={valorBoleto}
                   onChange={e => setValorBoleto(e.target.value)}
                   onBlur={() => { if (valorBoletoNum != null) setValorBoleto(paraInputBRL(valorBoletoNum)); }}
+                  disabled={boletoTravado}
                   placeholder="Valor (1.878,74)"
                   aria-label="Valor do boleto"
                   className={campoCls}
                 />
                 {valorBoletoInvalido && <p className="mt-1 text-[11px] font-semibold text-rose-600">Valor inválido.</p>}
               </div>
-              <input type="date" value={vencimento} onChange={e => setVencimento(e.target.value)} aria-label="Vencimento do boleto" title="Vencimento" className={campoCls} />
+              <input type="date" value={vencimento} onChange={e => setVencimento(e.target.value)} disabled={boletoTravado} aria-label="Vencimento do boleto" title="Vencimento" className={campoCls} />
               <div className="sm:col-span-2">
                 <input
                   value={linhaDigitavel}
                   onChange={e => setLinhaDigitavel(e.target.value)}
+                  disabled={boletoTravado}
                   placeholder="Linha digitável / código de barras"
                   aria-label="Linha digitável do boleto"
                   className={`${campoCls} font-mono text-xs`}
@@ -375,7 +408,7 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
             className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black cursor-pointer disabled:opacity-50 ${BOTAO_AMARELO}`}
           >
             {salvando ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <ShoppingCart className="h-3.5 w-3.5" />}
-            Gravar compra
+            {edicao ? 'Salvar dados' : 'Gravar compra'}
           </button>
         </ModalFooter>
       </form>

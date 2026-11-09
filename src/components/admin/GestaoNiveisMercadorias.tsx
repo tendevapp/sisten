@@ -20,6 +20,7 @@ import type { Profile, CadastroGrupoMercadoria } from '../../types';
 import * as api from '../../lib/grupoMercadoriaApi';
 import { useToast } from '../ui/Toast';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface Props {
   user: Profile;
@@ -418,7 +419,7 @@ export default function GestaoNiveisMercadorias({ user }: Props) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `niveis_grupo_mercadoria_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `niveis_grupo_mercadoria_${dataHojeLocal()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

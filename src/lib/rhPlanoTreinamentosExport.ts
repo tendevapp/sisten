@@ -16,6 +16,7 @@ import type {
   TreinamentoCritico,
 } from './rhPlanoTreinamentosViewModel';
 import { createDoc, downloadPdf, PdfTextWriter, PDF_COLORS, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './pdfExport/core';
+import { dataHojeLocal } from './dataLocal';
 
 const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -219,7 +220,7 @@ export async function exportarPlanoTreinamentosExcel(planos: PlanoRh[]) {
         moedas: [12, 17],
       },
     ],
-    `PLANO_DE_TREINAMENTOS_${new Date().toISOString().slice(0, 10)}.xlsx`
+    `PLANO_DE_TREINAMENTOS_${dataHojeLocal()}.xlsx`
   );
 }
 
@@ -233,7 +234,7 @@ export async function exportarCronogramaTreinamentosExcel(itens: CronogramaRh[],
         moedas: [1, 4],
       },
     ],
-    `CRONOGRAMA_DE_TREINAMENTOS_${new Date().toISOString().slice(0, 10)}.xlsx`
+    `CRONOGRAMA_DE_TREINAMENTOS_${dataHojeLocal()}.xlsx`
   );
 }
 
@@ -293,7 +294,7 @@ export async function exportarRelatorioTreinamentosExcel(params: {
     });
   }
 
-  await baixarWorkbookExcel(abas, `RELATORIO_TREINAMENTOS_RH_${ano}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  await baixarWorkbookExcel(abas, `RELATORIO_TREINAMENTOS_RH_${ano}_${dataHojeLocal()}.xlsx`);
 }
 
 export async function gerarRelatorioTreinamentosPdf(params: {
@@ -448,7 +449,7 @@ export async function gerarRelatorioTreinamentosPdf(params: {
 
   return docToPdfGerado(
     doc,
-    `RELATORIO_EXECUTIVO_TREINAMENTOS_${filtros.ano}_${new Date().toISOString().slice(0, 10)}.pdf`,
+    `RELATORIO_EXECUTIVO_TREINAMENTOS_${filtros.ano}_${dataHojeLocal()}.pdf`,
     'Relatório Executivo de Treinamentos',
   );
 }

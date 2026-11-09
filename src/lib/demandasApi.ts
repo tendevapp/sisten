@@ -19,6 +19,7 @@ import type {
 import { apenasVigentes, marcarExcluido, marcarRestaurado } from './softDelete';
 import { prepareAttachment } from './imageCompression';
 import { gerarCodigoTarefa, proximaOrdem } from './demandasQuadro';
+import { dataHojeLocal } from './dataLocal';
 
 const BUCKET_ANEXOS = 'dem-anexos';
 
@@ -236,7 +237,7 @@ export async function criarTarefa(
   const irmas = dados.bucket_id
     ? (await listarTarefas(dados.quadro_id)).filter(t => t.bucket_id === dados.bucket_id)
     : [];
-  const hojeISO = new Date().toISOString().slice(0, 10);
+  const hojeISO = dataHojeLocal();
   const codigo = gerarCodigoTarefa(hojeISO, await codigosDoMesCorrente());
 
   const { data, error } = await db('dem_tarefas')

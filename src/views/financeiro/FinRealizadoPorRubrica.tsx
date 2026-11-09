@@ -145,24 +145,24 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
   }
 
   const { realizado, emRubricas, materialProducao, semRubrica } = relatorio;
-  const inputMes = 'px-2.5 h-9 border rounded-lg text-xs';
+  const inputMes = 'w-full px-2.5 h-10 lg:h-9 border rounded-lg text-sm lg:text-xs';
   const estiloInput = { borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' };
 
   return (
     <div className="space-y-6 select-text max-w-[1200px] mx-auto pb-12">
-      <div className="border-b border-slate-100 dark:border-slate-800 pb-5 flex items-start justify-between flex-wrap gap-3">
+      <div className="border-b border-slate-100 dark:border-slate-800 pb-3 lg:pb-5 flex items-start justify-between flex-wrap gap-3">
         <div className="max-w-[720px]">
-          <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
-            <BarChart3 className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
+          <h2 className="text-xl lg:text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
+            <BarChart3 className="h-6 w-6 lg:h-7 lg:w-7 text-emerald-600 dark:text-emerald-500" />
             Realizado por Rubrica
           </h2>
-          <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
+          <p className="text-sm text-slate-555 dark:text-slate-400 mt-1 line-clamp-2 lg:line-clamp-none">
             Medido pelas notas fiscais de entrada (ZL0136), não pelos pedidos. O CFOP separa o que é custo do que é só
             movimentação fiscal; a rubrica vem do de-para por fornecedor, código de serviço e grupo de mercadoria. O pago
             rastreado (FBL1N) confirma a leitura.
           </p>
         </div>
-        <div className="flex items-end gap-2 flex-wrap">
+        <div className="grid w-full grid-cols-2 gap-2 lg:flex lg:w-auto lg:items-end lg:flex-wrap">
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Lançamento de</span>
             <input type="month" value={mesDe} onChange={e => setMesDe(e.target.value)} className={inputMes} style={estiloInput} />
@@ -175,7 +175,7 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
             type="button"
             onClick={handleExportar}
             disabled={carregando}
-            className="px-4 h-9 rounded-lg text-xs font-bold flex items-center gap-1.5 border disabled:opacity-60 shrink-0"
+            className="col-span-2 justify-center px-4 h-10 lg:h-9 rounded-lg text-xs font-bold flex items-center gap-1.5 border disabled:opacity-60 shrink-0"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
             title="Exportar resumo, ponte por natureza, fornecedores e itens de NF para auditoria"
           >
@@ -187,14 +187,14 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
 
       {carregando ? (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-3">
             {[0, 1, 2, 3].map(i => <div key={i} className="skeleton h-24 rounded-xl" />)}
           </div>
           <TableSkeleton columns={6} />
         </>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-3">
             <KpiCard
               label="Realizado (NF)"
               value={realizado.valor}

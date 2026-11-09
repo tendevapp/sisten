@@ -15,13 +15,14 @@ import {
   type AcompanhamentoSnapshot,
 } from '../../lib/planejamentoAcompanhamentoApi';
 import { buildAcompanhamentoDiarioModel, DAILY_AREAS, DAILY_MONTHS } from '../../lib/planejamentoAcompanhamentoDiario';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface Props { user: Profile; onNavigate: (path: string) => void; }
 
 type MetaDraft = { meta: string; diasUteis: string };
 
 function isoHoje(): string {
-  return new Date().toISOString().slice(0, 10);
+  return dataHojeLocal();
 }
 
 function chaveMeta(area: string, ano: number, mes: number): string {

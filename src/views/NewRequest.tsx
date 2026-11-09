@@ -75,6 +75,7 @@ import {
   situacaoEpi,
   type StatusEpiMaterial,
 } from '../lib/epiCompras';
+import { dataHojeLocal } from '../lib/dataLocal';
 
 const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
   {
@@ -1590,7 +1591,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         };
       } else if (activeTab === 'chamado') {
         if (isDestinoSuprimentos) {
-          const hojeISO = new Date().toISOString().slice(0, 10);
+          const hojeISO = dataHojeLocal();
           const indice = await proximoIndiceProtocoloDia(hojeISO);
           protocoloSup = gerarProtocoloSup(indice, hojeISO);
         }

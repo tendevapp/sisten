@@ -129,8 +129,18 @@ function dataDoTexto(texto: string, referencia: Date): string | null {
   return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 }
 
-export function interpretarDetalheCompraMl(texto: string, referencia: Date = new Date()): DetalheCompraMl {
-  const linhas = (texto ?? '').split(/\r?\n/).map(semDuplicata).filter(Boolean);
+/**
+ * A página do ML leva para a área de transferência caracteres invisíveis
+ * (espaço de largura zero, espaço não separável) colados no "R$" e no começo
+ * das linhas — com eles o "R$ 54,90" deixava de ser reconhecido como valor.
+ */
+export function limparTextoMl(texto: string): string {
+  return (texto ?? '').replace(/[​-‍⁠﻿­]/g, '').replace(/[  ]/g, ' ');
+}
+
+export function interpretarDetalheCompraMl(textoBruto: string, referencia: Date = new Date()): DetalheCompraMl {
+  const texto = limparTextoMl(textoBruto);
+  const linhas = texto.split(/\r?\n/).map(semDuplicata).filter(Boolean);
   const avisos: string[] = [];
 
   // O nº da compra é o primeiro "# <16 dígitos>"; o do pagamento é mais curto e vem depois.
@@ -194,14 +204,20 @@ export function interpretarDetalheCompraMl(texto: string, referencia: Date = new
 
   // "Detalhes da transação": cada item é descrição / "N unidades" / "R$ valor".
   // O mesmo produto pode vir duas vezes (dois itens da compra) — os dois contam.
+  // A descrição pode terminar em "Unidades" ("Cartela C/5 Unidades"): só a
+  // linha que é SÓ "N unidades" é a quantidade.
   if (pacotes.length === 0) {
+    const ehQtd = (x: string) => /^\d+\s+unidades?$/i.test(x);
     linhas.forEach((l, i) => {
       const un = l.match(/^(\d+)\s+unidades?$/i);
       if (!un || i === 0) return;
       const descricao = linhas[i - 1];
-      if (/^R\$|^#|unidades?$/i.test(descricao)) return;
-      const proxima = linhas.slice(i + 1, i + 3).find(x => /^R\$/.test(x));
-      pacotes.push({ descricao, valor: proxima ? valorDaLinha(proxima) : null, quantidade: Number(un[1]) });
+      if (/^R\$|^#|^(Desconto|Frete|Total)\b/i.test(descricao) || ehQtd(descricao)) return;
+      let valor: number | null = null;
+      for (let k = i + 1; k < Math.min(linhas.length, i + 4) && !ehQtd(linhas[k]); k++) {
+        if (/R\$\s*\d|\breais?\b/i.test(linhas[k])) { valor = valorDaLinha(linhas[k]); break; }
+      }
+      pacotes.push({ descricao, valor, quantidade: Number(un[1]) });
     });
   }
 

@@ -263,7 +263,7 @@ export default function FinPepView({ user }: Props) {
       )}
 
       {/* Filtros */}
-      <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-3">
+      <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-2.5 lg:p-4 shadow-xs space-y-2.5 lg:space-y-3">
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
@@ -275,37 +275,37 @@ export default function FinPepView({ user }: Props) {
           />
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 xl:flex-wrap">
-          <div className="relative shrink-0 w-[130px]">
+        <div className="grid grid-cols-2 gap-2 lg:flex lg:items-center lg:flex-wrap">
+          <div className="relative min-w-0 lg:shrink-0 lg:w-[130px]">
             <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
             <select
               value={nivelFilter}
               onChange={(e) => setNivelFilter(e.target.value)}
-              className="w-full pl-8 pr-6 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              className="w-full pl-8 pr-6 h-10 lg:h-auto lg:py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
             >
               <option value="Todos">Nível: Todos</option>
               {niveisDisponiveis.map(n => <option key={n} value={String(n)}>Nível {n}</option>)}
             </select>
           </div>
 
-          <div className="relative shrink-0 w-[160px]">
+          <div className="relative min-w-0 lg:shrink-0 lg:w-[160px]">
             <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
             <select
               value={projetoFilter}
               onChange={(e) => setProjetoFilter(e.target.value)}
-              className="w-full pl-8 pr-6 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              className="w-full pl-8 pr-6 h-10 lg:h-auto lg:py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
             >
               <option value="Todos">Projeto: Todos</option>
               {projetosDisponiveis.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
 
-          <div className="relative shrink-0 w-[160px]">
+          <div className="relative min-w-0 lg:shrink-0 lg:w-[160px]">
             <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
             <select
               value={centroLucroFilter}
               onChange={(e) => setCentroLucroFilter(e.target.value)}
-              className="w-full pl-8 pr-6 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              className="w-full pl-8 pr-6 h-10 lg:h-auto lg:py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
             >
               <option value="Todos">C. Lucro: Todos</option>
               {centrosLucroDisponiveis.map(c => <option key={c} value={c}>{c}</option>)}
@@ -313,11 +313,11 @@ export default function FinPepView({ user }: Props) {
           </div>
 
           {statusDisponiveis.length > 0 && (
-            <div className="relative shrink-0 w-[130px]">
+            <div className="relative min-w-0 lg:shrink-0 lg:w-[130px]">
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+                className="w-full px-3 h-10 lg:h-auto lg:py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">Status: Todos</option>
                 {statusDisponiveis.map(s => <option key={s} value={s}>{s}</option>)}

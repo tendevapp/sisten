@@ -4,6 +4,7 @@
  */
 
 import { Request, Sector } from '../../types';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 export const SLA_HOURS_MAP: Record<number, number> = {
   1: 120, // 5 dias (Baixa)
@@ -470,7 +471,7 @@ export function exportHelpdeskCsv(tickets: Request[], sectors: Sector[]) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `relatorio_helpdesk_${new Date().toISOString().split('T')[0]}.csv`);
+  link.setAttribute('download', `relatorio_helpdesk_${dataHojeLocal()}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

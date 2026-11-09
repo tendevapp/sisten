@@ -46,6 +46,7 @@ import {
   type PontoMes, type PontoSemana, type ModoMatrizFaturamento,
 } from '../../lib/finFaturamentoRelatorio';
 import FinFaturamentoDetalhesModal, { type DetalheModalTipo } from '../../components/financeiro/FinFaturamentoDetalhesModal';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface Props {
   linhas: FinFatGwjaco[];
@@ -381,7 +382,7 @@ export default function FinFaturamentoWallboard({
   const [wbPx, setWbPx] = useState(10.8);
   const [matrizWidthPx, setMatrizWidthPx] = useState(0);
 
-  const semanaAtual = useMemo(() => semanaISO(new Date().toISOString().slice(0, 10)), []);
+  const semanaAtual = useMemo(() => semanaISO(dataHojeLocal()), []);
   const mesAtual = useMemo(() => new Date().toISOString().slice(0, 7), []);
   const resumo = useMemo(
     () => resumoFaturamento(linhas, semanaAtual, mesAtual, modoMatriz),

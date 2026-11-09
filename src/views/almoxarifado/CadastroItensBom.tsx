@@ -36,6 +36,7 @@ import {
 import { gerarPdfEtiquetasBom } from '../../lib/pdfExport/exportEtiquetasBomPdf';
 import { gerarPdfCatalogoBom } from '../../lib/pdfExport/exportCatalogoBomPdf';
 import { DEPOSITOS_PLANTA, identificarDeposito } from '../../lib/depositoNomenclatura';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface Props {
   user: Profile;
@@ -228,7 +229,7 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
     const doc = await gerarPdfEtiquetasBom(dados, cor);
     return {
       bytes: await doc.save(),
-      nomeArquivo: `etiquetas_bom_${new Date().toISOString().slice(0, 10)}.pdf`,
+      nomeArquivo: `etiquetas_bom_${dataHojeLocal()}.pdf`,
       titulo: `Etiquetas BOM — ${dados.length} etiqueta(s), ${Math.ceil(dados.length / 10)} folha(s) A4`,
     };
   }, [preview, cor]);

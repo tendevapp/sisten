@@ -9,6 +9,8 @@
  * ultrapassaram o SLA de 24 horas.
  */
 
+import { useTelaEstreita } from '../../lib/useTelaEstreita';
+import { cortarRotuloCelular, LARGURA_EIXO_CELULAR } from '../../lib/rotuloEixo';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   ArrowLeft, RefreshCw, FileSpreadsheet, Truck, Clock, Timer,
@@ -144,6 +146,7 @@ function TableDoubleScroll({ children, className = '', trigger }: TableDoubleScr
 }
 
 export default function ExpedicaoRelatorioLeadTime({ user, onVoltar }: Props) {
+  const estreita = useTelaEstreita();
   const toast = useToast();
   const chartConfig = useChartConfig();
 
@@ -1080,14 +1083,15 @@ export default function ExpedicaoRelatorioLeadTime({ user, onVoltar }: Props) {
                 <BarChart
                   data={dadosCarretasGrafico}
                   layout="vertical"
-                  margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+                  margin={{ top: 10, right: estreita ? 12 : 30, left: estreita ? 0 : 10, bottom: 10 }}
                 >
                   <CartesianGrid {...chartConfig.grid} horizontal={false} vertical={true} />
                   <XAxis type="number" unit="h" {...chartConfig.xAxis} />
                   <YAxis
                     type="category"
                     dataKey="identificacaoCurta"
-                    width={150}
+                    width={estreita ? LARGURA_EIXO_CELULAR - 16 : 150}
+                    tickFormatter={estreita ? cortarRotuloCelular : undefined}
                     tick={{ fontSize: 11, fill: 'var(--ink-secondary)', fontWeight: 600 }}
                     axisLine={false}
                     tickLine={false}

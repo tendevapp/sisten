@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ehLinkMercadoLivre, itemEntraEmSemPo, itemFoiComprado, normalizarLinkMl, statusAposCompraMl, normalizarNumeroCompraMl, observacaoComCompraMl,
   passaFiltroCompraMl, resumirComprasMl, tituloTagMercadoLivrePo, type ItemMercadoLivre,
+  passaFiltroPedidoMl, observacaoSemCompraMl, statusAposRetirarCompraMl, ehNumeroPedidoSap,
 } from './compraMercadoLivre';
 
 const item = (over: Partial<ItemMercadoLivre>): ItemMercadoLivre => ({
@@ -18,6 +19,21 @@ describe('normalizarNumeroCompraMl', () => {
   it('recusa número curto demais', () => {
     expect(normalizarNumeroCompraMl('#123')).toBeNull();
     expect(normalizarNumeroCompraMl('')).toBeNull();
+  });
+  it('recusa número de PO do SAP', () => {
+    expect(normalizarNumeroCompraMl('4100475928')).toBeNull();
+    expect(normalizarNumeroCompraMl('4500012345')).toBeNull();
+    expect(ehNumeroPedidoSap('2000015616071149')).toBe(false);
+  });
+});
+
+describe('resumirComprasMl × número de PO', () => {
+  it('PO gravado por engano como nº da compra não vira compra', () => {
+    const resumo = resumirComprasMl([
+      item({ ri: 'a', numero_compra: '4100475928' }),
+      item({ ri: 'b', numero_compra: '2000015616071149' }),
+    ]);
+    expect(resumo.map(r => r.numero)).toEqual(['2000015616071149']);
   });
 });
 
@@ -60,6 +76,58 @@ describe('resumirComprasMl', () => {
     ]);
     expect(resumo.map(r => r.numero)).toEqual(['2000015616071149', '2000015600000001']);
     expect(resumo[0]).toMatchObject({ itens: 2, rms: ['100', '200'] });
+  });
+
+  it('ordena pela data da compra no ML, não pelo registro na Central, e conta itens com pedido', () => {
+    const resumo = resumirComprasMl([
+      // registrada por último, mas comprada antes
+      item({ ri: 'a', numero_compra: '2000000000000001', compra_registrada_em: '2026-11-05T10:00:00Z' }),
+      item({ ri: 'b', numero_compra: '2000000000000002', compra_registrada_em: '2026-11-01T10:00:00Z' }),
+      item({ ri: 'c', numero_compra: '2000000000000002', compra_registrada_em: '2026-11-01T10:00:00Z' }),
+      // sem detalhe colado: ordena pelo dia do registro
+      item({ ri: 'd', numero_compra: '2000000000000003', compra_registrada_em: '2026-11-03T10:00:00Z' }),
+    ], {
+      dados: new Map([
+        ['2000000000000001', { numero_compra: '2000000000000001', data_compra: '2026-10-20', valor_total: 100 }],
+        ['2000000000000002', { numero_compra: '2000000000000002', data_compra: '2026-11-04', valor_total: 250.5 }],
+      ]),
+      temPedido: ri => ri === 'b',
+    });
+    expect(resumo.map(r => r.numero)).toEqual(['2000000000000002', '2000000000000003', '2000000000000001']);
+    expect(resumo[0]).toMatchObject({ dataCompra: '2026-11-04', valorTotal: 250.5, comPedido: 1, itens: 2 });
+    expect(resumo[1]).toMatchObject({ dataCompra: null, comPedido: 0 });
+  });
+});
+
+describe('passaFiltroPedidoMl', () => {
+  it('separa com e sem pedido', () => {
+    expect(passaFiltroPedidoMl(true, 'com_pedido')).toBe(true);
+    expect(passaFiltroPedidoMl(false, 'com_pedido')).toBe(false);
+    expect(passaFiltroPedidoMl(false, 'sem_pedido')).toBe(true);
+    expect(passaFiltroPedidoMl(true, 'todos')).toBe(true);
+  });
+});
+
+describe('observacaoSemCompraMl', () => {
+  it('tira só a linha da compra e mantém o resto', () => {
+    expect(observacaoSemCompraMl('Ligar para a loja\nCompra ML #2000015616071149', '2000015616071149')).toBe('Ligar para a loja');
+    expect(observacaoSemCompraMl('Compra ML #2000015616071149', '2000015616071149')).toBe('');
+    expect(observacaoSemCompraMl('Compra ML #2000015616071149\nFrete grátis', '2000015616071149')).toBe('Frete grátis');
+  });
+  it('não mexe em outra compra', () => {
+    expect(observacaoSemCompraMl('Compra ML #2000000000000009', '2000015616071149')).toBe('Compra ML #2000000000000009');
+  });
+  it('é o inverso de observacaoComCompraMl', () => {
+    const obs = observacaoComCompraMl('Urgente', '2000015616071149');
+    expect(observacaoSemCompraMl(obs, '2000015616071149')).toBe('Urgente');
+  });
+});
+
+describe('statusAposRetirarCompraMl', () => {
+  it('Comprado volta a vazio; outro status fica', () => {
+    expect(statusAposRetirarCompraMl('Comprado')).toBe('');
+    expect(statusAposRetirarCompraMl('Pedido Enviado')).toBe('Pedido Enviado');
+    expect(statusAposRetirarCompraMl(null)).toBe('');
   });
 });
 

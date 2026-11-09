@@ -16,6 +16,7 @@ import {
 } from './core';
 import { rotuloSecao, type CapituloCatalogo, type CatalogoBom, type LinhaCatalogo } from '../catalogoBom';
 import { embutirFotoPdf, LADO_FOTO } from './fotosPdf';
+import { dataHojeLocal } from '../dataLocal';
 
 export type { PdfGerado };
 
@@ -280,6 +281,6 @@ export async function gerarPdfCatalogoBom(catalogo: CatalogoBom, meta: MetaCatal
   }
 
   writer.finalizeDoc('CATÁLOGO BOM');
-  const nomeArquivo = `catalogo-bom-${meta.projeto.trim().toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const nomeArquivo = `catalogo-bom-${meta.projeto.trim().toLowerCase().replace(/\s+/g, '-')}-${dataHojeLocal()}.pdf`;
   return docToPdfGerado(doc, nomeArquivo, `Catálogo de itens da BOM — ${meta.projeto}`);
 }

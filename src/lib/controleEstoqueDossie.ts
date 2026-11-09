@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { ControleEstoqueAnalise, StatusControleEstoque } from './controleEstoque';
+import { dataHojeLocal } from './dataLocal';
 
 /**
  * Dossiê: a história de cada material, uma linha por ligação RM → pedido.
@@ -448,5 +449,5 @@ export function criarWorkbookDossie(linhas: LinhaDossie[]): XLSX.WorkBook {
 }
 
 export function exportarDossieExcel(linhas: LinhaDossie[]): void {
-  XLSX.writeFile(criarWorkbookDossie(linhas), `dossie-estoque-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(criarWorkbookDossie(linhas), `dossie-estoque-${dataHojeLocal()}.xlsx`);
 }

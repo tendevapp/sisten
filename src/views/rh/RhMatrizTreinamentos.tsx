@@ -6,6 +6,7 @@ import { useToast } from '../../components/ui/Toast';
 import { normalizarChaveTreinamento } from '../../lib/rhMatrizTreinamentosImport';
 import { criarRequisitosPorCargo, statusNaMatriz } from '../../lib/rhMatrizTreinamentosViewModel';
 import * as api from '../../lib/rhMatrizTreinamentosApi';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface Props { user: Profile; onNavigate: (path: string) => void; }
 
@@ -35,7 +36,7 @@ export default function RhMatrizTreinamentos({ user, onNavigate }: Props) {
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [treinamentoId, setTreinamentoId] = useState('');
   const [status, setStatus] = useState<api.StatusMatrizTreinamento>('apto');
-  const [dataCapacitacao, setDataCapacitacao] = useState(new Date().toISOString().slice(0, 10));
+  const [dataCapacitacao, setDataCapacitacao] = useState(dataHojeLocal());
   const [validadeEm, setValidadeEm] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [modo, setModo] = useState<'lista' | 'matriz'>('lista');
@@ -131,7 +132,7 @@ export default function RhMatrizTreinamentos({ user, onNavigate }: Props) {
     planilha['!freeze'] = { xSplit: 6, ySplit: 3 };
     const arquivo = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(arquivo, planilha, 'CONTROLE TREINAMENTO');
-    XLSX.writeFile(arquivo, `CONTROLE_DE_TREINAMENTOS_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(arquivo, `CONTROLE_DE_TREINAMENTOS_${dataHojeLocal()}.xlsx`);
   };
 
   const vencidos = (dados?.alertas || []).filter(a => a.status_calculado === 'vencido').length;

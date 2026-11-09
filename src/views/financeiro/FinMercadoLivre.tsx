@@ -31,6 +31,7 @@ import {
   passaFiltroCompraFinMl, resumirComprasFinMl, saldoItem, valorLiberadoParaBaixa,
   type BaixaFinMl, type CompraFinMl, type FiltroCompraFinMl, type ItemFinMl, type ResumoCompraFinMl, type SituacaoCompraMl,
 } from '../../lib/finMercadoLivre';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 interface Props {
   user: Profile;
@@ -459,7 +460,7 @@ export default function FinMercadoLivre({ user }: Props) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhas), 'Itens');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(baixas), 'Baixas');
-    XLSX.writeFile(wb, `mercado_livre_adiantamentos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `mercado_livre_adiantamentos_${dataHojeLocal()}.xlsx`);
   };
 
   return (
@@ -504,7 +505,7 @@ export default function FinMercadoLivre({ user }: Props) {
         </div>
       )}
 
-      <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-3">
+      <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-2.5 lg:p-4 shadow-xs space-y-2.5 lg:space-y-3">
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input

@@ -12,6 +12,7 @@ import { carregarLinhasRealizadoNf } from './rubricasFinanceiroApi';
 import {
   LinhaPlanilhaFornecedor, montarExportFornecedores, ResultadoExportFornecedores, rotuloMes,
 } from './fornecedoresPlanilha';
+import { dataHojeLocal } from './dataLocal';
 
 export async function listarPlanilhaFornecedores(): Promise<LinhaPlanilhaFornecedor[]> {
   const { data, error } = await (supabase as any)
@@ -174,5 +175,5 @@ export function gerarXlsxFornecedores(res: ResultadoExportFornecedores): void {
   wsNotas['!cols'] = [{ wch: 140 }];
   XLSX.utils.book_append_sheet(wb, wsNotas, 'Leia-me');
 
-  XLSX.writeFile(wb, `fornecedores-zl0136-mensal-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `fornecedores-zl0136-mensal-${dataHojeLocal()}.xlsx`);
 }

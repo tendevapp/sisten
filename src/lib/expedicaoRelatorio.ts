@@ -12,6 +12,7 @@
 
 import * as XLSX from 'xlsx';
 import type { ExpedicaoCarregamentoCompleto, ExpedicaoTramo, ExpedicaoTramoObservacao, Tramo } from '../types';
+import { dataHojeLocal } from './dataLocal';
 
 export type StatusSlaCarreta = 'meta' | 'alerta' | 'critico';
 export type StatusOperacionalCarreta = 'CONCLUIDO' | 'NO_PATIO' | 'INCOMPLETO';
@@ -716,6 +717,6 @@ export function exportarRelatorioExcel(carretas: CarretaMetrica[], filtrosDescri
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Lead Times Carretas');
 
-  const dataAtual = new Date().toISOString().slice(0, 10);
+  const dataAtual = dataHojeLocal();
   XLSX.writeFile(workbook, `SISTEN_Relatorio_Lead_Time_Carretas_${dataAtual}.xlsx`);
 }

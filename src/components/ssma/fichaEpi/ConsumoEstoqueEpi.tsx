@@ -35,6 +35,7 @@ import { listarSaidasEstoqueEpi, listarSaldoEstoqueEpi, ultimaDataMb51 } from '.
 import { exportarSaidasEstoqueExcel } from '../../../lib/consumoEstoqueEpiExport';
 import { formatBRL, formatBRLCompacto, formatDateBR, formatDateTimeBR, formatInt, formatQtd } from '../../../lib/format';
 import { formatDeposito } from '../../../lib/almoxarifado';
+import { dataHojeLocal } from '../../../lib/dataLocal';
 
 const PERIODOS = [
   { valor: '30', rotulo: 'Últimos 30 dias' },
@@ -50,7 +51,7 @@ const rotuloMes = (mes: string) => `${MESES[Number(mes.slice(5, 7)) - 1]}/${mes.
 const selectCls = 'rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900';
 const thCls = 'px-3 py-2.5 font-bold';
 
-const isoDeHoje = () => new Date().toISOString().slice(0, 10);
+const isoDeHoje = () => dataHojeLocal();
 const somarDias = (iso: string, dias: number) => {
   const d = new Date(`${iso}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + dias);

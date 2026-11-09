@@ -49,6 +49,7 @@ import { useToast } from '../components/ui/Toast';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
+import FiltrosSheet, { BotaoFiltros, CampoFiltro } from '../components/ui/FiltrosSheet';
 import DateRangeFilter, { type DateRangeValue } from '../components/ui/DateRangeFilter';
 import { extrairPalavrasChave, casarTokens } from '../lib/buscaKeywords';
 import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
@@ -368,6 +369,10 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
   const [compradorFilter, setCompradorFilter] = useState<Set<string>>(new Set());
   const [causaFilter, setCausaFilter] = useState<Set<string>>(new Set());
   const [dateFilter, setDateFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
+  // Celular: os 7 filtros saem da trilha horizontal (onde ficavam fora da tela) para um painel.
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const filtrosLigados = [modeloFilter, solicitanteFilter, setorFilter, fornecedorFilter, compradorFilter, causaFilter].filter(f => f.size > 0).length
+    + (dateFilter.preset && dateFilter.preset !== 'all' || dateFilter.from || dateFilter.to ? 1 : 0);
 
   // Mapa de setores
   const sectorMap = useMemo(() => {
@@ -781,7 +786,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
   };
 
   return (
-    <div className="space-y-6 text-left w-full pb-24">
+    <div className="space-y-4 lg:space-y-6 text-left w-full pb-24">
       <PendenciasSubnav user={user} atual="sup_pendencias_processamento" onNavigate={onNavigate} versao={grupos} />
       {embutida ? (
         <p className="text-sm" style={{ color: 'var(--ink-secondary)' }}>
@@ -789,11 +794,11 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
         </p>
       ) : (
       <div className="reveal">
-        <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2" style={{ color: 'var(--ink-primary)' }}>
-          <ReceiptText className="h-7 w-7" style={{ color: 'var(--ink-muted)' }} />
+        <h2 className="text-xl lg:text-3xl font-bold tracking-tight flex items-center gap-2" style={{ color: 'var(--ink-primary)' }}>
+          <ReceiptText className="h-5 w-5 lg:h-7 lg:w-7" style={{ color: 'var(--ink-muted)' }} />
           Pendências de Processamento
         </h2>
-        <p className="mt-1 text-base" style={{ color: 'var(--ink-secondary)' }}>
+        <p className="mt-1 hidden lg:block text-base" style={{ color: 'var(--ink-secondary)' }}>
           Notas fiscais aguardando processamento, abertas por chamado. Dê baixa em cada uma com a resolução e notifique por e-mail no Outlook.
         </p>
       </div>
@@ -870,17 +875,18 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
       </div>
 
       {/* Painel de Filtros */}
-      <div className="rounded-xl border p-4 space-y-3 reveal" style={cardStyle}>
+      <div className="rounded-xl border p-2.5 lg:p-4 space-y-3 reveal max-lg:sticky max-lg:top-0 max-lg:z-20" style={cardStyle}>
         {/* Linha 1: Campo de Busca e Toggle de Status */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 lg:gap-3">
+          <div className="flex flex-1 min-w-0 gap-2">
+          <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Pesquisar por palavras-chave (protocolo, chamado, nº nota/documento, fornecedor, observação)..."
-              className="w-full pl-10 pr-9 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-[#0056c6] focus:outline-none transition-all"
+              placeholder="Protocolo, nota, fornecedor..."
+              className="w-full pl-10 pr-9 h-10 lg:h-auto lg:py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-[#0056c6] focus:outline-none transition-all"
             />
             {searchQuery && (
               <button
@@ -893,23 +899,26 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
             )}
           </div>
 
+          <BotaoFiltros ativos={filtrosLigados} onClick={() => setFiltrosAbertos(true)} className="lg:hidden" />
+          </div>
+
           {/* Status Pills */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 shrink-0 border border-slate-200/50 dark:border-slate-800">
             <button
               type="button"
               onClick={() => setStatusFilter('pendentes')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`flex-1 sm:flex-none px-3 py-2 lg:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 statusFilter === 'pendentes'
                   ? 'bg-white dark:bg-slate-800 text-[#0056c6] dark:text-[#3b82f6] shadow-xs'
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
               }`}
             >
-              Com Pendências
+              <span className="lg:hidden">Pendentes</span><span className="hidden lg:inline">Com Pendências</span>
             </button>
             <button
               type="button"
               onClick={() => setStatusFilter('todos')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`flex-1 sm:flex-none px-3 py-2 lg:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 statusFilter === 'todos'
                   ? 'bg-white dark:bg-slate-800 text-[#0056c6] dark:text-[#3b82f6] shadow-xs'
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
@@ -920,7 +929,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
             <button
               type="button"
               onClick={() => setStatusFilter('concluidos')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`flex-1 sm:flex-none px-3 py-2 lg:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 statusFilter === 'concluidos'
                   ? 'bg-white dark:bg-slate-800 text-[#0056c6] dark:text-[#3b82f6] shadow-xs'
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
@@ -932,7 +941,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
         </div>
 
         {/* Linha 2: Dropdowns MultiSelect, DateRangeFilter e Limpar */}
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible pt-1">
+        <div className="hidden lg:flex items-center gap-2 flex-wrap pt-1">
           <MultiSelectFilter
             label="Modelo"
             icon={FileSpreadsheet}
@@ -1004,6 +1013,41 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
         </div>
       </div>
 
+      {filtrosAbertos && (
+        <FiltrosSheet
+          onClose={() => setFiltrosAbertos(false)}
+          ativos={filtrosLigados}
+          onLimpar={() => {
+            setModeloFilter(new Set()); setSolicitanteFilter(new Set()); setSetorFilter(new Set());
+            setFornecedorFilter(new Set()); setCompradorFilter(new Set()); setCausaFilter(new Set());
+            setDateFilter({ from: '', to: '', preset: 'all' });
+          }}
+          rotuloAplicar={`Ver ${gruposFiltrados.length} chamado${gruposFiltrados.length === 1 ? '' : 's'}`}
+        >
+          <CampoFiltro rotulo="Modelo">
+            <MultiSelectFilter label="Modelo" icon={FileSpreadsheet} options={['NFS-e', 'Lançamentos SAP', 'Ajuste de Pedido']} selected={modeloFilter} onChange={setModeloFilter} className="w-full" />
+          </CampoFiltro>
+          <CampoFiltro rotulo="Solicitante">
+            <MultiSelectFilter label="Solicitante" icon={User} options={solicitanteOptions} selected={solicitanteFilter} onChange={setSolicitanteFilter} className="w-full" />
+          </CampoFiltro>
+          <CampoFiltro rotulo="Setor">
+            <MultiSelectFilter label="Setor" icon={Building2} options={setorOptions} selected={setorFilter} onChange={setSetorFilter} className="w-full" />
+          </CampoFiltro>
+          <CampoFiltro rotulo="Fornecedor">
+            <MultiSelectFilter label="Fornecedor" icon={Truck} options={fornecedorOptions} selected={fornecedorFilter} onChange={setFornecedorFilter} className="w-full" />
+          </CampoFiltro>
+          <CampoFiltro rotulo="Comprador">
+            <MultiSelectFilter label="Comprador" icon={UserCheck} options={compradorOptions} selected={compradorFilter} onChange={setCompradorFilter} className="w-full" />
+          </CampoFiltro>
+          <CampoFiltro rotulo="Causa">
+            <MultiSelectFilter label="Causa" icon={Search} options={causaOptions} selected={causaFilter} onChange={setCausaFilter} className="w-full" />
+          </CampoFiltro>
+          <CampoFiltro rotulo="Data de abertura">
+            <DateRangeFilter label="Abertura" icon={Calendar} value={dateFilter} onChange={setDateFilter} className="w-full" />
+          </CampoFiltro>
+        </FiltrosSheet>
+      )}
+
       {/* Lista de Chamados e Notas */}
       {carregando ? (
         <div className="flex items-center justify-center py-16" style={{ color: 'var(--ink-muted)' }}>
@@ -1044,7 +1088,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
             return (
               <div key={g.request_id} className="rounded-xl border overflow-hidden reveal" style={cardStyle}>
                 {/* Cabeçalho do Chamado */}
-                <div className="px-5 py-3 border-b flex flex-wrap items-center gap-x-4 gap-y-1.5" style={{ borderColor: 'var(--hairline)' }}>
+                <div className="px-3 lg:px-5 py-3 border-b flex flex-wrap items-center gap-x-4 gap-y-1.5" style={{ borderColor: 'var(--hairline)' }}>
                   {pendentesGrupo.length > 0 && (
                     <button
                       type="button"
@@ -1094,7 +1138,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
 
                 {/* Classificação da demanda + observação do chamado */}
                 {(g.classif_causa || g.classif_responsavel || g.classif_impacto || g.classif_recorrencia || g.observacao_chamado) && (
-                  <div className="px-5 py-2.5 border-b flex flex-col gap-2" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken)' }}>
+                  <div className="px-3 lg:px-5 py-2.5 border-b flex flex-col gap-2" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken)' }}>
                     <div className="flex flex-wrap gap-x-2 gap-y-1">
                       {g.classif_causa && (
                         <span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'color-mix(in srgb, var(--status-serious) 14%, transparent)', color: 'var(--status-serious)' }}>
@@ -1150,7 +1194,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
                     return (
                       <div
                         key={l.id}
-                        className="px-5 py-3 grid grid-cols-1 lg:grid-cols-[auto_1fr_auto] gap-3 items-start transition-colors"
+                        className="px-3 lg:px-5 py-3 grid grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-[auto_1fr_auto] gap-3 items-start transition-colors"
                         style={
                           concluido
                             ? { background: 'color-mix(in srgb, var(--status-good) 5%, transparent)' }
@@ -1166,7 +1210,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => toggleSelect(l.id)}
-                              className="h-4 w-4 rounded border-slate-300 dark:border-slate-700 text-[#0056c6] focus:ring-[#0056c6] cursor-pointer"
+                              className="h-5 w-5 lg:h-4 lg:w-4 rounded border-slate-300 dark:border-slate-700 text-[#0056c6] focus:ring-[#0056c6] cursor-pointer"
                               style={{ accentColor: 'var(--brand)' }}
                             />
                           ) : (
@@ -1235,7 +1279,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
                         </div>
 
                         {/* Ações por Linha */}
-                        <div className="flex items-center gap-2">
+                        <div className="col-span-2 lg:col-span-1 flex flex-wrap items-center gap-2">
                           {concluido ? (
                             <button
                               type="button"
@@ -1253,7 +1297,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
                                 placeholder="Resolução (opcional)"
                                 value={resolucoes[l.id] || ''}
                                 onChange={(e) => setResolucoes(prev => ({ ...prev, [l.id]: e.target.value }))}
-                                className="rounded-lg border py-1.5 px-2.5 text-[12px] w-44 sm:w-56 transition-colors focus:outline-2 focus:outline-offset-1"
+                                className="rounded-lg border h-10 lg:h-auto lg:py-1.5 px-2.5 text-sm lg:text-[12px] min-w-0 flex-1 lg:flex-none lg:w-56 transition-colors focus:outline-2 focus:outline-offset-1"
                                 style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)', outlineColor: 'var(--brand)' }}
                               />
                               <button
@@ -1261,7 +1305,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
                                 onClick={() => handleConcluir(l, g)}
                                 disabled={salvandoId === l.id || salvandoLote}
                                 title="Concluir esta nota e abrir e-mail no Outlook para victor.oliveira@ten.ind.br"
-                                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-bold text-white cursor-pointer disabled:opacity-50 transition-transform active:scale-[0.98] shadow-xs"
+                                className="inline-flex h-10 lg:h-auto items-center gap-1.5 rounded-lg px-3 lg:py-1.5 text-[13px] lg:text-[12px] font-bold text-white cursor-pointer disabled:opacity-50 transition-transform active:scale-[0.98] shadow-xs"
                                 style={{ background: 'var(--brand)' }}
                               >
                                 {salvandoId === l.id ? (

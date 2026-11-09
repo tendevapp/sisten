@@ -75,6 +75,7 @@ import type { ItemInventario } from '../../lib/inventarioCiclico';
 import {
   listarUltimasContagens, ultimaContagemDoMaterial, type UltimaContagem,
 } from '../../lib/inventarioUltimaContagem';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 // A contagem é a mesma do Inventário Cíclico (rodada preparada, controle de
 // movimentação, causa na recontagem); só baixa quando alguém toca em "Contar".
@@ -160,7 +161,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     const doc = await gerarPdfEtiquetasMaterial(dados, corEtiqueta);
     return {
       bytes: await doc.save(),
-      nomeArquivo: `etiquetas_material_${new Date().toISOString().slice(0, 10)}.pdf`,
+      nomeArquivo: `etiquetas_material_${dataHojeLocal()}.pdf`,
       titulo: `Etiquetas de material — ${dados.length} etiqueta(s), ${Math.ceil(dados.length / 10)} folha(s) A4`,
     };
   }, [previewEtiquetas, corEtiqueta]);
@@ -1144,7 +1145,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `catalogo_itens_consumiveis_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `catalogo_itens_consumiveis_${dataHojeLocal()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

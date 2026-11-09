@@ -65,6 +65,7 @@ import type {
   BaseComparacao, CreditosHabilitados, LinhaMapa, CelulaMapa, PropostaMapa, ResumoFornecedor, Cenario, OrdenacaoMapa,
 } from '../../lib/mapaCotacao';
 import type { CotacaoProcesso, CotacaoProcessoItem, CotacaoPropostaDraft } from '../../types';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 /** Agrupamentos manuais sobrevivem ao recarregar a página, mas são preferência de análise, não dado do processo — ficam no navegador, como o rascunho de propostas. */
 const chaveOverrides = (processoId: string) => `sisten_cotacao_mapa_overrides_${processoId}`;
@@ -1687,7 +1688,7 @@ export default function MapaComparativo({
     const wb = montarPlanilhaMapa({
       processo, baseRotulo, linhas: linhasVisiveis, resumos, propostasPorKey, selecionados, cenarios,
     });
-    XLSX.writeFile(wb, `mapa_${processo.numero}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `mapa_${processo.numero}_${dataHojeLocal()}.xlsx`);
   };
 
   const [sapModalLinhas, setSapModalLinhas] = useState<LinhaSapExport[] | null>(null);

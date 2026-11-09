@@ -7,6 +7,7 @@
 
 import * as XLSX from 'xlsx';
 import type { RhRota } from '../../types';
+import { dataHojeLocal } from '../../lib/dataLocal';
 
 export interface LinhaExportacaoRota {
   'Colaborador': string;
@@ -61,7 +62,7 @@ export function gerarWorkbookRotas(rotas: RhRota[]): XLSX.WorkBook {
 
 export function exportarRotasParaExcel(rotas: RhRota[], nomeArquivo?: string): void {
   const wb = gerarWorkbookRotas(rotas);
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = dataHojeLocal();
   const arquivo = nomeArquivo || `cadastro_rotas_facilities_${hoje}.xlsx`;
   XLSX.writeFile(wb, arquivo);
 }

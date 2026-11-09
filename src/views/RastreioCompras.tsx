@@ -29,6 +29,7 @@ import { useToast } from '../components/ui/Toast';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
+import { dataHojeLocal } from '../lib/dataLocal';
 
 const RASTREIO_TOUR_STEPS: TourStep[] = [
   {
@@ -105,7 +106,7 @@ interface RastreioComprasProps {
 
 type Tab = 'tabela' | 'cronograma';
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => dataHojeLocal();
 
 const STORAGE_COLS_KEY = 'sisten_rastreio_visible_columns';
 const PAGE_SIZE = 50;

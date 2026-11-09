@@ -35,7 +35,8 @@ import { SinalChips } from '../components/ui/SinalChips';
 import { AttachmentGallery } from '../components/ui/Attachments';
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
-import { useTelaEstreita } from '../lib/useTelaEstreita';
+import { useTelaCelular } from '../lib/useTelaEstreita';
+import FiltrosSheet, { BotaoFiltros, CampoFiltro, classeCampoFiltro } from '../components/ui/FiltrosSheet';
 import PdfPreviewModal from '../components/ui/PdfPreviewModal';
 import type { PdfGerado } from '../lib/pdfExport/core';
 import { exportCompraPdf, gerarCompraPdf } from '../lib/pdfExport/exportCompraPdf';
@@ -217,7 +218,11 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
   // No celular o painel de detalhe vira uma folha sobre a lista — sem isso o
   // toque no cartão só marcava a seleção e o detalhe abria fora da tela, lá
   // embaixo, dando a impressão de que "nada abriu".
-  const telaEstreita = useTelaEstreita();
+  // Abaixo de lg as duas colunas empilhavam (no tablet a fila vinha inteira antes
+  // do detalhe); ali o detalhe vira folha em tela cheia, como no celular.
+  const telaEstreita = useTelaCelular();
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const filtrosLigados = (filtroSetor !== 'todos' ? 1 : 0) + (filtroCriticidade !== 'todas' ? 1 : 0) + (filtroFaixaValor !== 'todas' ? 1 : 0);
 
   // Estado do painel de decisao
   const [parecer, setParecer] = useState('');
@@ -1014,29 +1019,29 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
       <header className="shrink-0 space-y-3">
         <div
           data-tour="aprovacoes-header"
-          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl p-4 sm:p-5 shadow-xs border border-slate-200 dark:border-slate-800 transition-colors"
+          className="flex flex-row items-center justify-between gap-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl p-3 lg:p-5 shadow-xs border border-slate-200 dark:border-slate-800 transition-colors"
         >
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-3">
-              <span className="inline-flex items-center justify-center p-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800 ring-1 ring-emerald-500/20">
+              <span className="hidden lg:inline-flex items-center justify-center p-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800 ring-1 ring-emerald-500/20">
                 <ShieldCheck className="w-6 h-6" />
               </span>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-                  Aprovações de Compras
+              <div className="min-w-0">
+                <h1 className="text-lg lg:text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+                  Aprovações<span className="hidden lg:inline"> de Compras</span>
                 </h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="hidden lg:block text-xs text-slate-500 dark:text-slate-400">
                   Painel de decisão gerencial · Análise orçamentária e liberação para cotação
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-center">
+          <div className="flex shrink-0 items-center gap-2">
             {abaAtiva === 'pendentes' && selecionadasLote.size > 0 && (
               <button
                 onClick={() => setModalLoteAberta(true)}
-                className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer"
+                className="hidden lg:inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Aprovar Selecionadas ({selecionadasLote.size})</span>
@@ -1062,8 +1067,25 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
           </div>
         </div>
 
+        {/* Celular: os 4 cartões de KPI ocupavam meia tela antes da fila. Aqui
+            vira uma faixa só com o que o gestor decide agora. */}
+        <div className="lg:hidden flex items-stretch divide-x divide-[var(--hairline)] rounded-xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex-1 min-w-0 px-3 py-2">
+            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Aguardando</p>
+            <p className="tabular text-xl font-black leading-tight text-amber-600 dark:text-amber-400">{kpis.totalPendentes}</p>
+          </div>
+          <div className="flex-[1.6] min-w-0 px-3 py-2">
+            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Em análise</p>
+            <p className="tabular truncate text-base font-black leading-7 text-emerald-700 dark:text-emerald-400">{formatBRL(kpis.valorPendente)}</p>
+          </div>
+          <div className="flex-1 min-w-0 px-3 py-2">
+            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Urgentes</p>
+            <p className={`tabular text-xl font-black leading-tight ${kpis.pendentesCriticas > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>{kpis.pendentesCriticas}</p>
+          </div>
+        </div>
+
         {/* Grid de KPIs de Alto Impacto */}
-        <div data-tour="aprovacoes-kpis" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div data-tour="aprovacoes-kpis" className="hidden lg:grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* KPI 1: Pendentes */}
           <div className="rounded-xl p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
@@ -1132,7 +1154,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
       {/* 2. Barra de Filtros e Abas de Status */}
       <section
         data-tour="aprovacoes-abas-filtros"
-        className="shrink-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-2 shadow-xs transition-colors"
+        className="shrink-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 lg:p-3 space-y-2 shadow-xs transition-colors max-lg:sticky max-lg:top-0 max-lg:z-20"
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 min-w-0">
           {/* Abas com Badges — trilha que desliza no celular (min-w-0 deixa o
@@ -1140,7 +1162,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar min-w-0 -mx-1 px-1 pb-1 md:pb-0 md:mx-0 md:px-0">
             <button
               onClick={() => setAbaAtiva('pendentes')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-2 lg:py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'pendentes'
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1160,7 +1182,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
 
             <button
               onClick={() => setAbaAtiva('aprovadas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-2 lg:py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'aprovadas'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1180,7 +1202,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
 
             <button
               onClick={() => setAbaAtiva('revisao')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-2 lg:py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'revisao'
                   ? 'bg-orange-500 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1200,7 +1222,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
 
             <button
               onClick={() => setAbaAtiva('rejeitadas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-2 lg:py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'rejeitadas'
                   ? 'bg-rose-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1220,7 +1242,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
 
             <button
               onClick={() => setAbaAtiva('todas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-2 lg:py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'todas'
                   ? 'bg-slate-800 dark:bg-slate-700 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1240,32 +1262,35 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
           </div>
 
           {/* Filtros em Linha */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-nowrap lg:flex-wrap items-center gap-2">
             {/* Campo de Busca */}
-            <div className="relative min-w-[200px] flex-1 sm:flex-none">
+            <div className="relative min-w-0 lg:min-w-[200px] flex-1 lg:flex-none">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={busca}
                 onChange={e => setBusca(e.target.value)}
                 placeholder="Buscar por #, solicitante, item..."
-                className="w-full pl-8 pr-7 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full pl-8 pr-7 h-10 lg:h-auto lg:py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl lg:rounded-lg text-sm lg:text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
               />
               {busca && (
                 <button
                   onClick={() => setBusca('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                  aria-label="Limpar busca"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3.5 h-3.5 lg:w-3 lg:h-3" />
                 </button>
               )}
             </div>
+
+            <BotaoFiltros ativos={filtrosLigados} onClick={() => setFiltrosAbertos(true)} className="lg:hidden" />
 
             {/* Filtro Setor */}
             <select
               value={filtroSetor}
               onChange={e => setFiltroSetor(e.target.value)}
-              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
+              className="hidden lg:block bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
             >
               <option value="todos">Todos os Setores</option>
               {setoresAprovados.map(s => (
@@ -1279,7 +1304,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
             <select
               value={filtroCriticidade}
               onChange={e => setFiltroCriticidade(e.target.value)}
-              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
+              className="hidden lg:block bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
             >
               <option value="todas">Criticidade: Todas</option>
               <option value="5">5 - Impeditiva</option>
@@ -1293,7 +1318,7 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
             <select
               value={filtroFaixaValor}
               onChange={e => setFiltroFaixaValor(e.target.value)}
-              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
+              className="hidden lg:block bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
             >
               <option value="todas">Valor: Todos</option>
               <option value="ate5k">Até R$ 5.000</option>
@@ -1304,13 +1329,47 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
         </div>
       </section>
 
+      {filtrosAbertos && (
+        <FiltrosSheet
+          onClose={() => setFiltrosAbertos(false)}
+          ativos={filtrosLigados}
+          onLimpar={() => { setFiltroSetor('todos'); setFiltroCriticidade('todas'); setFiltroFaixaValor('todas'); }}
+          rotuloAplicar={`Ver ${solicitacoesFiltradas.length} ${solicitacoesFiltradas.length === 1 ? 'solicitação' : 'solicitações'}`}
+        >
+          <CampoFiltro rotulo="Setor">
+            <select value={filtroSetor} onChange={e => setFiltroSetor(e.target.value)} className={classeCampoFiltro}>
+              <option value="todos">Todos os setores</option>
+              {setoresAprovados.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </CampoFiltro>
+          <CampoFiltro rotulo="Criticidade">
+            <select value={filtroCriticidade} onChange={e => setFiltroCriticidade(e.target.value)} className={classeCampoFiltro}>
+              <option value="todas">Todas</option>
+              <option value="5">5 - Impeditiva</option>
+              <option value="4">4 - Crítica</option>
+              <option value="3">3 - Urgente</option>
+              <option value="2">2 - Moderada</option>
+              <option value="1">1 - Baixa</option>
+            </select>
+          </CampoFiltro>
+          <CampoFiltro rotulo="Valor">
+            <select value={filtroFaixaValor} onChange={e => setFiltroFaixaValor(e.target.value)} className={classeCampoFiltro}>
+              <option value="todas">Todos</option>
+              <option value="ate5k">Até R$ 5.000</option>
+              <option value="5ka25k">R$ 5.000 a R$ 25.000</option>
+              <option value="acima25k">Acima de R$ 25.000</option>
+            </select>
+          </CampoFiltro>
+        </FiltrosSheet>
+      )}
+
       {/* 3. Cockpit Master-Detail Dual Pane */}
       <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:items-start">
 
         {/* PAINEL ESQUERDO: Lista de Triagem de Solicitacoes (col-span-5) */}
         <section
           data-tour="aprovacoes-lista"
-          className="lg:col-span-5 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs transition-colors lg:sticky lg:top-3 lg:max-h-[calc(100vh-5.5rem)]"
+          className="lg:col-span-5 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-clip lg:overflow-hidden shadow-xs transition-colors lg:sticky lg:top-3 lg:max-h-[calc(100vh-5.5rem)]"
         >
           {/* Header da Lista com Selecao em Lote */}
           <div className="p-3 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
@@ -1393,7 +1452,8 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
                           <button
                             type="button"
                             onClick={e => alternarSelecaoLote(req.id, e)}
-                            className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer mt-0.5"
+                            aria-label={isChecked ? `Tirar #${req.number} do lote` : `Pôr #${req.number} no lote`}
+                            className="-m-2 p-2 lg:m-0 lg:p-0 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer lg:mt-0.5"
                           >
                             {isChecked ? (
                               <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -1470,6 +1530,21 @@ function AprovacoesCompras({ user, onNavigate }: Props) {
               })
             )}
           </div>
+
+          {/* Celular: aprovar em lote numa barra presa no rodapé, ao alcance do
+              polegar (no desktop o botão fica no cabeçalho). */}
+          {abaAtiva === 'pendentes' && selecionadasLote.size > 0 && (
+            <div className="lg:hidden sticky bottom-0 z-10 border-t border-slate-200 bg-white/95 p-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+              <button
+                type="button"
+                onClick={() => setModalLoteAberta(true)}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 text-sm font-bold text-white active:bg-emerald-800 dark:bg-emerald-600"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Aprovar {selecionadasLote.size} selecionada{selecionadasLote.size > 1 ? 's' : ''}
+              </button>
+            </div>
+          )}
         </section>
 
         {/* PAINEL DIREITO: Inspecao Profunda & Estacao de Decisao (col-span-7).

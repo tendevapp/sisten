@@ -9,6 +9,7 @@
 import { rgb } from 'pdf-lib';
 import type { AseHoraExtraCompleta, AseHoraExtraItem } from '../../types';
 import { createDoc, PdfTextWriter, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado, sanitizeText, MARGIN, PAGE_HEIGHT, PAGE_WIDTH } from './core';
+import { dataHojeLocal } from '../dataLocal';
 export type { PdfGerado };
 import { diaDaSemana } from '../rhApi';
 import type { GrupoAse, LinhaAreaSubsetor, LinhaColaboradorAse, PontoDiario, ResumoAse } from '../aseRelatorio';
@@ -1602,7 +1603,7 @@ export function exportAseRelatorioExcel(params: {
   ];
   XLSX.utils.book_append_sheet(wb, wsColab, 'Colaboradores');
 
-  XLSX.writeFile(wb, `ase-relatorio-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `ase-relatorio-${dataHojeLocal()}.xlsx`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1653,5 +1654,5 @@ export function exportAseAuditoriaExcel(params: {
     [22, 13, 11, 11, 12, 30, 24, 10, 10, 10, 7, 11, 10, 9, 14, 22, 30, 10, 17, 28, 17]);
   adicionar('Eventos', CABECALHO_EVENTOS, auditoria.eventos, [17, 22, 24, 28, 50]);
 
-  XLSX.writeFile(wb, `ase-auditoria-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `ase-auditoria-${dataHojeLocal()}.xlsx`);
 }

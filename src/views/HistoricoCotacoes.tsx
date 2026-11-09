@@ -37,6 +37,7 @@ import CotacaoHistoricoDetalhesModal from '../components/cotacoes/CotacaoHistori
 import { TableCards, TableCardRow, TableDesktop } from '../components/ui/DataTable';
 import { formatBRL, formatDateTimeBR } from '../lib/format';
 import type { Profile } from '../types';
+import { dataHojeLocal } from '../lib/dataLocal';
 
 interface HistoricoCotacoesProps {
   user: Profile;
@@ -465,7 +466,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
         const ws = XLSX.utils.json_to_sheet(dados);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Itens Cotados');
-        XLSX.writeFile(wb, `itens_cotacoes_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        XLSX.writeFile(wb, `itens_cotacoes_${dataHojeLocal()}.xlsx`);
       } else {
         if (propostas.length === 0) {
           toast.warning('Nenhum dado disponível para exportar.');
@@ -494,7 +495,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
         const ws = XLSX.utils.json_to_sheet(dados);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Propostas Comerciais');
-        XLSX.writeFile(wb, `propostas_cotacoes_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        XLSX.writeFile(wb, `propostas_cotacoes_${dataHojeLocal()}.xlsx`);
       }
       toast.success('Arquivo Excel gerado com sucesso!');
     } catch (err) {
