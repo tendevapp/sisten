@@ -32,7 +32,7 @@ import {
 } from '../../lib/alcoolemiaPeriodo';
 import {
   BotaoCartao, BuscaColaborador, CartaoTeste, ExportarLivroModal, FiltrosResultado, ListaVazia, SeletorPeriodo,
-  SeloExcluido, SeloQuemAferiu, SeloResultado, type FiltroResultado,
+  LogAlteracoesAlcoolemia, SeloAssinatura, SeloExcluido, SeloQuemAferiu, SeloResultado, type FiltroResultado,
 } from '../../components/ssma/AlcoolemiaPainel';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
@@ -43,6 +43,17 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import TourSpotlight from '../../components/help/TourSpotlight';
 import { usePageTour } from '../../components/help/TourRegistryContext';
 import type { TourStep } from '../../components/help/types';
+import CampoAssinatura from '../../components/portaria/CampoAssinatura';
+
+/** Assinatura gravada no teste, no formato que o formulário usa. */
+function assinaturaDoTeste(t: PortAlcoolemiaTeste): { img: string; em: string } | null {
+  return t.assinatura_sorteado
+    ? { img: t.assinatura_sorteado, em: t.assinatura_sorteado_em || t.updated_at }
+    : null;
+}
+
+/** Assinou agora: guarda a imagem com o horário; removeu: null. */
+const assinaturaColhida = (img: string | null) => (img ? { img, em: new Date().toISOString() } : null);
 
 interface Props {
   user: Profile;
@@ -203,6 +214,8 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   // Fotos: as já gravadas (edição) e as novas, que sobem comprimidas ao salvar.
   const [formFotosMantidas, setFormFotosMantidas] = useState<PortAlcoolemiaFoto[]>([]);
   const [formFotosNovas, setFormFotosNovas] = useState<FotoLocal[]>([]);
+  // Assinatura do sorteado (PNG em data URL) e quando foi colhida.
+  const [formAssinatura, setFormAssinatura] = useState<{ img: string; em: string } | null>(null);
 
   // Modal Dedicado de Aferição (ao clicar no botão da tabela)
   const [modalAfericaoAberto, setModalAfericaoAberto] = useState<boolean>(false);
@@ -216,6 +229,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   const [afericaoObservacoes, setAfericaoObservacoes] = useState<string>('');
   const [afericaoFotosMantidas, setAfericaoFotosMantidas] = useState<PortAlcoolemiaFoto[]>([]);
   const [afericaoFotosNovas, setAfericaoFotosNovas] = useState<FotoLocal[]>([]);
+  const [afericaoAssinatura, setAfericaoAssinatura] = useState<{ img: string; em: string } | null>(null);
   const [salvandoAfericao, setSalvandoAfericao] = useState<boolean>(false);
 
   // Valores já digitados antes, por campo — vira opção de preenchimento
@@ -347,6 +361,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setFormObservacoes('');
     setFormFotosMantidas([]);
     setFormFotosNovas([]);
+    setFormAssinatura(null);
     setModalAberto(true);
   };
 
@@ -374,6 +389,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setFormObservacoes(teste.observacoes || '');
     setFormFotosMantidas(teste.fotos || []);
     setFormFotosNovas([]);
+    setFormAssinatura(assinaturaDoTeste(teste));
     setModalAberto(true);
   };
 
@@ -389,6 +405,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setAfericaoObservacoes(teste.observacoes || '');
     setAfericaoFotosMantidas(teste.fotos || []);
     setAfericaoFotosNovas([]);
+    setAfericaoAssinatura(assinaturaDoTeste(teste));
     setModalAfericaoAberto(true);
   };
 
@@ -422,6 +439,8 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
         testemunha: afericaoTestemunha.trim() || null,
         observacoes: afericaoObservacoes.trim() || null,
         horario: afericaoHorario,
+        assinatura_sorteado: afericaoAssinatura?.img ?? null,
+        assinatura_sorteado_em: afericaoAssinatura?.em ?? null,
       });
 
       toast.success(`Aferição registrada com sucesso para ${testeParaAferir.nome}!`);
@@ -472,6 +491,8 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
         vigilante: registrarAfericaoImediata ? formVigilante.trim() || null : null,
         testemunha: registrarAfericaoImediata ? formTestemunha.trim() || null : null,
         observacoes: formObservacoes.trim() || null,
+        assinatura_sorteado: formAssinatura?.img ?? null,
+        assinatura_sorteado_em: formAssinatura?.em ?? null,
         criado_por: user.id,
         criado_por_nome: user.name,
       };
@@ -507,6 +528,8 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
         setRegistrarAfericaoImediata(false);
         setFormFotosMantidas([]);
         setFormFotosNovas([]);
+        // A assinatura é de quem acabou de ser salvo: o próximo assina de novo.
+        setFormAssinatura(null);
         if (tipoVinculo === 'PJ') {
           setFormEmpresa('');
         }
@@ -778,7 +801,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                           )}
                           rodape={
                             <div className="space-y-2">
-                              <SeloQuemAferiu teste={item} />
+                              <div className="flex flex-col gap-1"><SeloQuemAferiu teste={item} /><SeloAssinatura teste={item} /></div>
                               <MiniaturasFotosTeste fotos={item.fotos} onAbrir={(i) => abrirFotos(item.fotos, i)} />
                             </div>
                           }
@@ -839,7 +862,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                           <div className="flex flex-col items-start gap-1"><SeloResultado teste={item} /><SeloExcluido teste={item} /></div>
                         </td>
                         <td className="px-4 py-3">
-                          <SeloQuemAferiu teste={item} />
+                          <div className="flex flex-col gap-0.5"><SeloQuemAferiu teste={item} /><SeloAssinatura teste={item} /></div>
                           {!!item.fotos?.length && (
                             <div className="mt-1.5">
                               <MiniaturasFotosTeste fotos={item.fotos} tamanho="h-9 w-9" onAbrir={(i) => abrirFotos(item.fotos, i)} />
@@ -1388,6 +1411,18 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                 disabled={salvando}
               />
             </div>
+
+            {/* Assinatura do sorteado: último passo, depois de conferir os dados */}
+            <CampoAssinatura
+              rotulo="Assinatura do sorteado"
+              valor={formAssinatura?.img ?? null}
+              assinadaEm={formAssinatura?.em}
+              nomeAssinante={formNome}
+              onChange={(img) => setFormAssinatura(assinaturaColhida(img))}
+              disabled={salvando}
+            />
+
+            {editandoTeste && <LogAlteracoesAlcoolemia testeId={editandoTeste.id} />}
           </ModalBody>
 
           <ModalFooter className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 p-4 dark:border-slate-800">
@@ -1651,6 +1686,19 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                 disabled={salvandoAfericao}
               />
             </div>
+
+            {/* Na aferição o sorteado está presente: é aqui que costuma assinar
+                quando foi cadastrado antes de chegar. */}
+            <CampoAssinatura
+              rotulo="Assinatura do sorteado"
+              valor={afericaoAssinatura?.img ?? null}
+              assinadaEm={afericaoAssinatura?.em}
+              nomeAssinante={testeParaAferir.nome}
+              onChange={(img) => setAfericaoAssinatura(assinaturaColhida(img))}
+              disabled={salvandoAfericao}
+            />
+
+            <LogAlteracoesAlcoolemia testeId={testeParaAferir.id} />
           </ModalBody>
 
           <ModalFooter className="flex items-center justify-between border-t border-slate-200 p-4 dark:border-slate-800">

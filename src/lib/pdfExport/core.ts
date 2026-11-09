@@ -579,10 +579,17 @@ export class PdfTextWriter {
     rows: string[][],
     /** Cor de uma célula específica (ex.: divergência em vermelho); `undefined` = cor padrão. */
     cellColor?: (rowIndex: number, colIndex: number) => RGB | undefined,
+    /**
+     * Coluna de imagem (ex.: assinatura): na célula `colunaImagem`, desenha
+     * `imagens[linha]` ajustada à célula em vez do texto. Sem imagem, a
+     * célula fica com o texto da linha (vazio = espaço para assinar à mão).
+     * Use `drawTableComAssinaturas`, que já embute as imagens.
+     */
+    opcoes?: { alturaLinha?: number; colunaImagem?: number; imagens?: (PDFImage | null | undefined)[] },
   ) {
     if (rows.length === 0) return;
 
-    const rowHeight = 16;
+    const rowHeight = opcoes?.alturaLinha ?? 16;
     const headerHeight = 18;
 
     this.ensureSpace(headerHeight + rowHeight * 2);
@@ -653,6 +660,19 @@ export class PdfTextWriter {
 
       let cellX = MARGIN;
       adjustedHeaders.forEach((h, colIndex) => {
+        if (opcoes?.colunaImagem === colIndex) {
+          const img = opcoes.imagens?.[rowIndex];
+          if (img) {
+            const escala = Math.min(1, (h.width - 8) / img.width, (rowHeight - 4) / img.height);
+            const w = img.width * escala;
+            const hImg = img.height * escala;
+            this.page.drawImage(img, { x: cellX + (h.width - w) / 2, y: rowY + (rowHeight - hImg) / 2, width: w, height: hImg });
+            cellX += h.width;
+            return;
+          }
+          // Sem imagem: célula em branco (espaço para assinar no papel).
+          if (!row[colIndex]) { cellX += h.width; return; }
+        }
         // celula e linha unica: \n nao existe no WinAnsi e derruba o PDF
         let cellText = sanitizeText(row[colIndex] || '-').replace(/\s*\n+\s*/g, ' - ');
         const maxCellWidth = h.width - 10;
@@ -674,7 +694,8 @@ export class PdfTextWriter {
         const corCelula = cellColor?.(rowIndex, colIndex);
         this.page.drawText(cellText, {
           x: textPosX,
-          y: rowY + 4.5,
+          // 4.5 na linha padrão de 16; linha mais alta centraliza o texto.
+          y: rowY + 4.5 + (rowHeight - 16) / 2,
           size: 8,
           font: corCelula ? this.fontBold : this.font,
           color: corCelula ?? PDF_COLORS.darkText,
@@ -687,6 +708,25 @@ export class PdfTextWriter {
     });
 
     this.y -= 10;
+  }
+
+  /**
+   * Tabela com uma coluna de assinatura: embute as imagens (PNG em data URL)
+   * e desenha a tabela com linha mais alta. Assinatura ausente = célula em
+   * branco, para assinar à mão na folha impressa.
+   */
+  async drawTableComAssinaturas(
+    headers: { label: string; width: number; align?: 'left' | 'center' | 'right' }[],
+    rows: string[][],
+    assinaturas: (string | null | undefined)[],
+    colunaAssinatura: number,
+    cellColor?: (rowIndex: number, colIndex: number) => RGB | undefined,
+  ) {
+    const imagens = await Promise.all(assinaturas.map(async (a) => {
+      if (!a) return null;
+      try { return await this.embedPhoto(a, LADO_FOTO.ASSINATURA, { persistir: false }); } catch { return null; }
+    }));
+    this.drawTable(headers, rows, cellColor, { alturaLinha: 26, colunaImagem: colunaAssinatura, imagens });
   }
 
   /** Força início de uma nova página A4 */

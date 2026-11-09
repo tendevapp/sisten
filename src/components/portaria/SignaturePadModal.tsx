@@ -16,6 +16,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { X, RotateCcw, Check, PenTool } from 'lucide-react';
+import Modal from '../ui/Modal';
 
 interface SignaturePadModalProps {
   isOpen: boolean;
@@ -177,11 +178,21 @@ export default function SignaturePadModal({
     onClose();
   };
 
+  // Sobre o Modal do app (e não mais `fixed inset-0` à mão): quase sempre abre
+  // POR CIMA de outro modal (cadastro do sorteado, ficha de EPI…). Fora da
+  // pilha, um Esc aqui fechava o modal de baixo e a pessoa perdia o que tinha
+  // digitado; o Tab também ficava preso no de trás. `disableOutsideClose`
+  // mantém o comportamento de antes: o dedo que escapa do quadro e toca o
+  // fundo não descarta a assinatura — fecha só pelo X ou por Cancelar.
   return (
-    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs p-0 sm:p-4 animate-in fade-in duration-150">
-      <div className="w-full max-w-lg md:max-w-2xl overflow-hidden rounded-t-3xl sm:rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-0">
-        {/* Mobile top pill indicator */}
-        <div className="sm:hidden mx-auto mt-2.5 mb-0.5 h-1.5 w-12 rounded-full bg-slate-300 dark:bg-slate-700 shrink-0" />
+    <Modal
+      onClose={onClose}
+      ariaLabel={title}
+      maxWidth="max-w-lg md:max-w-2xl"
+      zIndexClassName="z-[110]"
+      layout="dialog"
+      disableOutsideClose
+    >
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
@@ -255,7 +266,6 @@ export default function SignaturePadModal({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

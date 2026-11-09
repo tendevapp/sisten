@@ -40,7 +40,7 @@ import {
 } from '../../lib/alcoolemiaPeriodo';
 import {
   BotaoCartao, BuscaColaborador, CartaoTeste, ExportarLivroModal, FiltrosResultado, ListaVazia, SeletorPeriodo,
-  SeloExcluido, SeloQuemAferiu, SeloRazao, SeloResultado, SeloTermo, type FiltroResultado,
+  LogAlteracoesAlcoolemia, SeloAssinatura, SeloExcluido, SeloQuemAferiu, SeloRazao, SeloResultado, SeloTermo, type FiltroResultado,
 } from '../../components/ssma/AlcoolemiaPainel';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
@@ -601,7 +601,7 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
                             )}
                           </>
                         )}
-                        rodape={<><SeloTermo teste={item} />{item.vigilante && <SeloQuemAferiu teste={item} />}</>}
+                        rodape={<div className="flex flex-col gap-1"><SeloTermo teste={item} />{item.vigilante && <SeloQuemAferiu teste={item} />}<SeloAssinatura teste={item} /></div>}
                       />
                     ))}
                   </div>
@@ -652,7 +652,7 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
                         <td className="whitespace-nowrap px-4 py-3">
                           <div className="flex flex-col items-start gap-1"><SeloResultado teste={item} /><SeloExcluido teste={item} /></div>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-3"><SeloTermo teste={item} /></td>
+                        <td className="whitespace-nowrap px-4 py-3"><div className="flex flex-col gap-1"><SeloTermo teste={item} /><SeloAssinatura teste={item} /></div></td>
                         <td className="whitespace-nowrap px-4 py-3 text-right">
                           {item.excluido_em ? (
                             podeEditarFormulario(user, item) && (
@@ -1031,6 +1031,8 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
                 </span>
               </label>
             </div>
+
+            <LogAlteracoesAlcoolemia testeId={testeAtivo.id} />
           </ModalBody>
 
           <ModalFooter className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 p-4 dark:border-slate-800">

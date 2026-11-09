@@ -17,10 +17,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle, AlertTriangle, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3,
-  FileDown, FileSignature, Loader2, Search, Trash2, UserPlus, X, XCircle, type LucideIcon,
+  ChevronDown, FileDown, FileSignature, History, Loader2, PenLine, Search, Trash2, UserPlus, X, XCircle, type LucideIcon,
 } from 'lucide-react';
 import type { PortAlcoolemiaTeste } from '../../types';
-import type { AlcoolemiaMetricas } from '../../lib/portariaApi';
+import { listarLogAlcoolemia, type AlcoolemiaMetricas, type AlteracaoAlcoolemia } from '../../lib/portariaApi';
 import {
   ROTULO_MODO_PERIODO, diasNoIntervalo, intervaloDoPeriodo, rotuloPeriodo,
   type Intervalo, type ModoPeriodo,
@@ -355,6 +355,135 @@ export function SeloQuemAferiu({ teste }: { teste: PortAlcoolemiaTeste }) {
       {pelaPortaria ? 'Aferido na portaria' : 'Registrado no SSMA'} por {nome.split(' ')[0].toLowerCase().replace(/^./, (c) => c.toUpperCase())}
       {teste.etilometro_codigo ? `, ${teste.etilometro_codigo}` : ''}
     </span>
+  );
+}
+
+/**
+ * Se o sorteado assinou. Aparece também quando o teste já foi aferido e a
+ * assinatura falta — é o que o SSMA precisa enxergar ao conferir o livro.
+ * Pendente sem assinatura não mostra nada: ainda é cedo para cobrar.
+ */
+export function SeloAssinatura({ teste }: { teste: PortAlcoolemiaTeste }) {
+  if (teste.assinatura_sorteado) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+        <PenLine className="h-3 w-3" aria-hidden="true" /> Assinado pelo sorteado
+      </span>
+    );
+  }
+  if (teste.resultado === 'PENDENTE') return null;
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+      <PenLine className="h-3 w-3" aria-hidden="true" /> Sem assinatura do sorteado
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Log de alterações (auditoria)
+// ---------------------------------------------------------------------------
+
+const ROTULO_CAMPO_ALCOOLEMIA: Record<string, string> = {
+  data: 'Data', horario: 'Horário', turno: 'Turno', tipo_vinculo: 'Vínculo', pessoa_id: 'Pessoa (RH)',
+  matricula: 'Matrícula', nome: 'Nome', empresa: 'Empresa', cargo_funcao: 'Cargo/função', setor_area: 'Setor/área',
+  documento: 'Documento', resultado: 'Resultado', valor_medido: 'Valor medido (mg/L)', etilometro_codigo: 'Etilômetro',
+  vigilante: 'Vigilante', testemunha: 'Testemunha', observacoes: 'Observações', razao_teste: 'Razão do teste',
+  local_teste: 'Local', examinador_nome: 'Examinador', examinador_cargo: 'Cargo do examinador',
+  termo_assinado_fisicamente: 'Termo assinado no papel', termo_impresso_em: 'Termo impresso em',
+  fotos: 'Fotos', assinatura_sorteado: 'Assinatura do sorteado', assinatura_sorteado_em: 'Assinada em',
+  excluido_em: 'Excluído em', excluido_por: 'Excluído por', codigo_formulario: 'Código', numero_protocolo: 'Protocolo',
+  criado_por: 'Criado por (id)', criado_por_nome: 'Criado por',
+};
+
+const ROTULO_OPERACAO: Record<AlteracaoAlcoolemia['operacao'], string> = {
+  inclusao: 'Registrou',
+  alteracao: 'Alterou',
+  exclusao: 'Excluiu',
+  restauracao: 'Restaurou',
+  exclusao_definitiva: 'Apagou de vez',
+};
+
+function valorLegivel(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '∅';
+  if (typeof v === 'boolean') return v ? 'sim' : 'não';
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) {
+    const d = new Date(v);
+    if (!Number.isNaN(d.getTime())) return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  }
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+/**
+ * Histórico do teste: quem registrou, alterou, excluiu ou restaurou, quando, e
+ * o que mudou (de → para). O banco guarda também a linha inteira antes e
+ * depois de cada mudança, para auditoria — aqui só o resumo.
+ */
+export function LogAlteracoesAlcoolemia({ testeId }: { testeId: string }) {
+  const [linhas, setLinhas] = useState<AlteracaoAlcoolemia[] | null>(null);
+  const [erro, setErro] = useState(false);
+  const [aberto, setAberto] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    listarLogAlcoolemia(testeId)
+      .then((l) => { if (vivo) setLinhas(l); })
+      .catch(() => { if (vivo) { setErro(true); setLinhas([]); } });
+    return () => { vivo = false; };
+  }, [testeId]);
+
+  const resumo = linhas === null ? 'carregando…'
+    : erro ? 'indisponível sem conexão'
+    : linhas.length === 0 ? 'sem registros'
+    : `${linhas.length} ${linhas.length === 1 ? 'registro' : 'registros'}`;
+
+  return (
+    <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
+        className="flex w-full items-center gap-1.5 text-left text-xs font-bold text-slate-700 dark:text-slate-300"
+      >
+        <History className="h-3.5 w-3.5" aria-hidden="true" />
+        Log de alterações
+        <span className="font-normal text-slate-500">· {resumo}</span>
+        <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-slate-500 transition-transform ${aberto ? '' : '-rotate-90'}`} aria-hidden="true" />
+      </button>
+
+      {aberto && linhas && linhas.length > 0 && (
+        <ol className="mt-2 space-y-2">
+          {linhas.map((l) => (
+            <li key={l.id} className="rounded-lg border border-slate-200 p-2.5 dark:border-slate-700">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[11px]">
+                <span className="font-bold text-slate-800 dark:text-slate-100">
+                  {ROTULO_OPERACAO[l.operacao] ?? l.operacao}
+                  <span className="font-normal text-slate-500"> · {l.alterado_por_nome || (l.origem === 'sistema' ? 'sistema' : 'usuário sem nome')}</span>
+                </span>
+                <span className="tabular-nums text-slate-500">{new Date(l.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+              </div>
+              {l.alteracoes.length > 0 && (
+                <ul className="mt-1 space-y-0.5">
+                  {l.alteracoes.map((m, i) => (
+                    <li key={i} className="break-words text-[11px] text-slate-600 dark:text-slate-300">
+                      <span className="font-semibold">{ROTULO_CAMPO_ALCOOLEMIA[m.campo] ?? m.campo}:</span>{' '}
+                      <span className="text-slate-500 line-through decoration-slate-400/60">{valorLegivel(m.de)}</span>
+                      {' → '}
+                      <span>{valorLegivel(m.para)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {aberto && linhas?.length === 0 && !erro && (
+        <p className="mt-2 text-[11px] text-slate-500">
+          Nada registrado ainda. O log começou em 09/11/2026; mudanças anteriores não ficaram gravadas.
+        </p>
+      )}
+    </div>
   );
 }
 

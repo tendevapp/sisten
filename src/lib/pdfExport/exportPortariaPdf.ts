@@ -559,32 +559,42 @@ export async function gerarAlcoolemiaPeriodoPdf(
 
   if (testes.length > 0) {
     const resultado = (t: PortAlcoolemiaTeste) => t.resultado + (t.valor_medido > 0 ? ` (${t.valor_medido.toFixed(2)})` : '');
-    const nome = (t: PortAlcoolemiaTeste) => (t.matricula ? `${t.nome} (${t.matricula})` : t.nome);
+    // Matrícula em coluna própria: junto do nome ela empurrava o nome para o
+    // corte ("ANTONIO SEVERO NETO (1730...").
+    const nome = (t: PortAlcoolemiaTeste) => t.nome;
+    const matricula = (t: PortAlcoolemiaTeste) => t.matricula || '-';
+    // Última coluna: assinatura do sorteado. Digital = imagem; sem ela, o
+    // espaço fica em branco para assinar à mão na folha impressa.
+    const assinaturas = testes.map((t) => t.assinatura_sorteado);
     if (umDia) {
       const headers = [
-        { label: 'CÓDIGO', width: 90, align: 'left' as const },
-        { label: 'HORA', width: 45, align: 'center' as const },
-        { label: 'VÍNCULO', width: 55, align: 'center' as const },
-        { label: 'NOME / COLABORADOR', width: 160, align: 'left' as const },
-        { label: 'EMPRESA', width: 85, align: 'left' as const },
-        { label: 'RESULTADO', width: 80, align: 'center' as const },
+        { label: 'CÓDIGO', width: 70, align: 'left' as const },
+        { label: 'HORA', width: 30, align: 'center' as const },
+        { label: 'VÍNCULO', width: 42, align: 'center' as const },
+        { label: 'NOME / COLABORADOR', width: 156, align: 'left' as const },
+        { label: 'MATRÍCULA', width: 52, align: 'center' as const },
+        { label: 'EMPRESA', width: 60, align: 'left' as const },
+        { label: 'RESULTADO', width: 55, align: 'center' as const },
+        { label: 'ASSINATURA', width: 75, align: 'center' as const },
       ];
-      writer.drawTable(headers, testes.map((t) => [
-        t.codigo_formulario, t.horario, t.tipo_vinculo, nome(t), t.empresa || 'TEN', resultado(t),
-      ]));
+      await writer.drawTableComAssinaturas(headers, testes.map((t) => [
+        t.codigo_formulario, t.horario, t.tipo_vinculo, nome(t), matricula(t), t.empresa || 'TEN', resultado(t), '',
+      ]), assinaturas, 7);
     } else {
       const headers = [
-        { label: 'DATA', width: 50, align: 'center' as const },
-        { label: 'CÓDIGO', width: 80, align: 'left' as const },
-        { label: 'HORA', width: 35, align: 'center' as const },
-        { label: 'VÍNCULO', width: 45, align: 'center' as const },
-        { label: 'NOME / COLABORADOR', width: 150, align: 'left' as const },
-        { label: 'EMPRESA', width: 75, align: 'left' as const },
-        { label: 'RESULTADO', width: 80, align: 'center' as const },
+        { label: 'DATA', width: 36, align: 'center' as const },
+        { label: 'CÓDIGO', width: 68, align: 'left' as const },
+        { label: 'HORA', width: 30, align: 'center' as const },
+        { label: 'VÍNCULO', width: 40, align: 'center' as const },
+        { label: 'NOME / COLABORADOR', width: 135, align: 'left' as const },
+        { label: 'MATRÍCULA', width: 50, align: 'center' as const },
+        { label: 'EMPRESA', width: 55, align: 'left' as const },
+        { label: 'RESULTADO', width: 55, align: 'center' as const },
+        { label: 'ASSINATURA', width: 70, align: 'center' as const },
       ];
-      writer.drawTable(headers, testes.map((t) => [
-        formatDataBR(t.data).slice(0, 5), t.codigo_formulario, t.horario, t.tipo_vinculo, nome(t), t.empresa || 'TEN', resultado(t),
-      ]));
+      await writer.drawTableComAssinaturas(headers, testes.map((t) => [
+        formatDataBR(t.data).slice(0, 5), t.codigo_formulario, t.horario, t.tipo_vinculo, nome(t), matricula(t), t.empresa || 'TEN', resultado(t), '',
+      ]), assinaturas, 8);
     }
   }
 

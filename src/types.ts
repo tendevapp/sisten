@@ -2351,6 +2351,9 @@ export interface PortAlcoolemiaTeste {
   termo_impresso_em?: string | null;
   /** Fotos do teste (visor do etilômetro, termo…) no bucket `port-alcoolemia`. */
   fotos?: PortAlcoolemiaFoto[];
+  /** Assinatura do sorteado (PNG em data URL, do SignaturePadModal). Nula enquanto não assinou. */
+  assinatura_sorteado?: string | null;
+  assinatura_sorteado_em?: string | null;
   criado_por?: string | null;
   criado_por_nome?: string | null;
   created_at: string;

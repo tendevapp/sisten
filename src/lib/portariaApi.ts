@@ -1935,6 +1935,8 @@ export async function criarTesteAlcoolemia(
     examinador_cargo: dados.examinador_cargo ? dados.examinador_cargo.trim() : null,
     termo_assinado_fisicamente: dados.termo_assinado_fisicamente ?? false,
     termo_impresso_em: dados.termo_impresso_em || null,
+    assinatura_sorteado: dados.assinatura_sorteado || null,
+    assinatura_sorteado_em: dados.assinatura_sorteado ? (dados.assinatura_sorteado_em || new Date().toISOString()) : null,
     criado_por: dados.criado_por || null,
     criado_por_nome: dados.criado_por_nome || null,
   };
@@ -1979,6 +1981,31 @@ export async function atualizarTesteAlcoolemia(
     throw new Error(error.message);
   }
   return data as unknown as PortAlcoolemiaTeste;
+}
+
+/** Linha do log de auditoria do teste (tabela port_alcoolemia_testes_log, gravada por trigger). */
+export interface AlteracaoAlcoolemia {
+  id: number;
+  operacao: 'inclusao' | 'alteracao' | 'exclusao' | 'restauracao' | 'exclusao_definitiva';
+  alteracoes: { campo: string; de: unknown; para: unknown }[];
+  alterado_por_nome: string | null;
+  origem: 'app' | 'sistema';
+  created_at: string;
+}
+
+/**
+ * Histórico do teste, do mais recente ao mais antigo. Só o resumo: a linha
+ * inteira antes/depois (com assinatura e fotos) fica no banco para auditoria
+ * e não precisa trafegar para a tela.
+ */
+export async function listarLogAlcoolemia(testeId: string): Promise<AlteracaoAlcoolemia[]> {
+  const { data, error } = await (supabase as any)
+    .from('port_alcoolemia_testes_log')
+    .select('id, operacao, alteracoes, alterado_por_nome, origem, created_at')
+    .eq('teste_id', testeId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data || []) as AlteracaoAlcoolemia[];
 }
 
 export async function excluirTesteAlcoolemia(id: string, excluidoPor?: string): Promise<void> {
