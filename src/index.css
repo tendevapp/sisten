@@ -1736,3 +1736,34 @@ body,
   overflow: hidden !important;
   overscroll-behavior: contain;
 }
+
+/* ------------------------------------------------------------------ */
+/* Barra de rolagem horizontal no topo das tabelas (regra, CLAUDE.md §6) */
+/* ------------------------------------------------------------------ */
+/* Criada por lib/rolagemSuperiorTabelas.ts acima de todo contêiner de
+   tabela que transborda na horizontal. Só a barra aparece: sem fundo nem
+   borda, para não parecer uma linha a mais da tabela. */
+.rolagem-superior-tabela {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
+.rolagem-superior-tabela[hidden] {
+  display: none;
+}
+
+/* No celular a tabela vira cartões (e o gesto de arrastar já rola);
+   na impressão, barra não faz sentido. */
+@media (max-width: 768px) {
+  .rolagem-superior-tabela {
+    display: none !important;
+  }
+}
+
+@media print {
+  .rolagem-superior-tabela {
+    display: none !important;
+  }
+}

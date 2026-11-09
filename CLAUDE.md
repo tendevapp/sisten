@@ -86,6 +86,26 @@ O único banco de dados e servidor Supabase permitido e utilizado no SISTEN é o
 - É estritamente proibido direcionar comandos, consultas SQL, migrações ou configurações para outros bancos ou servidores MCP (como `supabase-guigo`).
 - Todas as ferramentas MCP de banco, consultas, geração de types e edge functions devem utilizar exclusivamente o servidor `supabase-sisten` configurado via `.mcp.json` (`https://mcp.supabase.com/mcp?skip_elicitations=execute_sql,apply_migration`).
 
+## 6. Tabela larga tem barra de rolagem também no topo
+
+Toda tabela com rolagem horizontal mostra a barra de rolagem **em cima**, além
+da nativa embaixo. Em tabela comprida a barra de baixo fica no pé da página, e
+ver uma coluna da direita obrigava a descer, arrastar e subir.
+
+Não precisa fazer nada na tela: `src/lib/rolagemSuperiorTabelas.ts` (iniciado no
+`main.tsx`) encontra toda `<table>` dentro de um contêiner `overflow-x-auto`/
+`overflow-auto` e põe a barra sincronizada acima dele. Ela só aparece quando a
+tabela transborda, e some no celular, onde a tabela vira cartões.
+
+Para funcionar, o contêiner de rolagem precisa estar até 4 níveis acima da
+`<table>`, e o pai dele precisa empilhar na vertical (bloco ou `flex-col`; em
+`flex` de linha ou `grid` a barra não entra).
+
+Opt-out no contêiner ou na tabela: `data-rolagem-superior="propria"`, quando a
+tela já desenha a sua (DataTable, Mapa Comparativo, Lead Time, Central de
+Solicitações, `TabelaComRolagemSuperior`), ou `data-rolagem-superior="nao"`.
+Não escreva outra barra superior à mão.
+
 ## Verificação antes de entregar
 
 ```bash

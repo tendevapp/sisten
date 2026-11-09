@@ -1889,6 +1889,7 @@ export default function MapaComparativo({
 
             <div
               ref={tableContainerRef}
+                data-rolagem-superior="propria"
               onScroll={handleBottomScroll}
               className="overflow-x-auto custom-scrollbar rounded-b-2xl border border-t-0 border-slate-200 bg-white shadow-sm shadow-slate-900/[0.03] dark:border-slate-800 dark:bg-slate-900"
             >

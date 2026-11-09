@@ -5,10 +5,12 @@ import { ToastProvider } from './components/ui/Toast';
 import { installConsoleLogBuffer } from './lib/consoleLogBuffer';
 import { initResponsiveTables } from './lib/responsiveTableObserver';
 import { instalarProtecaoCampoNumerico } from './lib/protecaoCampoNumerico';
+import { initRolagemSuperiorTabelas } from './lib/rolagemSuperiorTabelas';
 import './index.css';
 
 installConsoleLogBuffer();
 initResponsiveTables();
+initRolagemSuperiorTabelas();
 instalarProtecaoCampoNumerico();
 
 createRoot(document.getElementById('root')!).render(

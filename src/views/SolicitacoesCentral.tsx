@@ -840,6 +840,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           )}
           <div
             ref={rolagemTabela}
+            data-rolagem-superior="propria"
             onScroll={e => espelharRolagem(e.currentTarget, rolagemTopo.current)}
             className="overflow-x-auto"
           >

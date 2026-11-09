@@ -14,6 +14,6 @@ export default function TabelaComRolagemSuperior({ children, larguraMinima, aria
   };
   return <>
     <div ref={rolagemSuperior} onScroll={e => sincronizar(e.currentTarget, rolagemTabela.current)} className="h-4 overflow-x-auto overflow-y-hidden rounded-t-xl border border-slate-200 bg-slate-50" aria-label={`Rolagem horizontal superior da ${ariaLabel}`}><div style={{ width: larguraMinima, height: 1 }} /></div>
-    <div ref={rolagemTabela} onScroll={e => sincronizar(e.currentTarget, rolagemSuperior.current)} className="max-h-[62vh] overflow-auto rounded-b-xl border-x border-b border-slate-200">{children}</div>
+    <div ref={rolagemTabela} data-rolagem-superior="propria" onScroll={e => sincronizar(e.currentTarget, rolagemSuperior.current)} className="max-h-[62vh] overflow-auto rounded-b-xl border-x border-b border-slate-200">{children}</div>
   </>;
 }

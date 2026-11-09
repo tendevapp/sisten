@@ -111,6 +111,7 @@ export function TableShell({ children, maxHeight = '70vh', minHeight, className 
           numa caixa de 70vh dentro dela. */}
       <div
         ref={mainScrollRef}
+          data-rolagem-superior="propria"
         onScroll={handleMainScroll}
         data-table-scroll=""
         className="overflow-auto flex-1"

@@ -136,6 +136,7 @@ function TableDoubleScroll({ children, className = '', trigger }: TableDoubleScr
       )}
       <div
         ref={mainScrollRef}
+          data-rolagem-superior="propria"
         onScroll={handleMainScroll}
         className="overflow-x-auto custom-scrollbar"
       >
