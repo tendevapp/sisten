@@ -44,7 +44,9 @@
 | `confirm()` nativo | 25 chamadas em 12 arquivos → [`confirmar()`](../src/lib/confirmar.tsx) com título e botões nomeados | 6/6 no Chrome |
 | Emoji nos filtros da Portaria | ícones lucide + `aria-pressed` | — |
 
-**Ainda falta:** `xlsx` 0.20.3 (instalação bloqueada no ambiente — rodar `npm i https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`); `aria-invalid` + foco no primeiro erro (precisa de lógica por formulário); 24 modais à mão (migrar quando a tela for mexida); `window.alert` → toast; `transition-all`, escala de z-index, esqueletos de carregamento, emoji restante (Visão Geral de Suprimentos, Compras).
+**Depois:** `xlsx` 0.20.3 instalado (leitura de planilha do usuário toda pela versão corrigida; o `xlsx-js-style` só escreve). Celular conferido em emulação 400×824 com toque, logado, tema escuro — ASE, Central de Compras e Portaria sem transbordo, `visualViewport.scale = 1`. A tela ampliada relatada era zoom de pinça (o texto não refluía); `touch-action: manipulation` no `<html>` passa a impedir o zoom por toque duplo acidental, mantendo a pinça. Título da aba também nas rotas `/formularios/...`.
+
+**Ainda falta:** `aria-invalid` + foco no primeiro erro (precisa de lógica por formulário); 24 modais à mão (migrar quando a tela for mexida); `window.alert` → toast; `transition-all`, escala de z-index, esqueletos de carregamento, emoji restante (Visão Geral de Suprimentos, Compras).
 
 ---
 

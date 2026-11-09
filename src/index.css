@@ -1787,3 +1787,15 @@ body,
     min-width: 36px;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Sem zoom por toque duplo                                             */
+/* ------------------------------------------------------------------ */
+/* No pátio a pessoa toca rápido duas vezes num botão e a tela inteira
+   amplia (e fica ampliada, cortada à direita). `manipulation` desliga só
+   o zoom por toque duplo; a pinça continua valendo — quem precisa de
+   zoom não perde. Também tira o atraso de ~300ms do toque em navegadores
+   antigos. Não troque por `maximum-scale`/`user-scalable=no` no viewport. */
+html {
+  touch-action: manipulation;
+}

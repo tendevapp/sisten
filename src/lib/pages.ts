@@ -1210,9 +1210,11 @@ export const TITULO_APP = 'SISTEN — Sistema de Informação | Torres Eólicas 
  * título completo do app.
  */
 export function tituloAba(path: string): string {
-  const pagina = PAGES.find(p => p.path === path);
-  if (!pagina || pagina.path === '/') return TITULO_APP;
-  return `${pagina.label} · SISTEN`;
+  if (path === '/') return TITULO_APP;
+  // Formulários (/formularios/...) moram em FORMULARIOS_DETALHADOS, não em PAGES.
+  const rotulo = PAGES.find(p => p.path === path)?.label
+    ?? FORMULARIOS_DETALHADOS.find(f => f.path === path)?.label;
+  return rotulo ? `${rotulo} · SISTEN` : TITULO_APP;
 }
 
 /**

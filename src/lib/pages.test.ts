@@ -595,6 +595,10 @@ describe('tituloAba', () => {
     expect(tituloAba('/formularios')).toBe(`${formularios!.label} · SISTEN`);
   });
 
+  it('usa o rótulo do formulário nas rotas /formularios/...', () => {
+    expect(tituloAba('/formularios/portaria-relatorio')).toBe('Relatório de Ocorrências · SISTEN');
+  });
+
   it('volta ao título completo no Início e em rota desconhecida', () => {
     expect(tituloAba('/')).toBe(TITULO_APP);
     expect(tituloAba('/nao-existe')).toBe(TITULO_APP);
