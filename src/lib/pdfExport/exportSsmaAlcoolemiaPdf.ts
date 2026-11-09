@@ -10,6 +10,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { createDoc, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado, PAGE_WIDTH, PAGE_HEIGHT, MARGIN, sanitizeText, wrapText, PDF_COLORS } from './core';
 export type { PdfGerado };
 import type { PortAlcoolemiaTeste } from '../../types';
+import { embutirFotoPdf, LADO_FOTO } from './fotosPdf';
 
 function formatDataBR(iso?: string | null): string {
   if (!iso) return '__/__/____';
@@ -275,6 +276,17 @@ export async function gerarTermoAlcoolemiaPdf(
   // 9. ASSINATURA DO COLABORADOR
   const linhaAssinaturaLargura = 240;
   const assX = MARGIN + (contentWidth - linhaAssinaturaLargura) / 2;
+  // Assinatura digital (colhida na Portaria ou no termo) sobre a linha; sem
+  // ela, a linha fica livre para assinar à mão.
+  if (teste.assinatura_sorteado) {
+    const img = await embutirFotoPdf(doc, teste.assinatura_sorteado, LADO_FOTO.ASSINATURA, { persistir: false }).catch(() => null);
+    if (img) {
+      const escala = Math.min(200 / img.width, 28 / img.height, 1);
+      const w = img.width * escala;
+      const h = img.height * escala;
+      page.drawImage(img, { x: assX + (linhaAssinaturaLargura - w) / 2, y: y + 1, width: w, height: h });
+    }
+  }
   page.drawLine({
     start: { x: assX, y },
     end: { x: assX + linhaAssinaturaLargura, y },

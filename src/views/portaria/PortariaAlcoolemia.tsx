@@ -45,15 +45,7 @@ import { usePageTour } from '../../components/help/TourRegistryContext';
 import type { TourStep } from '../../components/help/types';
 import CampoAssinatura from '../../components/portaria/CampoAssinatura';
 
-/** Assinatura gravada no teste, no formato que o formulário usa. */
-function assinaturaDoTeste(t: PortAlcoolemiaTeste): { img: string; em: string } | null {
-  return t.assinatura_sorteado
-    ? { img: t.assinatura_sorteado, em: t.assinatura_sorteado_em || t.updated_at }
-    : null;
-}
-
-/** Assinou agora: guarda a imagem com o horário; removeu: null. */
-const assinaturaColhida = (img: string | null) => (img ? { img, em: new Date().toISOString() } : null);
+import { assinaturaColhida, assinaturaDoTeste } from '../../lib/alcoolemiaAssinatura';
 
 interface Props {
   user: Profile;
@@ -605,7 +597,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
       }
       setExportarAberto(false);
       setPdfPreview({
-        gerar: () => gerarAlcoolemiaPeriodoPdf(lista, iv.inicio, iv.fim, user.name),
+        gerar: () => gerarAlcoolemiaPeriodoPdf(lista, iv.inicio, iv.fim),
         titulo: `Livro de Alcoolemia - ${rotuloPeriodo('periodo', iv, hoje)}`,
       });
     } catch (err: any) {

@@ -38,12 +38,12 @@ import {
 } from '../../lib/imageCompression';
 import { prepararFotoCarimbada } from '../../lib/carimboFoto';
 import {
-  EPSILON_QTD, PREFIXO_RECEB, juntarNotasFiscais, separarNotasFiscais, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarItensComPo, buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
+  EPSILON_QTD, PREFIXO_RECEB, juntarNotasFiscais, separarNotasFiscais, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarItensComPo, itensMercadoLivreComPo, buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
   entregaParcialAnterior, listarFornecedoresDoCache, parcialPrecisaConfirmarNf, pendentePedido, podeExcluirNaoConformidade, posAbertosDoFornecedor,
   resumoConferencia, tipoNcSugerido, validarNovaNcAvulsa,
   NF_SEM_PO, itensSemNf, nfDoItem, nfPorPedidoDosItens, nfsDoPedido, pedidosSemNf, resumoNfPorPedido,
   type FotoNotaFiscal, type NfPorPedido,
-  type AnexoRecebimento, type DestinoPrevisto, type FontePedido, type ItemPoEncontrado, type LinhaConferencia, type PoAberto,
+  type AnexoRecebimento, type DestinoPrevisto, type FontePedido, type ItemPoEncontrado, type ItemPoMercadoLivre, type LinhaConferencia, type PoAberto,
   type LinhaCacheSAP, type TipoDivergencia, type TipoEmbalagem,
 } from '../../lib/recebimentoAlmox';
 import {
@@ -70,6 +70,8 @@ import type { PdfGerado } from '../../lib/pdfExport/core';
 import ModalLotesValidade from '../../components/almoxarifado/ModalLotesValidade';
 import { normalizarLotesValidade, type LoteValidade } from '../../lib/lotesValidade';
 import { confirmar } from '../../lib/confirmar';
+import { listarItensMercadoLivre } from '../../lib/compraMercadoLivreApi';
+import { rotuloCompraMl } from '../../lib/compraMercadoLivre';
 
 interface Props {
   user: Profile;
@@ -478,7 +480,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Celular: 2 colunas, sem a descrição (fica no title) e com o rodapé enxuto. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
         {cards.map((card) => {
           const Icon = card.icon;
           return (
@@ -486,7 +489,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
               key={card.rota ?? card.id}
               type="button"
               onClick={() => (card.rota ? onNavigate(card.rota) : setVista(card.id))}
-              className="group relative flex flex-col items-start justify-between rounded-2xl border p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none"
+              title={card.desc}
+              className="group relative flex min-w-0 flex-col items-start justify-between rounded-2xl border p-3 text-left transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none sm:p-5"
               style={{ borderColor: card.alerta ? 'var(--status-critical)' : 'var(--hairline)', background: 'var(--surface-raised)' }}
             >
               {!!card.alerta && (
@@ -503,22 +507,22 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
               )}
               <div className="w-full">
                 <div className="flex w-full items-center justify-between">
-                  <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${card.cor}`}>
-                    <Icon className="h-5 w-5" />
+                  <span className={`flex h-8 w-8 items-center justify-center rounded-lg sm:h-10 sm:w-10 sm:rounded-xl ${card.cor}`}>
+                    <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
                   </span>
-                  <span className="rounded px-2 py-0.5 font-mono text-[11px] font-bold" style={{ background: 'color-mix(in srgb, var(--ink-muted) 12%, transparent)', color: 'var(--ink-muted)' }}>
+                  <span className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold sm:px-2 sm:text-[11px]" style={{ background: 'color-mix(in srgb, var(--ink-muted) 12%, transparent)', color: 'var(--ink-muted)' }}>
                     {card.codigo}
                   </span>
                 </div>
-                <h3 className="mt-3.5 text-base font-bold" style={{ color: 'var(--ink-primary)' }}>{card.titulo}</h3>
-                <p className="mt-1.5 text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>{card.desc}</p>
+                <h3 className="mt-2.5 text-sm font-bold leading-snug sm:mt-3.5 sm:text-base" style={{ color: 'var(--ink-primary)' }}>{card.titulo}</h3>
+                <p className="mt-1.5 hidden text-xs leading-relaxed sm:block" style={{ color: 'var(--ink-muted)' }}>{card.desc}</p>
               </div>
-              <div className="mt-5 flex w-full items-center justify-between border-t pt-3" style={{ borderColor: 'var(--hairline)' }}>
-                <span className="text-xs font-semibold" style={{ color: card.alerta ? 'var(--status-critical)' : 'var(--ink-secondary)' }}>
+              <div className="mt-3 flex w-full items-center justify-between gap-1 border-t pt-2 sm:mt-5 sm:pt-3" style={{ borderColor: 'var(--hairline)' }}>
+                <span className="min-w-0 line-clamp-2 text-[11px] font-semibold leading-tight sm:text-xs" style={{ color: card.alerta ? 'var(--status-critical)' : 'var(--ink-secondary)' }}>
                   {card.alerta ? card.alertaTexto : card.badge}
                 </span>
-                <span className="inline-flex items-center gap-1 text-xs font-bold transition-transform group-hover:translate-x-1" style={{ color: 'var(--brand)' }}>
-                  Acessar <ArrowRight className="h-3.5 w-3.5" />
+                <span className="inline-flex shrink-0 items-center gap-1 text-xs font-bold transition-transform group-hover:translate-x-1" style={{ color: 'var(--brand)' }}>
+                  <span className="hidden sm:inline">Acessar</span> <ArrowRight className="h-3.5 w-3.5" />
                 </span>
               </div>
             </button>
@@ -2345,7 +2349,11 @@ function ModalConferencia({
   /** Campo de busca: o PO a puxar agora. Vários POs viram várias buscas. */
   const [poBusca, setPoBusca] = useState('');
   /** Puxar por número do PO ou procurar pelos POs abertos de um fornecedor. */
-  const [modoBusca, setModoBusca] = useState<'po' | 'fornecedor' | 'item'>('po');
+  const [modoBusca, setModoBusca] = useState<'po' | 'fornecedor' | 'item' | 'ml'>('po');
+  /** Itens comprados no Mercado Livre (ri → nº da compra), lidos ao abrir a opção. */
+  const [compraMlPorRi, setCompraMlPorRi] = useState<Map<string, string | null> | null>(null);
+  const [carregandoMl, setCarregandoMl] = useState(false);
+  const [mlBusca, setMlBusca] = useState('');
   /** Palavras-chave da busca por descrição do item (AND, padrão do Catálogo SAP). */
   const [chipsItem, setChipsItem] = useState<string[]>([]);
   const [fornBusca, setFornBusca] = useState('');
@@ -2492,6 +2500,59 @@ function ModalConferencia({
     () => buscarItensComPo(sapCache, tokensItem),
     [sapCache, tokensItem],
   );
+
+  /** Opção Mercado Livre: carrega uma vez os itens do ML ao abrir. */
+  useEffect(() => {
+    if (modoBusca !== 'ml' || compraMlPorRi || carregandoMl) return;
+    setCarregandoMl(true);
+    listarItensMercadoLivre()
+      .then((lista) => setCompraMlPorRi(new Map(lista.map((it) => [it.ri, it.numero_compra]))))
+      .catch((e: any) => toast.error(`Não foi possível ler os itens do Mercado Livre: ${e?.message || 'erro desconhecido'}`))
+      .finally(() => setCarregandoMl(false));
+  }, [modoBusca, compraMlPorRi, carregandoMl, toast]);
+
+  /** Itens do ML que já têm PO e ainda têm saldo a chegar (cache do SAP). */
+  const itensMl = useMemo<ItemPoMercadoLivre[]>(
+    () => (compraMlPorRi ? itensMercadoLivreComPo(sapCache, compraMlPorRi, mlBusca) : []),
+    [sapCache, compraMlPorRi, mlBusca],
+  );
+
+  /** Uma linha de PO achada (busca por item ou Mercado Livre) com o botão de adicionar. */
+  const renderItemEncontrado = (it: ItemPoEncontrado, compraMl?: string | null) => {
+    const jaNaConf = !!it.linhaRef && linhas.some((l) => l.linhaRef === it.linhaRef);
+    const recebido = it.pendente <= EPSILON_QTD;
+    return (
+      <div
+        key={`${it.numero}-${it.linhaRef ?? it.materialCode}`}
+        className="flex items-start justify-between gap-2 rounded-lg border p-2 text-[11px]"
+        style={{ borderColor: 'var(--hairline)', opacity: recebido ? 0.65 : 1 }}
+      >
+        <span className="min-w-0">
+          <span className="block font-bold" style={{ color: 'var(--ink-primary)' }}>{it.descricao || it.materialCode}</span>
+          <span className="block" style={{ color: 'var(--ink-muted)' }}>
+            PO {it.numero} · cód. {it.materialCode}{it.fornecedor ? ` · ${it.fornecedor}` : ''}
+          </span>
+          {compraMl && (
+            <span className="mt-0.5 inline-block rounded border border-yellow-400 bg-yellow-100 px-1 font-mono text-[10px] font-bold text-slate-900 dark:bg-yellow-900/30 dark:text-yellow-200">
+              {rotuloCompraMl(compraMl)}
+            </span>
+          )}
+          <span className="block tabular-nums" style={{ color: recebido ? 'var(--ink-muted)' : 'var(--status-serious)' }}>
+            {recebido ? 'já recebido no SAP' : `pendente ${formatQtd(it.pendente)} ${it.unidade}`}
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={() => adicionarItemEncontrado(it)}
+          disabled={jaNaConf}
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer text-white disabled:opacity-60"
+          style={{ background: jaNaConf ? 'var(--status-good)' : 'var(--brand)' }}
+        >
+          {jaNaConf ? <><Check className="h-3.5 w-3.5" /> na conferência</> : <><Plus className="h-3.5 w-3.5" /> Adicionar item</>}
+        </button>
+      </div>
+    );
+  };
 
   /** Monta o painel de POs abertos do fornecedor a partir do cache local. */
   const buscarFornecedor = () => {
@@ -2857,23 +2918,66 @@ function ModalConferencia({
 
           {!retornoRemessa && (
           <Campo rotulo="Pedidos (PO) — adicione um por vez">
-            <div className="mb-2 flex w-full rounded-lg border p-0.5 text-[11px] font-bold sm:w-auto sm:inline-flex" style={{ borderColor: 'var(--hairline)' }}>
-              {([['item', 'Por item'], ['po', 'Por número do PO'], ['fornecedor', 'Por fornecedor']] as const).map(([id, rot]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setModoBusca(id)}
-                  className="flex-1 rounded-md px-2.5 py-1.5 cursor-pointer transition-colors sm:flex-none"
-                  style={modoBusca === id
-                    ? { background: 'var(--brand)', color: '#fff' }
-                    : { color: 'var(--ink-secondary)' }}
-                >
-                  {rot}
-                </button>
+            {/* Abreviado para caber numa linha no celular; o nome inteiro vai no title/aria-label. */}
+            <div role="group" aria-label="Como buscar o pedido" className="mb-2 flex w-full items-stretch rounded-lg border p-0.5 text-[11px] font-bold sm:inline-flex sm:w-auto" style={{ borderColor: 'var(--hairline)' }}>
+              {([['item', 'Item', 'Por item'], ['po', 'Pedido', 'Por número do PO'], ['fornecedor', 'Forn.', 'Por fornecedor'], ['ml', 'M Livre', 'Mercado Livre']] as const).map(([id, rot, nome], i) => (
+                <React.Fragment key={id}>
+                  {i > 0 && <span aria-hidden className="mx-0.5 my-1 w-px shrink-0" style={{ background: 'var(--hairline)' }} />}
+                  <button
+                    type="button"
+                    onClick={() => setModoBusca(id)}
+                    aria-pressed={modoBusca === id}
+                    aria-label={nome}
+                    title={nome}
+                    className="min-w-0 flex-1 whitespace-nowrap rounded-md px-2 py-1.5 cursor-pointer transition-colors sm:flex-none sm:px-3"
+                    style={modoBusca === id
+                      ? { background: 'var(--brand)', color: '#fff' }
+                      : { color: 'var(--ink-secondary)' }}
+                  >
+                    {rot}
+                  </button>
+                </React.Fragment>
               ))}
             </div>
 
-            {modoBusca === 'po' ? (
+            {modoBusca === 'ml' ? (
+              <>
+                <input
+                  value={mlBusca}
+                  onChange={(e) => setMlBusca(e.target.value)}
+                  className={inputCls}
+                  placeholder="Filtrar por descrição, PO ou nº da compra do ML"
+                  aria-label="Filtrar itens do Mercado Livre"
+                />
+                <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                  Itens comprados no Mercado Livre que já têm PO e ainda não chegaram.
+                </p>
+                <div className="mt-2 space-y-1.5">
+                  {carregandoMl || !compraMlPorRi ? (
+                    <p className="flex items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-3 text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando itens do Mercado Livre…
+                    </p>
+                  ) : !sapCache.length ? (
+                    <p className="rounded-lg border border-dashed px-3 py-3 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                      O cache do SAP está vazio neste aparelho — use a busca por número do PO.
+                    </p>
+                  ) : !itensMl.length ? (
+                    <p className="rounded-lg border border-dashed px-3 py-3 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                      {mlBusca.trim() ? 'Nenhum item do Mercado Livre bate com o filtro.' : 'Nenhum item do Mercado Livre com PO pendente de chegar.'}
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-[11px] font-bold tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+                        {itensMl.length} item(ns) pendente(s) de chegar
+                      </p>
+                      <div className="max-h-80 space-y-1.5 overflow-y-auto pr-0.5">
+                        {itensMl.map((it) => renderItemEncontrado(it, it.numeroCompraMl))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            ) : modoBusca === 'po' ? (
               <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative flex-1">
                   <input
@@ -2936,36 +3040,7 @@ function ModalConferencia({
                           {itensEncontrados.length > LIMITE_BUSCA_ITEM && ` — mostrando os ${LIMITE_BUSCA_ITEM} primeiros; acrescente palavras para afinar`}
                         </p>
                         <div className="max-h-80 space-y-1.5 overflow-y-auto pr-0.5">
-                          {itensEncontrados.slice(0, LIMITE_BUSCA_ITEM).map((it) => {
-                            const jaNaConf = !!it.linhaRef && linhas.some((l) => l.linhaRef === it.linhaRef);
-                            const recebido = it.pendente <= EPSILON_QTD;
-                            return (
-                              <div
-                                key={`${it.numero}-${it.linhaRef ?? it.materialCode}`}
-                                className="flex items-start justify-between gap-2 rounded-lg border p-2 text-[11px]"
-                                style={{ borderColor: 'var(--hairline)', opacity: recebido ? 0.65 : 1 }}
-                              >
-                                <span className="min-w-0">
-                                  <span className="block font-bold" style={{ color: 'var(--ink-primary)' }}>{it.descricao || it.materialCode}</span>
-                                  <span className="block" style={{ color: 'var(--ink-muted)' }}>
-                                    PO {it.numero} · cód. {it.materialCode}{it.fornecedor ? ` · ${it.fornecedor}` : ''}
-                                  </span>
-                                  <span className="block tabular-nums" style={{ color: recebido ? 'var(--ink-muted)' : 'var(--status-serious)' }}>
-                                    {recebido ? 'já recebido no SAP' : `pendente ${formatQtd(it.pendente)} ${it.unidade}`}
-                                  </span>
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => adicionarItemEncontrado(it)}
-                                  disabled={jaNaConf}
-                                  className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer text-white disabled:opacity-60"
-                                  style={{ background: jaNaConf ? 'var(--status-good)' : 'var(--brand)' }}
-                                >
-                                  {jaNaConf ? <><Check className="h-3.5 w-3.5" /> na conferência</> : <><Plus className="h-3.5 w-3.5" /> Adicionar item</>}
-                                </button>
-                              </div>
-                            );
-                          })}
+                          {itensEncontrados.slice(0, LIMITE_BUSCA_ITEM).map((it) => renderItemEncontrado(it))}
                         </div>
                       </>
                     )}

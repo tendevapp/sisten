@@ -31,7 +31,7 @@ import {
   validarNovaNcAvulsa,
   type LinhaCacheSAP,
   type LinhaConferencia,
-  parcialPrecisaConfirmarNf,
+  parcialPrecisaConfirmarNf, itensMercadoLivreComPo
 } from './recebimentoAlmox';
 
 const linha = (over: Partial<LinhaConferencia> = {}): LinhaConferencia => ({
@@ -491,3 +491,29 @@ describe('extrairRiPosConferidos', () => {
   });
 });
 
+
+describe('itensMercadoLivreComPo', () => {
+  const linhas = [
+    { ri: 'R1', ri_po: 'R1-P', documento_compra: '004100000001', material_code: '700001', texto_breve: 'LUVA NITRILICA', unidade_medida: 'PAR', requisicao_de_compra: '1100', qtd_po: 10, qtd_fornecida_po: 4, fornecedor_name: 'LOJA A' },
+    { ri: 'R2', ri_po: 'R2-P', documento_compra: '4100000002', material_code: '700002', texto_breve: 'FITA ISOLANTE', unidade_medida: 'UN', requisicao_de_compra: '1100', qtd_po: 5, qtd_fornecida_po: 5 },
+    { ri: 'R3', ri_po: null, documento_compra: null, material_code: '700003', texto_breve: 'CABO PP', qtd_po: null, qtd_fornecida_po: null },
+    { ri: 'R9', ri_po: 'R9-P', documento_compra: '4100000009', material_code: '700009', texto_breve: 'FORA DO ML', qtd_po: 1, qtd_fornecida_po: 0 },
+  ];
+  const ml = new Map<string, string | null>([['R1', '2000015616071149'], ['R2', '2000015616071149'], ['R3', null]]);
+
+  it('só itens do ML com PO e saldo a chegar', () => {
+    const r = itensMercadoLivreComPo(linhas, ml);
+    expect(r.map((i) => i.linhaRef)).toEqual(['R1-P']);
+    expect(r[0]).toMatchObject({ numero: '4100000001', pendente: 6, numeroCompraMl: '2000015616071149', fornecedor: 'LOJA A' });
+  });
+
+  it('filtra por descrição, PO ou nº da compra', () => {
+    expect(itensMercadoLivreComPo(linhas, ml, 'luva')).toHaveLength(1);
+    expect(itensMercadoLivreComPo(linhas, ml, '2000015616071149')).toHaveLength(1);
+    expect(itensMercadoLivreComPo(linhas, ml, 'parafuso')).toHaveLength(0);
+  });
+
+  it('sem itens do ML, lista vazia', () => {
+    expect(itensMercadoLivreComPo(linhas, new Map())).toEqual([]);
+  });
+});

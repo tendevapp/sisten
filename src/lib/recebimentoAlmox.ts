@@ -15,7 +15,7 @@
 
 import { isProjetoItem } from './rastreio';
 import type { LoteValidade } from './lotesValidade';
-import { casarTokens } from './buscaKeywords';
+import { casarTokens, extrairPalavrasChave } from './buscaKeywords';
 
 /** Prefixos dos registros — regra 2 do CLAUDE.md, índice reinicia POR DIA. */
 export const PREFIXO_RECEB = {
@@ -188,6 +188,8 @@ export interface LinhaCacheSAP {
   texto_breve?: string | null;
   unidade_medida?: string | null;
   ri_po?: string | null;
+  /** Item da RM (RM + item) — liga a linha ao item comprado no Mercado Livre. */
+  ri?: string | null;
   requisicao_de_compra?: string | null;
   qtd_po?: number | null;
   qtd_fornecida_po?: number | null;
@@ -442,6 +444,58 @@ export function buscarItensComPo(records: LinhaCacheSAP[], tokens: string[]): It
 
   return achados.sort((a, b) =>
     Number(b.pendente > EPSILON_QTD) - Number(a.pendente > EPSILON_QTD)
+    || a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true })
+    || a.descricao.localeCompare(b.descricao, 'pt-BR'));
+}
+
+/** Linha de PO de um item comprado no Mercado Livre, com o nº da compra no ML. */
+export interface ItemPoMercadoLivre extends ItemPoEncontrado {
+  numeroCompraMl: string | null;
+}
+
+/**
+ * Opção "Mercado Livre" do Recebimento e contagem: os itens destinados ao ML
+ * (sup_ml_itens, por `ri`) que **já têm PO** e ainda têm saldo a chegar.
+ * Item sem PO não entra — não há pedido para conferir. `termo` filtra por
+ * descrição, código, PO ou nº da compra do ML.
+ */
+export function itensMercadoLivreComPo(
+  records: LinhaCacheSAP[],
+  compraPorRi: Map<string, string | null>,
+  termo = '',
+): ItemPoMercadoLivre[] {
+  if (!compraPorRi.size) return [];
+  const tokens = extrairPalavrasChave(termo);
+  const achados: ItemPoMercadoLivre[] = [];
+  for (const r of records) {
+    const ri = String(r.ri ?? '').trim();
+    if (!ri || !compraPorRi.has(ri)) continue;
+    const numero = String(r.documento_compra ?? '').trim().replace(/^0+/, '');
+    if (!numero) continue;
+    const qtdPedido = typeof r.qtd_po === 'number' ? r.qtd_po : null;
+    const qtdJaFornecida = typeof r.qtd_fornecida_po === 'number' ? r.qtd_fornecida_po : null;
+    const pendente = pendentePedido(qtdPedido, qtdJaFornecida);
+    if (pendente <= EPSILON_QTD) continue;
+    const materialCode = String(r.material_code ?? '');
+    const descricao = r.texto_breve ?? '';
+    const numeroCompraMl = compraPorRi.get(ri) ?? null;
+    if (tokens.length && !casarTokens([descricao, materialCode, numero, numeroCompraMl ?? ''], tokens)) continue;
+    achados.push({
+      numero,
+      fornecedor: String(r.fornecedor_name ?? '').trim(),
+      linhaRef: r.ri_po || null,
+      materialCode,
+      descricao,
+      unidade: r.unidade_medida ?? '',
+      rm: r.requisicao_de_compra ?? null,
+      qtdPedido,
+      qtdJaFornecida,
+      pendente,
+      numeroCompraMl,
+    });
+  }
+  return achados.sort((a, b) =>
+    (a.numeroCompraMl ?? '').localeCompare(b.numeroCompraMl ?? '')
     || a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true })
     || a.descricao.localeCompare(b.descricao, 'pt-BR'));
 }

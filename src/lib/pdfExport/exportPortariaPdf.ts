@@ -519,9 +519,8 @@ export async function exportPassagensPlantaoConsolidadoPdf(plantoes: PortPassage
 export async function gerarAlcoolemiaDiaPdf(
   testes: PortAlcoolemiaTeste[],
   dataISO: string,
-  vigilanteNome?: string
 ): Promise<PdfGerado> {
-  return gerarAlcoolemiaPeriodoPdf(testes, dataISO, dataISO, vigilanteNome);
+  return gerarAlcoolemiaPeriodoPdf(testes, dataISO, dataISO);
 }
 
 /**
@@ -532,7 +531,6 @@ export async function gerarAlcoolemiaPeriodoPdf(
   testesEntrada: PortAlcoolemiaTeste[],
   inicioISO: string,
   fimISO: string,
-  vigilanteNome?: string
 ): Promise<PdfGerado> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
@@ -575,39 +573,40 @@ export async function gerarAlcoolemiaPeriodoPdf(
     // espaço fica em branco para assinar à mão na folha impressa.
     const assinaturas = testes.map((t) => t.assinatura_sorteado);
     if (umDia) {
+      // Soma = largura útil (515 pt): sem escala, HORA e MATRÍCULA saem inteiras.
       const headers = [
-        { label: 'CÓDIGO', width: 70, align: 'left' as const },
-        { label: 'HORA', width: 30, align: 'center' as const },
-        { label: 'VÍNCULO', width: 42, align: 'center' as const },
-        { label: 'NOME / COLABORADOR', width: 156, align: 'left' as const },
-        { label: 'MATRÍCULA', width: 52, align: 'center' as const },
-        { label: 'EMPRESA', width: 60, align: 'left' as const },
-        { label: 'RESULTADO', width: 55, align: 'center' as const },
-        { label: 'ASSINATURA', width: 75, align: 'center' as const },
+        { label: 'CÓDIGO', width: 72, align: 'left' as const },
+        { label: 'HORA', width: 36, align: 'center' as const },
+        { label: 'NOME / COLABORADOR', width: 150, align: 'left' as const },
+        { label: 'MATRÍCULA', width: 56, align: 'center' as const },
+        { label: 'EMPRESA', width: 64, align: 'left' as const },
+        { label: 'RESULTADO', width: 57, align: 'center' as const },
+        { label: 'ASSINATURA', width: 80, align: 'center' as const },
       ];
       await writer.drawTableComAssinaturas(headers, testes.map((t) => [
-        t.codigo_formulario, t.horario, t.tipo_vinculo, nome(t), matricula(t), t.empresa || 'TEN', resultado(t), '',
-      ]), assinaturas, 7);
+        t.codigo_formulario, t.horario, nome(t), matricula(t), t.empresa || 'TEN', resultado(t), '',
+      ]), assinaturas, 6);
     } else {
       const headers = [
-        { label: 'DATA', width: 36, align: 'center' as const },
-        { label: 'CÓDIGO', width: 68, align: 'left' as const },
-        { label: 'HORA', width: 30, align: 'center' as const },
-        { label: 'VÍNCULO', width: 40, align: 'center' as const },
-        { label: 'NOME / COLABORADOR', width: 135, align: 'left' as const },
-        { label: 'MATRÍCULA', width: 50, align: 'center' as const },
-        { label: 'EMPRESA', width: 55, align: 'left' as const },
-        { label: 'RESULTADO', width: 55, align: 'center' as const },
-        { label: 'ASSINATURA', width: 70, align: 'center' as const },
+        { label: 'DATA', width: 34, align: 'center' as const },
+        { label: 'CÓDIGO', width: 70, align: 'left' as const },
+        { label: 'HORA', width: 34, align: 'center' as const },
+        { label: 'NOME / COLABORADOR', width: 128, align: 'left' as const },
+        { label: 'MATRÍCULA', width: 54, align: 'center' as const },
+        { label: 'EMPRESA', width: 60, align: 'left' as const },
+        { label: 'RESULTADO', width: 57, align: 'center' as const },
+        { label: 'ASSINATURA', width: 78, align: 'center' as const },
       ];
       await writer.drawTableComAssinaturas(headers, testes.map((t) => [
-        formatDataBR(t.data).slice(0, 5), t.codigo_formulario, t.horario, t.tipo_vinculo, nome(t), matricula(t), t.empresa || 'TEN', resultado(t), '',
-      ]), assinaturas, 8);
+        formatDataBR(t.data).slice(0, 5), t.codigo_formulario, t.horario, nome(t), matricula(t), t.empresa || 'TEN', resultado(t), '',
+      ]), assinaturas, 7);
     }
   }
 
   writer.drawSignatures([
-    { role: 'Vigilante / Operador do Etilômetro', name: vigilanteNome },
+    // Sem nome: quem gera o PDF nem sempre é quem aplicou o teste — o
+    // vigilante/operador assina e escreve o nome na folha.
+    { role: 'Vigilante / Operador do Etilômetro' },
     { role: 'Técnico de Segurança / SSMA' },
   ]);
 
@@ -620,8 +619,7 @@ export async function gerarAlcoolemiaPeriodoPdf(
 export async function exportAlcoolemiaDiaPdf(
   testes: PortAlcoolemiaTeste[],
   dataISO: string,
-  vigilanteNome?: string
 ): Promise<void> {
-  baixarPdfGerado(await gerarAlcoolemiaDiaPdf(testes, dataISO, vigilanteNome));
+  baixarPdfGerado(await gerarAlcoolemiaDiaPdf(testes, dataISO));
 }
 

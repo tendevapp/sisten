@@ -43,6 +43,8 @@ import {
   LogAlteracoesAlcoolemia, SeloAssinatura, SeloExcluido, SeloQuemAferiu, SeloRazao, SeloResultado, SeloTermo, type FiltroResultado,
 } from '../../components/ssma/AlcoolemiaPainel';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import CampoAssinatura from '../../components/portaria/CampoAssinatura';
+import { assinaturaColhida, assinaturaDoTeste, type AssinaturaColhida } from '../../lib/alcoolemiaAssinatura';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import TourSpotlight from '../../components/help/TourSpotlight';
@@ -146,6 +148,9 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
   const [termoTestemunha, setTermoTestemunha] = useState<string>('');
   const [termoObservacoes, setTermoObservacoes] = useState<string>('');
   const [termoAssinadoFisicamente, setTermoAssinadoFisicamente] = useState<boolean>(false);
+  // Assinatura do colaborador: a mesma colhida pela Portaria no sorteio; se
+  // ainda não assinou (ou precisa refazer), assina aqui no termo.
+  const [termoAssinatura, setTermoAssinatura] = useState<AssinaturaColhida | null>(null);
 
   // Campos do Modal de Novo Teste Extra (fora da lista da portaria)
   const [novoTipoVinculo, setNovoTipoVinculo] = useState<PortAlcoolemiaVinculo>('TEN');
@@ -200,7 +205,7 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
       }
       setExportarAberto(false);
       setPdfPreview({
-        gerar: () => gerarAlcoolemiaPeriodoPdf(lista, iv.inicio, iv.fim, user.name),
+        gerar: () => gerarAlcoolemiaPeriodoPdf(lista, iv.inicio, iv.fim),
         titulo: `Livro de Alcoolemia - ${rotuloPeriodo('periodo', iv, hoje)}`,
       });
     } catch (err: any) {
@@ -293,6 +298,7 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
     setTermoTestemunha(teste.testemunha || '');
     setTermoObservacoes(teste.observacoes || '');
     setTermoAssinadoFisicamente(!!teste.termo_assinado_fisicamente);
+    setTermoAssinatura(assinaturaDoTeste(teste));
     setModalTermoAberto(true);
   };
 
@@ -313,6 +319,8 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
         testemunha: termoTestemunha.trim() || null,
         observacoes: termoObservacoes.trim() || null,
         termo_assinado_fisicamente: termoAssinadoFisicamente,
+        assinatura_sorteado: termoAssinatura?.img ?? null,
+        assinatura_sorteado_em: termoAssinatura?.em ?? null,
       });
 
       toast.success(`Termo registrado para ${testeAtivo.nome}!`);
@@ -1016,6 +1024,15 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
                 />
               </div>
             </div>
+
+            <CampoAssinatura
+              rotulo={testeAtivo.assinatura_sorteado ? 'Assinatura do colaborador (colhida na Portaria)' : 'Assinatura do colaborador'}
+              valor={termoAssinatura?.img ?? null}
+              assinadaEm={termoAssinatura?.em}
+              nomeAssinante={testeAtivo.nome}
+              onChange={(img) => setTermoAssinatura(assinaturaColhida(img))}
+              disabled={salvando}
+            />
 
             {/* Check de Assinatura Física */}
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/40">
