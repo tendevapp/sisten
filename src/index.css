@@ -106,147 +106,202 @@ body,
    então o variant precisa seguir essa classe em vez do SO. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* SISTEN - High-contrast Professional Dark Theme */
+/* ------------------------------------------------------------------ */
+/* Tema escuro — rede de segurança para telas sem `dark:`              */
+/* ------------------------------------------------------------------ */
+/* As regras abaixo ficam FORA de camada, e no Tailwind v4 os
+   utilitários moram em `@layer utilities`: CSS fora de camada ganha de
+   qualquer utilitário, seja qual for a especificidade. Antes este bloco
+   também usava `!important` e cobria toda classe clara, o que anulava as
+   ~7.700 classes `dark:` escritas nas telas (`text-slate-500
+   dark:text-slate-300` saía no cinza daqui, não no slate-300).
+
+   Agora cada regra só vale onde a própria classe NÃO declarou a
+   propriedade para o escuro — `:not([class*="dark:text-"])` e afins.
+   Tela antiga sem `dark:` continua coberta; tela que declarou é
+   respeitada. Não volte a pôr `!important` aqui.
+
+   As variáveis antigas viraram apelidos dos tokens (styles/tokens.css),
+   a fonte única de cor. Não crie variável nova neste bloco. */
+
 .dark {
   color-scheme: dark;
-  --bg-primary: #0a0e17;
-  /* Deep cosmic background */
-  --bg-secondary: #0f1422;
-  /* Slate-900 / Cards and panel backgrounds */
-  --bg-tertiary: #171e30;
-  /* Slate-800 / Dropdowns & inputs */
-  --border-primary: #1e293b;
-  /* Slate-700 / High contrast borders */
-  --border-secondary: #334155;
-  /* Slate-600 / Subdued borders */
-  --text-primary: #f8fafc;
-  /* Slate-50 / Body text */
-  --text-secondary: #cbd5e1;
-  /* Slate-300 / Labels and description text */
-  --text-muted: #64748b;
-  /* Slate-500 / Subtexts */
-  --brand-color: #10b981;
-  /* Emerald green brand color */
+  --bg-primary: var(--surface-page);
+  --bg-secondary: var(--surface-card);
+  --bg-tertiary: var(--surface-raised);
+  --border-primary: var(--hairline);
+  --border-secondary: var(--hairline-strong);
+  --text-primary: var(--ink-primary);
+  --text-secondary: var(--ink-secondary);
+  /* Era #64748b: 3,9:1 sobre o cartão e 3,5:1 dentro de campo. #94a3b8
+     dá 7,2:1 sobre o cartão. */
+  --text-muted: var(--ink-muted);
+  --brand-color: var(--brand);
+
+  /* Barra de rolagem. Sem cor definida, o Chrome no Windows desenhava a
+     barra nativa clara e grossa, com setas, por cima da tela escura (topo e
+     lateral das tabelas, menu, listas da Portaria). `scrollbar-color` é
+     herdada: esta linha alcança toda área de rolagem do app. Trilho
+     transparente; o polegar no tom de divisor, visível sem gritar. */
+  scrollbar-color: #3b4a63 transparent;
 }
 
-/* Base Body override in Dark Mode */
 .dark body {
-  background-color: var(--bg-primary) !important;
-  color: var(--text-primary) !important;
+  background-color: var(--surface-page);
+  color: var(--ink-primary);
 }
 
-/* Global root level element bg */
-.dark .bg-slate-50\/50,
-.dark .bg-slate-50,
-.dark .bg-gray-50,
-.dark .bg-slate-100\/50 {
-  background-color: var(--bg-primary) !important;
+/* Fundos ----------------------------------------------------------- */
+
+/* Faixa cinza-clara solta na página → cor da página. */
+.dark .bg-slate-50\/50:not([class*="dark:bg-"]),
+.dark .bg-slate-50:not([class*="dark:bg-"]),
+.dark .bg-gray-50:not([class*="dark:bg-"]),
+.dark .bg-slate-100\/50:not([class*="dark:bg-"]) {
+  background-color: var(--surface-page);
 }
 
-/* Main Cards & Header */
-.dark .bg-white,
-.dark header,
-.dark .bg-slate-100 {
-  background-color: var(--bg-secondary) !important;
+/* Cartão, cabeçalho. */
+.dark .bg-white:not([class*="dark:bg-"]),
+.dark header:not([class*="dark:bg-"]),
+.dark .bg-slate-100:not([class*="dark:bg-"]) {
+  background-color: var(--surface-card);
 }
 
-/* Hover background updates for lists, tables, and buttons */
-.dark .hover\:bg-slate-50\/40:hover,
-.dark .hover\:bg-slate-50:hover,
-.dark .hover\:bg-gray-50:hover,
-.dark .hover\:bg-slate-50\/50:hover,
-.dark .hover\:bg-slate-100\/50:hover {
-  background-color: var(--bg-tertiary) !important;
+/* Painel cinza-claro DENTRO de um cartão ou modal: no claro ele é um
+   degrau acima do branco; no escuro tem de continuar acima do cartão.
+   Ir para a cor da página o deixava mais escuro que o próprio cartão —
+   parecia um buraco, não um painel. */
+.dark .bg-white .bg-slate-50:not([class*="dark:bg-"]),
+.dark .bg-white .bg-gray-50:not([class*="dark:bg-"]),
+.dark .bg-white .bg-slate-50\/50:not([class*="dark:bg-"]),
+.dark [role="dialog"] .bg-slate-50:not([class*="dark:bg-"]),
+.dark [role="dialog"] .bg-gray-50:not([class*="dark:bg-"]) {
+  background-color: var(--surface-raised);
 }
 
-/* Text overrides to prevent dark text on dark background */
-.dark .text-slate-900,
-.dark .text-slate-800,
-.dark .text-gray-900,
-.dark .text-gray-800 {
-  color: var(--text-primary) !important;
+.dark .hover\:bg-slate-50\/40:not([class*="dark:hover:bg-"]):hover,
+.dark .hover\:bg-slate-50:not([class*="dark:hover:bg-"]):hover,
+.dark .hover\:bg-gray-50:not([class*="dark:hover:bg-"]):hover,
+.dark .hover\:bg-slate-50\/50:not([class*="dark:hover:bg-"]):hover,
+.dark .hover\:bg-slate-100\/50:not([class*="dark:hover:bg-"]):hover {
+  background-color: var(--surface-raised);
 }
 
-.dark .text-slate-700,
-.dark .text-slate-600,
-.dark .text-gray-700,
-.dark .text-gray-600 {
-  color: var(--text-secondary) !important;
+/* Texto ------------------------------------------------------------ */
+
+.dark .text-slate-900:not([class*="dark:text-"]),
+.dark .text-slate-800:not([class*="dark:text-"]),
+.dark .text-gray-900:not([class*="dark:text-"]),
+.dark .text-gray-800:not([class*="dark:text-"]) {
+  color: var(--ink-primary);
 }
 
-.dark .text-slate-500,
-.dark .text-slate-400,
-.dark .text-gray-500,
-.dark .text-gray-400 {
-  color: var(--text-muted) !important;
+.dark .text-slate-700:not([class*="dark:text-"]),
+.dark .text-slate-600:not([class*="dark:text-"]),
+.dark .text-gray-700:not([class*="dark:text-"]),
+.dark .text-gray-600:not([class*="dark:text-"]) {
+  color: var(--ink-secondary);
 }
 
-/* Borders */
-.dark .border-slate-50,
-.dark .border-slate-100,
-.dark .border-slate-200,
-.dark .border-gray-50,
-.dark .border-gray-100,
-.dark .border-gray-200 {
-  border-color: var(--border-primary) !important;
+.dark .text-slate-500:not([class*="dark:text-"]),
+.dark .text-slate-400:not([class*="dark:text-"]),
+.dark .text-gray-500:not([class*="dark:text-"]),
+.dark .text-gray-400:not([class*="dark:text-"]) {
+  color: var(--ink-muted);
 }
 
-.dark .divide-slate-100> :not([hidden])~ :not([hidden]),
-.dark .divide-gray-100> :not([hidden])~ :not([hidden]),
-.dark .divide-slate-50> :not([hidden])~ :not([hidden]) {
-  border-color: var(--border-primary) !important;
+/* Bordas ----------------------------------------------------------- */
+
+.dark .border-slate-50:not([class*="dark:border-"]),
+.dark .border-slate-100:not([class*="dark:border-"]),
+.dark .border-slate-200:not([class*="dark:border-"]),
+.dark .border-gray-50:not([class*="dark:border-"]),
+.dark .border-gray-100:not([class*="dark:border-"]),
+.dark .border-gray-200:not([class*="dark:border-"]) {
+  border-color: var(--hairline);
 }
 
-/* Inputs, Textareas, Selects */
-.dark input[type="text"],
-.dark input[type="password"],
-.dark input[type="email"],
-.dark input[type="number"],
-.dark input[type="date"],
-.dark select,
-.dark textarea {
-  background-color: var(--bg-tertiary) !important;
-  border-color: var(--border-primary) !important;
-  color: var(--text-primary) !important;
+.dark .divide-slate-100:not([class*="dark:divide-"]) > :not([hidden]) ~ :not([hidden]),
+.dark .divide-gray-100:not([class*="dark:divide-"]) > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-50:not([class*="dark:divide-"]) > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--hairline);
 }
 
-.dark input[type="text"]::placeholder,
-.dark input[type="password"]::placeholder,
-.dark input[type="email"]::placeholder,
-.dark input[type="number"]::placeholder,
-.dark textarea::placeholder {
-  color: var(--text-muted) !important;
+/* Campos ----------------------------------------------------------- */
+/* Antes listava só text/password/email/number/date: `<input>` sem
+   `type`, hora (26 campos da Portaria e da ASE), busca, telefone, mês e
+   URL ficavam brancos no escuro. Campo `bg-transparent` herda o fundo
+   da caixa que o envolve. */
+
+.dark :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea):not(.bg-transparent):not([class*="dark:bg-"]) {
+  background-color: var(--surface-raised);
 }
 
-/* Interactive custom card lists */
-.dark .bg-emerald-50\/30 {
-  background-color: rgba(16, 185, 129, 0.08) !important;
+.dark :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea):not([class*="dark:border-"]) {
+  border-color: var(--hairline);
 }
 
-.dark .bg-blue-50\/40 {
-  background-color: rgba(59, 130, 246, 0.08) !important;
+.dark :is(input, select, textarea):not([class*="dark:text-"]) {
+  color: var(--ink-primary);
 }
 
-.dark .bg-blue-50 {
-  background-color: rgba(59, 130, 246, 0.12) !important;
+.dark :is(input, textarea):not([class*="dark:placeholder"])::placeholder {
+  color: var(--ink-muted);
 }
 
-.dark .bg-amber-50 {
-  background-color: rgba(245, 158, 11, 0.08) !important;
+/* Selos e faixas em tom pastel ----------------------------------------- */
+/* `bg-emerald-50 text-emerald-700` sem `dark:` virava um bloco quase
+   branco na tela escura — o ponto mais claro da tela era o selo, não o
+   dado. Aqui: lavagem translúcida da mesma família e texto no passo 300. */
+
+.dark .bg-emerald-50\/30:not([class*="dark:bg-"]) { background-color: rgb(16 185 129 / 0.08); }
+.dark .bg-blue-50\/40:not([class*="dark:bg-"]) { background-color: rgb(59 130 246 / 0.08); }
+
+.dark .bg-emerald-50:not([class*="dark:bg-"]), .dark .bg-green-50:not([class*="dark:bg-"]) { background-color: rgb(16 185 129 / 0.12); }
+.dark .bg-emerald-100:not([class*="dark:bg-"]), .dark .bg-green-100:not([class*="dark:bg-"]) { background-color: rgb(16 185 129 / 0.18); }
+.dark .bg-teal-50:not([class*="dark:bg-"]) { background-color: rgb(20 184 166 / 0.12); }
+.dark .bg-teal-100:not([class*="dark:bg-"]) { background-color: rgb(20 184 166 / 0.18); }
+.dark .bg-cyan-50:not([class*="dark:bg-"]) { background-color: rgb(6 182 212 / 0.12); }
+.dark .bg-cyan-100:not([class*="dark:bg-"]) { background-color: rgb(6 182 212 / 0.18); }
+.dark .bg-sky-50:not([class*="dark:bg-"]) { background-color: rgb(14 165 233 / 0.12); }
+.dark .bg-sky-100:not([class*="dark:bg-"]) { background-color: rgb(14 165 233 / 0.18); }
+.dark .bg-blue-50:not([class*="dark:bg-"]) { background-color: rgb(59 130 246 / 0.12); }
+.dark .bg-blue-100:not([class*="dark:bg-"]) { background-color: rgb(59 130 246 / 0.18); }
+.dark .bg-indigo-50:not([class*="dark:bg-"]) { background-color: rgb(99 102 241 / 0.12); }
+.dark .bg-indigo-100:not([class*="dark:bg-"]) { background-color: rgb(99 102 241 / 0.18); }
+.dark .bg-violet-50:not([class*="dark:bg-"]), .dark .bg-purple-50:not([class*="dark:bg-"]) { background-color: rgb(139 92 246 / 0.12); }
+.dark .bg-violet-100:not([class*="dark:bg-"]), .dark .bg-purple-100:not([class*="dark:bg-"]) { background-color: rgb(139 92 246 / 0.18); }
+.dark .bg-amber-50:not([class*="dark:bg-"]), .dark .bg-yellow-50:not([class*="dark:bg-"]) { background-color: rgb(245 158 11 / 0.10); }
+.dark .bg-amber-100:not([class*="dark:bg-"]), .dark .bg-yellow-100:not([class*="dark:bg-"]) { background-color: rgb(245 158 11 / 0.16); }
+.dark .bg-orange-50:not([class*="dark:bg-"]) { background-color: rgb(249 115 22 / 0.12); }
+.dark .bg-orange-100:not([class*="dark:bg-"]) { background-color: rgb(249 115 22 / 0.18); }
+.dark .bg-red-50:not([class*="dark:bg-"]), .dark .bg-rose-50:not([class*="dark:bg-"]) { background-color: rgb(244 63 94 / 0.12); }
+.dark .bg-red-100:not([class*="dark:bg-"]), .dark .bg-rose-100:not([class*="dark:bg-"]) { background-color: rgb(244 63 94 / 0.18); }
+
+/* Texto de cor escura (700/800) sobre o fundo escuro dava ~3,5:1. */
+.dark :is(.text-emerald-700, .text-emerald-800, .text-green-700, .text-green-800):not([class*="dark:text-"]) { color: #6ee7b7; }
+.dark :is(.text-teal-700, .text-teal-800):not([class*="dark:text-"]) { color: #5eead4; }
+.dark :is(.text-cyan-700, .text-cyan-800):not([class*="dark:text-"]) { color: #67e8f9; }
+.dark :is(.text-sky-700, .text-sky-800):not([class*="dark:text-"]) { color: #7dd3fc; }
+.dark :is(.text-blue-700, .text-blue-800):not([class*="dark:text-"]) { color: #93c5fd; }
+.dark :is(.text-indigo-700, .text-indigo-800):not([class*="dark:text-"]) { color: #a5b4fc; }
+.dark :is(.text-violet-700, .text-violet-800, .text-purple-700, .text-purple-800):not([class*="dark:text-"]) { color: #c4b5fd; }
+.dark :is(.text-amber-700, .text-amber-800, .text-yellow-700, .text-yellow-800):not([class*="dark:text-"]) { color: #fcd34d; }
+.dark :is(.text-orange-700, .text-orange-800):not([class*="dark:text-"]) { color: #fdba74; }
+.dark :is(.text-red-700, .text-red-800, .text-rose-700, .text-rose-800):not([class*="dark:text-"]) { color: #fda4af; }
+
+/* Sombras ---------------------------------------------------------- */
+/* No escuro a sombra quase não se vê; a elevação vem da superfície e da
+   borda. Mantém um valor único, mais fundo, para quem não declarou. */
+.dark :is(.shadow-sm, .shadow-md, .shadow-lg, .shadow-xl):not([class*="dark:shadow"]) {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -1px rgb(0 0 0 / 0.2);
 }
 
-/* Specific elements like active tabs, widgets, modals */
-.dark .shadow-sm,
-.dark .shadow-md,
-.dark .shadow-lg,
-.dark .shadow-xl {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2) !important;
-}
-
-/* Fix login right-side card border */
-.dark .lg\:w-2\/5,
-.dark .xl\:w-1\/3 {
-  border-color: var(--border-primary) !important;
+/* Borda do cartão lateral do login. */
+.dark .lg\:w-2\/5:not([class*="dark:border-"]),
+.dark .xl\:w-1\/3:not([class*="dark:border-"]) {
+  border-color: var(--hairline);
 }
 
 /* ------------------------------------------------------------------ */
@@ -992,6 +1047,15 @@ body,
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Exceção: o spinner de carregamento. Parado, ele parece tela travada, e
+     a pessoa recarrega no meio de uma gravação. É uma rotação pequena, no
+     lugar, sem deslocamento — não é o tipo de movimento que enjoa. Mais
+     lenta que o normal. */
+  .animate-spin {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 /* ------------------------------------------------------------------ */
 /* Torre eólica da tela Início — enfeite animado                       */
@@ -1643,4 +1707,32 @@ body,
   table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr:has(> td[colspan] table) {
     padding: 0.5rem !important;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* iPhone/iPad: campo com fonte < 16px dá zoom na tela ao focar        */
+/* ------------------------------------------------------------------ */
+/* O Safari do iOS amplia a página inteira quando um campo com fonte
+   menor que 16px recebe foco, e ela fica deslocada até a pessoa fazer a
+   pinça. Quase todo formulário de campo usa `text-xs`/`text-sm`. A
+   regra vale SÓ no iOS (`-webkit-touch-callout` só existe lá): Android e
+   desktop não fazem esse zoom e mantêm o layout denso. Não use
+   `maximum-scale=1` no viewport — bloqueia o zoom de quem precisa. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="submit"]):not([type="button"]):not([type="reset"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Modal aberto: a página de trás não rola                             */
+/* ------------------------------------------------------------------ */
+/* ui/Modal.tsx põe `modal-aberto` no <html> enquanto houver modal na
+   pilha. Quem rola é o <main> (o #root é overflow hidden), então é nele
+   que a rolagem trava; a posição é preservada ao fechar. */
+.modal-aberto main {
+  overflow: hidden !important;
+  overscroll-behavior: contain;
 }

@@ -10,6 +10,8 @@ import {
   canDeleteDesvioRid,
   canValidarKaizen,
   canGerenciarTreinamentos,
+  tituloAba,
+  TITULO_APP,
   FORMULARIO_SUBPERMISSOES,
   FORMULARIOS_DETALHADOS,
   getPageGroups,
@@ -583,5 +585,18 @@ describe('Pendências', () => {
     expect(canAccessPage(mockUser({ sector_id: '9', aprovador_setores: ['9'] }), 'geral_pendencias')).toBe(true);
     expect(canAccessPage(mockUser({ sector_id: '9' }), 'geral_pendencias')).toBe(false);
     expect(PAGES.find(p => p.id === 'sup_pendencias_processamento')).toMatchObject({ group: 'GERAL', menuPai: '/pendencias' });
+  });
+});
+
+describe('tituloAba', () => {
+  it('usa o rótulo da página e o nome do app', () => {
+    const formularios = PAGES.find(p => p.path === '/formularios');
+    expect(formularios).toBeDefined();
+    expect(tituloAba('/formularios')).toBe(`${formularios!.label} · SISTEN`);
+  });
+
+  it('volta ao título completo no Início e em rota desconhecida', () => {
+    expect(tituloAba('/')).toBe(TITULO_APP);
+    expect(tituloAba('/nao-existe')).toBe(TITULO_APP);
   });
 });

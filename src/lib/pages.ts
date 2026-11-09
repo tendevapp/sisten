@@ -1198,6 +1198,23 @@ export function pageIdForPath(path: string): string | undefined {
   return PAGES.find(p => p.path === path)?.id;
 }
 
+/** Título padrão do documento, o mesmo do index.html. */
+export const TITULO_APP = 'SISTEN — Sistema de Informação | Torres Eólicas do Nordeste';
+
+/**
+ * Título da aba do navegador para a rota: "Compras · SISTEN".
+ *
+ * Antes toda aba se chamava igual, e quem trabalha com várias abertas (o menu
+ * oferece "abrir em nova aba") não sabia qual era qual. Histórico e favoritos
+ * também ficavam todos com o mesmo nome. Início e rota desconhecida usam o
+ * título completo do app.
+ */
+export function tituloAba(path: string): string {
+  const pagina = PAGES.find(p => p.path === path);
+  if (!pagina || pagina.path === '/') return TITULO_APP;
+  return `${pagina.label} · SISTEN`;
+}
+
 /**
  * Ordem dos módulos no menu lateral.
  *

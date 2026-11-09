@@ -150,7 +150,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
         </div>
 
       {/* Nav groups */}
-      <div className="flex-1 overflow-y-auto py-4">
+      <nav aria-label="Menu principal" className="flex-1 overflow-y-auto py-4">
         {navItems.map((group, groupIdx) => {
           // Filter items based on user permission
           const visibleItems = group.items.filter(item => !item.menuPai && canAccessPage(user, item.id));
@@ -233,7 +233,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                   className="flex w-full items-center justify-between px-6 py-1.5 text-left group/heading"
                   aria-expanded={!isGroupCollapsed}
                 >
-                  <h3 className="text-[10px] font-bold text-slate-500 tracking-widest group-hover/heading:text-slate-300 transition-colors">
+                  <h3 className="text-[11px] font-bold text-slate-400 tracking-widest group-hover/heading:text-slate-200 transition-colors">
                     {group.group}
                   </h3>
                   <ChevronDown
@@ -257,6 +257,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                     <li key={itemIdx} className="group/item relative">
                       <a
                         href={`#${item.path}`}
+                        aria-current={isActive ? 'page' : undefined}
                         onClick={(e) => {
                           // Se o usuário clicar com Ctrl, Command ou Shift, deixa o comportamento padrão do navegador (abrir em nova aba/janela)
                           if (e.ctrlKey || e.metaKey || e.shiftKey) {
@@ -265,9 +266,9 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                           e.preventDefault();
                           handleNavClick(item.path);
                         }}
-                        className={`flex w-full items-center px-6 py-2 text-sm font-medium transition-all duration-150 ${
-                          isActive 
-                            ? 'border-l-4 border-emerald-500 bg-slate-800 text-emerald-400' 
+                        className={`flex w-full items-center py-2 text-sm font-medium transition-colors duration-150 ${collapsed ? 'px-6' : 'pl-6 pr-12'} ${
+                          isActive
+                            ? 'border-l-4 border-emerald-500 bg-slate-800 text-emerald-400'
                             : 'border-l-4 border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white'
                         }`}
                         title={item.label}
@@ -290,20 +291,23 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                                 {indicadores[item.id] > 99 ? '99+' : indicadores[item.id]}
                               </span>
                             )}
-                            <span 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                window.open(`#${item.path}`, '_blank');
-                              }}
-                              className="opacity-100 lg:opacity-0 lg:group-hover/item:opacity-100 p-2 -m-1 rounded hover:bg-slate-700 text-slate-500 hover:text-white transition-opacity ml-1 cursor-pointer shrink-0"
-                              title="Abrir em nova aba"
-                            >
-                              <ArrowUpRight className="h-3.5 w-3.5" />
-                            </span>
                           </div>
                         )}
                       </a>
+                      {/* Irmão do link, não filho: antes era um <span onClick>
+                          dentro do <a> — interativo dentro de interativo, e
+                          inalcançável pelo teclado. */}
+                      {!collapsed && (
+                        <button
+                          type="button"
+                          onClick={() => window.open(`#${item.path}`, '_blank')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-2 text-slate-400 hover:bg-slate-700 hover:text-white transition-opacity opacity-100 lg:opacity-0 lg:group-hover/item:opacity-100 lg:focus-visible:opacity-100"
+                          title="Abrir em nova aba"
+                          aria-label={`Abrir ${item.label} em nova aba`}
+                        >
+                          <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                      )}
                     </li>
                   );
                 })}
@@ -312,7 +316,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
             </div>
           );
         })}
-      </div>
+      </nav>
 
       {/* Profile Footer */}
       {!collapsed && (

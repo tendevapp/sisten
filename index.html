@@ -5,6 +5,29 @@
     <link rel="icon" type="image/svg+xml" href="/wind-turbine.svg" />
     <link rel="apple-touch-icon" href="/wind-turbine.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!--
+      Tema escuro antes do primeiro quadro. Sem isto a classe .dark só entrava
+      depois que o React montava e a sessão carregava: quem usa o escuro via a
+      tela branca a cada recarga (à noite, na Portaria, um clarão). Mesma regra
+      do App.tsx: escolha salva; sem escolha, a do sistema; e só com sessão
+      guardada no aparelho — a tela de login continua clara.
+    -->
+    <script>
+      (function () {
+        try {
+          var salvo = localStorage.getItem('theme');
+          var escuro = salvo === 'dark' ||
+            (salvo !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (!escuro) return;
+          var temSessao = !!localStorage.getItem('sisten_current_user');
+          for (var i = 0; !temSessao && i < localStorage.length; i++) {
+            var k = localStorage.key(i) || '';
+            if (k.indexOf('sb-') === 0 && k.slice(-11) === '-auth-token') temSessao = true;
+          }
+          if (temSessao) document.documentElement.classList.add('dark');
+        } catch (e) { /* armazenamento bloqueado: segue no claro */ }
+      })();
+    </script>
     <meta name="theme-color" content="#0f1422" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#0056c6" media="(prefers-color-scheme: light)" />
     <meta name="mobile-web-app-capable" content="yes" />

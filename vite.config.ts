@@ -46,12 +46,40 @@ export default defineConfig(() => {
           // fora do precache: carregam sob demanda pelo cache HTTP normal do
           // navegador, sem inflar a instalação do service worker.
           globPatterns: ['**/*.{js,css,svg,woff2,ico}'],
+          // Fora do precache, ~3 MB dos 12,7 MB que todo aparelho baixava na
+          // instalação (e de novo a cada deploy, porque o nome muda): a cena 3D
+          // do Gemba, o AdminPanel, o pdf.js (visualizador; só a Análise de
+          // Cotações o importa direto) e o `xlsx.min` (5 telas de análise).
+          // Conferido no build que NENHUM formulário importa esses chunks de
+          // forma estática — formulário tem de abrir sem rede (CLAUDE.md §3).
+          // NÃO inclua aqui o chunk `xlsx-*` (sem .min): ele é compartilhado e
+          // carrega junto com Nova Solicitação, Inventário, Busca Global etc.
+          // Os excluídos entram no cache na primeira vez que a tela é aberta
+          // (regra `sisten-assets-sob-demanda` abaixo).
+          globIgnores: [
+            '**/GembaCena-*.js',
+            '**/AdminPanel-*.js',
+            '**/pdf-*.js',
+            '**/xlsx.min-*.js',
+          ],
           // O padrão (2 MiB) derruba o build inteiro quando o chunk principal
           // passa dele — e a Vercel segue servindo o deploy anterior sem avisar
           // ninguém (aconteceu em 27/10/2026 com o index em 2,13 MB). O
           // principal precisa estar no precache para o app abrir sem rede.
           maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
           runtimeCaching: [
+            // Chunks fora do precache (`globIgnores` acima) e o worker do
+            // pdf.js (.mjs): baixam na primeira abertura da tela e ficam no
+            // aparelho. O nome tem hash, então CacheFirst nunca serve versão
+            // velha; o limite descarta os de deploys antigos.
+            {
+              urlPattern: ({ url }) => url.pathname.startsWith('/assets/') && /\.(js|mjs|css)$/.test(url.pathname),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'sisten-assets-sob-demanda',
+                expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              },
+            },
             {
               urlPattern: ({ request }) => request.mode === 'navigate',
               handler: 'NetworkFirst',

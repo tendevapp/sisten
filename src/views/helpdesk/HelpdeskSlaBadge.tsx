@@ -45,7 +45,9 @@ export default function HelpdeskSlaBadge({ ticket, size = 'md', showProgress = f
         : <CheckCircle2 className={iconSizes[size]} />;
     }
     if (sla.status === 'violated') {
-      return <Flame className={`${iconSizes[size]} text-rose-600 animate-bounce`} />;
+      // Sem animate-bounce: numa fila com dez chamados vencidos, a tela
+      // inteira pulava. A chama vermelha e o rótulo já dizem "vencido".
+      return <Flame className={`${iconSizes[size]} text-rose-600 dark:text-rose-400`} aria-hidden="true" />;
     }
     if (sla.status === 'warning') {
       return <AlertTriangle className={`${iconSizes[size]} text-amber-600`} />;

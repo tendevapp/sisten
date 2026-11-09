@@ -4,10 +4,12 @@ import App from './App.tsx';
 import { ToastProvider } from './components/ui/Toast';
 import { installConsoleLogBuffer } from './lib/consoleLogBuffer';
 import { initResponsiveTables } from './lib/responsiveTableObserver';
+import { instalarProtecaoCampoNumerico } from './lib/protecaoCampoNumerico';
 import './index.css';
 
 installConsoleLogBuffer();
 initResponsiveTables();
+instalarProtecaoCampoNumerico();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

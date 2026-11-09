@@ -4,7 +4,7 @@ import { Profile, Role } from './types';
 import { supabase } from './db/supabaseClient';
 import { trackLogin, trackPageView } from './lib/usageTracker';
 import { recordRecentPage } from './lib/homePrefs';
-import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, pageIdForPath } from './lib/pages';
+import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, pageIdForPath, tituloAba } from './lib/pages';
 import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia, usuarioSessaoPermanente } from './lib/sessaoDiaria';
 import { limparCenaSessao } from './lib/cenaInicio';
 import { pareceFalhaDeRede } from './lib/rede';
@@ -282,25 +282,34 @@ export default function App() {
     return () => window.removeEventListener('keydown', aoTeclar);
   }, [logado]);
 
-  // Theme management (Dark / Light Mode)
+  // Tema claro/escuro. O script no <head> do index.html já aplica `.dark`
+  // antes do primeiro quadro (escolha salva; sem escolha, a do sistema; só com
+  // sessão guardada). Aqui o React assume dali em diante — e NÃO remove a
+  // classe enquanto a sessão ainda carrega (`loading`), senão a tela piscava
+  // em branco a cada recarga até o usuário chegar.
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem('theme');
-    if (saved === 'dark' || saved === 'light') return saved;
-    return 'light';
+    try {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch { /* armazenamento bloqueado */ }
+    return typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
   });
 
   useEffect(() => {
-    const root = window.document.documentElement;
-    if (theme === 'dark' && user) {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-    localStorage.setItem('theme', theme);
-  }, [theme, user]);
+    if (loading) return;
+    window.document.documentElement.classList.toggle('dark', theme === 'dark' && !!user);
+  }, [theme, user, loading]);
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    setTheme(prev => {
+      const proximo = prev === 'light' ? 'dark' : 'light';
+      // Só grava quando a pessoa escolhe: sem escolha salva, o tema segue o
+      // do sistema. Antes gravava sempre, e o 'light' padrão virava escolha.
+      try { localStorage.setItem('theme', proximo); } catch { /* armazenamento bloqueado */ }
+      return proximo;
+    });
   };
 
   // Um mount bem-sucedido confirma que os chunks atuais carregam normalmente,
@@ -668,6 +677,11 @@ export default function App() {
       handleNavigate('/financeiro/faturamento-gwjaco');
     }
   }, [user?.id, currentPath]);
+
+  // Título da aba acompanha a rota ("Compras · SISTEN").
+  useEffect(() => {
+    document.title = tituloAba(currentPath);
+  }, [currentPath]);
 
   // Telemetria de navegação: registra uma visualização de página sempre que a
   // rota muda com um usuário autenticado (fire-and-forget, não bloqueia a UI).
