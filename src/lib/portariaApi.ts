@@ -1719,14 +1719,28 @@ export async function atualizarPassagemPlantao(
   return data as unknown as PortPassagemPlantao;
 }
 
+/**
+ * Encerra o plantão. A nota vai para `observacoes_encerramento` — antes ela
+ * era gravada POR CIMA de `observacoes` e apagava o que a equipe anotou no
+ * turno. `passadoParaId` liga ao plantão que recebeu o posto.
+ */
 export async function encerrarPassagemPlantao(
   id: string,
-  observacoes?: string
+  opcoes: { observacoes?: string; encerradoPor?: string; passadoParaId?: string } = {},
 ): Promise<PortPassagemPlantao> {
   return atualizarPassagemPlantao(id, {
     status: 'CONCLUIDO',
-    ...(observacoes ? { observacoes } : {}),
+    encerrado_em: new Date().toISOString(),
+    encerrado_por: opcoes.encerradoPor || null,
+    observacoes_encerramento: opcoes.observacoes?.trim() || null,
+    ...(opcoes.passadoParaId ? { passado_para_id: opcoes.passadoParaId } : {}),
   });
+}
+
+/** Plantão em aberto mais recente (não excluído), para oferecer o fechamento ao abrir o próximo. */
+export async function ultimoPlantaoEmAberto(): Promise<PortPassagemPlantao | null> {
+  const lista = await listarPassagensPlantao({ status: 'EM_ANDAMENTO' });
+  return lista[0] ?? null;
 }
 
 export async function excluirPassagemPlantao(id: string, excluidoPor?: string): Promise<void> {

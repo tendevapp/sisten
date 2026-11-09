@@ -420,6 +420,14 @@ export async function gerarPassagemPlantaoPdf(plantao: PortPassagemPlantao): Pro
     writer.drawCallout('Observações Gerais', plantao.observacoes);
   }
 
+  if (isConcluido && (plantao.encerrado_em || plantao.observacoes_encerramento)) {
+    const quando = plantao.encerrado_em
+      ? new Date(plantao.encerrado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+      : '';
+    const titulo = ['Encerramento', quando && `em ${quando}`, plantao.encerrado_por && `por ${plantao.encerrado_por}`].filter(Boolean).join(' ');
+    writer.drawCallout(titulo, plantao.observacoes_encerramento || 'Sem observações de encerramento.');
+  }
+
   const entregadorNome = (plantao as any).vigilante_anterior01 || (plantao as any).vigilante_anterior_01 || '';
   writer.drawSignatures([
     { role: 'Vigilante Entregador (Plantão Anterior)', name: entregadorNome },

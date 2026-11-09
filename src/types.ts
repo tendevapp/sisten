@@ -2296,6 +2296,12 @@ export interface PortPassagemPlantao {
   updated_at: string;
   excluido_em?: string | null;
   excluido_por?: string | null;
+  /** Encerramento: quando, quem e a nota (não sobrescreve `observacoes`). */
+  encerrado_em?: string | null;
+  encerrado_por?: string | null;
+  observacoes_encerramento?: string | null;
+  /** Plantão seguinte que recebeu este, quando encerrado ao abrir o próximo. */
+  passado_para_id?: string | null;
 }
 
 // 6. Cadastro de Vigilantes (Portaria)

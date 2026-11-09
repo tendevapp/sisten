@@ -25,6 +25,7 @@ import type {
   PortPassagemPlantaoStatus
 } from '../../types';
 import * as api from '../../lib/portariaApi';
+import { entregadoresDoAnterior, itensIniciaisDoPlantao } from '../../lib/passagemPlantao';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import VigilanteSelect from '../../components/portaria/VigilanteSelect';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
@@ -215,6 +216,13 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   const [plantaoParaEncerrar, setPlantaoParaEncerrar] = useState<PortPassagemPlantao | null>(null);
   const [obsEncerramento, setObsEncerramento] = useState('');
 
+  // Novo plantão com o anterior ainda aberto: pergunta se fecha e, se sim,
+  // o anterior é encerrado ao salvar o novo (não antes — cancelar o
+  // formulário não pode deixar o posto sem plantão aberto).
+  const [verificandoAnterior, setVerificandoAnterior] = useState(false);
+  const [perguntaAnterior, setPerguntaAnterior] = useState<PortPassagemPlantao | null>(null);
+  const [plantaoAFechar, setPlantaoAFechar] = useState<PortPassagemPlantao | null>(null);
+
   // Confirmação de Exclusão
   const [plantaoParaExcluir, setPlantaoParaExcluir] = useState<PortPassagemPlantao | null>(null);
 
@@ -278,8 +286,30 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
     return `Recebemos o plantão dos vigilantes ${passadores} com todas as informações do plantão e todos os materiais de segurança do uso da vigilância patrimonial. Sendo:`;
   }, [formAnterior01, formAnterior02]);
 
-  // Abrir Modal de Novo Plantão
-  const abrirNovoPlantao = () => {
+  // "Novo Plantão": se há plantão em aberto, pergunta antes se fecha o anterior.
+  const iniciarNovoPlantao = async () => {
+    setVerificandoAnterior(true);
+    try {
+      const anterior = await api.ultimoPlantaoEmAberto();
+      if (anterior) setPerguntaAnterior(anterior);
+      else abrirNovoPlantao();
+    } catch {
+      // Sem conseguir consultar (sem rede): abre o formulário de sempre.
+      abrirNovoPlantao();
+    } finally {
+      setVerificandoAnterior(false);
+    }
+  };
+
+  /**
+   * Abre o formulário. Com `anterior`, ele será encerrado ao salvar e o
+   * formulário já vem com os dados dele: quem entrega o posto é a equipe do
+   * anterior (Portaria e Ronda 01), e a custódia de materiais traz as
+   * quantidades e as pendências anotadas (item não conferido + observação).
+   * Os itens voltam desmarcados: quem recebe confere de novo, item a item.
+   */
+  const abrirNovoPlantao = (anterior?: PortPassagemPlantao) => {
+    setPlantaoAFechar(anterior ?? null);
     setFormData(api.hojeISO());
     setFormTurno(new Date().getHours() >= 6 && new Date().getHours() < 18 ? 'DIURNO' : 'NOTURNO');
     setFormHoraInicio(new Date().getHours() >= 6 && new Date().getHours() < 18 ? '06:00' : '18:00');
@@ -288,23 +318,14 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
     setFormPortaria('');
     setFormRonda01('');
     setFormRonda02('');
-    setFormAnterior01('');
-    setFormAnterior02('');
+    const [entregou01, entregou02] = entregadoresDoAnterior(anterior);
+    setFormAnterior01(entregou01);
+    setFormAnterior02(entregou02);
     setFormObs('');
 
-    // Preencher checklist com os materiais ativos (inicia DESMARCADO por padrão)
-    const itensIniciais: PortItemConferido[] = materiaisDisponiveis.map((m) => ({
-      material_id: m.id,
-      nome: m.nome,
-      quantidade_esperada: m.quantidade_padrao,
-      unidade: m.unidade || 'UN',
-      categoria: m.categoria,
-      conferido: false,
-      quantidade_conferida: m.quantidade_padrao,
-      observacao: '',
-    }));
-
-    setFormItens(itensIniciais);
+    // Checklist com os materiais ativos (inicia DESMARCADO); com anterior,
+    // quantidades e pendências vêm dele.
+    setFormItens(itensIniciaisDoPlantao(materiaisDisponiveis, anterior));
     setModalNovoAberto(true);
   };
 
@@ -372,7 +393,21 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
         observacoes: formObs || null,
       });
 
-      toast.success(`Plantão ${novo.numero_protocolo} registrado com sucesso!`);
+      if (plantaoAFechar) {
+        try {
+          await api.encerrarPassagemPlantao(plantaoAFechar.id, {
+            observacoes: `PLANTÃO PASSADO PARA ${novo.numero_protocolo}`,
+            encerradoPor: user.name,
+            passadoParaId: novo.id,
+          });
+          toast.success(`Plantão ${novo.numero_protocolo} aberto e ${plantaoAFechar.numero_protocolo} encerrado.`);
+        } catch (err: any) {
+          toast.warning(`Plantão ${novo.numero_protocolo} aberto, mas ${plantaoAFechar.numero_protocolo} não foi encerrado: ${err.message || 'tente pelo botão Encerrar'}.`);
+        }
+      } else {
+        toast.success(`Plantão ${novo.numero_protocolo} registrado com sucesso!`);
+      }
+      setPlantaoAFechar(null);
       setModalNovoAberto(false);
       carregarDados();
     } catch (err: any) {
@@ -386,7 +421,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   const handleEncerrarPlantao = async () => {
     if (!plantaoParaEncerrar) return;
     try {
-      await api.encerrarPassagemPlantao(plantaoParaEncerrar.id, obsEncerramento);
+      await api.encerrarPassagemPlantao(plantaoParaEncerrar.id, { observacoes: obsEncerramento, encerradoPor: user.name });
       toast.success(`Plantão ${plantaoParaEncerrar.numero_protocolo} finalizado!`);
       setPlantaoParaEncerrar(null);
       setObsEncerramento('');
@@ -506,10 +541,11 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
             </button>
             <button
               type="button"
-              onClick={abrirNovoPlantao}
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500"
+              onClick={() => void iniciarNovoPlantao()}
+              disabled={verificandoAnterior}
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-60"
             >
-              <Plus className="h-4 w-4" />
+              {verificandoAnterior ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Novo Plantão
             </button>
           </div>
@@ -634,7 +670,14 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
           return (
             <div
               key={p.id}
-              className={`flex flex-col justify-between rounded-2xl border p-5 shadow-xs transition-all hover:shadow-md ${classeLinhaExcluida(p.excluido_em)} ${
+              // Toque em qualquer parte do cartão abre os detalhes, menos nos
+              // controles dele (seleção, PDF, Encerrar, Excluir…). Teclado e
+              // leitor de tela usam o título, que é o botão de verdade.
+              onClick={(e) => {
+                if ((e.target as HTMLElement).closest('button, a, input, label, select, textarea')) return;
+                setPlantaoVisualizando(p);
+              }}
+              className={`flex cursor-pointer flex-col justify-between rounded-2xl border p-5 shadow-xs transition-all hover:shadow-md ${classeLinhaExcluida(p.excluido_em)} ${
                 isSelected
                   ? 'border-indigo-400 bg-indigo-50/20 ring-2 ring-indigo-500/30 dark:border-indigo-600 dark:bg-indigo-950/20'
                   : 'border-slate-200 bg-white hover:border-indigo-500/40 dark:border-slate-800 dark:bg-slate-900'
@@ -647,6 +690,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => toggleSelecionado(p.id)}
+                      aria-label={`Selecionar ${p.numero_protocolo} para exportar`}
                       className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                     />
                     <div>
@@ -654,7 +698,14 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
                         {p.numero_protocolo}
                       </span>
                       <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                        Plantão {p.turno}
+                        <button
+                          type="button"
+                          onClick={() => setPlantaoVisualizando(p)}
+                          className="rounded text-left hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:hover:text-indigo-400"
+                          aria-label={`Ver detalhes do plantão ${p.turno} de ${p.data.split('-').reverse().join('/')} (${p.numero_protocolo})`}
+                        >
+                          Plantão {p.turno}
+                        </button>
                       </h3>
                     </div>
                   </div>
@@ -783,6 +834,47 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
         </div>
       )}
 
+      {/* Pergunta: há plantão em aberto — fechar ao abrir o novo? */}
+      {perguntaAnterior && (
+        <Modal onClose={() => setPerguntaAnterior(null)} maxWidth="max-w-md" layout="dialog" ariaLabel="Fechar o plantão em aberto?">
+          <ModalHeader onClose={() => setPerguntaAnterior(null)}>
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Fechar o plantão em aberto?</h3>
+          </ModalHeader>
+          <ModalBody className="space-y-3">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs dark:border-amber-900/50 dark:bg-amber-950/20">
+              <p className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{perguntaAnterior.numero_protocolo}</p>
+              <p className="mt-0.5 font-bold text-slate-900 dark:text-slate-100">
+                Plantão {perguntaAnterior.turno} · {perguntaAnterior.data.split('-').reverse().join('/')} · {perguntaAnterior.horario_inicio} às {perguntaAnterior.horario_fim}
+              </p>
+              <p className="mt-1 text-slate-700 dark:text-slate-300">
+                Portaria: {perguntaAnterior.vigilante_portaria}
+                {perguntaAnterior.vigilante_ronda01 && ` · Ronda 01: ${perguntaAnterior.vigilante_ronda01}`}
+              </p>
+            </div>
+            <p className="text-sm text-slate-700 dark:text-slate-300">
+              Se fechar, o novo plantão já vem preenchido com os dados dele: a equipe acima como quem entregou o posto e a custódia de materiais com as quantidades e pendências anotadas. Ele é encerrado quando você salvar o novo.
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <button
+              type="button"
+              onClick={() => { setPerguntaAnterior(null); abrirNovoPlantao(); }}
+              className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Não, abrir em branco
+            </button>
+            <button
+              type="button"
+              onClick={() => { const anterior = perguntaAnterior; setPerguntaAnterior(null); abrirNovoPlantao(anterior); }}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500"
+            >
+              <Check className="h-4 w-4" aria-hidden="true" />
+              Sim, fechar e trazer os dados
+            </button>
+          </ModalFooter>
+        </Modal>
+      )}
+
       {/* Modal Novo Plantão / Passagem de Turno */}
       {modalNovoAberto && (
         <Modal onClose={() => setModalNovoAberto(false)} maxWidth="max-w-4xl">
@@ -808,6 +900,22 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
 
           <form onSubmit={handleSalvar} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <ModalBody className="space-y-5">
+              {plantaoAFechar && (
+                <div className="flex flex-wrap items-start justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs dark:border-amber-900/50 dark:bg-amber-950/20">
+                  <p className="min-w-0 flex-1 text-amber-900 dark:text-amber-200">
+                    Ao salvar, o plantão <span className="font-mono font-bold">{plantaoAFechar.numero_protocolo}</span> será encerrado.
+                    Quem entregou e a custódia de materiais vieram dele — confira antes de salvar.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setPlantaoAFechar(null)}
+                    className="shrink-0 rounded-lg border border-amber-300 px-2.5 py-1 font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                  >
+                    Não encerrar
+                  </button>
+                </div>
+              )}
+
               {/* 1. Vigilante Preenchedor */}
               <div data-tour="passagem-form-preenchedor" className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3.5 dark:border-indigo-900/40 dark:bg-indigo-950/20">
                 <VigilanteOperadorAtual nome={formPreenchedor} label="Vigilante que está Preenchendo o Formulário" />
@@ -1177,9 +1285,33 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
                 <p className="text-slate-700 dark:text-slate-300">{plantaoVisualizando.observacoes}</p>
               </div>
             )}
+
+            {/* Encerramento */}
+            {plantaoVisualizando.status === 'CONCLUIDO' && (plantaoVisualizando.encerrado_em || plantaoVisualizando.observacoes_encerramento) && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 text-xs dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                <p className="mb-1 font-bold text-emerald-900 dark:text-emerald-200">
+                  Encerrado
+                  {plantaoVisualizando.encerrado_em && ` em ${new Date(plantaoVisualizando.encerrado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`}
+                  {plantaoVisualizando.encerrado_por && ` por ${plantaoVisualizando.encerrado_por}`}
+                </p>
+                {plantaoVisualizando.observacoes_encerramento && (
+                  <p className="text-emerald-900/80 dark:text-emerald-200/80">{plantaoVisualizando.observacoes_encerramento}</p>
+                )}
+              </div>
+            )}
           </ModalBody>
 
           <ModalFooter>
+            {plantaoVisualizando.status === 'EM_ANDAMENTO' && !plantaoVisualizando.excluido_em && podeEditarFormulario(user, plantaoVisualizando) && (
+              <button
+                type="button"
+                onClick={() => { setPlantaoParaEncerrar(plantaoVisualizando); setPlantaoVisualizando(null); }}
+                className="mr-auto inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500"
+              >
+                <Lock className="h-4 w-4" aria-hidden="true" />
+                Encerrar plantão
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setPlantaoVisualizando(null)}
