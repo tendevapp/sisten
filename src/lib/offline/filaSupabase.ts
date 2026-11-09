@@ -37,6 +37,7 @@ import {
   type EfeitoPendente, type Linha,
 } from './postgrest';
 import { configBucket, configRpc, configTabela, rpcDeLeitura } from './configFormularios';
+import { chamadaIdempotente } from './idempotencia';
 
 // =====================================================================
 // Tipos
@@ -65,6 +66,13 @@ export interface OperacaoFila {
   efeito?: EfeitoPendente;
   /** RPC que cria registro: id devolvido à tela, trocado pelo real no envio. */
   idProvisorio?: string;
+  /**
+   * RPC: chave da chamada no porteiro `ops_executar_idempotente`. Nasce na
+   * primeira tentativa (antes da fila) e vai em todo reenvio — se o servidor
+   * já gravou, devolve a resposta guardada em vez de gravar de novo.
+   * Operações antigas, sem chave, sobem como antes.
+   */
+  chaveIdempotencia?: string;
   /** Formulário ("Chegada de transportes") e o que identifica o registro ("ABC1D23 · Transportadora X"). */
   rotulo: string;
   resumo: string;
@@ -448,6 +456,7 @@ function agoraISO(): string {
 async function enfileirar(
   url: URL, init: RequestInit, cabecalhos: Headers, usuarioId: string,
   alvo: { tipo: OperacaoFila['tipo']; tabela?: string; rpc?: string; bucket?: string },
+  chaveIdempotencia?: string,
 ): Promise<Response> {
   const metodo = (init.method || 'GET').toUpperCase();
   const accept = cabecalhos.get('accept');
@@ -503,6 +512,7 @@ async function enfileirar(
     const args = corpo?.tipo === 'texto' ? JSON.parse(corpo.texto || '{}') : {};
     const idProvisorio = gerarUUID();
     base.idProvisorio = cfg.criaRegistro ? idProvisorio : undefined;
+    base.chaveIdempotencia = chaveIdempotencia;
     base.rotulo = cfg.rotulo;
     base.resumo = cfg.resumo?.(args) || '';
     const provisorio = cfg.respostaProvisoria(args, idProvisorio);
@@ -548,20 +558,26 @@ async function gravar(
   alvo: { tipo: OperacaoFila['tipo']; tabela?: string; rpc?: string; bucket?: string },
 ): Promise<Response> {
   const init: RequestInit = { ...initOriginal, body: comIdsNovos(initOriginal.body, alvo.tipo, url) };
+  // RPC: a chave nasce aqui e acompanha a operação se ela for para a fila.
+  const chave = alvo.tipo === 'rpc' ? gerarUUID() : undefined;
   // Com operações na fila, esta entra atrás delas: a ordem importa (a
   // ocorrência depende do relatório, a saída depende da entrada).
   const temFila = (await listarOperacoes(usuarioId)).length > 0;
-  if (estaOffline() || temFila) return enfileirar(url, init, cabecalhos, usuarioId, alvo);
+  if (estaOffline() || temFila) return enfileirar(url, init, cabecalhos, usuarioId, alvo, chave);
+  const embrulhada = chave && typeof init.body === 'string' ? chamadaIdempotente(url.pathname + url.search, alvo.rpc!, init.body, chave) : null;
+  const destino = embrulhada ? `${url.origin}${embrulhada.caminho}` : url.href;
+  const corpoEnvio = embrulhada ? embrulhada.corpo : init.body;
   // Rede de pátio "conectada" mas muda: depois do limite, a gravação vai para a fila.
   const controle = new AbortController();
   let esgotou = false;
   const relogio = setTimeout(() => { esgotou = true; controle.abort(); }, alvo.tipo === 'upload' ? TEMPO_UPLOAD_MS : TEMPO_GRAVACAO_MS);
   initOriginal.signal?.addEventListener('abort', () => controle.abort());
   try {
-    return await config!.fetchReal(url.href, { ...init, signal: controle.signal });
+    return await config!.fetchReal(destino, { ...init, body: corpoEnvio, signal: controle.signal });
   } catch (erro) {
     if (!esgotou && !pareceFalhaDeRede(erro)) throw erro;
-    return enfileirar(url, init, cabecalhos, usuarioId, alvo);
+    // Mesma chave: se o servidor gravou e só a resposta se perdeu, o reenvio não duplica.
+    return enfileirar(url, init, cabecalhos, usuarioId, alvo, embrulhada ? chave : undefined);
   } finally {
     clearTimeout(relogio);
   }
@@ -673,10 +689,15 @@ async function executarRodada(automatico: boolean): Promise<ResultadoFila> {
         const cabecalhos = new Headers(op.cabecalhos);
         cabecalhos.set('apikey', cfg.chaveAnon);
         cabecalhos.set('authorization', `Bearer ${token}`);
-        const resposta = await cfg.fetchReal(`${cfg.urlSupabase}${substituirIds(op.caminho, mapa)}`, {
+        const caminho = substituirIds(op.caminho, mapa);
+        const corpo = montarCorpo(op.corpo, mapa);
+        const embrulhada = op.tipo === 'rpc' && op.rpc && op.chaveIdempotencia && typeof corpo === 'string'
+          ? chamadaIdempotente(caminho, op.rpc, corpo, op.chaveIdempotencia)
+          : null;
+        const resposta = await cfg.fetchReal(`${cfg.urlSupabase}${embrulhada ? embrulhada.caminho : caminho}`, {
           method: op.metodo,
           headers: cabecalhos,
-          body: montarCorpo(op.corpo, mapa),
+          body: embrulhada ? embrulhada.corpo : corpo,
         });
         if (resposta.ok) {
           if (op.idProvisorio) {

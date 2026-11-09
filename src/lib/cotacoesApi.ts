@@ -22,6 +22,7 @@ import {
   inteiroPgOuNull,
 } from './cotacoes';
 import { comprimirImagemUpload } from './imageCompression';
+import { formatarDataDDMMYY } from './codigosFormulario';
 import type { UsoCodigoImposto } from './sugestaoCodigoImposto';
 import type {
   CotacaoProcesso, CotacaoProcessoItem, CotacaoProcessoItemDraft, CotacaoProcessoStatus,
@@ -136,9 +137,13 @@ export async function sugerirVinculoRiIa(params: {
  */
 export async function obterProximoNumeroCotacao(dataISO?: string | null): Promise<string> {
   try {
+    // Só os códigos do mês: a tabela inteira passaria das 1.000 linhas que o
+    // PostgREST devolve, e o maior índice do mês poderia ficar de fora.
+    const mmyy = formatarDataDDMMYY(dataISO).slice(2);
     const { data, error } = await supabase
       .from('sup_cotacao_processos')
-      .select('numero');
+      .select('numero')
+      .like('numero', `COT-__${mmyy}-%`);
 
     if (error || !data) {
       if (error) console.warn('Erro ao consultar processos de cotacao para numero:', error);

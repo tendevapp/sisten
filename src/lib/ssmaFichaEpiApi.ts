@@ -9,6 +9,7 @@
 
 import { supabase } from '../db/supabaseClient';
 import { gerarCodigoFormulario, proximoIndiceCodigo } from './codigosFormulario';
+import { buscarTudo } from './buscarTudo';
 import type { ItemFichaPayload, ItemHistorico, LinhaConsumo, MotivoMed } from './fichaEpi';
 
 export const PREFIXO_FICHA_EPI = 'EPI';
@@ -215,11 +216,14 @@ export function historicoDasFichas(fichasColaborador: SsmaFichaEpi[]): ItemHisto
  */
 export async function proximoCodigoFicha(dataEntrega: string): Promise<string> {
   const [ano, mes] = dataEntrega.split('-');
-  const { data, error } = await fichas()
+  // Paginado: out/26 teve 516 fichas, e o PostgREST corta em 1.000 linhas
+  // sem avisar — o maior índice sumiria e o código sairia repetido.
+  const data = await buscarTudo<{ codigo: string }>((de, ate) => fichas()
     .select('codigo')
-    .like('codigo', `${PREFIXO_FICHA_EPI}-__${mes}${ano.slice(-2)}-%`);
-  if (error) throw error;
-  const indice = proximoIndiceCodigo(PREFIXO_FICHA_EPI, (data || []).map((f: { codigo: string }) => f.codigo));
+    .like('codigo', `${PREFIXO_FICHA_EPI}-__${mes}${ano.slice(-2)}-%`)
+    .order('codigo')
+    .range(de, ate));
+  const indice = proximoIndiceCodigo(PREFIXO_FICHA_EPI, data.map((f) => f.codigo));
   return gerarCodigoFormulario(PREFIXO_FICHA_EPI, dataEntrega, indice);
 }
 
