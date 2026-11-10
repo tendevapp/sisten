@@ -772,6 +772,16 @@ export const FEATURE_FLAGS: PageDef[] = [
     label: 'RID: Editar todos os desvios (se desmarcado, edita apenas os criados pelo próprio usuário)',
     defaultRoles: ['admin'],
   },
+  // Geral › Pendências › Contingências do estoque: saídas que podem não chegar
+  // ao SAP (retirada sem requisição, EPI sem baixa, exportada sem doc...).
+  // Checada também no banco (alm_contingencia_pode). Nasce só admin (regra 4);
+  // a gestão do almoxarifado recebe pela Gestão de Acessos.
+  {
+    id: 'alm_contingencias',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'Almoxarifado: Contingências do estoque (verificações, correção e justificativa)',
+    defaultRoles: ['admin'],
+  },
   // Relatório do RID (indicadores por setor e período, para apresentação).
   // Nasce só para admin (regra 4); o SSMA recebe pela Gestão de Acessos.
   {
@@ -967,7 +977,8 @@ export function canAccessPage(user: Profile, pageId: string): boolean {
   if (pageId === 'geral_pendencias' && (
     isUserSetorAlmoxarifado(user)
     || (user.aprovador_setores?.length ?? 0) > 0
-    || canAccessPage(user, 'sup_pendencias_processamento'))) {
+    || canAccessPage(user, 'sup_pendencias_processamento')
+    || canAccessPage(user, 'alm_contingencias'))) {
     return true;
   }
 

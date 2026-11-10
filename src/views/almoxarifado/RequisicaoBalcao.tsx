@@ -20,7 +20,7 @@
  * percorre busca → quantidade → adicionar.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowLeftRight, Check, CheckSquare, ChevronDown, Download, FileCheck2, FolderPlus, History, Layers, Loader2, LogOut, Plus,
   QrCode, RefreshCw, RotateCcw, Search, Square, Trash2, Upload, X,
@@ -376,11 +376,17 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     if (r.exportacao_id) void recarregarRequisicoes();
   };
 
-  const excluir = async (r: ReqBalcaoRow) => {
-    if (!r.exportacao_id && !await confirmar({ titulo: 'Excluir requisição?', mensagem: `Excluir a requisição ${r.codigo}? Sai da tela, mas permanece no banco.`, confirmarLabel: 'Excluir', variante: 'perigo' })) return;
+  // Requisição de Ficha de EPI: o EPI já foi entregue — sem ela a saída não chega
+  // ao SAP. Pede o motivo (o banco também exige) em vez da confirmação simples.
+  const [excluindoComMotivo, setExcluindoComMotivo] = useState<ReqBalcaoRow | null>(null);
+
+  const excluir = async (r: ReqBalcaoRow, motivo?: string) => {
+    if (r.origem === 'ficha_epi' && motivo === undefined) { setExcluindoComMotivo(r); return; }
+    if (motivo === undefined && !r.exportacao_id && !await confirmar({ titulo: 'Excluir requisição?', mensagem: `Excluir a requisição ${r.codigo}? Sai da tela, mas permanece no banco.`, confirmarLabel: 'Excluir', variante: 'perigo' })) return;
     if (!(await liberarExportada(r, 'excluir'))) return;
     try {
-      await excluirRequisicaoBalcao(r.id, user.name);
+      await excluirRequisicaoBalcao(r.id, user.name, motivo);
+      setExcluindoComMotivo(null);
       toast.success(`${r.codigo} excluída.`);
       setDetalhe(null);
       await recarregarRequisicoes();
@@ -625,6 +631,14 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
             if (!continuar) { setForm(null); setItemQr(null); }
             await recarregarRequisicoes();
           }}
+        />
+      )}
+
+      {excluindoComMotivo && (
+        <MotivoExclusaoModal
+          r={excluindoComMotivo}
+          onClose={() => setExcluindoComMotivo(null)}
+          onConfirmar={(motivo) => void excluir(excluindoComMotivo, motivo)}
         />
       )}
 
@@ -2213,7 +2227,55 @@ const ROTULO_ACAO: Record<ReqBalcaoAlteracao['acao'], string> = {
   exportacao: 'Exportação',
   reabertura: 'Reabertura',
   importacao_sap: 'Importação SAP',
+  restauracao: 'Restauração',
 };
+
+/** Exclusão de requisição gerada pela Ficha de EPI: o EPI saiu, então pede o porquê. */
+function MotivoExclusaoModal({ r, onClose, onConfirmar }: { r: ReqBalcaoRow; onClose: () => void; onConfirmar: (motivo: string) => void }) {
+  const [motivo, setMotivo] = useState('');
+  const id = useId();
+  const valido = motivo.trim().length >= 10;
+  return (
+    <Modal onClose={onClose} maxWidth="max-w-md" ariaLabel="Excluir requisição da Ficha de EPI">
+      <ModalHeader onClose={onClose}>
+        <h3 className="text-base font-bold" style={{ color: 'var(--ink-primary)' }}>Excluir {r.codigo}?</h3>
+        <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>Gerada pela Ficha de EPI {r.origem_ref}</p>
+      </ModalHeader>
+      <ModalBody className="space-y-2">
+        <p className="text-xs" style={{ color: 'var(--ink-secondary)' }}>
+          O EPI desta ficha já foi entregue. Sem esta requisição a saída não chega ao SAP e vira diferença no inventário.
+          Exclua só se a baixa foi feita de outro jeito — diga qual.
+        </p>
+        <label htmlFor={id} className="block text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
+          Motivo da exclusão <span className="text-rose-600">*</span>
+        </label>
+        <textarea
+          id={id}
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          rows={3}
+          autoFocus
+          placeholder="Ex.: ficha duplicada, baixa na RQB-… / lançado direto no SAP, doc. 4904…"
+          aria-invalid={motivo.length > 0 && !valido}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken, transparent)', color: 'var(--ink-primary)' }}
+        />
+        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Mínimo de 10 caracteres. Fica no histórico da requisição.</p>
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 text-sm font-semibold" style={{ color: 'var(--ink-secondary)' }}>Cancelar</button>
+        <button
+          type="button"
+          disabled={!valido}
+          onClick={() => onConfirmar(motivo.trim())}
+          className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-50"
+        >
+          Excluir
+        </button>
+      </ModalFooter>
+    </Modal>
+  );
+}
 
 /** Log de alterações da requisição — carregado ao abrir o detalhe. */
 function LogAlteracoes({ requisicaoId }: { requisicaoId: string }) {

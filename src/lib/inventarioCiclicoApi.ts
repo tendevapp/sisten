@@ -173,6 +173,18 @@ export interface ResultadoContagem {
   diferenca: number | null;
   /** Hora da importação da ZL0024 usada na comparação — para o aviso de divergência. */
   zl0024_importada_em?: string | null;
+  /**
+   * Só na divergente: movimentações do material × depósito que ainda não estão
+   * na ZL0024 comparada (sem doc SAP ou lançadas depois). Sem quantidade — a
+   * contagem continua cega. Gravado também na contagem (`pendencias_sap`).
+   */
+  pendencias_sap?: PendenciaSapContagem[];
+}
+
+export interface PendenciaSapContagem {
+  codigo: string;
+  tipo: 'extraordinaria' | 'requisicao_balcao' | 'transferencia_destino' | string;
+  motivo: string;
 }
 
 /**

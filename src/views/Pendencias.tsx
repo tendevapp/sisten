@@ -13,13 +13,15 @@
  *      com atalho para Solicitações › Aprovações.
  *  - Processamento de NF: setor Suprimentos (e liberações individuais do admin)
  *    — a tela que antes era Suprimentos › Pendências de Processamento.
+ *  - Contingências: elos quebrados entre a saída física do almoxarifado e o
+ *    SAP (feature flag `alm_contingencias`) — components/almoxarifado/PainelContingencias.
  *
  * `?aba=` abre a aba direto (notificações e o endereço antigo usam).
  * Pendência nova de outro módulo entra como mais uma aba aqui.
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowRight, CheckCircle2, ListTodo, PackageCheck, PackageOpen, ReceiptText, RefreshCw, XCircle } from 'lucide-react';
+import { AlertOctagon, ArrowRight, CheckCircle2, ListTodo, PackageCheck, PackageOpen, ReceiptText, RefreshCw, XCircle } from 'lucide-react';
 import type { Profile } from '../types';
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
@@ -35,6 +37,8 @@ import { podeAprovarRetirada } from '../lib/solicitacaoExtra';
 import { canAccessPage } from '../lib/pages';
 import { contarNotasAguardando } from '../lib/supPendenciasApi';
 import PendenciasProcessamento from './PendenciasProcessamento';
+import PainelContingencias from '../components/almoxarifado/PainelContingencias';
+import { verificarContingencias } from '../lib/contingenciasAlmoxApi';
 import {
   FiltroSaldo, LegendaZl0024, SaldoChip, contarProntidao, useProntidaoSaldo, type FiltroProntidao,
 } from '../components/almoxarifado/SaldoRegularizacao';
@@ -45,13 +49,13 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-type Aba = 'retiradas' | 'processamento';
+type Aba = 'retiradas' | 'processamento' | 'contingencias';
 
 const ehAprovadorDeSetor = (user: Profile) => user.roles.includes('admin') || (user.aprovador_setores?.length ?? 0) > 0;
 
 function abaDaRota(): Aba | null {
   const aba = new URLSearchParams(window.location.hash.split('?')[1] || '').get('aba');
-  return aba === 'retiradas' || aba === 'processamento' ? aba : null;
+  return aba === 'retiradas' || aba === 'processamento' || aba === 'contingencias' ? aba : null;
 }
 
 export default function Pendencias({ user, onNavigate, abaInicial }: Props & { abaInicial?: Aba }) {
@@ -60,6 +64,7 @@ export default function Pendencias({ user, onNavigate, abaInicial }: Props & { a
     const lista: { id: Aba; rotulo: string; icone: typeof ListTodo }[] = [];
     if (podeDarBaixaRetirada(user) || ehAprovadorDeSetor(user)) lista.push({ id: 'retiradas', rotulo: 'Retiradas sem saldo', icone: PackageOpen });
     if (canAccessPage(user, 'sup_pendencias_processamento')) lista.push({ id: 'processamento', rotulo: 'Processamento de NF', icone: ReceiptText });
+    if (canAccessPage(user, 'alm_contingencias')) lista.push({ id: 'contingencias', rotulo: 'Contingências', icone: AlertOctagon });
     return lista;
   }, [user]);
   const [aba, setAba] = useState<Aba | undefined>(() => {
@@ -67,6 +72,17 @@ export default function Pendencias({ user, onNavigate, abaInicial }: Props & { a
     return abas.find(a => a.id === pedida)?.id ?? abas[0]?.id;
   });
   const [notasAguardando, setNotasAguardando] = useState(0);
+  // Críticas + altas em aberto — selo da aba (a própria aba atualiza ao verificar).
+  const [contingenciasAbertas, setContingenciasAbertas] = useState(0);
+
+  useEffect(() => {
+    if (!abas.some(a => a.id === 'contingencias')) return;
+    let vivo = true;
+    verificarContingencias()
+      .then(l => { if (vivo) setContingenciasAbertas(l.filter(c => c.severidade !== 'media').length); })
+      .catch(() => undefined);
+    return () => { vivo = false; };
+  }, [abas]);
 
   useEffect(() => {
     if (!abas.some(a => a.id === 'processamento')) return;
@@ -110,6 +126,9 @@ export default function Pendencias({ user, onNavigate, abaInicial }: Props & { a
               {a.id === 'processamento' && notasAguardando > 0 && (
                 <span className="rounded-full bg-amber-500 px-1.5 text-[10px] text-white">{notasAguardando}</span>
               )}
+              {a.id === 'contingencias' && contingenciasAbertas > 0 && (
+                <span className="rounded-full bg-rose-600 px-1.5 text-[10px] text-white">{contingenciasAbertas}</span>
+              )}
             </button>
           ))}
         </div>
@@ -122,6 +141,8 @@ export default function Pendencias({ user, onNavigate, abaInicial }: Props & { a
         </div>
       ) : aba === 'processamento' ? (
         <PendenciasProcessamento user={user} onNavigate={onNavigate} embutida />
+      ) : aba === 'contingencias' ? (
+        <PainelContingencias onNavigate={onNavigate} onTotal={setContingenciasAbertas} />
       ) : (
         <RetiradasPendentes user={user} onNavigate={onNavigate} />
       )}

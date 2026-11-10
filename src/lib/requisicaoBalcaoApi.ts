@@ -50,7 +50,7 @@ export interface ReqBalcaoItemRow {
 
 export interface ReqBalcaoAlteracao {
   id: string;
-  acao: 'criacao' | 'edicao' | 'exclusao' | 'doc_sap' | 'exportacao' | 'reabertura' | 'importacao_sap';
+  acao: 'criacao' | 'edicao' | 'exclusao' | 'doc_sap' | 'exportacao' | 'reabertura' | 'importacao_sap' | 'restauracao';
   alteracoes: { campo: string; de: string | null; para: string | null }[];
   resumo: string | null;
   alterado_por_nome: string | null;
@@ -351,8 +351,12 @@ export async function importarSapBalcao(
   return data as any;
 }
 
-/** Exclusão lógica — some da tela, permanece no banco. */
-export async function excluirRequisicaoBalcao(id: string, por: string): Promise<void> {
-  const { error } = await supabase.rpc('alm_req_balcao_excluir' as any, { p_id: id, p_por: por } as any);
+/**
+ * Exclusão lógica — some da tela, permanece no banco. O banco recusa a de uma
+ * retirada sem saldo viva (exclua a retirada) e exige `motivo` (10+ caracteres)
+ * na de Ficha de EPI entregue; o motivo vai para o log.
+ */
+export async function excluirRequisicaoBalcao(id: string, por: string, motivo?: string): Promise<void> {
+  const { error } = await supabase.rpc('alm_req_balcao_excluir' as any, { p_id: id, p_por: por, p_motivo: motivo?.trim() || null } as any);
   if (error) throw new Error(error.message);
 }

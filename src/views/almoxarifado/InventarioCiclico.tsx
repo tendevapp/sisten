@@ -61,7 +61,7 @@ import { OPCOES_FILTRO_DATA, intervaloDoFiltro, type FiltroDataAlteracao } from 
 import { agruparPorData, dataNoIntervalo } from '../../lib/inventarioPorData';
 import { diaLocal } from '../../lib/sessaoDiaria';
 import { CAUSAS_INVENTARIO, rotuloCausa, sugerirEscopoRapido, type CausaInventario, type PendenciaContagem } from '../../lib/inventarioAuditoria';
-import { contextoAuditoriaInventario } from '../../lib/inventarioCiclicoApi';
+import { contextoAuditoriaInventario, type PendenciaSapContagem } from '../../lib/inventarioCiclicoApi';
 import { useReservasInventario } from '../../lib/useReservasInventario';
 import { gravarPreferenciasInventario, lerPreferenciasInventario, prepararContagemDoMaterial } from '../../lib/inventarioAtalho';
 import { confirmar } from '../../lib/confirmar';
@@ -1353,12 +1353,25 @@ function faseInicial(item: ItemInventario): Fase {
  * Divergência: a contagem não espera a gestão atualizar a ZL0024, mas quem
  * contou precisa saber de quando é o saldo comparado e avisar a gestão.
  */
-function AvisoGestaoDivergencia({ importadaEm }: { importadaEm: string | null }) {
+function AvisoGestaoDivergencia({ importadaEm, pendencias }: { importadaEm: string | null; pendencias?: PendenciaSapContagem[] }) {
   return (
-    <p className="rounded-lg px-3 py-2 text-xs" style={{ background: 'color-mix(in srgb, var(--status-serious) 12%, transparent)', color: 'var(--ink-primary)' }}>
-      Comparado com a ZL0024 importada em <strong>{importadaEm ? formatDateTimeBR(importadaEm) : 'data não identificada'}</strong>.
-      Avise a gestão do almoxarifado para conferir a divergência — pode ser movimentação depois dessa importação.
-    </p>
+    <div className="space-y-1.5 rounded-lg px-3 py-2 text-xs" style={{ background: 'color-mix(in srgb, var(--status-serious) 12%, transparent)', color: 'var(--ink-primary)' }}>
+      <p>
+        Comparado com a ZL0024 importada em <strong>{importadaEm ? formatDateTimeBR(importadaEm) : 'data não identificada'}</strong>.
+        Avise a gestão do almoxarifado para conferir a divergência — pode ser movimentação depois dessa importação.
+      </p>
+      {pendencias && pendencias.length > 0 && (
+        <div>
+          <p className="font-bold">Este material tem movimentação ainda sem baixa no SAP — a diferença pode vir dela:</p>
+          <ul className="mt-0.5 list-disc space-y-0.5 pl-4">
+            {pendencias.map((p) => (
+              <li key={`${p.codigo}-${p.tipo}`}><span className="font-mono font-bold">{p.codigo}</span> — {p.motivo}</li>
+            ))}
+          </ul>
+          <p className="mt-1" style={{ color: 'var(--ink-secondary)' }}>Na recontagem, a causa provável é "Movimentação / documento pendente".</p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1395,6 +1408,8 @@ export function ModalContagem({
   const iniciadaRef = useRef<string>(new Date().toISOString());
   // Hora da última importação da ZL0024 — mostrada só quando a contagem diverge.
   const [zl0024ImportadaEm, setZl0024ImportadaEm] = useState<string | null>(null);
+  // Movimentações sem baixa no SAP devolvidas pela última contagem divergente.
+  const [pendenciasSap, setPendenciasSap] = useState<PendenciaSapContagem[]>([]);
   useEffect(() => {
     let ativo = true;
     contextoAuditoriaInventario(inventarioId)
@@ -1437,6 +1452,7 @@ export function ModalContagem({
       });
       setUltimo(r);
       if (r.zl0024_importada_em) setZl0024ImportadaEm(r.zl0024_importada_em);
+      setPendenciasSap(r.divergente ? r.pendencias_sap ?? [] : []);
       setQtd(''); setObs(''); setCausa(''); setCausaDetalhe('');
       await onRecarregar();
       if (!r.divergente) {
@@ -1666,14 +1682,14 @@ export function ModalContagem({
               ({nContagens} de {MAX_CONTAGENS}). Se não, o saldo da ZL0024 é exibido, o alerta é gravado e o item
               não aceita mais contagem. Para decidir depois, feche sem recontar: o item fica em aberto neste inventário.
             </p>
-            <AvisoGestaoDivergencia importadaEm={zl0024ImportadaEm} />
+            <AvisoGestaoDivergencia importadaEm={zl0024ImportadaEm} pendencias={pendenciasSap} />
           </div>
         )}
 
         {fase === 'final' && (
           <>
             <ResultadoFinal item={item} />
-            {item.status === 'divergente' && <AvisoGestaoDivergencia importadaEm={zl0024ImportadaEm} />}
+            {item.status === 'divergente' && <AvisoGestaoDivergencia importadaEm={zl0024ImportadaEm} pendencias={pendenciasSap} />}
           </>
         )}
       </ModalBody>
