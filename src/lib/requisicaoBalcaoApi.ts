@@ -156,19 +156,53 @@ export interface ReqBalcaoInput {
   confirmar?: boolean;
 }
 
-/** Requisições não excluídas, da mais recente para a mais antiga, com os itens. */
+const comItensOrdenados = (r: ReqBalcaoRow): ReqBalcaoRow => ({
+  ...r,
+  itens: [...(r.itens || [])].sort((a, b) => a.ordem - b.ordem),
+});
+
+/**
+ * Requisições não excluídas, da mais recente para a mais antiga, com os itens:
+ * as `limite` mais recentes **mais todas as pendentes de confirmação**, por
+ * antigas que sejam. A requisição de uma retirada sem saldo (RSS) ou da ficha
+ * de EPI nasce com a data da retirada e fica pendente até a NF dar saldo — em
+ * semanas o balcão passa de 500 lançamentos e ela sumia da lista (e o "Dar
+ * baixa" de Pendências não achava o que abrir).
+ */
 export async function listarRequisicoesBalcao(limite = 500): Promise<ReqBalcaoRow[]> {
+  const [recentes, pendentes] = await Promise.all([
+    dbReq()
+      .select('*, itens:alm_req_balcao_itens(*)')
+      .eq('excluido', false)
+      .order('data', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limite),
+    dbReq()
+      .select('*, itens:alm_req_balcao_itens(*)')
+      .eq('excluido', false)
+      .eq('pendente_confirmacao', true)
+      .order('data', { ascending: false })
+      .limit(1000),
+  ]);
+  if (recentes.error) throw new Error(recentes.error.message);
+  if (pendentes.error) throw new Error(pendentes.error.message);
+  const porId = new Map<string, ReqBalcaoRow>();
+  for (const r of [...(recentes.data || []), ...(pendentes.data || [])] as ReqBalcaoRow[]) porId.set(r.id, r);
+  return [...porId.values()]
+    .sort((a, b) => (b.data === a.data ? (b.created_at || '').localeCompare(a.created_at || '') : b.data.localeCompare(a.data)))
+    .map(comItensOrdenados);
+}
+
+/** Uma requisição pelo código, com os itens — para abrir uma que esteja fora da lista. */
+export async function buscarRequisicaoBalcaoPorCodigo(codigo: string): Promise<ReqBalcaoRow | null> {
   const { data, error } = await dbReq()
     .select('*, itens:alm_req_balcao_itens(*)')
+    .eq('codigo', codigo)
     .eq('excluido', false)
-    .order('data', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(limite);
+    .limit(1);
   if (error) throw new Error(error.message);
-  return ((data || []) as ReqBalcaoRow[]).map((r) => ({
-    ...r,
-    itens: [...(r.itens || [])].sort((a, b) => a.ordem - b.ordem),
-  }));
+  const r = ((data || []) as ReqBalcaoRow[])[0];
+  return r ? comItensOrdenados(r) : null;
 }
 
 export interface ReqBalcaoItemInput {

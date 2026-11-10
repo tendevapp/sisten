@@ -9,6 +9,7 @@
 
 import { supabase } from '../db/supabaseClient';
 import type { CadastroGrupoMercadoria } from '../types';
+import { buscarTudo } from './buscarTudo';
 
 export const TAXONOMIA_NIVEIS_PADRAO: Record<string, string[]> = {
   CONSUMÍVEL: [
@@ -70,12 +71,15 @@ export async function obterSubcategoriasAgrupadas(): Promise<Record<string, stri
   }
 
   try {
-    const { data, error } = await (supabase as any)
+    // Paginado: a tabela passa de 1.000 grupos e o PostgREST corta em silêncio.
+    const data = await buscarTudo<{ classificacao_nivel1: string | null; classificacao_nivel2: string | null }>((de, ate) => (supabase as any)
       .from('cadastro_grupo_mercadoria')
       .select('classificacao_nivel1, classificacao_nivel2')
-      .not('classificacao_nivel2', 'is', null);
+      .not('classificacao_nivel2', 'is', null)
+      .order('codigo', { ascending: true })
+      .range(de, ate));
 
-    if (!error && data) {
+    {
       for (const item of data) {
         const n1 = item.classificacao_nivel1;
         const n2 = item.classificacao_nivel2?.trim();
@@ -174,16 +178,19 @@ export async function listarGruposMercadorias(filtros: FiltrosListagemGrupos = {
  */
 export async function obterKpisNiveis(): Promise<KpiNiveisMercadorias> {
   try {
-    const { data, error } = await (supabase as any)
-      .from('cadastro_grupo_mercadoria')
-      .select('classificacao_nivel1, classificacao_nivel2');
-
-    if (error) {
+    // Paginado: com mais de 1.000 grupos o total e as contagens saíam cortados.
+    let rows: { classificacao_nivel1: string | null; classificacao_nivel2: string | null }[];
+    try {
+      rows = await buscarTudo((de, ate) => (supabase as any)
+        .from('cadastro_grupo_mercadoria')
+        .select('classificacao_nivel1, classificacao_nivel2')
+        .order('codigo', { ascending: true })
+        .range(de, ate));
+    } catch (error) {
       console.warn('[grupoMercadoriaApi] Erro ao obter KPIs de grupos:', error);
       throw error;
     }
 
-    const rows = data || [];
     const total = rows.length;
     const totalNivel1: Record<string, number> = {};
     const totalNivel2: Record<string, number> = {};

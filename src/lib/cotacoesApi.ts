@@ -225,14 +225,22 @@ export async function criarProcessoCotacao(params: {
   return processo as CotacaoProcesso;
 }
 
+/**
+ * Todos os processos, do mais recente para o mais antigo. Antes cortava nos
+ * 100 mais recentes e, com 151 processos, 21 abertos tinham sumido da lista —
+ * a tabela é leve (~0,2 kB por processo), então lê inteira, paginada.
+ */
 export async function listarProcessosCotacao(): Promise<CotacaoProcesso[]> {
-  const { data, error } = await supabase
-    .from('sup_cotacao_processos')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(100);
-  if (error) throw new Error(`Falha ao listar processos: ${error.message}`);
-  return (data ?? []) as CotacaoProcesso[];
+  try {
+    return await buscarTudo<CotacaoProcesso>((de, ate) => supabase
+      .from('sup_cotacao_processos')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(de, ate));
+  } catch (err) {
+    throw new Error(`Falha ao listar processos: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function buscarProcessoCotacao(processoId: string): Promise<{

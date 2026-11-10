@@ -19,6 +19,7 @@ import type {
   RhHoraExtra, RhPessoa, RhRota, RhSetor, RhTreinamento, RhTurno,
 } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
+import { buscarTudo } from './buscarTudo';
 import { situacaoParaAtivo, type PessoaImportada } from './rhPessoasImport';
 import { corrigirTextoTreinamento, diaSemanaPtBr, normalizarHorarioTreinamento, type TreinamentoImportado } from './rhTreinamentosImport';
 
@@ -398,10 +399,14 @@ export async function listarRhPessoas(): Promise<RhPessoa[]> {
 }
 
 export async function listarRhHoraExtra(): Promise<RhHoraExtra[]> {
-  const { data, error } = await supabase.from('rh_hora_extra').select('*').order('dia', { ascending: false });
-  if (error) throw new Error(error.message);
+  // Um registro por dia: já passou de 1.000 e o PostgREST cortava os mais antigos em silêncio.
+  const data = await buscarTudo<any>((de, ate) => supabase
+    .from('rh_hora_extra')
+    .select('*')
+    .order('dia', { ascending: false })
+    .range(de, ate));
   // `percentual_he` é `numeric` — vem como string do PostgREST, ver `normalizarItem`.
-  return (data || []).map((row: any) => ({ ...row, percentual_he: Number(row.percentual_he) })) as RhHoraExtra[];
+  return data.map((row: any) => ({ ...row, percentual_he: Number(row.percentual_he) })) as RhHoraExtra[];
 }
 
 /** Busca o %HE cadastrado para uma data (`YYYY-MM-DD`); se nao houver registro no banco, aplica o percentual padrao por dia da semana (Domingo: 100%, Sabado: 80%, Seg-Sex: 60%). */
@@ -1097,27 +1102,38 @@ export async function obterProximoProtocoloAseDisponivel(
   return calcularProximoProtocoloAse(dataISO, nomeSetor, existentes);
 }
 
+/**
+ * Lista de trabalho: as 300 mais recentes **mais todos os rascunhos**, por
+ * antigos que sejam — um rascunho fora da janela sumia da tela e ninguém mais
+ * o enviava. Relatório e auditoria usam `listarSolicitacoesASEPeriodo`.
+ */
 export async function listarSolicitacoesASE(incluirExcluidos = false): Promise<AseHoraExtraCompleta[]> {
   const rotasMapPromise = carregarMapaRotas();
-  let query = supabase
-    .from('rh_ase_solicitacoes')
-    .select(`
+  const colunas = `
       *,
       setor:rh_setores (nome),
       turno:rh_turnos (nome),
       solicitante:profiles!rh_ase_solicitacoes_solicitante_id_fkey (name),
       itens:rh_ase_itens (*)
-    `)
-    .order('data_execucao', { ascending: false })
-    .limit(300);
+    `;
+  const recentes = apenasVigentes(
+    supabase.from('rh_ase_solicitacoes').select(colunas).order('data_execucao', { ascending: false }).limit(300),
+    incluirExcluidos,
+  );
+  const rascunhos = apenasVigentes(
+    supabase.from('rh_ase_solicitacoes').select(colunas).eq('status', 'RASCUNHO').order('data_execucao', { ascending: false }).limit(1000),
+    incluirExcluidos,
+  );
 
-  query = apenasVigentes(query, incluirExcluidos);
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
+  const [r1, r2] = await Promise.all([recentes, rascunhos]);
+  if (r1.error) throw new Error(r1.error.message);
+  if (r2.error) throw new Error(r2.error.message);
   const rotasMap = await rotasMapPromise;
+  const porId = new Map<string, any>();
+  for (const row of [...(r1.data || []), ...(r2.data || [])] as any[]) porId.set(row.id, row);
+  const data = [...porId.values()].sort((a, b) => String(b.data_execucao || '').localeCompare(String(a.data_execucao || '')));
 
-  return (data || []).map((row: any) => ({
+  return data.map((row: any) => ({
     ...row,
     setor_nome: row.setor?.nome ?? null,
     turno_nome: row.turno?.nome ?? null,

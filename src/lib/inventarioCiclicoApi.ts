@@ -102,16 +102,34 @@ function normalizar(r: any): InventarioRow {
   };
 }
 
-/** Inventários não excluídos, do mais recente para o mais antigo, com itens e contagens. */
+/**
+ * Inventários não excluídos, do mais recente para o mais antigo, com itens e
+ * contagens: os `limite` mais recentes **mais todos os abertos**, por antigos
+ * que sejam — inventário aberto fora da janela sumiria da tela sem ser concluído.
+ */
 export async function listarInventarios(limite = 200): Promise<InventarioRow[]> {
-  const { data, error } = await (supabase.from as any)('alm_inventarios')
-    .select(`*, itens:alm_inventario_itens(*, contagens:alm_inventario_contagens(${COLUNAS_CONTAGEM}))`)
-    .eq('excluido', false)
-    .order('data', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(limite);
-  if (error) throw new Error(error.message);
-  return ((data || []) as any[]).map(normalizar);
+  const colunas = `*, itens:alm_inventario_itens(*, contagens:alm_inventario_contagens(${COLUNAS_CONTAGEM}))`;
+  const [recentes, abertos] = await Promise.all([
+    (supabase.from as any)('alm_inventarios')
+      .select(colunas)
+      .eq('excluido', false)
+      .order('data', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limite),
+    (supabase.from as any)('alm_inventarios')
+      .select(colunas)
+      .eq('excluido', false)
+      .eq('status', 'aberto')
+      .order('data', { ascending: false })
+      .limit(1000),
+  ]);
+  if (recentes.error) throw new Error(recentes.error.message);
+  if (abertos.error) throw new Error(abertos.error.message);
+  const porId = new Map<string, any>();
+  for (const r of [...(recentes.data || []), ...(abertos.data || [])] as any[]) porId.set(r.id, r);
+  return [...porId.values()]
+    .sort((a, b) => (b.data === a.data ? String(b.created_at || '').localeCompare(String(a.created_at || '')) : String(b.data).localeCompare(String(a.data))))
+    .map(normalizar);
 }
 
 /** Um inventário só, com itens e contagens — para quem conta fora da tela do inventário. */
@@ -119,6 +137,7 @@ export async function buscarInventario(id: string): Promise<InventarioRow | null
   const { data, error } = await (supabase.from as any)('alm_inventarios')
     .select(`*, itens:alm_inventario_itens(*, contagens:alm_inventario_contagens(${COLUNAS_CONTAGEM}))`)
     .eq('id', id)
+    .eq('excluido', false)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data ? normalizar(data) : null;

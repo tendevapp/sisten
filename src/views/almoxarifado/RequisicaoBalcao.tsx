@@ -41,7 +41,7 @@ import {
   type GrupoPepBalcao, type LinhaBalcao, type MaterialDisponivel, type MaterialNoDeposito, type PepAplicacao, type TipoMovimentoBalcao,
 } from '../../lib/requisicaoBalcao';
 import {
-  buscarEstoqueBalcao, excluirRequisicaoBalcao, importarSapBalcao, informarDocSap, listarAlteracoesBalcao, listarAplicacoesBalcao,
+  buscarEstoqueBalcao, buscarRequisicaoBalcaoPorCodigo, excluirRequisicaoBalcao, importarSapBalcao, informarDocSap, listarAlteracoesBalcao, listarAplicacoesBalcao,
   listarExportacoesBalcao, listarRequisicoesBalcao, reabrirExportacaoBalcao, registrarExportacaoBalcao,
   salvarRequisicaoBalcao,
   type ReqBalcaoAlteracao, type ReqBalcaoExportacao, type ReqBalcaoRow,
@@ -236,22 +236,31 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     setForm((f) => f ?? {});
   }, [loading, itemQr]);
 
-  // A ficha de EPI deixa o código da requisição que gerou: ao chegar aqui, abre
-  // direto para o almoxarife conferir o PEP e confirmar.
+  // A ficha de EPI e o "Dar baixa" da retirada sem saldo deixam o código da
+  // requisição: ao chegar aqui, abre direto para o almoxarife conferir e confirmar.
+  // Fora da lista carregada, busca pelo código uma vez (antes recarregava a lista
+  // sem parar e o formulário nunca abria).
   useEffect(() => {
     if (loading) return;
     let codigo: string | null = null;
     try { codigo = sessionStorage.getItem(CHAVE_ABRIR_REQUISICAO_BALCAO); } catch { /* sem storage */ }
     if (!codigo) return;
-    const alvo = requisicoes.find((r) => r.codigo === codigo);
-    if (alvo) {
-      try { sessionStorage.removeItem(CHAVE_ABRIR_REQUISICAO_BALCAO); } catch { /* sem storage */ }
+    try { sessionStorage.removeItem(CHAVE_ABRIR_REQUISICAO_BALCAO); } catch { /* sem storage */ }
+    const abrir = (alvo: ReqBalcaoRow) => {
       setFiltroExportacao(alvo.pendente_confirmacao ? 'aguardando' : 'todas');
       setForm({ registro: alvo });
-    } else {
-      void recarregarRequisicoes();
-    }
-  }, [loading, requisicoes, recarregarRequisicoes]);
+    };
+    const naLista = requisicoes.find((r) => r.codigo === codigo);
+    if (naLista) { abrir(naLista); return; }
+    const alvoCodigo = codigo;
+    buscarRequisicaoBalcaoPorCodigo(alvoCodigo)
+      .then((alvo) => {
+        if (!alvo) { toast.error(`Requisição ${alvoCodigo} não encontrada.`); return; }
+        setRequisicoes((lista) => (lista.some((r) => r.id === alvo.id) ? lista : [alvo, ...lista]));
+        abrir(alvo);
+      })
+      .catch((err) => toast.error(`Não foi possível abrir a requisição ${alvoCodigo}: ${err instanceof Error ? err.message : String(err)}`));
+  }, [loading, requisicoes, toast]);
 
   const exportar = async () => {
     const sel = requisicoes.filter((r) => selecionadas.has(r.id));

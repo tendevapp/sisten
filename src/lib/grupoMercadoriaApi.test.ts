@@ -132,7 +132,9 @@ describe('grupoMercadoriaApi - Gestão de Níveis de Grupos de Mercadorias', () 
     const fakeRows = [
       { classificacao_nivel1: 'CONSUMÍVEL', classificacao_nivel2: 'Minha Nova Subcategoria Custom' },
     ];
-    const notMock = vi.fn().mockResolvedValue({ data: fakeRows, error: null });
+    const rangeMock = vi.fn().mockResolvedValue({ data: fakeRows, error: null });
+    const orderMock = vi.fn().mockReturnValue({ range: rangeMock });
+    const notMock = vi.fn().mockReturnValue({ order: orderMock });
     const selectMock = vi.fn().mockReturnValue({ not: notMock });
 
     (supabase.from as any).mockReturnValue({ select: selectMock });
@@ -140,6 +142,8 @@ describe('grupoMercadoriaApi - Gestão de Níveis de Grupos de Mercadorias', () 
     const mapa = await api.obterSubcategoriasAgrupadas();
 
     expect(supabase.from).toHaveBeenCalledWith('cadastro_grupo_mercadoria');
+    // Paginado (a tabela passa de 1.000 linhas): lê pela faixa, ordenado pela chave.
+    expect(rangeMock).toHaveBeenCalledWith(0, 999);
     expect(mapa['CONSUMÍVEL']).toContain('Minha Nova Subcategoria Custom');
     expect(mapa['CONSUMÍVEL']).toContain('MRO - Manutenção');
   });

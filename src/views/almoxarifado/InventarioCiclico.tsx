@@ -36,7 +36,7 @@ import {
   type ItemInventario, type StatusItemInventario,
 } from '../../lib/inventarioCiclico';
 import {
-  adicionarItensInventario, criarInventario, encerrarItemInventario, excluirInventario, listarInventarios, registrarContagem,
+  adicionarItensInventario, buscarInventario, criarInventario, encerrarItemInventario, excluirInventario, listarInventarios, registrarContagem,
   removerItemInventario, type InventarioRow, type ResultadoContagem,
 } from '../../lib/inventarioCiclicoApi';
 import { exportarPlanilhaInventario } from '../../lib/inventarioCiclicoPlanilha';
@@ -141,13 +141,22 @@ function ChipStatusItem({ status }: { status: StatusItemInventario }) {
 // Tela
 // ===========================================================================
 
+function idInventarioDaRota(): string | null {
+  const hash = window.location.hash || '';
+  const i = hash.indexOf('?');
+  const doHash = i === -1 ? null : new URLSearchParams(hash.slice(i + 1)).get('id');
+  return doHash || new URLSearchParams(window.location.search).get('id');
+}
+
 export default function InventarioCiclico({ user, onNavigate }: Props) {
   const toast = useToast();
   const [inventarios, setInventarios] = useState<InventarioRow[]>([]);
   const [estoque, setEstoque] = useState<EstoqueItem[]>([]);
   const [giro, setGiro] = useState<EstoqueGiro[]>([]);
   const [loading, setLoading] = useState(true);
-  const [abertoId, setAbertoId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('id'));
+  // Link da notificação: `#/formularios/almoxarifado-inventario?id=…` — o id vem
+  // depois do `#` (antes lia só `location.search` e o inventário nunca abria).
+  const [abertoId, setAbertoId] = useState<string | null>(() => idInventarioDaRota());
   const [novo, setNovo] = useState<{ inventario?: InventarioRow } | null>(null);
   const [busca, setBusca] = useState('');
   const [importando, setImportando] = useState(false);
@@ -229,6 +238,21 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
   }, [itemQr, loading, abrirContagemDoQr]);
 
   const aberto = inventarios.find((i) => i.id === abertoId) ?? null;
+
+  // Aberto por link mas fora da lista carregada (mais antigo que a janela):
+  // busca pelo id uma vez e põe na lista.
+  const buscadoPorId = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || !abertoId || aberto || buscadoPorId.current === abertoId) return;
+    buscadoPorId.current = abertoId;
+    const id = abertoId;
+    buscarInventario(id)
+      .then((inv) => {
+        if (!inv) { toast.error('Inventário não encontrado.'); setAbertoId(null); return; }
+        setInventarios((lista) => (lista.some((i) => i.id === inv.id) ? lista : [inv, ...lista]));
+      })
+      .catch((err) => toast.error(`Não foi possível abrir o inventário: ${err instanceof Error ? err.message : String(err)}`));
+  }, [loading, abertoId, aberto, toast]);
 
   const filtrados = useMemo(() => {
     const tokens = extrairPalavrasChave(busca);
