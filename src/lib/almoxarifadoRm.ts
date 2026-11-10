@@ -50,8 +50,12 @@ export const RM_GRUPOS_MERCADORIA_EPI: ReadonlySet<string> = new Set([
 /** Categoria de remessa (ELPEI). Sempre D nas RMs abertas por esta tela. */
 export const RM_CAT_REMESSA = 'D';
 
-/** Depósito (LGOBE) de compra para estoque. */
-export const RM_DEPOSITO_ESTOQUE = '0001';
+/**
+ * Depósito (LGOBE) de compra para estoque: 1000 (recebimento). Até 10/11/2026
+ * a planilha saía com 0001; o almoxarifado pediu 1000 para tudo que não é
+ * compra direta.
+ */
+export const RM_DEPOSITO_ESTOQUE = '1000';
 
 /** Depósito (LGOBE) de compra direta — inclui serviço, que não estoca. */
 export const RM_DEPOSITO_DIRETA = '0050';
@@ -94,7 +98,7 @@ export function normalizarSap(texto: string): string {
     .toUpperCase();
 }
 
-/** Depósito (LGOBE): compra de estoque vai para 0001, compra direta para 0050. */
+/** Depósito (LGOBE): compra de estoque vai para 1000, compra direta para 0050. */
 export function depositoRm(tipoCompra?: string | null): string {
   return (tipoCompra || '').trim().toLowerCase() === 'estoque'
     ? RM_DEPOSITO_ESTOQUE

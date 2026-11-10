@@ -1493,7 +1493,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
           style={{ borderColor: 'var(--hairline)', background: 'var(--surface)', color: 'var(--ink-primary)' }}
         >
           <option value="todos">Todo depósito</option>
-          <option value="0001">0001 — estoque</option>
+          <option value="1000">1000 — estoque</option>
           <option value="0050">0050 — direta</option>
         </select>
       </div>

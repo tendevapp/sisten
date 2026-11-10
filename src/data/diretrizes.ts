@@ -1578,7 +1578,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           {
             titulo: 'Regras de conversão e campos padrão',
             itens: [
-              'Depósito (LGOBE): "0001" para materiais com destino a estoque; "0050" para compras diretas.',
+              'Depósito (LGOBE): "1000" para materiais com destino a estoque (até 10/11/2026 era "0001"); "0050" para compras diretas (inclui serviço e tipo vazio).',
               'Centro operacional (NAME1): fixado em "TEN2" (unidade fabril única). Categoria de remessa (ELPEI): fixada em "D".',
               'Grupo de Compras (EKGRP): atribuído dinamicamente pelo vínculo de grupo de mercadorias x comprador responsável (`sup_grupo_comprador_mercadorias`). Em caso de ausência de vínculo ou item fora de catálogo, aplica o fallback padrão "575" com aviso prévio em tela.',
               'Tratamento de itens genéricos: se o item foi sinalizado como genérico, o código SAP selecionado como referência é mantido na coluna MATNR e o texto técnico/observação recebe o prefixo obrigatório "ITEM GENÉRICO: [OBS]", alertando a equipe de compras sobre a especificação sob medida sem invalidar a linha no SAP.'

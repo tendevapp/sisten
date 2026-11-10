@@ -65,9 +65,9 @@ function item(over: Partial<RequestItem> = {}): RequestItem {
 }
 
 describe('depósito (LGOBE)', () => {
-  it('compra de estoque vai para 0001', () => {
-    expect(depositoRm('Estoque')).toBe('0001');
-    expect(depositoRm('estoque')).toBe('0001');
+  it('compra de estoque vai para 1000', () => {
+    expect(depositoRm('Estoque')).toBe('1000');
+    expect(depositoRm('estoque')).toBe('1000');
   });
 
   it('direta, serviço e vazio caem no 0050', () => {
