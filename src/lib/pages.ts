@@ -775,10 +775,12 @@ export const FEATURE_FLAGS: PageDef[] = [
   // Geral › Pendências › Contingências do estoque: saídas que podem não chegar
   // ao SAP (retirada sem requisição, EPI sem baixa, exportada sem doc...).
   // Checada também no banco (alm_contingencia_pode). Nasce só admin (regra 4);
-  // a gestão do almoxarifado recebe pela Gestão de Acessos.
+  // a gestão do almoxarifado recebe pela Gestão de Acessos. Fica no grupo
+  // ALMOXARIFADO: o grupo "SUBPERMISSÕES DE FORMULÁRIOS" não aparece na Gestão
+  // de Acessos (lá ele vira os blocos do Hub de Formulários).
   {
     id: 'alm_contingencias',
-    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    group: 'ALMOXARIFADO',
     label: 'Almoxarifado: Contingências do estoque (verificações, correção e justificativa)',
     defaultRoles: ['admin'],
   },
