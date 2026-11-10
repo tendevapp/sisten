@@ -15,6 +15,7 @@ import { localDb } from '../db/localDb';
 import type { EstoqueItem } from '../types';
 import { DEPOSITO_EPI, ORIGEM_FICHA_EPI, type PepAplicacao, type TipoMovimentoBalcao } from './requisicaoBalcao';
 import { ehRespostaOffline } from './offline/configFormularios';
+import { buscarTudo } from './buscarTudo';
 
 /** As tabelas ainda não estão em `database.types.ts` — mesmo atalho de `almoxarifadoRmApi`. */
 const dbReq = () => (supabase.from as any)('alm_req_balcao');
@@ -163,31 +164,34 @@ const comItensOrdenados = (r: ReqBalcaoRow): ReqBalcaoRow => ({
 
 /**
  * Requisições não excluídas, da mais recente para a mais antiga, com os itens:
- * as `limite` mais recentes **mais todas as pendentes de confirmação**, por
- * antigas que sejam. A requisição de uma retirada sem saldo (RSS) ou da ficha
- * de EPI nasce com a data da retirada e fica pendente até a NF dar saldo — em
- * semanas o balcão passa de 500 lançamentos e ela sumia da lista (e o "Dar
- * baixa" de Pendências não achava o que abrir).
+ * as `limite` mais recentes **mais todas as que ainda têm trabalho** — pendente
+ * de confirmação, não exportada ou sem documento SAP —, por antigas que sejam.
+ *
+ * A requisição de uma retirada sem saldo (RSS) ou da ficha de EPI nasce com a
+ * data da retirada, que pode estar semanas atrás. Só as pendentes não bastavam:
+ * ao confirmar, ela deixava de ser pendente e, fora das 500 mais recentes,
+ * sumia também de "Não exportadas" — e não ia para o SAP (10/11, RSS do
+ * dia 30/10 baixadas pelo almoxarifado).
  */
 export async function listarRequisicoesBalcao(limite = 500): Promise<ReqBalcaoRow[]> {
-  const [recentes, pendentes] = await Promise.all([
+  const [recentes, emAberto] = await Promise.all([
     dbReq()
       .select('*, itens:alm_req_balcao_itens(*)')
       .eq('excluido', false)
       .order('data', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(limite),
-    dbReq()
+    buscarTudo<ReqBalcaoRow>((de, ate) => dbReq()
       .select('*, itens:alm_req_balcao_itens(*)')
       .eq('excluido', false)
-      .eq('pendente_confirmacao', true)
+      .or('pendente_confirmacao.eq.true,exportacao_id.is.null,doc_sap.is.null')
       .order('data', { ascending: false })
-      .limit(1000),
+      .order('id', { ascending: true })
+      .range(de, ate)),
   ]);
   if (recentes.error) throw new Error(recentes.error.message);
-  if (pendentes.error) throw new Error(pendentes.error.message);
   const porId = new Map<string, ReqBalcaoRow>();
-  for (const r of [...(recentes.data || []), ...(pendentes.data || [])] as ReqBalcaoRow[]) porId.set(r.id, r);
+  for (const r of [...(recentes.data || []), ...emAberto] as ReqBalcaoRow[]) porId.set(r.id, r);
   return [...porId.values()]
     .sort((a, b) => (b.data === a.data ? (b.created_at || '').localeCompare(a.created_at || '') : b.data.localeCompare(a.data)))
     .map(comItensOrdenados);
