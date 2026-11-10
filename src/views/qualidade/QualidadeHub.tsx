@@ -9,16 +9,17 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { ClipboardCheck, ArrowRight, Target, AlertTriangle, Camera } from 'lucide-react';
+import { ClipboardCheck, ArrowRight, Target, AlertTriangle, Camera, Wrench } from 'lucide-react';
 import type { Profile, QuaRncMetricas } from '../../types';
 import { obterMetricasRnc } from '../../lib/qualidadeApi';
+import { canAccessPage } from '../../lib/pages';
 
 interface QualidadeHubProps {
   user: Profile;
   onNavigate: (path: string) => void;
 }
 
-export default function QualidadeHub({ onNavigate }: QualidadeHubProps) {
+export default function QualidadeHub({ user, onNavigate }: QualidadeHubProps) {
   const [metricas, setMetricas] = useState<QuaRncMetricas | null>(null);
 
   useEffect(() => {
@@ -26,6 +27,13 @@ export default function QualidadeHub({ onNavigate }: QualidadeHubProps) {
   }, []);
 
   const FORMULARIOS_QUALIDADE = [
+    ...(canAccessPage(user, 'qualidade_equipamentos') ? [{
+      id: 'equipamentos', codigo: 'GESTÃO DE EQUIPAMENTOS', title: 'Equipamentos',
+      desc: 'Estoque, necessidades de compra, danificados e compras solicitadas. Importe a planilha, registre ações e acompanhe os avisos.',
+      icon: Wrench, cor: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400',
+      badge: 'Estoque e rastreabilidade', badgeCor: 'bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-200 dark:border-rose-800',
+      path: '/qualidade/equipamentos',
+    }] : []),
     {
       id: 'rnc',
       codigo: 'FRM.QUA-0026',

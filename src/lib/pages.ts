@@ -160,6 +160,7 @@ export const PAGES: PageDef[] = [
   // plano de ação com prazos/anexos e relatórios em PDF (FRM.QUA-0026).
   // Acesso padrão restrito a administradores (desmarcado para novos usuários).
   { id: 'qualidade_home', group: 'QUALIDADE', label: 'Qualidade', path: '/qualidade', icon: ClipboardCheck, defaultRoles: ['admin'] },
+  { id: 'qualidade_equipamentos', group: 'QUALIDADE', label: 'Equipamentos', path: '/qualidade/equipamentos', icon: Wrench, defaultRoles: ['admin'] },
   { id: 'qualidade_rnc', group: 'QUALIDADE', label: 'Gestão de RNC', path: '/qualidade/rnc', icon: ClipboardCheck, defaultRoles: ['admin'] },
   { id: 'qualidade_expedicao', group: 'QUALIDADE', label: 'Checklist de Expedição', path: '/qualidade/expedicao', icon: ClipboardList, defaultRoles: ['admin'] },
   { id: 'qualidade_internos_mecanicos', group: 'QUALIDADE', label: 'Checklist Internos Mecânicos', path: '/qualidade/internos-mecanicos', icon: ClipboardList, defaultRoles: ['admin'] },

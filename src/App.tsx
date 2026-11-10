@@ -108,6 +108,7 @@ const PortariaBriefing = lazy(() => import('./views/portaria/PortariaBriefing'))
 const PortariaAlcoolemia = lazy(() => import('./views/portaria/PortariaAlcoolemia'));
 const SsmaAlcoolemiaView = lazy(() => import('./views/ssma/SsmaAlcoolemiaView'));
 const QualidadeHub = lazy(() => import('./views/qualidade/QualidadeHub'));
+const QualidadeEquipamentosView = lazy(() => import('./views/qualidade/QualidadeEquipamentosView'));
 const QualidadeRncView = lazy(() => import('./views/qualidade/QualidadeRncView'));
 const QualidadeChecklistExpedicaoView = lazy(() => import('./views/qualidade/QualidadeChecklistExpedicaoView'));
 const QualidadeInternosMecanicosView = lazy(() => import('./views/qualidade/QualidadeInternosMecanicosView'));
@@ -1001,6 +1002,12 @@ export default function App() {
       case '/qualidade':
         if (canAccessPage(user, 'qualidade_home')) {
           return <QualidadeHub user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/qualidade/equipamentos':
+        if (canAccessPage(user, 'qualidade_equipamentos')) {
+          return <QualidadeEquipamentosView user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
