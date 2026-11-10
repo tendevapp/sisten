@@ -31,6 +31,7 @@ import type {
   PortStatusPermanencia, FacVeiculoLeve
 } from '../../types';
 import * as api from '../../lib/portariaApi';
+import { ocorrenciaCombina, trechosDestacados } from '../../lib/portariaBuscaOcorrencias';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { listarRhPessoas } from '../../lib/rhApi';
 import { listarVeiculosLeves } from '../../lib/facilitiesApi';
@@ -332,6 +333,9 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   // Filtros de Linha do Tempo
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODAS');
   const [termoBuscaPlantao, setTermoBuscaPlantao] = useState('');
+  /** Busca no conteúdo dos lançamentos: filtra o livro aberto e conta nos outros. */
+  const [termoConteudo, setTermoConteudo] = useState('');
+  const idBuscaConteudo = React.useId();
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
   // Form Novo Plantão
@@ -1034,7 +1038,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   };
 
   // Filtragem de ocorrências
-  const ocorrenciasFiltradas = useMemo(() => {
+  const ocorrenciasDaCategoria = useMemo(() => {
     if (!relatorioAtivo) return [];
     const lista = relatorioAtivo.ocorrencias || [];
 
@@ -1077,6 +1081,37 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     }
     return lista;
   }, [relatorioAtivo, filtroCategoria]);
+
+  const buscandoConteudo = termoConteudo.trim().length > 0;
+  const ocorrenciasFiltradas = useMemo(
+    () => (buscandoConteudo ? ocorrenciasDaCategoria.filter((o) => ocorrenciaCombina(o, termoConteudo)) : ocorrenciasDaCategoria),
+    [ocorrenciasDaCategoria, termoConteudo, buscandoConteudo],
+  );
+
+  /** Quantos lançamentos de cada livro casam com a busca de conteúdo (só livros com achado). */
+  const achadosPorLivro = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!buscandoConteudo) return m;
+    for (const rel of relatorios) {
+      const n = (rel.ocorrencias || []).filter((o) => ocorrenciaCombina(o, termoConteudo)).length;
+      if (n > 0) m.set(rel.id, n);
+    }
+    return m;
+  }, [relatorios, termoConteudo, buscandoConteudo]);
+  const livrosComAchado = useMemo(
+    () => relatorios.filter((r) => achadosPorLivro.has(r.id)),
+    [relatorios, achadosPorLivro],
+  );
+  const destacar = (texto: string) =>
+    buscandoConteudo
+      ? trechosDestacados(texto, termoConteudo).map((t, i) =>
+          t.achado ? (
+            <mark key={i} className="rounded-sm bg-amber-200 px-0.5 text-slate-900 dark:bg-amber-500/40 dark:text-amber-50">{t.texto}</mark>
+          ) : (
+            <React.Fragment key={i}>{t.texto}</React.Fragment>
+          ),
+        )
+      : texto;
 
   const plantoesFiltrados = useMemo(() => {
     if (!termoBuscaPlantao.trim()) return relatorios;
@@ -1170,6 +1205,15 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                     <div className="mt-2.5 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 pt-2 dark:border-slate-800/80">
                       <span className="truncate max-w-[140px]">Vig: {rel.vigilante_principal}</span>
                       <div className="flex items-center gap-1.5">
+                        {achadosPorLivro.has(rel.id) && (
+                          <span
+                            className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                            title="Lançamentos com o termo buscado"
+                          >
+                            <Search className="h-2.5 w-2.5" aria-hidden="true" />
+                            {achadosPorLivro.get(rel.id)}
+                          </span>
+                        )}
                         {countNoPatio > 0 && (
                           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                             {countNoPatio} no pátio
@@ -1456,11 +1500,79 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                     );
                   })}
                 </div>
+
+                {/* Busca no conteúdo dos lançamentos (nome, CPF, placa, empresa, texto) */}
+                <div className="pt-3">
+                  <label htmlFor={idBuscaConteudo} className="sr-only">Buscar no conteúdo dos registros</label>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
+                    <input
+                      id={idBuscaConteudo}
+                      type="search"
+                      value={termoConteudo}
+                      onChange={(e) => setTermoConteudo(e.target.value)}
+                      placeholder="Buscar nos registros: nome, CPF, placa, empresa, texto…"
+                      className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm text-slate-900 placeholder:text-slate-500 focus:border-purple-500 focus:outline-none sm:text-xs dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-400"
+                    />
+                    {buscandoConteudo && (
+                      <button
+                        type="button"
+                        aria-label="Limpar busca nos registros"
+                        onClick={() => setTermoConteudo('')}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {buscandoConteudo && (
+                    <div className="mt-2 space-y-1.5 text-xs" aria-live="polite">
+                      <p className="text-slate-600 dark:text-slate-300">
+                        <strong>{ocorrenciasFiltradas.length}</strong> lançamento(s) neste livro
+                        {filtroCategoria !== 'TODAS' && ' (no filtro escolhido)'}
+                        {' · '}
+                        {livrosComAchado.length === 0
+                          ? 'nenhum livro carregado tem o termo'
+                          : `${livrosComAchado.length} livro(s) com o termo`}
+                      </p>
+                      {livrosComAchado.some((r) => r.id !== relatorioAtivo.id) && (
+                        <div className="no-scrollbar -mx-3 flex gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+                          {livrosComAchado.filter((r) => r.id !== relatorioAtivo.id).map((r) => (
+                            <button
+                              key={r.id}
+                              type="button"
+                              onClick={() => setRelatorioAtivo(r)}
+                              className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-900 hover:border-amber-400 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+                            >
+                              {r.data.split('-').reverse().join('/')} · {r.turno}
+                              <span className="rounded-full bg-amber-200 px-1.5 text-[10px] font-bold dark:bg-amber-900/70">{achadosPorLivro.get(r.id)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Occurrences Feed */}
               <div className="p-3 sm:p-5 space-y-3.5">
-                {ocorrenciasFiltradas.length === 0 ? (
+                {ocorrenciasFiltradas.length === 0 && buscandoConteudo ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-10 text-center dark:border-slate-800 dark:bg-slate-950/30">
+                    <Search className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" aria-hidden="true" />
+                    <p className="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      Nenhum lançamento deste livro tem “{termoConteudo.trim()}”.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setTermoConteudo('')}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Limpar busca
+                    </button>
+                  </div>
+                ) : ocorrenciasFiltradas.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-10 text-center dark:border-slate-800 dark:bg-slate-950/30">
                     <ClipboardList className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
                     <p className="mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
@@ -1546,12 +1658,12 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                               </div>
 
                               <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 break-words leading-relaxed">
-                                {oc.descricao}
+                                {destacar(oc.descricao)}
                               </p>
 
                               <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
                                 <span>
-                                  Vigilante: <strong className="text-slate-600 dark:text-slate-300">{oc.vigilante}</strong>
+                                  Vigilante: <strong className="text-slate-600 dark:text-slate-300">{destacar(oc.vigilante)}</strong>
                                 </span>
                                 {oc.vigilante_saida && (
                                   <span>
