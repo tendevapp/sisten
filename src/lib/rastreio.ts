@@ -15,6 +15,8 @@ import { desformatarObservacaoItemGenerico } from './solicitacoes';
 import { dataValida, temRemessaFinal, TRANSPORTADORA_BAHIA_SUL } from './diligenciamento';
 import { normalizePoNumber, resumirBahiaSulPorPo } from './bahiasul';
 import { ehItemDeContrato } from './contratoPedido';
+import { paraISOLocal } from './dataLocal';
+import { diasUteisEntre } from './diasUteis';
 
 // Re-exportadas para quem já importa daqui (RastreioCompras, RastreioTable,
 // RastreioDetailModal): a formatação em si vive em `lib/format.ts`, fonte
@@ -342,6 +344,37 @@ export function deriveDeliveryStatus(row: RastreioRow, hoje: Date): DeliveryStat
   const hojeDia = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
   const prevDia = new Date(prevista.getFullYear(), prevista.getMonth(), prevista.getDate());
   return prevDia < hojeDia ? 'atrasado' : 'no_prazo';
+}
+
+export interface TemposRastreio {
+  /** Da RM ao PO; null sem PO. */
+  rmAtePo: number | null;
+  /** Do PO à entrega (MIGO); null sem PO ou sem entrega. */
+  poAteEntrega: number | null;
+  /** Da RM até a entrega, ou até hoje se ainda não chegou. */
+  total: number | null;
+  /** Dias úteis desde a previsão vencida; null quando não está atrasado. */
+  atrasoEntrega: number | null;
+}
+
+// Tempos do processo em dias úteis (seg–sex, sem feriados nacionais), a
+// mesma conta da Central de Compras (lib/diasUteis).
+export function temposRastreio(row: RastreioRow, hoje: Date): TemposRastreio {
+  const iso = (v?: string): string | null => {
+    const d = parseDate(v);
+    return d ? paraISOLocal(d) : null;
+  };
+  const rm = iso(row.dataCriacao);
+  const po = iso(row.dataPo);
+  const entrega = iso(row.dataEntrega);
+  const prevista = iso(row.dataPrevista);
+  const hojeISO = paraISOLocal(hoje);
+  return {
+    rmAtePo: rm && po ? diasUteisEntre(rm, po) : null,
+    poAteEntrega: po && entrega ? diasUteisEntre(po, entrega) : null,
+    total: rm ? diasUteisEntre(rm, entrega ?? hojeISO) : null,
+    atrasoEntrega: !entrega && prevista && prevista < hojeISO ? diasUteisEntre(prevista, hojeISO) : null,
+  };
 }
 
 export const DELIVERY_STATUS_META: Record<DeliveryStatus, { label: string; dot: string; badge: string }> = {

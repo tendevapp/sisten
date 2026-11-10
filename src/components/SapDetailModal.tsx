@@ -600,8 +600,8 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                 <span className="font-bold text-slate-800 dark:text-slate-200">{record.requisitante_name || '—'}</span>
               </div>
               <div className="space-y-0.5">
-                <span className="text-slate-500 dark:text-slate-500 block">Dias em Aberto</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200">{record.dias_em_aberto} dias</span>
+                <span className="text-slate-500 dark:text-slate-500 block">Dias úteis em aberto</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">{record.dias_em_aberto} {record.dias_em_aberto === 1 ? 'dia útil' : 'dias úteis'}</span>
               </div>
               <div className="space-y-0.5">
                 <span className="text-slate-500 dark:text-slate-500 block">Última Modificação Status</span>

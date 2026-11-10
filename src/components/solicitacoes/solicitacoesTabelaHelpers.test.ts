@@ -23,9 +23,12 @@ describe('solicitacoesTabelaHelpers', () => {
 
   it('formatarTempoRelativoAbertura calcula a diferenca relativa corretamente', () => {
     const dataBase = new Date(2026, 8, 9); // 09/09/2026
-    expect(formatarTempoRelativoAbertura('2026-09-08', dataBase)).toBe('há 1 dia');
-    expect(formatarTempoRelativoAbertura('2026-08-18', dataBase)).toBe('há 22 dias');
+    expect(formatarTempoRelativoAbertura('2026-09-08', dataBase)).toBe('há 1 dia útil');
+    // 22 dias corridos = 16 dias de semana, menos o feriado de 07/09.
+    expect(formatarTempoRelativoAbertura('2026-08-18', dataBase)).toBe('há 15 dias úteis');
     expect(formatarTempoRelativoAbertura('2026-09-09', dataBase)).toBe('hoje');
+    // Aberta no sábado e vista no domingo: ainda nenhum dia útil.
+    expect(formatarTempoRelativoAbertura('2026-09-12', new Date(2026, 8, 13))).toBe('há menos de 1 dia útil');
   });
 
   it('calcularPrazoSolicitacao identifica prazos futuros e vencidos', () => {
@@ -44,7 +47,7 @@ describe('solicitacoesTabelaHelpers', () => {
       criticality: 5,
     } as Request;
     const resFutura = calcularPrazoSolicitacao(reqFutura, dataBase);
-    expect(resFutura.textoRelativo).toBe('em 3 dias');
+    expect(resFutura.textoRelativo).toBe('em 2 dias úteis'); // prazo no sábado: qui e sex
     expect(resFutura.urgente).toBe(true);
 
     const reqLonge = {
@@ -52,8 +55,19 @@ describe('solicitacoesTabelaHelpers', () => {
       criticality: 1,
     } as Request;
     const resLonge = calcularPrazoSolicitacao(reqLonge, dataBase);
-    expect(resLonge.textoRelativo).toBe('em 7 dias');
+    expect(resLonge.textoRelativo).toBe('em 5 dias úteis');
     expect(resLonge.urgente).toBe(false);
+  });
+
+  it('calcularPrazoSolicitacao: SLA padrão conta dias úteis a partir da abertura', () => {
+    // Aberta na sexta 04/09, criticidade 5 (+4 d.ú.): seg 07/09 é feriado → sex 11/09.
+    const r = calcularPrazoSolicitacao({ created_at: '2026-09-04T10:00:00', criticality: 5 } as Request, new Date(2026, 8, 4));
+    expect(r.dataPrazoFormatada).toBe('11/09/2026');
+    expect(r.textoRelativo).toBe('em 4 dias úteis');
+    // Prazo no sábado visto na sexta: não há mais dia útil antes dele.
+    const sab = calcularPrazoSolicitacao({ prazo_conclusao: '2026-09-12', criticality: 3 } as Request, new Date(2026, 8, 11));
+    expect(sab.textoRelativo).toBe('Vence antes do próximo dia útil');
+    expect(sab.urgente).toBe(true);
   });
 
   it('calcularPrazoSolicitacao: encerrada não vence, compara com a data de conclusão', () => {

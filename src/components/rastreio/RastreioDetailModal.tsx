@@ -13,8 +13,9 @@ import { localDb } from '../../db/localDb';
 import { Profile, RastreioMensagem, RastreioPrioridade, SAPObsHistory } from '../../types';
 import {
   RastreioRow, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatDateTimeBR, formatBRL,
-  PRIORITY_LEVELS, priorityMeta, latestPriorityByRi, hasValue,
+  PRIORITY_LEVELS, priorityMeta, latestPriorityByRi, hasValue, temposRastreio,
 } from '../../lib/rastreio';
+import { rotuloDiasUteis } from '../../lib/diasUteis';
 import { resumirBahiaSulPorPo, normalizePoNumber } from '../../lib/bahiasul';
 
 // Uma entrada da linha do tempo da conversa: mensagem de chat ou uma
@@ -118,6 +119,7 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
 
   const delivery = deriveDeliveryStatus(row, hoje);
   const deliveryMeta = DELIVERY_STATUS_META[delivery];
+  const tempos = temposRastreio(row, hoje);
 
   // Histórico de observações do comprador para este item (RI), registrado a
   // cada atualização feita na tela Itens Sem PO. Só entram entradas com texto
@@ -331,6 +333,21 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
             <Field label="Data PO" icon={Calendar}>{formatDateBR(row.dataPo)}</Field>
             <Field label="Prev. entrega" icon={Calendar}>{formatDateBR(row.dataPrevista)}</Field>
             <Field label="Entrega (MIGO)" icon={CheckCircle2}>{formatDateBR(row.dataEntrega)}</Field>
+            {/* Tempos do processo em dias úteis (seg–sex, sem feriados), como na Central de Compras. */}
+            {tempos.rmAtePo !== null && (
+              <Field label="RM → PO" icon={CalendarClock}>{rotuloDiasUteis(tempos.rmAtePo)}</Field>
+            )}
+            {tempos.poAteEntrega !== null && (
+              <Field label="PO → Entrega" icon={CalendarClock}>{rotuloDiasUteis(tempos.poAteEntrega)}</Field>
+            )}
+            {tempos.total !== null && (
+              <Field label={hasValue(row.dataEntrega) ? 'RM → Entrega' : 'Aberto há'} icon={CalendarClock}>{rotuloDiasUteis(tempos.total)}</Field>
+            )}
+            {tempos.atrasoEntrega !== null && tempos.atrasoEntrega > 0 && (
+              <Field label="Atraso da entrega" icon={AlertCircle}>
+                <span className="text-rose-600 dark:text-rose-400">{rotuloDiasUteis(tempos.atrasoEntrega)}</span>
+              </Field>
+            )}
             <Field label="Transportadora" icon={Truck}>{row.transportadora || '—'}</Field>
             {row.grupoComprador && <Field label="Grupo comprador" icon={UserIcon}>{row.grupoComprador}</Field>}
             {row.isGeneric && row.obsGenerica && (

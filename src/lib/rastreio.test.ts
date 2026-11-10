@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BahiaSulEntrega, DiligenciamentoItem, EnrichedSAPRecord } from '../types';
-import { buildRastreioRows, groupRowsByPo, filterRegistros, montarSemMigoDadosMap, isSemPo } from './rastreio';
+import { buildRastreioRows, groupRowsByPo, filterRegistros, montarSemMigoDadosMap, isSemPo, temposRastreio } from './rastreio';
 import type { VinculoSistenRm } from './centralComprasSisten';
 
 function registro(over: Partial<EnrichedSAPRecord> = {}): EnrichedSAPRecord {
@@ -319,5 +319,25 @@ describe('buildRastreioRows com remessa final (CRF = X)', () => {
       registro({ ri: '120009412500020', item_reqc: '20', documento_compra: '4100000002' }),
     ]);
     expect(linhas.map(l => l.po)).toEqual(['4100000002']);
+  });
+});
+
+describe('temposRastreio em dias úteis', () => {
+  it('RM → PO, aberto há e atraso da entrega', () => {
+    // RM qui 20/08, PO qua 26/08: sex, seg, ter, qua = 4 d.ú.
+    const [row] = buildRastreioRows([registro({ data_entrega_confirmada: '2026-11-06' } as Partial<EnrichedSAPRecord>)]);
+    const t = temposRastreio(row, new Date(2026, 10, 10)); // ter 10/11
+    expect(t.rmAtePo).toBe(4);
+    expect(t.poAteEntrega).toBeNull();
+    // Previsão sex 06/11 vencida: seg 09 e ter 10.
+    expect(t.atrasoEntrega).toBe(2);
+    expect(t.total).toBeGreaterThan(50);
+  });
+  it('com MIGO conta PO → entrega e para o total na entrega', () => {
+    const [row] = buildRastreioRows([registro({ data_migo: '2026-09-02' } as Partial<EnrichedSAPRecord>)]);
+    const t = temposRastreio(row, new Date(2026, 10, 10));
+    expect(t.poAteEntrega).toBe(5); // qui 27, sex 28, seg 31, ter 01, qua 02
+    expect(t.total).toBe(9);
+    expect(t.atrasoEntrega).toBeNull();
   });
 });

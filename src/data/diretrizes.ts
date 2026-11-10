@@ -912,9 +912,9 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               '`status_requisicao`: "Processado" se `hasPO`, senão "Sem PO". É o campo mais usado do sistema — quase toda tela usa esse booleano como corte "tem pedido / não tem pedido".',
               'Entregue: item é considerado entregue quando existe `data_migo` (data de recebimento físico/MIGO), independente do `item_status` manual do comprador. RM de serviço (prefixo "17") nunca recebe MIGO no SAP — por isso é excluída de qualquer grupo/contagem "Sem MIGO" (Central de Compras e relatório Novidades).',
               '`natureza`: derivada de `tipo_documento` — ZR01 Normal, ZR02 Urgente, ZR03 Máquina Parada, ZR04 Equipamento Pesado, ZR05–ZR08 variantes de Exportação, ZR09 Orçamento, ZR10 Subempreitada, ZR11/ZR16/ZR17 Serviço Normal/Urgente/MP.',
-              '`lead_time_compras_meta` (dias-meta para o comprador colocar o PO): 6 dias se natureza contém "urgente"; 2 dias se "máquina parada"/"MP"; 15 dias se "normal"; 30 dias (default) nos demais casos.',
-              '`dias_em_aberto`: dias entre `data_solicitacao` e a "data de referência" (data do MIGO se entregue; senão data do pedido; senão "hoje").',
-              '`atraso_comprador` = max(0, `dias_em_aberto` − `lead_time_compras_meta`).',
+              '`lead_time_compras_meta` (dias ÚTEIS-meta para o comprador colocar o PO): 6 dias se natureza contém "urgente"; 2 dias se "máquina parada"/"MP"; 15 dias se "normal"; 30 dias (default) nos demais casos.',
+              '`dias_em_aberto`: dias ÚTEIS (seg–sex, sem feriados de `core_feriados`; função `core_dias_uteis`, espelhada em `src/lib/diasUteis.ts`) entre `data_solicitacao` (exclusive) e hoje (inclusive). O aparelho refaz a conta com a data do dia, porque a cópia da view só é baixada a cada importação SAP.',
+              '`atraso_comprador` = max(0, dias úteis de `data_solicitacao` até o MIGO (ou hoje) − `lead_time_compras_meta`).',
               '`faixa_atraso` (escala ordinal): Sem Atraso / 1-7 dias / 8-15 dias / 16-30 dias / Acima de 30 dias.',
               '`alerta` (usado em badges/filtros em quase todas as telas de Suprimentos): atraso > 15 dias E natureza Urgente/Serviço-Urgente → "⚠️ ESCALAR IMEDIATAMENTE"; atraso > 30 → "⚠️ AÇÃO URGENTE"; atraso > 15 → "⚡ ACOMPANHAR"; atraso > 7 → "📋 MONITORAR"; senão → "✅ OK".',
               '`status_atualizado`: "Concluído" (processado + entregue) / "Em Cotação" (flag `status_processamento="A"`) / "Crítico - Ação Urgente" (atraso>30) / "Atrasado" (atraso>15) / "Em Andamento" (atraso>0) / "No Prazo".'

@@ -7,6 +7,8 @@
 
 import { Request, RequestItem, RequestStatus, RequestType } from '../../types';
 import { formatDateBR, toDate } from '../../lib/format';
+import { paraISOLocal } from '../../lib/dataLocal';
+import { diasUteisEntre, rotuloDiasUteis, somarDiasUteis } from '../../lib/diasUteis';
 
 /** Extrai ate duas letras iniciais para o avatar do solicitante. */
 export function obterIniciaisNome(nome?: string | null): string {
@@ -20,27 +22,29 @@ export function obterIniciaisNome(nome?: string | null): string {
   return (primeiro + ultimo).toUpperCase();
 }
 
-/** Formata o tempo decorrido desde a data de abertura ("há 1 dia", "há 22 dias", "hoje"). */
+/**
+ * Tempo desde a abertura em dias úteis — seg–sex, sem feriados nacionais
+ * (lib/diasUteis): "hoje", "há 1 dia útil", "há 15 dias úteis". Aberta no
+ * sábado e vista no domingo ainda não completou um dia útil.
+ */
 export function formatarTempoRelativoAbertura(dataCriacao?: string | null, dataBase: Date = new Date()): string {
   const d = toDate(dataCriacao);
   if (!d) return '';
 
-  const msPorDia = 24 * 60 * 60 * 1000;
-  // Zera hora para comparar dias civis
-  const dZero = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const baseZero = new Date(dataBase.getFullYear(), dataBase.getMonth(), dataBase.getDate()).getTime();
+  const abertura = paraISOLocal(d);
+  const hoje = paraISOLocal(dataBase);
+  if (hoje <= abertura) return 'hoje';
 
-  const diffDias = Math.round((baseZero - dZero) / msPorDia);
-
-  if (diffDias <= 0) return 'hoje';
-  if (diffDias === 1) return 'há 1 dia';
-  return `há ${diffDias} dias`;
+  const uteis = diasUteisEntre(abertura, hoje);
+  if (uteis === 0) return 'há menos de 1 dia útil';
+  return `há ${rotuloDiasUteis(uteis)}`;
 }
 
 /**
- * Calcula a data de prazo e a expressao relativa ("em 3 dias", "Vencido").
+ * Calcula a data de prazo e a expressao relativa ("em 3 dias úteis", "Vencido").
  * Se a solicitacao tiver prazo_conclusao ou data_necessidade, usa esse valor.
- * Caso contrario, calcula um SLA padrao conforme a criticidade:
+ * Caso contrario, calcula um SLA padrao conforme a criticidade, em DIAS
+ * ÚTEIS a partir da abertura (seg–sex, sem feriados nacionais):
  * - 5 (Impeditiva): +4 dias
  * - 4 (Critica): +5 dias
  * - 3 (Alta): +7 dias
@@ -87,7 +91,7 @@ export function calcularPrazoSolicitacao(
         1: 15,
       };
       const dias = diasSlaPorCriticidade[r.criticality] || 7;
-      dtPrazo = new Date(criacao.getTime() + dias * 24 * 60 * 60 * 1000);
+      dtPrazo = toDate(somarDiasUteis(paraISOLocal(criacao), dias));
     }
   }
 
@@ -104,7 +108,6 @@ export function calcularPrazoSolicitacao(
     };
   }
 
-  const msPorDia = 24 * 60 * 60 * 1000;
   const zerar = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const prazoZero = zerar(dtPrazo);
   const dataPrazoFormatada = formatDateBR(dtPrazo);
@@ -125,21 +128,23 @@ export function calcularPrazoSolicitacao(
     };
   }
 
-  const diffDias = Math.round((prazoZero - zerar(dataBase)) / msPorDia);
+  const hojeZero = zerar(dataBase);
 
-  if (diffDias < 0) {
+  if (prazoZero < hojeZero) {
     return { ...base, ...comum, textoRelativo: 'Vencido', estaVencido: true, urgente: true };
   }
 
-  if (diffDias === 0) {
+  if (prazoZero === hojeZero) {
     return { ...base, ...comum, textoRelativo: 'Vence hoje', urgente: true };
   }
 
-  if (diffDias === 1) {
-    return { ...base, ...comum, textoRelativo: 'em 1 dia', urgente: true };
+  // Dias úteis até o prazo: com prazo no sábado, sexta já é o último dia de trabalho.
+  const uteis = diasUteisEntre(paraISOLocal(dataBase), paraISOLocal(dtPrazo));
+  if (uteis === 0) {
+    return { ...base, ...comum, textoRelativo: 'Vence antes do próximo dia útil', urgente: true };
   }
 
-  return { ...base, ...comum, textoRelativo: `em ${diffDias} dias`, urgente: diffDias <= 3 };
+  return { ...base, ...comum, textoRelativo: `em ${rotuloDiasUteis(uteis)}`, urgente: uteis <= 3 };
 }
 
 /** Classe do texto relativo do prazo: vermelho vencendo, verde/âmbar encerrada. */

@@ -42,6 +42,10 @@ import { emailDominioPermitido, MSG_DOMINIO_NAO_PERMITIDO } from '../lib/authDom
 import { descreverAlteracoesCompra, resumoAlteracoes } from '../lib/solicitacoesDiff';
 import { reabrirSolicitacaoPorRequestId } from '../lib/almoxarifadoRmApi';
 import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
+import { dataHojeLocal } from '../lib/dataLocal';
+import {
+  STATUS_DERIVADOS_DO_ATRASO, alertaAtrasoComprador, diasUteisEntre, faixaAtrasoComprador, statusPorAtraso,
+} from '../lib/diasUteis';
 
 /** Bucket privado dos anexos de solicitação. Leitura só por URL assinada. */
 const ATTACHMENTS_BUCKET = 'request-attachments';
@@ -4680,7 +4684,6 @@ class LocalDatabase {
     // (o PO pode ter um Itm cancelado e outro vivo para o mesmo item de RM).
     pedsFornByRiDoc.forEach((_, k) => eliminatedCompositeKeys.delete(k));
 
-    const currentDate = new Date('2026-07-05T06:31:00-07:00'); // current mock time from metadata
 
     return reqs.map(r => {
       // raw.documento_compra vem de `vw_sap_requisicoes_enriquecidas` (JOIN com sap_zl0132_po via mv_pedidos_por_ri).
@@ -4770,6 +4773,21 @@ class LocalDatabase {
         // Confiar em raw.*; apenas recalcular status_requisicao considerando eliminação local.
         const status_requisicao = hasPO ? 'Processado' : 'Sem PO';
 
+        // Dias do processo em dias úteis, refeitos com a data de HOJE: a cópia
+        // da view só é baixada a cada importação SAP e os dias ficariam
+        // parados na data da carga. Mesma regra de core_dias_uteis no banco.
+        const hojeLocal = dataHojeLocal();
+        const meta = Number(raw.lead_time_compras_meta);
+        const metaValida = Number.isFinite(meta) ? meta : 30;
+        const dias_em_aberto = diasUteisEntre(r.data_solicitacao, hojeLocal);
+        const atraso_comprador = Math.max(0, diasUteisEntre(r.data_solicitacao, raw.data_migo || hojeLocal) - metaValida);
+        const statusServidor = hasPO
+          ? raw.status_atualizado
+          : (raw.status_atualizado === 'Concluído' ? 'No Prazo' : raw.status_atualizado);
+        const status_atualizado = STATUS_DERIVADOS_DO_ATRASO.has(String(statusServidor ?? ''))
+          ? statusPorAtraso(atraso_comprador)
+          : statusServidor;
+
         return {
           ...r,
           // Campos do PO: raw vem do servidor (já de pedidosforn via mv_pedido_atual_por_ri)
@@ -4797,13 +4815,11 @@ class LocalDatabase {
           natureza: raw.natureza,
           status_requisicao,
           lead_time_compras_meta: raw.lead_time_compras_meta,
-          dias_em_aberto: raw.dias_em_aberto,
-          atraso_comprador: raw.atraso_comprador,
-          faixa_atraso: raw.faixa_atraso,
-          alerta: raw.alerta,
-          status_atualizado: hasPO
-            ? raw.status_atualizado
-            : (raw.status_atualizado === 'Concluído' ? 'No Prazo' : raw.status_atualizado)
+          dias_em_aberto,
+          atraso_comprador,
+          faixa_atraso: faixaAtrasoComprador(atraso_comprador),
+          alerta: alertaAtrasoComprador(atraso_comprador, raw.natureza),
+          status_atualizado
         } as EnrichedSAPRecord;
       }
 
@@ -4850,53 +4866,25 @@ class LocalDatabase {
       const status_entrega = data_migo ? 'Entregue' : 'Não Entregue';
       const isDelivered = status_entrega === 'Entregue';
 
-      const data_referencia_prazo = hasPO && isDelivered && data_migo
-        ? new Date(data_migo)
+      // Dias úteis (seg–sex, sem feriados nacionais) — mesma regra do banco.
+      const data_referencia_prazo: string = hasPO && isDelivered && data_migo
+        ? String(data_migo)
         : hasPO && (p.data_pedido || activePf?.data_doc)
-        ? new Date(p.data_pedido || activePf?.data_doc)
-        : currentDate;
+        ? String(p.data_pedido || activePf?.data_doc)
+        : dataHojeLocal();
 
-      const solDate = new Date(r.data_solicitacao);
-      const diffTimeSol = data_referencia_prazo.getTime() - solDate.getTime();
-      const dias_em_aberto = Math.max(0, Math.floor(diffTimeSol / (1000 * 60 * 60 * 24)));
-
-      const diffTimeRef = data_referencia_prazo.getTime() - solDate.getTime();
-      const diffDaysRef = Math.max(0, Math.floor(diffTimeRef / (1000 * 60 * 60 * 24)));
-      const atraso_comprador = Math.max(0, diffDaysRef - lead_time_compras_meta);
-
-      let faixa_atraso = 'Sem Atraso';
-      if (atraso_comprador > 30) {
-        faixa_atraso = 'Acima 30 dias';
-      } else if (atraso_comprador > 15) {
-        faixa_atraso = '16-30 dias';
-      } else if (atraso_comprador > 7) {
-        faixa_atraso = '8-15 dias';
-      } else if (atraso_comprador > 0) {
-        faixa_atraso = '1-7 dias';
-      }
-
-      let alerta = '✅ OK';
-      if (atraso_comprador > 15 && (natureza === 'Urgente' || natureza === 'Serviço - Urgente')) {
-        alerta = '⚠️ ESCALAR IMEDIATAMENTE';
-      } else if (atraso_comprador > 30) {
-        alerta = '⚠️ AÇÃO URGENTE';
-      } else if (atraso_comprador > 15) {
-        alerta = '⚡ ACOMPANHAR';
-      } else if (atraso_comprador > 7) {
-        alerta = '📋 MONITORAR';
-      }
+      const dias_em_aberto = diasUteisEntre(r.data_solicitacao, data_referencia_prazo);
+      const atraso_comprador = Math.max(0, dias_em_aberto - lead_time_compras_meta);
+      const faixa_atraso = faixaAtrasoComprador(atraso_comprador);
+      const alerta = alertaAtrasoComprador(atraso_comprador, natureza);
 
       let status_atualizado = 'No Prazo';
       if (status_requisicao === 'Processado' && isDelivered) {
         status_atualizado = 'Concluído';
       } else if (r.campos_extras?.['status_processamento'] === 'A' || r.campos_extras?.status_processamento === 'A' || (r as any).status_processamento === 'A') {
         status_atualizado = 'Em Cotação';
-      } else if (atraso_comprador > 30) {
-        status_atualizado = 'Crítico - Ação Urgente';
-      } else if (atraso_comprador > 15) {
-        status_atualizado = 'Atrasado';
-      } else if (atraso_comprador > 0) {
-        status_atualizado = 'Em Andamento';
+      } else {
+        status_atualizado = statusPorAtraso(atraso_comprador);
       }
 
       return {
