@@ -12,6 +12,7 @@ import { supabase } from '../db/supabaseClient';
 import type { DadosCompraMl, ItemMercadoLivre, NotaFiscalMl } from './compraMercadoLivre';
 import { comprimirImagemUpload } from './imageCompression';
 import type { DetalheCompraMl } from './detalheCompraMl';
+import type { NovaOcorrenciaMl, OcorrenciaMl } from './ocorrenciasMl';
 
 interface Usuario { id: string; nome: string }
 
@@ -267,6 +268,9 @@ export async function registrarDetalheCompraMl(numero: string, dados: DadosCompr
       qtd_produtos: d.qtdProdutos,
       valor_produtos: d.valorProdutos,
       valor_frete: d.valorFrete,
+      valor_desconto: d.valorDesconto,
+      valor_cupom: d.valorCupom,
+      valor_reembolso: d.valorReembolso,
       valor_total: d.valorTotal,
       forma_pagamento: d.formaPagamento,
       numero_pagamento: d.numeroPagamento,
@@ -285,5 +289,53 @@ export async function registrarDetalheCompraMl(numero: string, dados: DadosCompr
     p_dados: p,
     p_por_nome: usuario.nome,
   });
+  if (error) throw new Error(error.message);
+}
+
+// ---------------------------------------------------------------------
+// Devolução e reembolso por item (sup_ml_ocorrencias) — ver ocorrenciasMl.ts
+// ---------------------------------------------------------------------
+
+const dbOcorrencias = () => (supabase as any).from('sup_ml_ocorrencias');
+
+/** Lançamentos válidos (não excluídos) de todos os itens do ML. */
+export async function listarOcorrenciasMl(): Promise<OcorrenciaMl[]> {
+  const { data, error } = await dbOcorrencias().select('*').is('excluido_em', null).order('created_at');
+  if (error) throw new Error(error.message);
+  return (data || []) as OcorrenciaMl[];
+}
+
+/** Lança devolução/reembolso no item, na compra em que ele está agora. */
+export async function registrarOcorrenciaMl(
+  item: Pick<ItemMercadoLivre, 'ri' | 'numero_compra'>,
+  nova: NovaOcorrenciaMl,
+  usuario: Usuario,
+): Promise<void> {
+  const { error } = await dbOcorrencias().insert({
+    ri: item.ri,
+    numero_compra: item.numero_compra,
+    ...nova,
+    criado_por_id: usuario.id,
+    criado_por_nome: usuario.nome,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Devolução com recompra: marca que o item foi comprado de novo (nº da nova compra é opcional). */
+export async function marcarRecompraMl(id: string, numeroCompra: string | null, usuario: Usuario): Promise<void> {
+  const { error } = await dbOcorrencias().update({
+    recompra_feita_em: new Date().toISOString(),
+    recompra_feita_por_nome: usuario.nome,
+    recompra_numero_compra: numeroCompra,
+  }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/** Exclusão lógica: o lançamento sai da Central e do Financeiro, mas fica no banco. */
+export async function excluirOcorrenciaMl(id: string, usuario: Usuario): Promise<void> {
+  const { error } = await dbOcorrencias().update({
+    excluido_em: new Date().toISOString(),
+    excluido_por_nome: usuario.nome,
+  }).eq('id', id);
   if (error) throw new Error(error.message);
 }

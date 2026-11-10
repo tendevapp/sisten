@@ -18,7 +18,7 @@ import { Check, ChevronDown, FileText, Loader2, PencilLine, Plus, Search, Shoppi
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import { formatBRL, formatDateBR } from '../../lib/format';
 import {
-  diaDaCompraMl, FILTRO_ML_SEM_COMPRA, FILTRO_ML_TODOS, rotuloCompraMl,
+  diaDaCompraMl, FILTRO_ML_RECOMPRAR, FILTRO_ML_SEM_COMPRA, FILTRO_ML_TODOS, rotuloCompraMl,
   type FiltroCompraMl, type FiltroPedidoMl, type ItemMercadoLivre, type ResumoCompraMl,
 } from '../../lib/compraMercadoLivre';
 
@@ -38,6 +38,8 @@ interface PainelComprasMlProps {
   compras: ResumoCompraMl[];
   totalItens: number;
   aguardandoCompra: number;
+  /** Itens devolvidos que precisam ser comprados de novo. */
+  recomprar?: number;
   filtro: FiltroCompraMl;
   onFiltro: (f: FiltroCompraMl) => void;
   pedido: FiltroPedidoMl;
@@ -51,7 +53,7 @@ interface PainelComprasMlProps {
 }
 
 export default function PainelComprasMl({
-  compras, totalItens, aguardandoCompra, filtro, onFiltro, pedido, onPedido, comPedido, semPedido, onEditarCompra, onDadosCompra,
+  compras, totalItens, aguardandoCompra, recomprar = 0, filtro, onFiltro, pedido, onPedido, comPedido, semPedido, onEditarCompra, onDadosCompra,
 }: PainelComprasMlProps) {
   const [mostrarTodas, setMostrarTodas] = useState(false);
   const selecionada = compras.find(c => c.numero === filtro) ?? null;
@@ -74,6 +76,16 @@ export default function PainelComprasMl({
           <button type="button" onClick={() => onFiltro(FILTRO_ML_TODOS)} className={segmento(filtro === FILTRO_ML_TODOS)}>
             Todos os itens <span className={contador}>{totalItens}</span>
           </button>
+          {(recomprar > 0 || filtro === FILTRO_ML_RECOMPRAR) && (
+            <button
+              type="button"
+              onClick={() => onFiltro(FILTRO_ML_RECOMPRAR)}
+              className={segmento(filtro === FILTRO_ML_RECOMPRAR)}
+              title="Itens devolvidos ao vendedor que precisam ser comprados de novo"
+            >
+              Recomprar <span className={contador}>{recomprar}</span>
+            </button>
+          )}
           {selecionada && (
             <button type="button" onClick={() => onFiltro(selecionada.numero)} className={segmento(true)}>
               Compra {numeroCurto(selecionada.numero)} <span className={contador}>{selecionada.itens}</span>
@@ -135,6 +147,14 @@ export default function PainelComprasMl({
                       <span className="shrink-0">
                         {c.itens} {c.itens === 1 ? 'item' : 'itens'} · {c.rms.length} RM
                       </span>
+                      {c.eliminados > 0 && (
+                        <span
+                          className="shrink-0 rounded border border-amber-300 bg-amber-50 px-1 text-[10px] font-bold text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
+                          title={`${c.eliminados} ${c.eliminados === 1 ? 'item vinculado a esta compra foi eliminado' : 'itens vinculados a esta compra foram eliminados'} da RM no SAP e não aparece(m) na tabela. Retire-os em "Incluir ou retirar itens".`}
+                        >
+                          +{c.eliminados} {c.eliminados === 1 ? 'eliminado' : 'eliminados'} no SAP
+                        </span>
+                      )}
                       <span className="ml-auto flex items-center gap-1.5" title={`${c.comPedido} de ${c.itens} com pedido no SAP`}>
                         <span className="h-1.5 w-12 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700" aria-hidden="true">
                           <span className="block h-full rounded-full bg-emerald-600" style={{ width: `${c.itens ? (c.comPedido / c.itens) * 100 : 0}%` }} />
@@ -200,6 +220,8 @@ interface EditarItensCompraMlModalProps {
   /** Todos os itens destinados ao ML (sup_ml_itens). */
   itens: ItemMercadoLivre[];
   temPedido: (ri: string) => boolean;
+  /** Linha da RM eliminada no SAP: marca na lista e não oferece para incluir. */
+  eliminado?: (ri: string) => boolean;
   onRetirar: (ri: string) => Promise<void>;
   onIncluir: (ris: string[]) => Promise<void>;
   onClose: () => void;
@@ -209,7 +231,7 @@ const descricaoItem = (it: ItemMercadoLivre) => it.texto_breve || it.material_co
 const refItem = (it: ItemMercadoLivre) =>
   `RM ${it.rm ?? '—'}${it.item_reqc ? ` / ${it.item_reqc}` : ''}${it.qtd != null ? ` · ${it.qtd} ${it.unidade ?? ''}` : ''}`;
 
-export function EditarItensCompraMlModal({ numero, itens, temPedido, onRetirar, onIncluir, onClose }: EditarItensCompraMlModalProps) {
+export function EditarItensCompraMlModal({ numero, itens, temPedido, eliminado, onRetirar, onIncluir, onClose }: EditarItensCompraMlModalProps) {
   const [busca, setBusca] = useState('');
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
   const [confirmarRetirada, setConfirmarRetirada] = useState<string | null>(null);
@@ -222,10 +244,10 @@ export function EditarItensCompraMlModal({ numero, itens, temPedido, onRetirar, 
   const candidatos = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return itens
-      .filter(it => it.numero_compra !== numero)
+      .filter(it => it.numero_compra !== numero && !eliminado?.(it.ri))
       .filter(it => !termo || [it.texto_breve, it.material_code, it.rm, it.ri, it.numero_compra].some(v => v?.toLowerCase().includes(termo)))
       .sort((a, b) => Number(!!a.numero_compra) - Number(!!b.numero_compra) || (a.rm ?? '').localeCompare(b.rm ?? ''));
-  }, [itens, numero, busca]);
+  }, [itens, numero, busca, eliminado]);
   const movendo = candidatos.filter(c => marcados.has(c.ri) && c.numero_compra).length;
 
   const retirar = async (ri: string) => {
@@ -280,6 +302,11 @@ export function EditarItensCompraMlModal({ numero, itens, temPedido, onRetirar, 
                     <p className="text-[11px] font-mono text-slate-500">
                       {refItem(it)}
                       {temPedido(it.ri) && <span className="ml-1.5 rounded bg-emerald-100 px-1 font-sans font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">com PO</span>}
+                      {eliminado?.(it.ri) && (
+                        <span className="ml-1.5 rounded bg-amber-100 px-1 font-sans font-bold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" title="A linha desta RM foi eliminada no SAP; o item não aparece na tabela da Central">
+                          eliminado no SAP
+                        </span>
+                      )}
                     </p>
                   </div>
                   {confirmarRetirada === it.ri ? (

@@ -17,7 +17,9 @@
  * a seção de pagamento/envio e os itens em blocos "Pacote N". "Detalhes da
  * transação" traz a data numa linha e o "#número" na seguinte, cada item como
  * descrição / "N unidades" / "R$ valor", "Desconto", "Frete" e "Total pago" —
- * sem forma de pagamento nem endereço.
+ * sem forma de pagamento nem endereço. Pode trazer ainda um bloco "Cupons"
+ * (com o seu próprio "Desconto") e o "Total do reembolso" quando o ML devolveu
+ * algum item.
  *
  * Tudo aqui é sugestão: o comprador confere e corrige antes de gravar.
  */
@@ -38,9 +40,16 @@ export interface DetalheCompraMl {
   qtdProdutos: number | null;
   valorProdutos: number | null;
   valorFrete: number | null;
-  /** Desconto (positivo) do modelo "Detalhes da transação"; não é gravado — só confere a conta. */
+  /** Desconto (positivo) do modelo "Detalhes da transação". */
   valorDesconto: number | null;
+  /** Cupom (positivo): o "Desconto" que vem dentro do bloco "Cupons". */
+  valorCupom: number | null;
+  /** Total pago (antes de qualquer reembolso). */
   valorTotal: number | null;
+  /** "Total do reembolso": o que o ML devolveu depois da compra. */
+  valorReembolso: number | null;
+  /** Índice em `pacotes` do único item com o mesmo valor do reembolso, se houver. */
+  pacoteReembolsado: number | null;
   formaPagamento: string | null;
   numeroPagamento: string | null;
   statusPagamento: string | null;
@@ -138,6 +147,27 @@ export function limparTextoMl(texto: string): string {
   return (texto ?? '').replace(/[​-‍⁠﻿­]/g, '').replace(/[  ]/g, ' ');
 }
 
+/**
+ * Item da compra que o reembolso devolveu: o único pacote com exatamente o
+ * valor reembolsado. Mais de um (ou nenhum) com esse valor → `null`.
+ */
+export function pacoteDoReembolso(
+  pacotes: Pick<PacoteCompraMl, 'valor'>[] | null | undefined,
+  reembolso: number | null | undefined,
+): number | null {
+  if (!pacotes?.length || reembolso == null || reembolso <= 0) return null;
+  const iguais = pacotes
+    .map((p, i) => (p.valor != null && Math.abs(p.valor - reembolso) <= 0.01 ? i : -1))
+    .filter(i => i >= 0);
+  return iguais.length === 1 ? iguais[0] : null;
+}
+
+/** Total pago menos o reembolso, em centavos exatos. */
+export function custoAposReembolso(total: number | null | undefined, reembolso: number | null | undefined): number | null {
+  if (total == null || reembolso == null || reembolso <= 0) return null;
+  return arred(total - reembolso);
+}
+
 export function interpretarDetalheCompraMl(textoBruto: string, referencia: Date = new Date()): DetalheCompraMl {
   const texto = limparTextoMl(textoBruto);
   const linhas = texto.split(/\r?\n/).map(semDuplicata).filter(Boolean);
@@ -155,7 +185,17 @@ export function interpretarDetalheCompraMl(textoBruto: string, referencia: Date 
   const produtos = valorApos(linhas, /^Produtos\s*\(\d+\)/i);
   const frete = valorApos(linhas, /^Frete$/i);
   const total = valorApos(linhas, /^Total(?:\s+pago)?$/i);
-  const desconto = valorApos(linhas, /^Desconto$/i);
+  // "Cupons" traz o seu próprio "Desconto" logo abaixo — esse é o cupom; o
+  // desconto geral é o "Desconto" de fora do bloco.
+  const ROTULO_CUPOM = /^Cupo(?:m|ns)(?:\s+de\s+desconto)?$/i;
+  const iCupons = linhas.findIndex(l => ROTULO_CUPOM.test(l));
+  const iDescontoCupom = iCupons >= 0 && /^Desconto$/i.test(linhas[iCupons + 1] ?? '') ? iCupons + 1 : -1;
+  const cupom = iCupons >= 0
+    ? valorApos(linhas, iDescontoCupom >= 0 ? /^Desconto$/i : ROTULO_CUPOM, iDescontoCupom >= 0 ? iDescontoCupom : iCupons)
+    : { valor: null, indice: -1 };
+  const iDesconto = linhas.findIndex((l, k) => /^Desconto$/i.test(l) && k !== iDescontoCupom);
+  const desconto = iDesconto >= 0 ? valorApos(linhas, /^Desconto$/i, iDesconto) : { valor: null, indice: -1 };
+  const reembolso = valorApos(linhas, /^(?:Total\s+do\s+)?reembolso$/i);
 
   const iPagamento = linhas.findIndex(l => /^Pagamento$/i.test(l));
   const formaPagamento = iPagamento >= 0 ? (linhas[iPagamento + 1] ?? null) : null;
@@ -212,7 +252,7 @@ export function interpretarDetalheCompraMl(textoBruto: string, referencia: Date 
       const un = l.match(/^(\d+)\s+unidades?$/i);
       if (!un || i === 0) return;
       const descricao = linhas[i - 1];
-      if (/^R\$|^#|^(Desconto|Frete|Total)\b/i.test(descricao) || ehQtd(descricao)) return;
+      if (/^R\$|^#|^(Desconto|Frete|Total|Cupo(?:m|ns))\b/i.test(descricao) || ehQtd(descricao)) return;
       let valor: number | null = null;
       for (let k = i + 1; k < Math.min(linhas.length, i + 4) && !ehQtd(linhas[k]); k++) {
         if (/R\$\s*\d|\breais?\b/i.test(linhas[k])) { valor = valorDaLinha(linhas[k]); break; }
@@ -230,11 +270,23 @@ export function interpretarDetalheCompraMl(textoBruto: string, referencia: Date 
 
   const valorTotal = total.valor ?? produtos.valor;
   if (total.valor != null && produtos.valor == null && valorProdutos != null) {
-    const esperado = arred(valorProdutos + (frete.valor ?? 0) - (desconto.valor ?? 0));
-    if (Math.abs(esperado - total.valor) > 0.01) {
-      avisos.push(`Itens + frete − desconto dão ${esperado.toFixed(2).replace('.', ',')}, mas o total pago é ${total.valor.toFixed(2).replace('.', ',')} — confira os valores.`);
+    // O ML ora tira o "Desconto" do total, ora já o mostra embutido no preço
+    // de cada item (compra de 06/11: itens 2975,74 − cupom 2,28 = 2973,46,
+    // com "Desconto −57,59" só informativo). Vale qualquer uma das contas.
+    const pago = total.valor;
+    const base = valorProdutos + (frete.valor ?? 0);
+    const desc = desconto.valor ?? 0;
+    const cup = cupom.valor ?? 0;
+    const fecha = [base - desc - cup, base - cup, base - desc].some(v => Math.abs(arred(v) - pago) <= 0.01);
+    if (!fecha) {
+      const rotulo = (frete.valor ? 'Itens + frete' : 'Itens')
+        + (desconto.valor != null ? ' − desconto' : '') + (cupom.valor != null ? ' − cupom' : '');
+      const esperado = arred(base - desc - cup);
+      avisos.push(`${rotulo} dão ${esperado.toFixed(2).replace('.', ',')}, mas o total pago é ${pago.toFixed(2).replace('.', ',')} — confira os valores.`);
     }
   }
+  const valorReembolso = reembolso.valor;
+  const pacoteReembolsado = pacoteDoReembolso(pacotes, valorReembolso);
   if (!numeroCompra) avisos.push('Nº da compra não encontrado no texto.');
   if (valorTotal == null) avisos.push('Total da compra não encontrado — digite o valor do boleto.');
   if (pacotes.length) {
@@ -255,7 +307,10 @@ export function interpretarDetalheCompraMl(textoBruto: string, referencia: Date 
     valorProdutos,
     valorFrete: frete.valor,
     valorDesconto: desconto.valor,
+    valorCupom: cupom.valor,
     valorTotal,
+    valorReembolso,
+    pacoteReembolsado,
     formaPagamento,
     numeroPagamento,
     statusPagamento,
@@ -267,5 +322,5 @@ export function interpretarDetalheCompraMl(textoBruto: string, referencia: Date 
 
 /** O texto colado parece um "Detalhe da compra" do ML (e não só o número)? */
 export function pareceDetalheCompraMl(texto: string): boolean {
-  return /Detalhes? da (compra|transa[çc][ãa]o)|Pacote\s+\d|Produtos\s*\(\d+\)|reais com|Total pago|^\d+\s+unidades?$/im.test(texto ?? '');
+  return /Detalhes? da (compra|transa[çc][ãa]o)|Pacote\s+\d|Produtos\s*\(\d+\)|reais com|Total pago|Total do reembolso|^\d+\s+unidades?$/im.test(texto ?? '');
 }

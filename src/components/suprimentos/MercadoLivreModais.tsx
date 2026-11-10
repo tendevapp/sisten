@@ -329,7 +329,24 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
                 {detalhe.valorDesconto != null && (
                   <div><span className="block text-[10px] text-slate-500">Desconto</span><b className="tabular">− {brl(detalhe.valorDesconto)}</b></div>
                 )}
-                <div className={detalhe.valorDesconto != null ? '' : 'col-span-2'}><span className="block text-[10px] text-slate-500">Situação no ML</span><b>{detalhe.statusPagamento ?? '—'}</b></div>
+                {detalhe.valorCupom != null && (
+                  <div><span className="block text-[10px] text-slate-500">Cupom</span><b className="tabular">− {brl(detalhe.valorCupom)}</b></div>
+                )}
+                <div><span className="block text-[10px] text-slate-500">Situação no ML</span><b>{detalhe.statusPagamento ?? '—'}</b></div>
+                {detalhe.valorReembolso != null && detalhe.valorReembolso > 0 && (
+                  <>
+                    <div>
+                      <span className="block text-[10px] text-slate-500">Reembolso do ML</span>
+                      <b className="tabular text-emerald-700 dark:text-emerald-400">+ {brl(detalhe.valorReembolso)}</b>
+                    </div>
+                    {detalhe.valorTotal != null && (
+                      <div title="Total pago menos o que o ML devolveu">
+                        <span className="block text-[10px] text-slate-500">Custo após reembolso</span>
+                        <b className="tabular">{brl(Math.round((detalhe.valorTotal - detalhe.valorReembolso) * 100) / 100)}</b>
+                      </div>
+                    )}
+                  </>
+                )}
                 {detalhe.endereco && <div className="col-span-2 sm:col-span-4"><span className="block text-[10px] text-slate-500">Entrega</span>{detalhe.endereco}</div>}
               </div>
               {detalhe.pacotes.length > 0 && (
@@ -338,6 +355,14 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
                     <li key={i} className="flex items-center gap-2 py-1">
                       <span className="text-slate-500 w-5 shrink-0">{i + 1}</span>
                       <span className="flex-1 min-w-0 truncate" title={p.descricao}>{p.descricao}</span>
+                      {detalhe.pacoteReembolsado === i && (
+                        <span
+                          className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-1 text-[10px] font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                          title="O valor do reembolso é igual ao deste item"
+                        >
+                          reembolsado
+                        </span>
+                      )}
                       <span className="shrink-0 text-slate-500">{p.quantidade ?? '—'} un</span>
                       <span className="shrink-0 w-24 text-right font-semibold tabular">{brl(p.valor)}</span>
                     </li>

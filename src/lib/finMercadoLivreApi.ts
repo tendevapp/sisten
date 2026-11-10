@@ -12,6 +12,7 @@
 
 import { supabase } from '../db/supabaseClient';
 import type { BaixaFinMl, CompraFinMl, ItemFinMl } from './finMercadoLivre';
+import type { OcorrenciaMl } from './ocorrenciasMl';
 
 const db = (tabela: string) => (supabase as any).from(tabela);
 
@@ -21,20 +22,26 @@ export interface DadosFinMl {
   itens: ItemFinMl[];
   compras: CompraFinMl[];
   baixas: BaixaFinMl[];
+  /** Devoluções/reembolsos lançados na Central (sup_ml_ocorrencias). */
+  ocorrencias: OcorrenciaMl[];
 }
 
 export async function carregarFinMercadoLivre(): Promise<DadosFinMl> {
-  const [itens, compras, baixas] = await Promise.all([
+  const [itens, compras, baixas, ocorrencias] = await Promise.all([
     db('vw_fin_ml_itens').select('*'),
     db('fin_ml_compras').select('*'),
     db('fin_ml_baixas').select('*').order('data_baixa', { ascending: false }),
+    db('sup_ml_ocorrencias').select('*').is('excluido_em', null).order('created_at'),
   ]);
   const erro = itens.error || compras.error || baixas.error;
   if (erro) throw new Error(erro.message);
+  // Complementar: sem os lançamentos, a página segue com boletos e baixas.
+  if (ocorrencias.error) console.warn('Devoluções/reembolsos do ML indisponíveis:', ocorrencias.error.message);
   return {
     itens: (itens.data ?? []) as ItemFinMl[],
     compras: (compras.data ?? []) as CompraFinMl[],
     baixas: (baixas.data ?? []) as BaixaFinMl[],
+    ocorrencias: (ocorrencias.data ?? []) as OcorrenciaMl[],
   };
 }
 

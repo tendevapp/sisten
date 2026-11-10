@@ -423,9 +423,11 @@ export interface SAPRequisicao {
    */
   categoria_do_item?: string | null;
   codigo_de_eliminacao: boolean;
+  /** Coluna "Concluída" da ME5A: `X` = RM encerrada no SAP (sai da Central de Compras). */
+  concluida?: string | null;
   presente_ultima_carga: boolean;
   campos_extras: Record<string, any>;
-  
+
   // Buyer updated operational fields
   obs_comprador?: string;
   /** Valor de trabalho da promessa de entrega (auto = remessa do PO + lead time, ou editado). */

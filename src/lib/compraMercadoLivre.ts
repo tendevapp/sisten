@@ -47,6 +47,8 @@ export interface NotaFiscalMl extends ArquivoOriginalCotacao {
 export type FiltroCompraMl = 'todos' | 'sem_compra' | string;
 export const FILTRO_ML_TODOS = 'todos';
 export const FILTRO_ML_SEM_COMPRA = 'sem_compra';
+/** Itens devolvidos que precisam ser comprados de novo (sup_ml_ocorrencias). */
+export const FILTRO_ML_RECOMPRAR = 'recomprar';
 
 /** Número da compra do ML tem 16 dígitos hoje; aceita a partir de 10 para não travar em mudança de formato. */
 const MIN_DIGITOS_COMPRA = 10;
@@ -197,6 +199,12 @@ export interface ResumoCompraMl {
   valorTotal: number | null;
   /** Itens da compra que já têm pedido (PO) no SAP. */
   comPedido: number;
+  /**
+   * Itens vinculados à compra cuja linha da RM foi eliminada no SAP. Ficam
+   * fora de `itens`/`rms`/`comPedido` — a tabela da Central também não os
+   * mostra — e o cartão avisa, para o comprador retirá-los da compra.
+   */
+  eliminados: number;
 }
 
 /** Dados da compra guardados para o Financeiro (fin_ml_compras). */
@@ -220,7 +228,7 @@ export function diaDaCompraMl(r: Pick<ResumoCompraMl, 'dataCompra' | 'registrada
  */
 export function resumirComprasMl(
   itens: ItemMercadoLivre[],
-  extras: { dados?: Map<string, DadosCompraMl>; temPedido?: (ri: string) => boolean } = {},
+  extras: { dados?: Map<string, DadosCompraMl>; temPedido?: (ri: string) => boolean; eliminado?: (ri: string) => boolean } = {},
 ): ResumoCompraMl[] {
   const porNumero = new Map<string, ResumoCompraMl & { rmSet: Set<string> }>();
   for (const it of itens) {
@@ -230,16 +238,20 @@ export function resumirComprasMl(
       const dados = extras.dados?.get(it.numero_compra);
       resumo = {
         numero: it.numero_compra, itens: 0, rms: [], registradaEm: null, rmSet: new Set(),
-        dataCompra: dados?.data_compra ?? null, valorTotal: dados?.valor_total ?? null, comPedido: 0,
+        dataCompra: dados?.data_compra ?? null, valorTotal: dados?.valor_total ?? null, comPedido: 0, eliminados: 0,
       };
       porNumero.set(it.numero_compra, resumo);
+    }
+    if (it.compra_registrada_em && (!resumo.registradaEm || it.compra_registrada_em > resumo.registradaEm)) {
+      resumo.registradaEm = it.compra_registrada_em;
+    }
+    if (extras.eliminado?.(it.ri)) {
+      resumo.eliminados++;
+      continue;
     }
     resumo.itens++;
     if (extras.temPedido?.(it.ri)) resumo.comPedido++;
     if (it.rm) resumo.rmSet.add(it.rm);
-    if (it.compra_registrada_em && (!resumo.registradaEm || it.compra_registrada_em > resumo.registradaEm)) {
-      resumo.registradaEm = it.compra_registrada_em;
-    }
   }
   return Array.from(porNumero.values())
     .map(({ rmSet, ...r }) => ({ ...r, rms: Array.from(rmSet).sort() }))
@@ -281,10 +293,11 @@ export function statusAposRetirarCompraMl<T extends string>(atual: T | '' | null
 }
 
 /** O item passa no filtro da subpágina M Livre? */
-export function passaFiltroCompraMl(item: ItemMercadoLivre | undefined, filtro: FiltroCompraMl): boolean {
+export function passaFiltroCompraMl(item: ItemMercadoLivre | undefined, filtro: FiltroCompraMl, recompraPendente = false): boolean {
   if (!item) return false;
   if (filtro === FILTRO_ML_TODOS) return true;
   if (filtro === FILTRO_ML_SEM_COMPRA) return !item.numero_compra;
+  if (filtro === FILTRO_ML_RECOMPRAR) return recompraPendente;
   return item.numero_compra === filtro;
 }
 

@@ -136,3 +136,45 @@ describe('formatarLinhaDigitavel', () => {
     expect(formatarLinhaDigitavel('123')).toBe('123');
   });
 });
+
+describe('resumirComprasFinMl × nº de PO gravado como compra', () => {
+  it('ignora o item cujo nº da compra é um PO do SAP', () => {
+    const r = resumirComprasFinMl([item(), item({ ri: 'x', numero_compra: '4100475935' })], [], []);
+    expect(r.map(c => c.numero)).toEqual(['2000015616071149']);
+  });
+  it('mantém se o Financeiro já lançou boleto nesse número', () => {
+    const r = resumirComprasFinMl([item({ ri: 'x', numero_compra: '4100475935' })], [compra({ numero_compra: '4100475935' })], []);
+    expect(r.map(c => c.numero)).toEqual(['4100475935']);
+  });
+});
+
+describe('resumirComprasFinMl × devolução/reembolso lançados na Central', () => {
+  const oc = (over: Record<string, unknown> = {}) => ({
+    id: 'o1', ri: '120009113100170', numero_compra: '2000015616071149', tipo: 'reembolso' as const,
+    percentual: null, valor: null, motivo: null, recomprar: false,
+    recompra_feita_em: null, recompra_feita_por_nome: null, recompra_numero_compra: null,
+    criado_por_id: 'u', criado_por_nome: 'Comprador', created_at: '2026-11-09T10:00:00Z',
+    excluido_em: null, excluido_por_nome: null,
+    ...over,
+  });
+
+  it('soma em R$ (% sobre o PO do item), conta % sem PO e recompras pendentes', () => {
+    const [r] = resumirComprasFinMl(
+      [item({ valor_pedido: 400 }), item({ ri: 'sem-po', valor_pedido: null })],
+      [compra()],
+      [],
+      [
+        oc({ id: 'a', percentual: 30 }),
+        oc({ id: 'b', ri: 'sem-po', percentual: 50 }),
+        oc({ id: 'c', valor: 10 }),
+        oc({ id: 'd', tipo: 'devolucao', recomprar: true }),
+        oc({ id: 'e', valor: 999, excluido_em: '2026-11-09T11:00:00Z' }),
+        oc({ id: 'f', valor: 5, numero_compra: '2000000000000009' }),
+      ],
+    );
+    expect(r.ocorrencias.map(o => o.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(r.valorOcorrencias).toBe(130);
+    expect(r.ocorrenciasSemValor).toBe(1);
+    expect(r.recompraPendente).toBe(1);
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { interpretarDetalheCompraMl, lerValorMl, pareceDetalheCompraMl } from './detalheCompraMl';
+import { custoAposReembolso, interpretarDetalheCompraMl, lerValorMl, pacoteDoReembolso, pareceDetalheCompraMl } from './detalheCompraMl';
 
 // Texto real colado da página "Detalhe da compra" do ML (28/10/2026).
 const COLADO = `Detalhe da compra
@@ -311,3 +311,110 @@ describe('interpretarDetalheCompraMl — descrição terminando em Unidades e ca
   });
 });
 
+
+// A mesma compra colada de novo em 09/11, depois do reembolso das 48 pilhas AA:
+// "Desconto" geral (já embutido no preço dos itens), bloco "Cupons" com o seu
+// "Desconto" e "Total do reembolso".
+const TRANSACAO_REEMBOLSO = `Detalhes da transação
+6 de novembro |
+
+#2000015901343333
+Bat. Cr2032 3v Cartela C/5 Unidades
+
+2 unidades
+
+R$ 38
+
+Sequenciador Temporizador Para Solenoide 20 Canais 100-240v
+
+2 unidades
+
+R$ 2.370
+
+Extensao Eletrica Cabo Pp Grosso 20 Metros 2,5mm Domestica Preto
+
+5 unidades
+
+R$ 418,95
+
+48 Pilhas Alcalina Elgin Aa Longa Duração Com 3 Cartelas
+
+1 unidade
+
+R$ 93,89
+
+90 Pilhas Baterias Alcalina Elgin Lr44 Ag13 9 Cartelas C/10
+
+1 unidade
+
+R$ 54,90
+
+Desconto
+
+- R$ 57,59
+
+Cupons
+
+Desconto
+- R$ 2,28
+
+Frete
+
+Grátis
+
+Total pago
+
+R$ 2.973,46
+
+Total do reembolso
+
+R$ 93,89`;
+
+describe('interpretarDetalheCompraMl — cupom e reembolso', () => {
+  const d = interpretarDetalheCompraMl(TRANSACAO_REEMBOLSO, new Date(2026, 10, 9));
+
+  it('separa o desconto geral do cupom e lê o reembolso', () => {
+    expect(d.numeroCompra).toBe('2000015901343333');
+    expect(d.dataCompra).toBe('2026-11-06');
+    expect(d.valorDesconto).toBe(57.59);
+    expect(d.valorCupom).toBe(2.28);
+    expect(d.valorTotal).toBe(2973.46);
+    expect(d.valorReembolso).toBe(93.89);
+  });
+
+  it('a conta fecha (itens − cupom = total pago) e o reembolso aponta o item das pilhas AA', () => {
+    expect(d.pacotes).toHaveLength(5);
+    expect(d.valorProdutos).toBe(2975.74);
+    expect(d.avisos).toEqual([]);
+    expect(d.pacoteReembolsado).toBe(3);
+  });
+
+  it('sem cupom nem reembolso, os campos ficam nulos', () => {
+    const s = interpretarDetalheCompraMl(TRANSACAO_PILHAS, new Date(2026, 10, 6));
+    expect(s.valorCupom).toBeNull();
+    expect(s.valorReembolso).toBeNull();
+    expect(s.pacoteReembolsado).toBeNull();
+  });
+
+  it('conta que não fecha com nenhuma leitura ainda avisa', () => {
+    const errado = interpretarDetalheCompraMl(TRANSACAO_REEMBOLSO.replace('R$ 2.973,46', 'R$ 2.900,00'), new Date(2026, 10, 9));
+    expect(errado.avisos.some(a => a.includes('− desconto − cupom'))).toBe(true);
+  });
+});
+
+describe('pacoteDoReembolso / custoAposReembolso', () => {
+  const pacotes = [{ valor: 38 }, { valor: 93.89 }, { valor: 54.9 }];
+  it('aponta o único item com o valor do reembolso', () => {
+    expect(pacoteDoReembolso(pacotes, 93.89)).toBe(1);
+  });
+  it('sem item único com esse valor, não aponta nenhum', () => {
+    expect(pacoteDoReembolso([...pacotes, { valor: 93.89 }], 93.89)).toBeNull();
+    expect(pacoteDoReembolso(pacotes, 10)).toBeNull();
+    expect(pacoteDoReembolso(pacotes, null)).toBeNull();
+  });
+  it('custo após reembolso só existe com reembolso', () => {
+    expect(custoAposReembolso(2973.46, 93.89)).toBe(2879.57);
+    expect(custoAposReembolso(2973.46, null)).toBeNull();
+    expect(custoAposReembolso(2973.46, 0)).toBeNull();
+  });
+});

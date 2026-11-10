@@ -50,6 +50,9 @@ import {
 import MapaCotacaoModal from '../components/cotacoes/MapaCotacaoModal';
 import { MercadoLivreCompraModal, MercadoLivreLinkModal } from '../components/suprimentos/MercadoLivreModais';
 import PainelComprasMl, { EditarItensCompraMlModal } from '../components/suprimentos/PainelComprasMl';
+import { BotaoOcorrenciasMl, OcorrenciasMlModal } from '../components/suprimentos/OcorrenciasMl';
+import { ocorrenciasPorRiMl, recompraPendenteMl, type OcorrenciaMl } from '../lib/ocorrenciasMl';
+import { itemConcluidoNaMe5a } from '../lib/requisicaoConcluida';
 import {
   FILTRO_ML_SEM_COMPRA, FILTRO_ML_TODOS, itemEntraEmSemPo, itemFoiComprado, observacaoComCompraMl, passaFiltroCompraMl,
   resumirComprasMl, rotuloCompraMl, statusAposCompraMl, tituloTagMercadoLivrePo, type FiltroCompraMl, type ItemMercadoLivre,
@@ -58,7 +61,7 @@ import {
 } from '../lib/compraMercadoLivre';
 import { BotaoNotasFiscaisMl, CampoFornecedorMl, NotasFiscaisMlModal } from '../components/suprimentos/MercadoLivreItemExtras';
 import {
-  listarDadosComprasMl, listarItensMercadoLivre, obterDadosCompraMl, type DadosCompraMlGravados, registrarCompraMercadoLivre, registrarDetalheCompraMl, removerItemMercadoLivre, salvarLinkMercadoLivre,
+  listarDadosComprasMl, listarItensMercadoLivre, listarOcorrenciasMl, obterDadosCompraMl, type DadosCompraMlGravados, registrarCompraMercadoLivre, registrarDetalheCompraMl, removerItemMercadoLivre, salvarLinkMercadoLivre,
   type DadosCompraMlFinanceiro, buscarNomeFornecedorSap, registrarFornecedorMercadoLivre,
 } from '../lib/compraMercadoLivreApi';
 import { AbrirValidacaoModal, ValidacaoTag } from '../components/suprimentos/ValidacaoTecnica';
@@ -400,13 +403,17 @@ type PoFilter = 'Todos' | 'Sem PO' | 'Sem MIGO' | 'Contrato' | 'M Livre';
  * Link do anúncio (abrir + copiar) e número da compra de um item destinado
  * ao Mercado Livre — coluna da subpágina M Livre e bloco do card.
  */
-const MercadoLivreLinkInfo = ({ item, onEditarCompra, onFornecedor, onNotas }: {
+const MercadoLivreLinkInfo = ({ item, onEditarCompra, onFornecedor, onNotas, ocorrencias, onOcorrencias }: {
   item: ItemMercadoLivre;
   onEditarCompra?: (numero: string) => void;
   /** Grava (ou apaga, com null) o código do fornecedor SAP — põe "Aguardando PO". */
   onFornecedor?: (codigo: string | null) => Promise<void>;
   /** Abre as NFs do item. */
   onNotas?: () => void;
+  /** Devoluções/reembolsos já lançados no item. */
+  ocorrencias?: OcorrenciaMl[];
+  /** Abre a janela de devolução/reembolso (só para item já comprado). */
+  onOcorrencias?: () => void;
 }) => (
   <div className="flex flex-col gap-1 items-start text-[11px]">
     <div className="inline-flex items-center gap-1 max-w-full">
@@ -446,6 +453,7 @@ const MercadoLivreLinkInfo = ({ item, onEditarCompra, onFornecedor, onNotas }: {
     )}
     {onFornecedor && <CampoFornecedorMl item={item} onSalvar={onFornecedor} />}
     {onNotas && <BotaoNotasFiscaisMl item={item} onAbrir={onNotas} />}
+    {onOcorrencias && item.numero_compra && <BotaoOcorrenciasMl ocorrencias={ocorrencias ?? []} onAbrir={onOcorrencias} />}
   </div>
 );
 
@@ -858,14 +866,28 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const [mlItens, setMlItens] = useState<Map<string, ItemMercadoLivre>>(new Map());
   // Data e total de cada compra (fin_ml_compras): ordenam as compras na aba M Livre.
   const [dadosComprasMl, setDadosComprasMl] = useState<Map<string, DadosCompraMl>>(new Map());
+  // Devoluções/reembolsos lançados nos itens do ML (sup_ml_ocorrencias), por ri.
+  const [ocorrenciasMl, setOcorrenciasMl] = useState<Map<string, OcorrenciaMl[]>>(new Map());
+  const [ocorrenciasMlModal, setOcorrenciasMlModal] = useState<{ ri: string; titulo: string } | null>(null);
+  const carregarOcorrenciasMl = useCallback(() => {
+    listarOcorrenciasMl()
+      .then(lista => setOcorrenciasMl(ocorrenciasPorRiMl(lista)))
+      .catch(e => console.warn('Devoluções/reembolsos do Mercado Livre indisponíveis:', e));
+  }, []);
+  const risRecomprar = useMemo(() => {
+    const ris = new Set<string>();
+    ocorrenciasMl.forEach((lista, ri) => { if (lista.some(recompraPendenteMl)) ris.add(ri); });
+    return ris;
+  }, [ocorrenciasMl]);
   const carregarMlItens = useCallback(() => {
     listarItensMercadoLivre()
       .then(lista => setMlItens(new Map(lista.map(it => [it.ri, it]))))
       .catch(e => console.warn('Itens do Mercado Livre indisponíveis na Central de Compras:', e));
+    carregarOcorrenciasMl();
     listarDadosComprasMl()
       .then(lista => setDadosComprasMl(new Map(lista.map(d => [d.numero_compra, d]))))
       .catch(e => console.warn('Datas das compras do Mercado Livre indisponíveis:', e));
-  }, []);
+  }, [carregarOcorrenciasMl]);
   useEffect(() => { carregarMlItens(); }, [carregarMlItens]);
   const [mlFiltro, setMlFiltro] = useState<FiltroCompraMl>(FILTRO_ML_SEM_COMPRA);
   const [mlLinkModal, setMlLinkModal] = useState<{ record: EnrichedSAPRecord; rm: string } | null>(null);
@@ -883,9 +905,25 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     rawRmGroups.forEach(g => g.items.forEach(it => { if (it.record.status_requisicao === 'Processado') ris.add(it.record.ri); }));
     return ris;
   }, [rawRmGroups]);
+  // Itens do ML cuja linha da RM foi eliminada no SAP: a tabela não os mostra
+  // (getEnrichedSAPRequisicoes tira os eliminados), então o cartão da compra
+  // também não os conta — avisa à parte, para o comprador retirar da compra.
+  const risMlEliminados = useMemo(() => {
+    const ativos = new Set<string>();
+    rawRmGroups.forEach(g => g.items.forEach(it => ativos.add(it.record.ri)));
+    const eliminados = new Set<string>();
+    localDb.getRequisicoes().forEach(r => {
+      if (r.codigo_de_eliminacao && mlItens.has(r.ri) && !ativos.has(r.ri)) eliminados.add(r.ri);
+    });
+    return eliminados;
+  }, [rawRmGroups, mlItens]);
   const comprasMl = useMemo(
-    () => resumirComprasMl(Array.from(mlItens.values()), { dados: dadosComprasMl, temPedido: ri => risComPedido.has(ri) }),
-    [mlItens, dadosComprasMl, risComPedido],
+    () => resumirComprasMl(Array.from(mlItens.values()), {
+      dados: dadosComprasMl,
+      temPedido: ri => risComPedido.has(ri),
+      eliminado: ri => risMlEliminados.has(ri),
+    }),
+    [mlItens, dadosComprasMl, risComPedido, risMlEliminados],
   );
 
   // Chamados de validação técnica (sup_validacao_tecnica); o mais recente de
@@ -1134,13 +1172,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     if (poFilter === 'M Livre') {
       return rawRmGroups.map(g => ({
         rm: g.rm,
-        items: g.items.filter(it => passaFiltroCompraMl(mlItens.get(it.record.ri), mlFiltro)
+        items: g.items.filter(it => passaFiltroCompraMl(mlItens.get(it.record.ri), mlFiltro, risRecomprar.has(it.record.ri))
           && passaFiltroPedidoMl(it.record.status_requisicao === 'Processado', mlPedido)),
       }))
         .filter(g => g.items.length > 0);
     }
     return rawRmGroups;
-  }, [rawRmGroups, poFilter, mlItens, mlFiltro, mlPedido]);
+  }, [rawRmGroups, poFilter, mlItens, mlFiltro, mlPedido, risRecomprar]);
 
   // Card "Aguardando PO" da aba M Livre: fornecedor colado e ainda sem PO.
   const aguardandoPoMl = useMemo(() => {
@@ -1154,11 +1192,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     let com = 0; let sem = 0;
     if (poFilter !== 'M Livre') return { com, sem };
     rawRmGroups.forEach(g => g.items.forEach(it => {
-      if (!passaFiltroCompraMl(mlItens.get(it.record.ri), mlFiltro)) return;
+      if (!passaFiltroCompraMl(mlItens.get(it.record.ri), mlFiltro, risRecomprar.has(it.record.ri))) return;
       if (it.record.status_requisicao === 'Processado') com++; else sem++;
     }));
     return { com, sem };
-  }, [rawRmGroups, poFilter, mlItens, mlFiltro]);
+  }, [rawRmGroups, poFilter, mlItens, mlFiltro, risRecomprar]);
 
   // Resolve o escopo escolhido ("apenas este item" ou "todos do fornecedor") e monta o
   // texto da cotação. No escopo "todos", varre rawRmGroups inteiro (ignora filtros/busca
@@ -1461,7 +1499,9 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       // outros usuários (que não disparam um sync completo do dataset).
       await localDb.refreshBuyerFieldsFromSupabase();
 
-      const allRecords = localDb.getEnrichedSAPRequisicoes();
+      // "Concluída" = X na ME5A: RM encerrada no SAP, nada mais a comprar — sai
+      // da Central como os eliminados (que getEnrichedSAPRequisicoes já tira).
+      const allRecords = localDb.getEnrichedSAPRequisicoes().filter(r => !itemConcluidoNaMe5a(r));
       const semPoRecords = allRecords;
 
       // Automação de itens com PO emitida: o pedido já foi colocado, então o
@@ -2488,7 +2528,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           'Natureza': r.natureza || '—',
           'Status': r.status_atualizado || '—',
           'Alerta': r.alerta || '—',
-          'Dias em Aberto': r.dias_em_aberto ?? '—',
+          'Dias Úteis em Aberto': r.dias_em_aberto ?? '—',
           'Status do Item': r.item_status || 'Aguardando Cotação',
           'Observação Comprador': obsInputState[r.ri] || '',
           'Entrega Prevista': dateInputState[r.ri] || '',
@@ -3165,6 +3205,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           compras={comprasMl}
           totalItens={mlItens.size}
           aguardandoCompra={Array.from(mlItens.values()).filter(it => !it.numero_compra).length}
+          recomprar={risRecomprar.size}
           filtro={mlFiltro}
           onFiltro={setMlFiltro}
           pedido={mlPedido}
@@ -3643,8 +3684,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             {r.status_requisicao !== 'Processado' && (
                               <>
                                 <span>•</span>
-                                <span className={r.dias_em_aberto > 15 ? 'text-amber-600 dark:text-amber-500' : ''}>
-                                  Aberto há {r.dias_em_aberto}d
+                                <span title="Dias úteis: segunda a sexta, sem feriados" className={r.dias_em_aberto > 15 ? 'text-amber-600 dark:text-amber-500' : ''}>
+                                  Aberto há {r.dias_em_aberto} d.ú.
                                 </span>
                               </>
                             )}
@@ -3756,6 +3797,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                 onEditarCompra={setEditarCompraMl}
                                 onFornecedor={codigo => handleFornecedorMl(r.ri, codigo)}
                                 onNotas={() => setNotasMlModal({ ri: r.ri, titulo: `RM ${r.requisicao_de_compra} / Item ${r.item_reqc} — ${r.texto_breve || r.material_code || ''}` })}
+                                ocorrencias={ocorrenciasMl.get(r.ri)}
+                                onOcorrencias={() => setOcorrenciasMlModal({ ri: r.ri, titulo: `RM ${r.requisicao_de_compra} / Item ${r.item_reqc} — ${r.texto_breve || r.material_code || ''}` })}
                               />
                             </div>
                           )}
@@ -4041,6 +4084,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                 onEditarCompra={setEditarCompraMl}
                                 onFornecedor={codigo => handleFornecedorMl(r.ri, codigo)}
                                 onNotas={() => setNotasMlModal({ ri: r.ri, titulo: `RM ${r.requisicao_de_compra} / Item ${r.item_reqc} — ${r.texto_breve || r.material_code || ''}` })}
+                                ocorrencias={ocorrenciasMl.get(r.ri)}
+                                onOcorrencias={() => setOcorrenciasMlModal({ ri: r.ri, titulo: `RM ${r.requisicao_de_compra} / Item ${r.item_reqc} — ${r.texto_breve || r.material_code || ''}` })}
                               />}
                                   </td>
                                 )}
@@ -4100,7 +4145,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                   <div className="flex gap-2 items-center mt-1 text-[10px] text-slate-700 dark:text-slate-300 font-semibold flex-wrap">
                                     {r.status_requisicao !== 'Processado' && (
                                       <>
-                                        <span>Aberto {r.dias_em_aberto}d</span>
+                                        <span title="Dias úteis: segunda a sexta, sem feriados">Aberto {r.dias_em_aberto} d.ú.</span>
                                         <span>•</span>
                                       </>
                                     )}
@@ -4298,6 +4343,17 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         </div>
       )}
 
+      {ocorrenciasMlModal && mlItens.get(ocorrenciasMlModal.ri) && (
+        <OcorrenciasMlModal
+          item={mlItens.get(ocorrenciasMlModal.ri)!}
+          titulo={ocorrenciasMlModal.titulo}
+          ocorrencias={ocorrenciasMl.get(ocorrenciasMlModal.ri) ?? []}
+          usuario={usuarioMl}
+          onAlterado={carregarOcorrenciasMl}
+          onClose={() => setOcorrenciasMlModal(null)}
+        />
+      )}
+
       {notasMlModal && mlItens.get(notasMlModal.ri) && (
         <NotasFiscaisMlModal
           item={mlItens.get(notasMlModal.ri)!}
@@ -4342,6 +4398,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           numero={editarCompraMl}
           itens={Array.from(mlItens.values())}
           temPedido={ri => risComPedido.has(ri)}
+          eliminado={ri => risMlEliminados.has(ri)}
           onRetirar={handleRetirarDaCompraMl}
           onIncluir={ris => handleIncluirNaCompraMl(editarCompraMl, ris)}
           onClose={() => setEditarCompraMl(null)}

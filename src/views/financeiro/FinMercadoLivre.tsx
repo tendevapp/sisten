@@ -32,6 +32,9 @@ import {
   type BaixaFinMl, type CompraFinMl, type FiltroCompraFinMl, type ItemFinMl, type ResumoCompraFinMl, type SituacaoCompraMl,
 } from '../../lib/finMercadoLivre';
 import { dataHojeLocal } from '../../lib/dataLocal';
+import { custoAposReembolso, pacoteDoReembolso } from '../../lib/detalheCompraMl';
+import { rotuloOcorrenciaMl, valorOcorrenciaMl, type OcorrenciaMl } from '../../lib/ocorrenciasMl';
+import { classeEtiquetaOcorrenciaMl } from '../../components/suprimentos/OcorrenciasMl';
 
 interface Props {
   user: Profile;
@@ -80,7 +83,7 @@ function TrilhaItem({ item }: { item: ItemFinMl }) {
   );
 }
 
-function LinhaItem({ item, onBaixar }: { item: ItemFinMl; onBaixar?: () => void }) {
+function LinhaItem({ item, ocorrencias = [], onBaixar }: { item: ItemFinMl; ocorrencias?: OcorrenciaMl[]; onBaixar?: () => void }) {
   const liberado = valorLiberadoParaBaixa(item);
   const saldo = saldoItem(item);
   const qtdRef = item.qtd_pedido ?? item.qtd;
@@ -99,6 +102,23 @@ function LinhaItem({ item, onBaixar }: { item: ItemFinMl; onBaixar?: () => void 
           )}
         </p>
         <div className="mt-1.5"><TrilhaItem item={item} /></div>
+        {ocorrencias.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {ocorrencias.map(oc => {
+              const valor = valorOcorrenciaMl(oc, item.valor_pedido);
+              return (
+                <span
+                  key={oc.id}
+                  className={`rounded border px-1 text-[10px] font-bold ${classeEtiquetaOcorrenciaMl(oc)}`}
+                  title={[oc.motivo, oc.criado_por_nome && `lançado por ${oc.criado_por_nome} em ${formatDateBR(oc.created_at)}`].filter(Boolean).join(' — ')}
+                >
+                  {rotuloOcorrenciaMl(oc)}
+                  {oc.percentual != null && valor != null && <> ≈ {formatBRL(valor)}</>}
+                </span>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="min-w-0 text-[11px] text-slate-600 dark:text-slate-300 space-y-0.5">
@@ -196,6 +216,8 @@ function DadosDaCompra({ compra }: { compra: CompraFinMl }) {
   const temDetalhe = compra.valor_total != null || !!compra.numero_pagamento || !!compra.pacotes?.length;
   if (!temDetalhe && !compra.linha_digitavel) return null;
   const pacotes = compra.pacotes ?? [];
+  const custoLiquido = custoAposReembolso(compra.valor_total, compra.valor_reembolso);
+  const reembolsado = pacoteDoReembolso(pacotes, compra.valor_reembolso);
 
   const copiarLinha = async () => {
     try {
@@ -225,7 +247,25 @@ function DadosDaCompra({ compra }: { compra: CompraFinMl }) {
           <div><span className="block text-slate-500">Total</span><b className="tabular text-slate-800 dark:text-slate-100">{formatBRL(compra.valor_total)}</b></div>
           <div><span className="block text-slate-500">Pagamento</span><b className="text-slate-800 dark:text-slate-100">{compra.forma_pagamento ?? '—'}</b></div>
           <div><span className="block text-slate-500">Nº pagamento</span><b className="font-mono text-slate-800 dark:text-slate-100">{compra.numero_pagamento ?? '—'}</b></div>
+          {compra.valor_desconto != null && (
+            <div><span className="block text-slate-500">Desconto</span><b className="tabular text-slate-800 dark:text-slate-100">− {formatBRL(compra.valor_desconto)}</b></div>
+          )}
+          {compra.valor_cupom != null && (
+            <div><span className="block text-slate-500">Cupom</span><b className="tabular text-slate-800 dark:text-slate-100">− {formatBRL(compra.valor_cupom)}</b></div>
+          )}
           <div className="col-span-2"><span className="block text-slate-500">Situação no ML (quando colado)</span><b className="text-slate-800 dark:text-slate-100">{compra.status_pagamento_ml ?? '—'}</b></div>
+          {custoLiquido != null && (
+            <>
+              <div>
+                <span className="block text-slate-500">Reembolso do ML</span>
+                <b className="tabular text-emerald-700 dark:text-emerald-400">+ {formatBRL(compra.valor_reembolso)}</b>
+              </div>
+              <div title="Total pago menos o que o ML devolveu">
+                <span className="block text-slate-500">Custo após reembolso</span>
+                <b className="tabular text-slate-800 dark:text-slate-100">{formatBRL(custoLiquido)}</b>
+              </div>
+            </>
+          )}
           {compra.endereco_entrega && (
             <div className="col-span-2 sm:col-span-4"><span className="block text-slate-500">Entrega</span><span className="text-slate-700 dark:text-slate-200">{compra.endereco_entrega}</span></div>
           )}
@@ -251,6 +291,14 @@ function DadosDaCompra({ compra }: { compra: CompraFinMl }) {
                 <li key={i} className="flex items-center gap-2 py-1">
                   <span className="text-slate-500 w-5 shrink-0">{i + 1}</span>
                   <span className="flex-1 min-w-0 truncate text-slate-700 dark:text-slate-200" title={p.descricao}>{p.descricao}</span>
+                  {reembolsado === i && (
+                    <span
+                      className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-1 text-[10px] font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      title="O valor do reembolso é igual ao deste item"
+                    >
+                      reembolsado
+                    </span>
+                  )}
                   <span className="shrink-0 text-slate-500">{p.quantidade ?? '—'} un</span>
                   <span className="shrink-0 w-24 text-right font-semibold tabular text-slate-800 dark:text-slate-100">{formatBRL(p.valor)}</span>
                 </li>
@@ -298,6 +346,18 @@ function CartaoCompra({ resumo, user, aberto, onAlternar, onBoleto, onBaixa, onE
               {resumo.itens.length - resumo.itensSemPedido}/{resumo.itens.length} com PO · {resumo.itensComMigo}/{resumo.itens.length} com MIGO
               {resumo.fornecedores.length > 0 && <> · {resumo.fornecedores.join(', ')}</>}
             </p>
+            {resumo.ocorrencias.length > 0 && (
+              <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                {resumo.ocorrencias.length} devolução/reembolso lançado(s)
+                {resumo.valorOcorrencias > 0 && <> · {formatBRL(resumo.valorOcorrencias)}</>}
+                {resumo.ocorrenciasSemValor > 0 && <span className="font-normal text-slate-500"> · {resumo.ocorrenciasSemValor} em % sem PO para calcular</span>}
+                {resumo.recompraPendente > 0 && (
+                  <span className="ml-1 rounded border border-amber-300 bg-amber-50 px-1 text-[10px] font-bold text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                    {resumo.recompraPendente} a recomprar
+                  </span>
+                )}
+              </p>
+            )}
           </div>
           <div className="flex items-start gap-4">
             <div className="text-right text-[11px]">
@@ -311,6 +371,11 @@ function CartaoCompra({ resumo, user, aberto, onAlternar, onBoleto, onBaixa, onE
               <p className="text-slate-500">Saldo</p>
               <p className="text-sm font-bold tabular text-slate-900 dark:text-slate-50">{formatBRL(resumo.saldoAdiantamento)}</p>
               <p className="text-emerald-700 dark:text-emerald-400">baixado {formatBRL(resumo.valorBaixado)}</p>
+              {c?.valor_reembolso != null && c.valor_reembolso > 0 && (
+                <p className="font-semibold text-emerald-700 dark:text-emerald-400" title="O ML devolveu este valor depois da compra">
+                  reembolso {formatBRL(c.valor_reembolso)}
+                </p>
+              )}
             </div>
             <ChevronDown className={`h-5 w-5 mt-1 text-slate-500 transition-transform ${aberto ? 'rotate-180' : ''}`} />
           </div>
@@ -343,7 +408,12 @@ function CartaoCompra({ resumo, user, aberto, onAlternar, onBoleto, onBaixa, onE
           {c && <DadosDaCompra compra={c} />}
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {resumo.itens.map(it => (
-              <LinhaItem key={it.ri} item={it} onBaixar={onBaixa ? () => onBaixa(it.ri) : undefined} />
+              <LinhaItem
+                key={it.ri}
+                item={it}
+                ocorrencias={resumo.ocorrencias.filter(oc => oc.ri === it.ri)}
+                onBaixar={onBaixa ? () => onBaixa(it.ri) : undefined}
+              />
             ))}
             {resumo.itens.length === 0 && (
               <p className="py-3 text-xs text-slate-500">Nenhum item da Central de Compras está mais com este nº de compra.</p>
@@ -385,7 +455,7 @@ export default function FinMercadoLivre({ user }: Props) {
   useEffect(() => { carregar(); }, [carregar]);
 
   const resumos = useMemo(
-    () => (dados ? resumirComprasFinMl(dados.itens, dados.compras, dados.baixas) : []),
+    () => (dados ? resumirComprasFinMl(dados.itens, dados.compras, dados.baixas, dados.ocorrencias) : []),
     [dados],
   );
 

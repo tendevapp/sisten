@@ -38,6 +38,17 @@ describe('resumirComprasMl × número de PO', () => {
   });
 });
 
+describe('resumirComprasMl × item eliminado no SAP', () => {
+  it('não conta o item eliminado em itens, RMs nem PO, e informa quantos são', () => {
+    const resumo = resumirComprasMl([
+      item({ ri: 'a', rm: '1100340711', numero_compra: '2000015901343333' }),
+      item({ ri: 'b', rm: '1100340711', numero_compra: '2000015901343333' }),
+      item({ ri: 'c', rm: '1200095984', numero_compra: '2000015901343333' }),
+    ], { eliminado: ri => ri === 'a' || ri === 'b' });
+    expect(resumo[0]).toMatchObject({ itens: 1, rms: ['1200095984'], comPedido: 0, eliminados: 2 });
+  });
+});
+
 describe('normalizarLinkMl', () => {
   it('aceita link colado sem protocolo', () => {
     expect(normalizarLinkMl('produto.mercadolivre.com.br/MLB-123')).toBe('https://produto.mercadolivre.com.br/MLB-123');

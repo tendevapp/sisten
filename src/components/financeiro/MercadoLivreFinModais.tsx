@@ -96,6 +96,12 @@ export function BoletoMlModal({ resumo, usuario, onClose, onSalvo }: {
             {c?.valor_total != null && (
               <p className="mt-1 text-[11px] text-slate-500">Total da compra no ML: {formatBRL(c.valor_total)}</p>
             )}
+            {c?.valor_reembolso != null && c.valor_reembolso > 0 && (
+              <p className="mt-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                Reembolso do ML: {formatBRL(c.valor_reembolso)}
+                {c.valor_total != null && <> · custo após reembolso {formatBRL(Math.round((c.valor_total - c.valor_reembolso) * 100) / 100)}</>}
+              </p>
+            )}
             {resumo.valorPedidos > 0 && (
               <p className="mt-1 text-[11px] text-slate-500">Soma dos POs já emitidos: {formatBRL(resumo.valorPedidos)}</p>
             )}

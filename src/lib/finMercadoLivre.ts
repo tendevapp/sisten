@@ -14,6 +14,8 @@
  */
 
 import { lerValorMl } from './detalheCompraMl';
+import { ehNumeroPedidoSap } from './compraMercadoLivre';
+import { recompraPendenteMl, valorOcorrenciaMl, type OcorrenciaMl } from './ocorrenciasMl';
 
 /** Linha de `vw_fin_ml_itens`: item do ML com PO, recebimento, MIGO e baixado. */
 export interface ItemFinMl {
@@ -61,6 +63,10 @@ export interface CompraFinMl {
   valor_produtos?: number | null;
   valor_frete?: number | null;
   valor_total?: number | null;
+  valor_desconto?: number | null;
+  valor_cupom?: number | null;
+  /** "Total do reembolso" do ML: o que voltou ao comprador depois da compra. */
+  valor_reembolso?: number | null;
   forma_pagamento?: string | null;
   numero_pagamento?: string | null;
   status_pagamento_ml?: string | null;
@@ -188,6 +194,14 @@ export interface ResumoCompraFinMl {
   prontoParaBaixa: number;
   itensProntos: number;
   situacao: SituacaoCompraMl;
+  /** Devoluções/reembolsos que o comprador lançou nos itens desta compra (Central › M Livre). */
+  ocorrencias: OcorrenciaMl[];
+  /** Soma em R$ dos lançamentos com valor conhecido (% aplicado sobre o PO do item). */
+  valorOcorrencias: number;
+  /** Lançamentos em % sem PO no item: o valor em R$ ainda não dá para calcular. */
+  ocorrenciasSemValor: number;
+  /** Itens devolvidos que ainda precisam ser comprados de novo. */
+  recompraPendente: number;
 }
 
 export function situacaoCompra(compra: CompraFinMl | null, saldo: number | null): SituacaoCompraMl {
@@ -202,11 +216,26 @@ export function resumirComprasFinMl(
   itens: ItemFinMl[],
   compras: CompraFinMl[],
   baixas: BaixaFinMl[],
+  ocorrencias: OcorrenciaMl[] = [],
 ): ResumoCompraFinMl[] {
+  // Pela compra gravada no lançamento: se o item for recomprado em outra
+  // compra, a devolução continua na compra original.
+  const ocorrenciasPorNumero = new Map<string, OcorrenciaMl[]>();
+  for (const oc of ocorrencias) {
+    if (oc.excluido_em || !oc.numero_compra) continue;
+    const lista = ocorrenciasPorNumero.get(oc.numero_compra) ?? [];
+    lista.push(oc);
+    ocorrenciasPorNumero.set(oc.numero_compra, lista);
+  }
   const compraPorNumero = new Map(compras.map(c => [c.numero_compra, c]));
+  const comLancamento = new Set([...compras.map(c => c.numero_compra), ...baixas.map(b => b.numero_compra)]);
   const numeros = new Set<string>();
   const itensPorNumero = new Map<string, ItemFinMl[]>();
   for (const it of itens) {
+    // Nº de PO do SAP gravado por engano como nº da compra (antes de o campo
+    // recusar, 06/11): não é compra do ML e não tem boleto — a Central também
+    // não a lista. Se o Financeiro já lançou algo nesse número, continua visível.
+    if (ehNumeroPedidoSap(it.numero_compra) && !comLancamento.has(it.numero_compra)) continue;
     numeros.add(it.numero_compra);
     const lista = itensPorNumero.get(it.numero_compra) ?? [];
     lista.push(it);
@@ -234,6 +263,9 @@ export function resumirComprasFinMl(
     const liberados = lista.map(valorLiberadoParaBaixa);
     const registradas = (lista.map(i => i.compra_registrada_em).filter(Boolean) as string[]).sort();
     const maisRecente = registradas.length ? registradas[registradas.length - 1] : null;
+    const ocs = (ocorrenciasPorNumero.get(numero) ?? []).slice().sort((a, b) => a.created_at.localeCompare(b.created_at));
+    const valorPedidoPorRi = new Map(lista.map(i => [i.ri, i.valor_pedido]));
+    const valoresOc = ocs.map(oc => valorOcorrenciaMl(oc, valorPedidoPorRi.get(oc.ri)));
     resumos.push({
       numero,
       compra,
@@ -251,6 +283,10 @@ export function resumirComprasFinMl(
       prontoParaBaixa: arred(liberados.reduce((s, v) => s + v, 0)),
       itensProntos: liberados.filter(v => v > 0).length,
       situacao: situacaoCompra(compra, saldo),
+      ocorrencias: ocs,
+      valorOcorrencias: arred(valoresOc.reduce<number>((s, v) => s + (v ?? 0), 0)),
+      ocorrenciasSemValor: ocs.filter((oc, i) => valoresOc[i] == null && oc.percentual != null).length,
+      recompraPendente: ocs.filter(recompraPendenteMl).length,
     });
   }
   return resumos.sort((a, b) =>
