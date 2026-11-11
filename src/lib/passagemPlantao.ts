@@ -38,3 +38,17 @@ export function itensIniciaisDoPlantao(
     };
   });
 }
+
+/**
+ * Quem pode encerrar um plantão: qualquer pessoa com acesso à tela, desde
+ * que ele esteja em aberto e não excluído. Encerrar é o ato de entregar o
+ * posto — quem fecha quase nunca é quem abriu (é a equipe que sai ou a que
+ * chega), e os plantões antigos não têm autor gravado, então a regra
+ * autor/admin escondia o botão de todo vigilante. A RLS da tabela já é
+ * `true`; excluir/restaurar continua só autor/admin.
+ */
+export function podeEncerrarPlantao(
+  plantao: Pick<PortPassagemPlantao, 'status' | 'excluido_em'> | null | undefined,
+): boolean {
+  return !!plantao && plantao.status === 'EM_ANDAMENTO' && !plantao.excluido_em;
+}

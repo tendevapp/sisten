@@ -25,7 +25,7 @@ import type {
   PortPassagemPlantaoStatus
 } from '../../types';
 import * as api from '../../lib/portariaApi';
-import { entregadoresDoAnterior, itensIniciaisDoPlantao } from '../../lib/passagemPlantao';
+import { entregadoresDoAnterior, itensIniciaisDoPlantao, podeEncerrarPlantao } from '../../lib/passagemPlantao';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import VigilanteSelect from '../../components/portaria/VigilanteSelect';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
@@ -391,6 +391,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
         itens_conferidos: formItens,
         status: 'EM_ANDAMENTO',
         observacoes: formObs || null,
+        criado_por: user.id,
       });
 
       if (plantaoAFechar) {
@@ -664,7 +665,8 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
           const totalItens = (p.itens_conferidos || []).length;
           const itensOk = (p.itens_conferidos || []).filter((i) => i.conferido).length;
           const isCompleto = totalItens > 0 && itensOk === totalItens;
-          // Encerrar/excluir só para o autor do plantão ou admin (espelha a RLS).
+          // Excluir/restaurar só para o autor do plantão ou admin; encerrar,
+          // qualquer um da tela (ver podeEncerrarPlantao).
           const podeEditar = podeEditarFormulario(user, p);
 
           return (
@@ -798,7 +800,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
                     podeEditar && <RestaurarButton onClick={() => handleRestaurarPlantao(p)} />
                   ) : (
                     <>
-                      {p.status === 'EM_ANDAMENTO' && podeEditar && (
+                      {podeEncerrarPlantao(p) && (
                         <button
                           type="button"
                           onClick={() => setPlantaoParaEncerrar(p)}
@@ -1302,7 +1304,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
           </ModalBody>
 
           <ModalFooter>
-            {plantaoVisualizando.status === 'EM_ANDAMENTO' && !plantaoVisualizando.excluido_em && podeEditarFormulario(user, plantaoVisualizando) && (
+            {podeEncerrarPlantao(plantaoVisualizando) && (
               <button
                 type="button"
                 onClick={() => { setPlantaoParaEncerrar(plantaoVisualizando); setPlantaoVisualizando(null); }}

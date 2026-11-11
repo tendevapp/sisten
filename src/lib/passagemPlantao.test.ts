@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { entregadoresDoAnterior, itensIniciaisDoPlantao } from './passagemPlantao';
+import { entregadoresDoAnterior, itensIniciaisDoPlantao, podeEncerrarPlantao } from './passagemPlantao';
 import type { PortMaterialSeguranca, PortPassagemPlantao } from '../types';
 
 const materiais = [
@@ -48,5 +48,16 @@ describe('itensIniciaisDoPlantao', () => {
     expect(itens[1]).toMatchObject({ quantidade_conferida: 2, observacao: '', conferido: false });
     // Material novo, que o anterior não tinha: padrão.
     expect(itens[2]).toMatchObject({ quantidade_conferida: 1, observacao: '', conferido: false });
+  });
+});
+
+describe('podeEncerrarPlantao', () => {
+  it('libera plantão em aberto, mesmo sem autor gravado', () => {
+    expect(podeEncerrarPlantao({ status: 'EM_ANDAMENTO', excluido_em: null } as PortPassagemPlantao)).toBe(true);
+  });
+  it('não oferece para concluído, excluído ou ausente', () => {
+    expect(podeEncerrarPlantao({ status: 'CONCLUIDO', excluido_em: null } as PortPassagemPlantao)).toBe(false);
+    expect(podeEncerrarPlantao({ status: 'EM_ANDAMENTO', excluido_em: '2026-11-10T10:00:00Z' } as PortPassagemPlantao)).toBe(false);
+    expect(podeEncerrarPlantao(null)).toBe(false);
   });
 });
