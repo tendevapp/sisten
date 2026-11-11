@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, FileDown, FileSpreadsheet, HardHat, Loader2,
-  ClipboardList, ClipboardPlus, GraduationCap, MessageSquareReply, PackageCheck, PackageMinus, Plus, RefreshCw, Search, ShieldAlert, ShoppingCart, Truck, X,
+  ClipboardList, ClipboardPlus, DoorOpen, GraduationCap, MessageSquareReply, PackageCheck, PackageMinus, PackageX, Plus, RefreshCw, Search, ShieldAlert, ShoppingCart, Truck, X,
 } from 'lucide-react';
 import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -40,18 +40,18 @@ import { prepararFotoCarimbada } from '../../lib/carimboFoto';
 import {
   EPSILON_QTD, PREFIXO_RECEB, juntarNotasFiscais, separarNotasFiscais, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarItensComPo, itensMercadoLivreComPo, buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
   entregaParcialAnterior, listarFornecedoresDoCache, parcialPrecisaConfirmarNf, pendentePedido, podeExcluirNaoConformidade, posAbertosDoFornecedor,
-  resumoConferencia, tipoNcSugerido, validarNovaNcAvulsa,
+  resumoConferencia, tipoNcSugerido, validarNovaNcAvulsa, entregasPortariaPendentes, rotuloStatusCarga,
   NF_SEM_PO, itensSemNf, nfDoItem, nfPorPedidoDosItens, nfsDoPedido, pedidosSemNf, resumoNfPorPedido,
   type FotoNotaFiscal, type NfPorPedido,
   type AnexoRecebimento, type DestinoPrevisto, type FontePedido, type ItemPoEncontrado, type ItemPoMercadoLivre, type LinhaConferencia, type PoAberto,
   type LinhaCacheSAP, type TipoDivergencia, type TipoEmbalagem,
 } from '../../lib/recebimentoAlmox';
 import {
-  assinarEvidencias, carregarLinhasPedido, editarCarga, editarConferencia, editarNc,
+  assinarEvidencias, assinarFotosPortaria, informarNaoChegou, carregarLinhasPedido, editarCarga, editarConferencia, editarNc,
   excluirCarga, excluirConferencia, excluirNcAberta, hojeISO, listarAlteracoes, listarCargas, listarConferencias,
   listarNaoConformidades, listarTransportadorasSugeridas, marcarEncaminhadoProjetos,
   registrarCarga, registrarConferencia, registrarNcAvulsa, sincronizarChegadaItensConferidos, subirEvidencia, atualizarNaoConformidade,
-  type AlteracaoRow, type CargaRow, type ConferenciaRow, type LinhaPedidoPO,
+  type AlteracaoRow, type CargaRow, type ConferenciaRow, type FotoPortariaCarga, type LinhaPedidoPO,
   type NaoConformidadeRow, type NcAcao,
 } from '../../lib/recebimentoAlmoxApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
@@ -138,6 +138,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   const sincronizarRascunhos = useCallback(() => setRascunhos(listarRascunhosConferencia()), []);
   const [ncEd, setNcEd] = useState<NaoConformidadeRow | null>(null);
   const [ncNova, setNcNova] = useState(false);
+  /** Entrega da portaria que o almoxarifado vai marcar como "não chegou". */
+  const [naoChegou, setNaoChegou] = useState<CargaRow | null>(null);
   const [detalhe, setDetalhe] = useState<
     | { tipo: 'carga'; row: CargaRow }
     | { tipo: 'conferencia'; row: ConferenciaRow }
@@ -184,6 +186,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   const pendenciasEmAberto = devolutivas.filter((d) => d.status === 'aguardando_comprador' || d.status === 'aguardando_almox').length;
 
   const ncAbertas = ncs.filter((n) => n.status !== 'resolvida').length;
+  const entregasPortaria = entregasPortariaPendentes(cargas).length;
 
   const podeRecebimento = canAccessForm(user, 'form_almoxarifado_recebimento');
   const podeBalcao = canAccessForm(user, 'form_almoxarifado_requisicao_balcao');
@@ -201,6 +204,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       icon: Truck,
       cor: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400',
       badge: `${cargas.length} registrada(s)`,
+      alerta: entregasPortaria,
+      alertaTexto: `${entregasPortaria} entrega(s) da portaria para confirmar`,
     },
     {
       id: 'contagem' as Vista,
@@ -307,6 +312,9 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       row={detalhe.row}
       cargas={cargas}
       podeEditar={true}
+      onNaoChegou={detalhe.tipo === 'carga' && detalhe.row.status === 'aguardando_almox'
+        ? () => { setNaoChegou(detalhe.row as CargaRow); setDetalhe(null); }
+        : undefined}
       onEditar={() => {
         if (detalhe.tipo === 'carga') setForm({ tipo: 'carga', registro: detalhe.row });
         else if (detalhe.tipo === 'conferencia') setForm({ tipo: 'conferencia', registro: detalhe.row });
@@ -328,6 +336,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
           onVoltar={voltarAoHub}
           onNova={() => setForm({ tipo: 'carga' })}
           onEditar={(row) => setForm({ tipo: 'carga', registro: row })}
+          onNaoChegou={(row) => setNaoChegou(row)}
           onAbrir={(row) => setDetalhe({ tipo: 'carga', row })}
           onRecarregar={recarregar}
           onExcluir={async (id, codigo) => {
@@ -343,6 +352,14 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
             registro={form.registro}
             onClose={() => setForm(null)}
             onSalvo={async () => { setForm(null); await recarregar(); }}
+          />
+        )}
+        {naoChegou && (
+          <ModalNaoChegou
+            user={user}
+            carga={naoChegou}
+            onClose={() => setNaoChegou(null)}
+            onSalvo={async () => { setNaoChegou(null); await recarregar(); }}
           />
         )}
         {detalheModal}
@@ -779,7 +796,7 @@ function ListaAgrupada<T>({
 // ===========================================================================
 
 function VistaFichaCega({
-  cargas, loading, podeEditar, podeExcluir, onVoltar, onNova, onEditar, onAbrir, onRecarregar, onExcluir,
+  cargas, loading, podeEditar, podeExcluir, onVoltar, onNova, onEditar, onNaoChegou, onAbrir, onRecarregar, onExcluir,
 }: {
   cargas: CargaRow[];
   loading: boolean;
@@ -788,6 +805,7 @@ function VistaFichaCega({
   onVoltar: () => void;
   onNova: () => void;
   onEditar: (row: CargaRow) => void;
+  onNaoChegou: (row: CargaRow) => void;
   onAbrir: (row: CargaRow) => void;
   onRecarregar: () => void;
   onExcluir: (id: string, codigo: string) => void;
@@ -806,51 +824,84 @@ function VistaFichaCega({
     ),
     [cargas, busca, de, ate],
   );
-  const grupos = useMemo(() => agruparPorSemanaEData(filtradas, (c) => c.data), [filtradas]);
+  // Entregas da portaria esperando o almoxarifado ficam num bloco no topo; o resto segue por data.
+  const pendentes = useMemo(() => entregasPortariaPendentes(filtradas), [filtradas]);
+  const grupos = useMemo(
+    () => agruparPorSemanaEData(filtradas.filter((c) => c.status !== 'aguardando_almox'), (c) => c.data),
+    [filtradas],
+  );
 
-  const renderCarga = (c: CargaRow) => (
+  const renderCarga = (c: CargaRow) => {
+    const aguardando = c.status === 'aguardando_almox';
+    const fotosPortaria = c.fotos_portaria?.length ?? 0;
+    const corStatus = aguardando ? 'var(--status-serious)'
+      : c.status === 'nao_chegou' || c.divergencia ? 'var(--status-critical)' : 'var(--ink-muted)';
+    return (
     <CardBase key={c.id} onClick={() => onAbrir(c)}>
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
                   {c.codigo}
-                  {c.evidencias.length > 0 && <Camera className="inline ml-1.5 h-3 w-3" style={{ color: 'var(--ink-muted)' }} />}
+                  {(c.evidencias.length > 0 || fotosPortaria > 0) && <Camera className="inline ml-1.5 h-3 w-3" style={{ color: 'var(--ink-muted)' }} />}
                 </p>
+                {c.origem === 'portaria' && (
+                  <p className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold" style={{ color: 'var(--ink-secondary)' }}>
+                    <DoorOpen className="h-3 w-3" aria-hidden="true" /> Aberta pela Portaria{c.hora ? ` às ${c.hora.slice(0, 5)}` : ''}
+                  </p>
+                )}
                 <p className="text-[11px] truncate" style={{ color: 'var(--ink-secondary)' }}>
                   {c.transportadora}{c.veiculo_placa ? ` · ${c.veiculo_placa}` : ''}
                 </p>
               </div>
               <span
                 className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold"
-                style={c.divergencia
-                  ? { background: 'color-mix(in srgb, var(--status-critical) 14%, transparent)', color: 'var(--status-critical)' }
-                  : { background: 'color-mix(in srgb, var(--ink-muted) 12%, transparent)', color: 'var(--ink-muted)' }}
+                style={{ background: `color-mix(in srgb, ${corStatus} 14%, transparent)`, color: corStatus }}
               >
-                {c.status}
+                {rotuloStatusCarga(c.status)}
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between text-[11px]" style={{ color: 'var(--ink-muted)' }}>
               <span>{formatDateBR(c.data)}</span>
               <span className="tabular-nums">
-                {c.qtd_volumes_contada} vol.
-                {c.qtd_volumes_declarada != null && c.qtd_volumes_declarada !== c.qtd_volumes_contada
-                  ? ` (declarado ${c.qtd_volumes_declarada})` : ''}
+                {c.qtd_volumes_contada == null
+                  ? (aguardando ? 'contagem pendente' : '—')
+                  : <>
+                      {c.qtd_volumes_contada} vol.
+                      {c.qtd_volumes_declarada != null && c.qtd_volumes_declarada !== c.qtd_volumes_contada
+                        ? ` (declarado ${c.qtd_volumes_declarada})` : ''}
+                    </>}
               </span>
             </div>
-            {(c.avaria_aparente || c.observacao) && (
+            {c.status === 'nao_chegou' ? (
+              <p className="mt-1.5 text-[11px] italic" style={{ color: 'var(--status-critical)' }}>
+                Não chegou: {c.nao_chegou_motivo}
+              </p>
+            ) : aguardando && c.portaria_resumo ? (
+              <p className="mt-1.5 line-clamp-2 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+                {c.portaria_resumo}{fotosPortaria ? ` · ${fotosPortaria} foto(s) da portaria` : ''}
+              </p>
+            ) : (c.avaria_aparente || c.observacao) && (
               <p className="mt-1.5 text-[11px] italic" style={{ color: c.avaria_aparente ? 'var(--status-critical)' : 'var(--ink-muted)' }}>
                 {c.avaria_aparente ? `Avaria: ${c.avaria_descricao || 'sinalizada'}` : c.observacao}
               </p>
             )}
-      <div className="mt-2 flex items-center justify-end gap-3">
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-3">
         <AcaoCard onClick={() => onAbrir(c)} cor="var(--ink-muted)">Detalhes</AcaoCard>
-        <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">Editar</AcaoCard>
-        {podeExcluir(c) && (
+        {aguardando ? (
+          <>
+            <AcaoCard onClick={() => onNaoChegou(c)} cor="var(--status-critical)">Não chegou</AcaoCard>
+            <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">Confirmar e preencher</AcaoCard>
+          </>
+        ) : (
+          <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">{c.status === 'nao_chegou' ? 'Chegou depois' : 'Editar'}</AcaoCard>
+        )}
+        {podeExcluir(c) && !aguardando && (
           <AcaoCard onClick={() => onExcluir(c.id, c.codigo)} cor="var(--status-critical)">Excluir</AcaoCard>
         )}
       </div>
     </CardBase>
-  );
+    );
+  };
 
   return (
     <VistaShell
@@ -873,6 +924,24 @@ function VistaFichaCega({
             placeholder="Buscar por RCV, transportadora, placa, PO, NF…"
             total={cargas.length} mostrados={filtradas.length}
           />
+          {pendentes.length > 0 && (
+            <section
+              className="rounded-2xl border p-3 space-y-2"
+              style={{ borderColor: 'var(--status-serious)', background: 'color-mix(in srgb, var(--status-serious) 6%, transparent)' }}
+              aria-label="Entregas da portaria aguardando o almoxarifado"
+            >
+              <h3 className="flex items-center gap-1.5 text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
+                <DoorOpen className="h-4 w-4" style={{ color: 'var(--status-serious)' }} aria-hidden="true" />
+                Entregas registradas pela portaria ({pendentes.length})
+              </h3>
+              <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+                A portaria marcou entrega de material na entrada. Confirme fazendo a contagem cega, ou informe que não chegou.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {pendentes.map(renderCarga)}
+              </div>
+            </section>
+          )}
           <ListaAgrupada
             grupos={grupos}
             getKey={(c) => c.id}
@@ -1455,8 +1524,127 @@ const TOM_STATUS_NC: Record<string, TomChip> = {
   aberta: 'alerta', em_tratativa: 'atencao', resolvida: 'ok',
 };
 
+/**
+ * O que veio da portaria (entrega de material no Relatório de Ocorrências):
+ * a linha do livro e as fotos da entrada, com as notas fiscais primeiro.
+ */
+function PainelPortaria({ carga, onAbrir }: {
+  carga: CargaRow;
+  onAbrir: (imgs: { url: string; legenda?: string }[], i: number) => void;
+}) {
+  const fotos: FotoPortariaCarga[] = carga.fotos_portaria ?? [];
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const chave = fotos.map((f) => f.path).join('|');
+  useEffect(() => {
+    if (fotos.length) assinarFotosPortaria(fotos.map((f) => f.path)).then(setUrls).catch(() => setUrls({}));
+  }, [chave]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const legenda = (f: FotoPortariaCarga) => (f.categoria === 'nf' ? 'Nota fiscal (portaria)' : 'Foto da portaria');
+  const imgs = fotos.map((f) => ({ url: urls[f.path], legenda: legenda(f) }));
+  const abrir = (i: number) => {
+    const visiveis = imgs.filter((x) => x.url);
+    onAbrir(visiveis as { url: string; legenda?: string }[], Math.max(0, visiveis.indexOf(imgs[i])));
+  };
+
+  return (
+    <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: 'var(--hairline)', background: 'color-mix(in srgb, var(--status-serious) 5%, transparent)' }}>
+      <p className="flex items-center gap-1.5 text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
+        <DoorOpen className="h-4 w-4" style={{ color: 'var(--status-serious)' }} aria-hidden="true" />
+        Aberta pela Portaria{carga.hora ? ` às ${carga.hora.slice(0, 5)}` : ''}
+      </p>
+      {carga.portaria_resumo && (
+        <p className="text-[11px] leading-relaxed" style={{ color: 'var(--ink-secondary)' }}>{carga.portaria_resumo}</p>
+      )}
+      {fotos.length > 0 ? (
+        <ul className="flex flex-wrap gap-2">
+          {fotos.map((f, i) => (
+            <li key={f.path} className="text-center">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); abrir(i); }}
+                aria-label={`Ver ${legenda(f).toLowerCase()} ${i + 1}`}
+                className="block h-16 w-16 overflow-hidden rounded-lg border cursor-pointer hover:opacity-80"
+                style={{ borderColor: f.categoria === 'nf' ? 'var(--status-good)' : 'var(--hairline)', background: 'var(--hairline)' }}
+              >
+                {urls[f.path]
+                  ? <img src={urls[f.path]} alt="" className="h-full w-full object-cover" />
+                  : <span className="flex h-full w-full items-center justify-center"><Camera className="h-4 w-4 opacity-30" /></span>}
+              </button>
+              <span className="mt-0.5 block text-[10px] font-bold" style={{ color: 'var(--ink-muted)' }}>{f.categoria === 'nf' ? 'NF' : 'Foto'}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>A portaria não anexou foto.</p>
+      )}
+    </div>
+  );
+}
+
+/** Almoxarifado informa que a entrega registrada pela portaria não chegou. */
+function ModalNaoChegou({ user, carga, onClose, onSalvo }: {
+  user: Profile;
+  carga: CargaRow;
+  onClose: () => void;
+  onSalvo: () => void;
+}) {
+  const toast = useToast();
+  const idMotivo = React.useId();
+  const [motivo, setMotivo] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const salvar = async () => {
+    if (motivo.trim().length < 5) { toast.error('Explique o que aconteceu (mínimo 5 caracteres).'); return; }
+    setSalvando(true);
+    try {
+      await informarNaoChegou(carga.id, motivo.trim(), { id: user.id, nome: user.name });
+      toast.success(`${carga.codigo}: registrado que o material não chegou.`);
+      onSalvo();
+    } catch (err: any) {
+      toast.error(err?.message || 'Não foi possível registrar.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+  return (
+    <Modal onClose={() => !salvando && onClose()} maxWidth="max-w-lg" ariaLabel={`Não chegou — ${carga.codigo}`}>
+      <ModalHeader onClose={() => !salvando && onClose()}>
+        <h3 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>Material não chegou — {carga.codigo}</h3>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+          {carga.transportadora}{carga.veiculo_placa ? ` · ${carga.veiculo_placa}` : ''}{carga.hora ? ` · portaria às ${carga.hora.slice(0, 5)}` : ''}
+        </p>
+      </ModalHeader>
+      <ModalBody>
+        <div className="space-y-2">
+          <label htmlFor={idMotivo} className="block text-xs font-bold" style={{ color: 'var(--ink-secondary)' }}>
+            O que aconteceu?
+          </label>
+          <textarea
+            id={idMotivo}
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value.toUpperCase())}
+            rows={3}
+            className={`${inputCls} uppercase`}
+            placeholder="EX: VEÍCULO NÃO PASSOU NA DOCA · DESCARREGOU NA PRODUÇÃO · ENTREGA ERA DE OUTRO SETOR"
+          />
+          <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            A ficha fica registrada como "não chegou". Se o material aparecer depois, use "Chegou depois" e faça a contagem.
+          </p>
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <button onClick={onClose} disabled={salvando} className="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+          Cancelar
+        </button>
+        <button onClick={() => void salvar()} disabled={salvando} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50" style={{ background: 'var(--status-critical)' }}>
+          {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageX className="h-4 w-4" />} Registrar que não chegou
+        </button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
 function ModalDetalhe({
-  user, tipo, row, cargas, podeEditar, onEditar, onClose,
+  user, tipo, row, cargas, podeEditar, onEditar, onNaoChegou, onClose,
 }: {
   user: Profile;
   tipo: 'carga' | 'conferencia' | 'nc';
@@ -1464,6 +1652,8 @@ function ModalDetalhe({
   cargas: CargaRow[];
   podeEditar: boolean;
   onEditar: () => void;
+  /** Só na entrega da portaria aguardando o almoxarifado. */
+  onNaoChegou?: () => void;
   onClose: () => void;
 }) {
   const lb = useLightbox();
@@ -1531,6 +1721,7 @@ function ModalDetalhe({
           const c = row as CargaRow;
           return (
             <div className="space-y-3">
+              {c.origem === 'portaria' && <PainelPortaria carga={c} onAbrir={lb.abrir} />}
               <div>
                 <DetLinha rotulo="Data" valor={formatDateBR(c.data)} />
                 <DetLinha rotulo="Transportadora" valor={c.transportadora} />
@@ -1539,14 +1730,16 @@ function ModalDetalhe({
                 <DetLinha rotulo="CT-e / canhoto" valor={c.doc_transporte} />
                 <DetLinha rotulo="Notas fiscais" valor={separarNotasFiscais(c.nota_fiscal).join(' · ')} />
                 <DetLinha rotulo="PO" valor={c.nro_pedido} />
-                <DetLinha rotulo="Volumes contados" valor={c.qtd_volumes_contada} />
+                <DetLinha rotulo="Volumes contados" valor={c.qtd_volumes_contada ?? (c.status === 'aguardando_almox' ? 'Contagem pendente' : '')} />
                 <DetLinha rotulo="Volumes declarados" valor={c.qtd_volumes_declarada} />
                 <DetLinha rotulo="Embalagem" valor={c.tipo_embalagem} />
                 <DetLinha rotulo="Lacre íntegro" valor={c.lacre_integro == null ? '' : c.lacre_integro ? 'Sim' : 'Não'} />
                 <DetLinha rotulo="Avaria aparente" valor={c.avaria_aparente ? (c.avaria_descricao || 'Sim') : ''} />
                 <DetLinha rotulo="Peso declarado" valor={c.peso_declarado} />
                 <DetLinha rotulo="Destino" valor={c.destino_previsto} />
-                <DetLinha rotulo="Status" valor={<StatusChip texto={c.status} tom={c.divergencia ? 'alerta' : 'neutro'} />} />
+                <DetLinha rotulo="Status" valor={<StatusChip texto={rotuloStatusCarga(c.status)} tom={c.divergencia || c.status === 'nao_chegou' ? 'alerta' : c.status === 'aguardando_almox' ? 'atencao' : 'neutro'} />} />
+                <DetLinha rotulo="Confirmada por" valor={c.almox_confirmado_por ? `${c.almox_confirmado_por}${c.almox_confirmado_em ? ` · ${formatDateTimeBR(c.almox_confirmado_em)}` : ''}` : ''} />
+                <DetLinha rotulo="Não chegou" valor={c.nao_chegou_motivo ? `${c.nao_chegou_motivo} — ${c.nao_chegou_por ?? ''}${c.nao_chegou_em ? ` · ${formatDateTimeBR(c.nao_chegou_em)}` : ''}` : ''} />
                 <DetLinha rotulo="Observação" valor={c.observacao} />
                 <DetLinha rotulo="Criado por" valor={c.criado_por_nome} />
               </div>
@@ -1796,9 +1989,18 @@ function ModalDetalhe({
           <FileDown className="h-4 w-4" />
           Visualizar PDF
         </button>
+        {onNaoChegou && (
+          <button
+            onClick={onNaoChegou}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border"
+            style={{ borderColor: 'var(--status-critical)', color: 'var(--status-critical)' }}
+          >
+            <PackageX className="h-4 w-4" /> Não chegou
+          </button>
+        )}
         {podeEditar && (
           <button onClick={onEditar} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white" style={{ background: 'var(--brand)' }}>
-            Editar
+            {tipo === 'carga' && (row as CargaRow).status === 'aguardando_almox' ? 'Confirmar e preencher' : 'Editar'}
           </button>
         )}
       </ModalFooter>
@@ -1961,7 +2163,10 @@ function ModalFichaCega({
   const [nfPendente, setNfPendente] = useState('');
   const [nroPedido, setNroPedido] = useState(ed?.nro_pedido ?? '');
   const [declarada, setDeclarada] = useState(numTxt(ed?.qtd_volumes_declarada));
-  const [contada, setContada] = useState(ed ? String(ed.qtd_volumes_contada) : '');
+  const [contada, setContada] = useState(ed?.qtd_volumes_contada != null ? String(ed.qtd_volumes_contada) : '');
+  /** Ficha aberta pela portaria, sem contagem ainda: o salvar confirma a entrega. */
+  const confirmando = !!ed && (ed.status === 'aguardando_almox' || ed.status === 'nao_chegou');
+  const lbPortaria = useLightbox();
   const [embalagem, setEmbalagem] = useState<TipoEmbalagem | ''>(ed?.tipo_embalagem ?? '');
   const [lacre, setLacre] = useState(ed?.lacre_integro ?? true);
   const [avaria, setAvaria] = useState(ed?.avaria_aparente ?? false);
@@ -2019,7 +2224,9 @@ function ModalFichaCega({
           { ...campos, evidencias: [...ed.evidencias, ...novasFotos] },
           { id: user.id, nome: user.name },
         );
-        toast.success(alteracoes ? `${ed.codigo}: ${alteracoes} campo(s) atualizado(s).` : `${ed.codigo}: nada mudou.`);
+        toast.success(confirmando
+          ? `${ed.codigo}: entrega da portaria confirmada.`
+          : alteracoes ? `${ed.codigo}: ${alteracoes} campo(s) atualizado(s).` : `${ed.codigo}: nada mudou.`);
       } else {
         const { codigo, divergencia } = await registrarCarga({
           ...campos,
@@ -2042,14 +2249,18 @@ function ModalFichaCega({
     <Modal onClose={() => !salvando && onClose()} maxWidth="max-w-2xl" ariaLabel={ed ? `Editar ${ed.codigo}` : 'Nova ficha cega de volumes'} disableOutsideClose>
       <ModalHeader onClose={() => !salvando && onClose()}>
         <h3 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>
-          {ed ? `Editar ficha cega — ${ed.codigo}` : 'Ficha cega de volumes'}
+          {confirmando ? `Confirmar entrega da portaria — ${ed!.codigo}` : ed ? `Editar ficha cega — ${ed.codigo}` : 'Ficha cega de volumes'}
         </h3>
         <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
-          {ed ? 'As alterações ficam registradas no histórico do registro.' : 'Conte os volumes e fotografe a carga inteira. Não abra caixa aqui.'}
+          {confirmando
+            ? 'Conte os volumes na doca (contagem cega) e complete os dados. Transportadora, placa e motorista vieram da portaria.'
+            : ed ? 'As alterações ficam registradas no histórico do registro.' : 'Conte os volumes e fotografe a carga inteira. Não abra caixa aqui.'}
         </p>
       </ModalHeader>
       <ModalBody>
         <div className="space-y-4">
+          {ed?.origem === 'portaria' && <PainelPortaria carga={ed} onAbrir={lbPortaria.abrir} />}
+          {lbPortaria.elemento}
           <datalist id="receb-transportadoras">
             {transportadoras.map((t) => <option key={t} value={t} />)}
           </datalist>
@@ -2130,7 +2341,7 @@ function ModalFichaCega({
           Cancelar
         </button>
         <button onClick={() => void salvar()} disabled={salvando} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50" style={{ background: 'var(--brand)' }}>
-          {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />} {ed ? 'Salvar alterações' : 'Registrar carga'}
+          {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />} {confirmando ? 'Confirmar recebimento' : ed ? 'Salvar alterações' : 'Registrar carga'}
         </button>
       </ModalFooter>
     </Modal>

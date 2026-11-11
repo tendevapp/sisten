@@ -13,6 +13,7 @@
 
 import { createDoc, PdfTextWriter, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
 import { dataHojeLocal } from '../dataLocal';
+import { contarFotosOcorrencia, fotosDaOcorrencia } from '../portariaFotosOcorrencia';
 export type { PdfGerado };
 import type {
   PortControleEquipamento,
@@ -241,13 +242,18 @@ export async function gerarRelatorioPortariaPdf(relatorio: PortRelatorioPortaria
     writer.drawCallout('Sem Alterações', 'Nenhuma alteração ou ocorrência registrada durante o plantão.');
   } else {
     ocorrencias.forEach((oc, i) => {
+      const n = contarFotosOcorrencia(oc);
+      const extras = [
+        oc.entrega_material ? `Entrega de material: ${oc.nf_verificada ? 'nota fiscal verificada' : 'NF NÃO VERIFICADA'}` : '',
+        n.total > 0 ? `Fotos anexas: ${n.registro}${n.nf ? ` + ${n.nf} de nota fiscal` : ''} (ver anexos do lançamento #${i + 1})` : '',
+      ].filter(Boolean);
       writer.drawOccurrenceCard({
         index: i + 1,
         time: oc.horario,
         sector: oc.local_setor,
         severity: oc.severidade,
         vigilante: oc.vigilante,
-        description: oc.descricao,
+        description: extras.length ? `${oc.descricao}\n${extras.join(' · ')}` : oc.descricao,
       });
     });
   }
@@ -265,16 +271,18 @@ export async function gerarRelatorioPortariaPdf(relatorio: PortRelatorioPortaria
     { role: 'Supervisor de Segurança Patrimonial' },
   ]);
 
-  // Páginas de Anexos Fotográficos com Referência ao Lançamento
-  const fotosAnexas = ocorrencias
-    .filter((oc) => !!oc.foto_url)
-    .map((oc, idx) => ({
-      title: `Ocorrência #${idx + 1} — [${oc.horario}] [${oc.local_setor}]`,
-      reference: `Vigilante: ${oc.vigilante} · Severidade: ${oc.severidade || 'INFO'}`,
-      description: oc.descricao,
-      timestamp: `${formatDataBR(relatorio.data)} às ${oc.horario}`,
-      source: oc.foto_url as string,
-    }));
+  // Páginas de Anexos Fotográficos com Referência ao Lançamento (registro + notas fiscais).
+  // O livro precisa vir de obterRelatorio (traz o base64 legado e as URLs assinadas).
+  const fotosAnexas = ocorrencias.flatMap((oc, idx) =>
+    fotosDaOcorrencia(oc)
+      .filter((f) => !!f.url)
+      .map((f) => ({
+        title: `Lançamento #${idx + 1} — [${oc.horario}] ${f.tipo === 'nf' ? 'NOTA FISCAL' : 'FOTO'} (${f.legenda})`,
+        reference: `Vigilante: ${oc.vigilante} · Local: ${oc.local_setor} · Severidade: ${oc.severidade || 'INFO'}`,
+        description: oc.descricao,
+        timestamp: `${formatDataBR(relatorio.data)} às ${oc.horario}`,
+        source: f.url,
+      })));
 
   if (fotosAnexas.length > 0) {
     await writer.drawPhotoAttachments(fotosAnexas);

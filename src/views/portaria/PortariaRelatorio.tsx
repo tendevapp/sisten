@@ -19,7 +19,7 @@ import {
   Check, UserCheck, Car, User, UserX, Building2,
   Sparkles, History, ShieldCheck, ChevronRight, CornerDownRight,
   Camera, Upload, Image as ImageIcon, Eye, LogOut, LogIn, Edit3, UserPlus, Users, CheckCircle2,
-  HelpCircle, Bug, Lightbulb,
+  HelpCircle, Bug, Lightbulb, Package,
 } from 'lucide-react';
 import TourSpotlight from '../../components/help/TourSpotlight';
 import { usePageTour } from '../../components/help/TourRegistryContext';
@@ -28,10 +28,16 @@ import type {
   Profile, PortRelatorioPortaria, PortRelatorioOcorrencia,
   PortRelatorioStatus, PortTurno, PortLocalSetor, PortSeveridade,
   PortTipoRegistroOcorrencia, PortPessoaVeiculoHistorico, RhPessoa,
-  PortStatusPermanencia, FacVeiculoLeve
+  PortStatusPermanencia, FacVeiculoLeve, PortAlcoolemiaFoto
 } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { ocorrenciaCombina, trechosDestacados } from '../../lib/portariaBuscaOcorrencias';
+import {
+  aceitaEntregaMaterial, contarFotosOcorrencia, fotosDaOcorrencia, validarEntregaMaterial,
+} from '../../lib/portariaFotosOcorrencia';
+import FotosOcorrenciaCampo, { type FotoNova } from '../../components/portaria/FotosOcorrenciaCampo';
+import DetalheOcorrenciaModal from '../../components/portaria/DetalheOcorrenciaModal';
+import { useLightbox } from '../../components/ui/Lightbox';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { listarRhPessoas } from '../../lib/rhApi';
 import { listarVeiculosLeves } from '../../lib/facilitiesApi';
@@ -290,8 +296,16 @@ export function localizarRelatorioDoLancamento(
 
 export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const toast = useToast();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const lightbox = useLightbox();
+  /** Lançamento aberto no detalhe (clique no registro). */
+  const [ocorrenciaDetalhe, setOcorrenciaDetalhe] = useState<PortRelatorioOcorrencia | null>(null);
+  /** Fotos do formulário: as já gravadas (edição) e as novas, que sobem comprimidas ao salvar. */
+  const [fotosSalvas, setFotosSalvas] = useState<PortAlcoolemiaFoto[]>([]);
+  const [fotosNovas, setFotosNovas] = useState<FotoNova[]>([]);
+  const [fotosNfSalvas, setFotosNfSalvas] = useState<PortAlcoolemiaFoto[]>([]);
+  const [fotosNfNovas, setFotosNfNovas] = useState<FotoNova[]>([]);
+  /** Foto antiga (base64) do lançamento em edição: carrega sob demanda; `removida` apaga ao salvar. */
+  const [fotoLegado, setFotoLegado] = useState<{ url: string | null; carregando: boolean; removida: boolean } | null>(null);
 
   const [relatorios, setRelatorios] = useState<PortRelatorioPortaria[]>([]);
   const [loading, setLoading] = useState(true);
@@ -323,7 +337,6 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const tour = usePageTour('portaria-relatorio', PORTARIA_RELATORIO_TOUR_STEPS.length, !modalNovaOcorrencia);
   const tourOcorrencia = usePageTour('portaria-relatorio-ocorrencia', PORTARIA_OCORRENCIA_NOVO_TOUR_STEPS.length, modalNovaOcorrencia);
   const [modalRegistrarSaida, setModalRegistrarSaida] = useState(false);
-  const [modalFotoZoom, setModalFotoZoom] = useState<string | null>(null);
   const [itemParaExcluir, setItemParaExcluir] = useState<PortRelatorioPortaria | null>(null);
   const [ocorrenciaParaExcluir, setOcorrenciaParaExcluir] = useState<PortRelatorioOcorrencia | null>(null);
   const [ocorrenciaEmEdicao, setOcorrenciaEmEdicao] = useState<PortRelatorioOcorrencia | null>(null);
@@ -336,6 +349,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   /** Busca no conteúdo dos lançamentos: filtra o livro aberto e conta nos outros. */
   const [termoConteudo, setTermoConteudo] = useState('');
   const idBuscaConteudo = React.useId();
+  const idForm = React.useId();
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
   // Form Novo Plantão
@@ -359,7 +373,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     autorizado_por: string;
     motivo_observacao: string;
     fara_briefing: boolean;
-    foto_url: string | null;
+    entrega_material: boolean;
+    nf_verificada: boolean;
     veiculo_leve_id?: string | null;
     veiculo_leve_modelo?: string | null;
     condutor_pessoa_id?: string | null;
@@ -377,7 +392,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     autorizado_por: '',
     motivo_observacao: '',
     fara_briefing: false,
-    foto_url: null,
+    entrega_material: false,
+    nf_verificada: false,
     veiculo_leve_id: null,
     veiculo_leve_modelo: null,
     condutor_pessoa_id: null,
@@ -623,48 +639,33 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     toast.success(`Dados de ${item.nome || item.empresa || item.placa} preenchidos!`);
   };
 
-  // Upload e Câmera com compressão
-  const handleSelecionarImagem = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 8 * 1024 * 1024) {
-      toast.error('Imagem muito grande (máx 8MB).');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxDim = 1200;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height && width > maxDim) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else if (height > maxDim) {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressedData = canvas.toDataURL('image/jpeg', 0.72);
-          setFormOcorrencia((prev) => ({ ...prev, foto_url: compressedData }));
-          toast.success('Foto anexada com sucesso!');
-        }
-      };
-      img.src = ev.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+  // Fotos do formulário: guardam o File até salvar; o upload comprime (comprimirImagemUpload).
+  const LIMITE_FOTOS = 10;
+  const novasFotos = (arquivos: File[], jaTem: number): FotoNova[] => {
+    const imagens = arquivos.filter((f) => f.type.startsWith('image/') || /\.(heic|heif|jpe?g|png|webp)$/i.test(f.name));
+    if (imagens.length < arquivos.length) toast.warning('Só imagens podem ser anexadas.');
+    const cabem = imagens.slice(0, Math.max(0, LIMITE_FOTOS - jaTem));
+    if (cabem.length < imagens.length) toast.warning(`Máximo de ${LIMITE_FOTOS} fotos por campo.`);
+    return cabem.map((file) => ({ key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, file, url: URL.createObjectURL(file) }));
   };
+  const adicionarFotos = (arquivos: File[]) =>
+    setFotosNovas((prev) => [...prev, ...novasFotos(arquivos, prev.length + fotosSalvas.length)]);
+  const adicionarFotosNf = (arquivos: File[]) =>
+    setFotosNfNovas((prev) => [...prev, ...novasFotos(arquivos, prev.length + fotosNfSalvas.length)]);
+  const descartarNova = (lista: FotoNova[], key: string) => {
+    const f = lista.find((x) => x.key === key);
+    if (f) URL.revokeObjectURL(f.url);
+    return lista.filter((x) => x.key !== key);
+  };
+  const limparFotosForm = () => {
+    [...fotosNovas, ...fotosNfNovas].forEach((f) => URL.revokeObjectURL(f.url));
+    setFotosNovas([]);
+    setFotosNfNovas([]);
+    setFotosSalvas([]);
+    setFotosNfSalvas([]);
+    setFotoLegado(null);
+  };
+  const abrirFotos = (urls: string[], indice: number) => lightbox.abrir(urls, indice);
 
   // Gerenciador de Lista de Pessoas no Form
   const handleAdicionarPessoa = () => {
@@ -694,6 +695,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       pessoas: pessoasForm,
     });
   }, [formOcorrencia, pessoasForm]);
+  const entregaAplicavel = aceitaEntregaMaterial(formOcorrencia.tipo_registro);
 
   const abrirModalOcorrencia = () => {
     setOcorrenciaEmEdicao(null);
@@ -711,12 +713,14 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       autorizado_por: '',
       motivo_observacao: '',
       fara_briefing: false,
-      foto_url: null,
+      entrega_material: false,
+      nf_verificada: false,
       veiculo_leve_id: null,
       veiculo_leve_modelo: null,
       condutor_pessoa_id: null,
       condutor_origem: null,
     });
+    limparFotosForm();
     setBuscaHistorico('');
     setMostrandoSugestoes(false);
     setBuscaColaborador('');
@@ -761,12 +765,24 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       autorizado_por: (oc.autorizado_por || '').toUpperCase(),
       motivo_observacao: (oc.motivo_observacao || oc.descricao).toUpperCase(),
       fara_briefing: !!oc.fara_briefing,
-      foto_url: oc.foto_url || null,
+      entrega_material: !!oc.entrega_material,
+      nf_verificada: !!oc.nf_verificada,
       veiculo_leve_id: oc.veiculo_leve_id || null,
       veiculo_leve_modelo: oc.veiculo_leve_modelo || null,
       condutor_pessoa_id: oc.condutor_pessoa_id || null,
       condutor_origem: oc.condutor_origem || null,
     });
+    limparFotosForm();
+    setFotosSalvas(oc.fotos || []);
+    setFotosNfSalvas(oc.fotos_nf || []);
+    if (oc.foto_url || oc.tem_foto_legado) {
+      setFotoLegado({ url: oc.foto_url || null, carregando: !oc.foto_url, removida: false });
+      if (!oc.foto_url) {
+        api.obterFotoLegadoOcorrencia(oc.id)
+          .then((url) => setFotoLegado((prev) => (prev ? { ...prev, url, carregando: false } : prev)))
+          .catch(() => setFotoLegado((prev) => (prev ? { ...prev, carregando: false } : prev)));
+      }
+    }
     setModalNovaOcorrencia(true);
   };
 
@@ -804,6 +820,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         fara_briefing: ocorrenciaParaSaida.fara_briefing,
         pessoas: ocorrenciaParaSaida.pessoas,
         veiculo_leve_modelo: ocorrenciaParaSaida.veiculo_leve_modelo || undefined,
+        entrega_material: ocorrenciaParaSaida.entrega_material,
+        nf_verificada: ocorrenciaParaSaida.nf_verificada,
       });
 
       await api.atualizarOcorrencia(ocorrenciaParaSaida.id, {
@@ -847,6 +865,17 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     }
     if (formOcorrencia.tipo_registro === 'VEICULO_LEVE' && !formOcorrencia.veiculo_leve_id) {
       toast.error('Selecione o veículo leve no cadastro de Facilities.');
+      return;
+    }
+    const comEntrega = entregaAplicavel && formOcorrencia.entrega_material;
+    const entrega = validarEntregaMaterial({
+      tipo: formOcorrencia.tipo_registro,
+      entrega_material: formOcorrencia.entrega_material,
+      nf_verificada: formOcorrencia.nf_verificada,
+      fotosNf: fotosNfSalvas.length + fotosNfNovas.length,
+    });
+    if (!entrega.ok) {
+      toast.error(entrega.erro!);
       return;
     }
 
@@ -896,6 +925,24 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
       const primeiraPessoa = pessoasValidas[0] || { nome: '', cpf: '', cnh: '', funcao: '' };
 
+      // Fotos sobem antes, na pasta do lançamento (id gerado aqui no lançamento novo).
+      const ocorrenciaId = ocorrenciaEmEdicao?.id ?? crypto.randomUUID();
+      const subidas = await api.subirFotosOcorrencia(ocorrenciaId, fotosNovas.map((f) => f.file), 'foto');
+      const subidasNf = comEntrega
+        ? await api.subirFotosOcorrencia(ocorrenciaId, fotosNfNovas.map((f) => f.file), 'nf')
+        : { ok: [], falhas: 0 };
+      const falhasFoto = subidas.falhas + subidasNf.falhas;
+      if (comEntrega && fotosNfSalvas.length + subidasNf.ok.length === 0) {
+        throw new Error('A foto da nota fiscal não subiu. Tente de novo.');
+      }
+      const fotosFinais = [...fotosSalvas, ...subidas.ok];
+      const fotosNfFinais = comEntrega ? [...fotosNfSalvas, ...subidasNf.ok] : [];
+      // Removidas na edição (ou NF de quem desmarcou a entrega): apagam do Storage depois de salvar.
+      const ficam = new Set([...fotosFinais, ...fotosNfFinais].map((f) => f.path));
+      const removidas = [...(ocorrenciaEmEdicao?.fotos || []), ...(ocorrenciaEmEdicao?.fotos_nf || [])]
+        .map((f) => f.path)
+        .filter((p) => !ficam.has(p));
+
       const payloadOcorrencia = {
         horario: formOcorrencia.horario,
         hora_saida: formOcorrencia.hora_saida || null,
@@ -906,7 +953,12 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         descricao: descricaoFinal,
         severidade: formOcorrencia.severidade,
         vigilante: formOcorrencia.vigilante.toUpperCase(),
-        foto_url: formOcorrencia.foto_url,
+        // Foto antiga (base64): só vai no payload para apagar; senão fica como está.
+        ...(fotoLegado?.removida ? { foto_url: null } : {}),
+        fotos: fotosFinais,
+        fotos_nf: fotosNfFinais,
+        entrega_material: comEntrega,
+        nf_verificada: comEntrega && formOcorrencia.nf_verificada,
         empresa: formOcorrencia.empresa.toUpperCase(),
         nome_pessoa: primeiraPessoa.nome.toUpperCase(),
         documento_cpf: primeiraPessoa.cpf,
@@ -926,9 +978,12 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         await api.atualizarOcorrencia(ocorrenciaEmEdicao.id, payloadOcorrencia);
         toast.success('Lançamento atualizado com sucesso!');
       } else {
-        await api.adicionarOcorrencia(relId, payloadOcorrencia);
-        toast.success('Lançamento registrado no livro de ocorrências!');
+        await api.adicionarOcorrencia(relId, { ...payloadOcorrencia, id: ocorrenciaId });
+        toast.success(comEntrega ? 'Lançamento registrado. Ficha cega enviada ao almoxarifado.' : 'Lançamento registrado no livro de ocorrências!');
       }
+      if (falhasFoto > 0) toast.warning(`${falhasFoto} foto(s) não subiram — o lançamento foi salvo sem elas.`);
+      void api.removerFotosOcorrencia(removidas);
+      limparFotosForm();
 
       // Salva no histórico para autocompletar futuramente
       for (const p of pessoasValidas) {
@@ -1251,6 +1306,66 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     </>
   );
 
+  /**
+   * Entrega de material: entradas (veículo, visitante, veículo leve) e Outro registro.
+   * Marcada, exige NF verificada e foto da(s) nota(s).
+   */
+  const blocoEntrega = entregaAplicavel ? (
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+      <div className="flex items-start gap-2.5">
+        <input
+          type="checkbox"
+          id={`${idForm}-entrega`}
+          checked={formOcorrencia.entrega_material}
+          onChange={(e) => setFormOcorrencia((prev) => ({
+            ...prev,
+            entrega_material: e.target.checked,
+            nf_verificada: e.target.checked ? prev.nf_verificada : false,
+          }))}
+          className="mt-0.5 h-4 w-4 cursor-pointer rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+        />
+        <label htmlFor={`${idForm}-entrega`} className="cursor-pointer text-xs text-emerald-950 dark:text-emerald-100">
+          <span className="flex items-center gap-1.5 font-bold">
+            <Package className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+            É entrega de material?
+          </span>
+          <span className="mt-0.5 block text-[11px] text-emerald-800 dark:text-emerald-300">
+            Marque quando chegar material para a fábrica. Ao salvar, o almoxarifado recebe a ficha cega para conferir, com as fotos.
+          </span>
+        </label>
+      </div>
+
+      {formOcorrencia.entrega_material && (
+        <div className="space-y-3 border-t border-emerald-200 pt-3 dark:border-emerald-900/60">
+          <div className="flex items-start gap-2.5">
+            <input
+              type="checkbox"
+              id={`${idForm}-nf`}
+              checked={formOcorrencia.nf_verificada}
+              onChange={(e) => setFormOcorrencia((prev) => ({ ...prev, nf_verificada: e.target.checked }))}
+              className="mt-0.5 h-4 w-4 cursor-pointer rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+            />
+            <label htmlFor={`${idForm}-nf`} className="cursor-pointer text-xs font-bold text-emerald-950 dark:text-emerald-100">
+              Confirmo que a nota fiscal foi verificada <span className="text-rose-600">*</span>
+            </label>
+          </div>
+          <FotosOcorrenciaCampo
+            titulo="Foto da(s) nota(s) fiscal(is)"
+            ajuda="Uma foto por nota. Fotografe a nota inteira, com o número legível."
+            obrigatorio
+            tom="emerald"
+            salvas={fotosNfSalvas}
+            novas={fotosNfNovas}
+            onAdicionar={adicionarFotosNf}
+            onRemoverSalva={(id) => setFotosNfSalvas((prev) => prev.filter((f) => f.id !== id))}
+            onRemoverNova={(key) => setFotosNfNovas((prev) => descartarNova(prev, key))}
+            onAbrir={abrirFotos}
+          />
+        </div>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div className="mx-auto max-w-7xl space-y-4 pb-12 lg:space-y-6">
       {/* Header */}
@@ -1290,7 +1405,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
             <button
               type="button"
               onClick={() => setPdfPreview({
-                gerar: () => gerarRelatorioPortariaPdf(relatorioAtivo),
+                // Livro completo do banco: traz a foto antiga (base64) e assina as do Storage.
+                gerar: async () => gerarRelatorioPortariaPdf((await api.obterRelatorio(relatorioAtivo.id)) ?? relatorioAtivo),
                 titulo: `Livro de Portaria - ${relatorioAtivo.numero_protocolo || relatorioAtivo.data}`,
               })}
               aria-label="Visualizar / exportar livro em PDF"
@@ -1599,10 +1715,23 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                       const controlaSaida = (api.TIPOS_COM_SAIDA as readonly string[]).includes(oc.tipo_registro || '');
                       const permanencia = api.formatarPermanencia(api.minutosDePermanencia(oc.horario, oc.hora_saida));
 
+                      const nFotos = contarFotosOcorrencia(oc);
+                      const capa = fotosDaOcorrencia(oc).find((f) => f.url)?.url;
+
                       return (
                         <div
                           key={oc.id || index}
-                          className={`group flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition-all ${
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Ver detalhes do lançamento das ${String(oc.horario).slice(0, 5)}`}
+                          onClick={() => setOcorrenciaDetalhe(oc)}
+                          onKeyDown={(e) => {
+                            if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                              e.preventDefault();
+                              setOcorrenciaDetalhe(oc);
+                            }
+                          }}
+                          className={`group flex cursor-pointer flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
                             isAlerta
                               ? 'border-amber-300 bg-amber-50/30 dark:border-amber-900/60 dark:bg-amber-950/20'
                               : temSaidaPendente
@@ -1655,6 +1784,16 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                                     Briefing de Segurança
                                   </span>
                                 )}
+                                {oc.entrega_material && (
+                                  <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                                    oc.nf_verificada
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                      : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                  }`}>
+                                    <Package className="h-3 w-3" aria-hidden="true" />
+                                    Entrega de material{oc.nf_verificada ? ' · NF verificada' : ' · NF não verificada'}
+                                  </span>
+                                )}
                               </div>
 
                               <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 break-words leading-relaxed">
@@ -1675,23 +1814,33 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                           </div>
 
                           {/* Foto e Ações */}
-                          <div className="flex items-center justify-end gap-2 shrink-0 self-end sm:self-center pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800/80">
-                            {/* Miniatura de Foto se houver */}
-                            {oc.foto_url && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            className="flex items-center justify-end gap-2 shrink-0 self-end sm:self-center pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800/80"
+                          >
+                            {/* Miniatura: primeira foto + total (a foto antiga carrega no detalhe) */}
+                            {nFotos.total > 0 && (
                               <button
                                 type="button"
-                                onClick={() => setModalFotoZoom(oc.foto_url || null)}
-                                className="relative group/foto h-10 w-10 rounded-xl overflow-hidden border border-purple-300 bg-slate-100 dark:bg-slate-800 shrink-0 shadow-xs hover:ring-2 hover:ring-purple-500 transition-all"
-                                title="Ver foto em tamanho real"
+                                onClick={() => {
+                                  const urls = fotosDaOcorrencia(oc).map((f) => f.url).filter(Boolean);
+                                  if (urls.length) lightbox.abrir(urls, 0);
+                                  else setOcorrenciaDetalhe(oc);
+                                }}
+                                aria-label={`Ver ${nFotos.total} foto(s) do lançamento`}
+                                className="relative group/foto flex h-10 w-10 items-center justify-center rounded-xl overflow-hidden border border-purple-300 bg-slate-100 dark:bg-slate-800 shrink-0 shadow-xs hover:ring-2 hover:ring-purple-500 transition-all"
                               >
-                                <img
-                                  src={oc.foto_url}
-                                  alt="Registro de ocorrência"
-                                  className="h-full w-full object-cover"
-                                />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/foto:opacity-100 flex items-center justify-center transition-opacity text-white">
-                                  <Eye className="h-4 w-4" />
-                                </div>
+                                {capa ? (
+                                  <img src={capa} alt="" className="h-full w-full object-cover" />
+                                ) : (
+                                  <Camera className="h-4 w-4 text-purple-600 dark:text-purple-400" aria-hidden="true" />
+                                )}
+                                {nFotos.total > 1 && (
+                                  <span className="absolute bottom-0 right-0 rounded-tl-md bg-black/70 px-1 text-[10px] font-bold text-white">
+                                    {nFotos.total}
+                                  </span>
+                                )}
                               </button>
                             )}
 
@@ -1768,23 +1917,6 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
           {painelLivros}
         </ListaRegistrosSheet>
       )}
-
-      {/* Input oculto para upload de arquivo e câmera */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleSelecionarImagem}
-      />
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleSelecionarImagem}
-      />
 
       {/* Modal: Lançar / Editar Ocorrência (Desktop Expandido max-w-4xl) */}
       {modalNovaOcorrencia && (
@@ -1909,7 +2041,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
                       <ShieldCheck className="h-4 w-4" />
-                      <span>Descrição da Ronda / Ocorrência & Foto</span>
+                      <span>Descrição da Ronda / Ocorrência / Registro</span>
                     </h4>
                     {formOcorrencia.tipo_registro === 'OCORRENCIA_GERAL' && (
                       <div className="flex items-center gap-1.5">
@@ -1945,61 +2077,11 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                     />
                   </div>
 
-                  {/* Anexo de Foto da Câmera / Upload */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
-                      Foto da Câmera / Registro Fotográfico (Opcional)
-                    </label>
-
-                    {formOcorrencia.foto_url ? (
-                      <div className="flex items-center gap-3 p-3 rounded-xl border border-purple-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                        <img
-                          src={formOcorrencia.foto_url}
-                          alt="Prévia"
-                          className="h-16 w-20 object-cover rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer"
-                          onClick={() => setModalFotoZoom(formOcorrencia.foto_url)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase">
-                            Foto anexada ao registro
-                          </p>
-                          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
-                            ✓ Pronta para inclusão no livro
-                          </p>
-                        </div>
-                        <button aria-label="Remover foto"
-                          type="button"
-                          onClick={() => setFormOcorrencia((prev) => ({ ...prev, foto_url: null }))}
-                          className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                          title="Remover foto"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => cameraInputRef.current?.click()}
-                          className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-purple-500 active:scale-95"
-                        >
-                          <Camera className="h-4 w-4" />
-                          Tirar Foto (Câmera)
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                        >
-                          <Upload className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                          Carregar da Galeria
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  {/* Outro registro também pode ser entrega de material */}
+                  {blocoEntrega}
                 </div>
               ) : formOcorrencia.tipo_registro === 'VEICULO_LEVE' ? (
+                <div className="space-y-4">
                 <VeiculoLeveFormFields
                   veiculos={veiculosLeves}
                   carregando={carregandoVeiculosLeves}
@@ -2028,6 +2110,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   }}
                   onOrigemChange={(origem) => setFormOcorrencia((prev) => ({ ...prev, condutor_origem: origem, condutor_pessoa_id: origem === 'rh_pessoas' ? prev.condutor_pessoa_id : null }))}
                 />
+                {blocoEntrega}
+                </div>
               ) : formOcorrencia.tipo_registro === 'SAIDA_COLABORADOR' ? (
                 /* CASO B: Saída de Colaborador (TEN) integrado à tabela rh_pessoas */
                 <div className="space-y-4">
@@ -2401,106 +2485,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                       </datalist>
                     </div>
 
-                    {/* Checkbox Fará Briefing de Segurança & Botão Checar Validade (6 meses) */}
-                    {(formOcorrencia.tipo_registro === 'ENTRADA_VEICULO' || formOcorrencia.tipo_registro === 'ENTRADA_VISITANTE') && (
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/20 space-y-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2.5">
-                          <div className="flex items-start gap-2.5 flex-1 min-w-[240px]">
-                            <input
-                              type="checkbox"
-                              id="checkFaraBriefing"
-                              checked={formOcorrencia.fara_briefing}
-                              onChange={(e) => setFormOcorrencia({ ...formOcorrencia, fara_briefing: e.target.checked })}
-                              className="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                            />
-                            <label htmlFor="checkFaraBriefing" className="cursor-pointer text-xs font-medium text-emerald-900 dark:text-emerald-200">
-                              <span className="font-bold">Fará Briefing de Segurança? (Validade: 6 meses)</span>
-                              <p className="text-[11px] text-emerald-700 dark:text-emerald-300 mt-0.5">
-                                {formOcorrencia.fara_briefing
-                                  ? 'Marcado: Uma sessão de briefing (FRM.SGP-0013) será aberta para colher assinaturas.'
-                                  : 'Desmarcado: Visitantes com briefing válido nos últimos 6 meses não precisam refazer.'}
-                              </p>
-                            </label>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleChecarBriefing()}
-                            disabled={checandoBriefing}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-xs font-bold text-emerald-800 shadow-2xs hover:bg-emerald-100 dark:border-emerald-700 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-slate-800 transition-all active:scale-95 shrink-0 disabled:opacity-50"
-                          >
-                            {checandoBriefing ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                            )}
-                            <span>Checar Validade de Todos</span>
-                          </button>
-                        </div>
-
-                        {/* Painel de Resumo Inline da Checagem de Validade */}
-                        {Object.keys(statusBriefingPorPessoa).length > 0 && (
-                          <div className="rounded-xl border border-emerald-300/80 bg-white/90 p-3 text-xs space-y-2 dark:border-emerald-800 dark:bg-slate-900/90 shadow-2xs">
-                            <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
-                              <span className="flex items-center gap-1.5">
-                                <Shield className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                                Relatório de Validade do Briefing (6 meses)
-                              </span>
-                              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                                {Object.values(statusBriefingPorPessoa).some((s) => s.status !== 'VALIDO') ? (
-                                  <span className="text-amber-700 font-bold dark:text-amber-400">⚠️ Briefing Obrigatório</span>
-                                ) : (
-                                  <span className="text-emerald-700 font-bold dark:text-emerald-400">✅ Todos em Dia (Opcional)</span>
-                                )}
-                              </span>
-                            </div>
-
-                            <div className="space-y-1.5">
-                              {pessoasForm.map((p, i) => {
-                                const st = statusBriefingPorPessoa[i];
-                                if (!st) return null;
-                                return (
-                                  <div
-                                    key={i}
-                                    className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px] dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800"
-                                  >
-                                    <div>
-                                      <strong className="text-slate-900 dark:text-slate-100">{p.nome || `Pessoa #${i + 1}`}</strong>
-                                      {p.cpf && <span className="font-mono text-slate-500 ml-1.5">({p.cpf})</span>}
-                                      <span className="text-slate-500 dark:text-slate-400 ml-2">
-                                        · {st.status === 'NUNCA_REALIZADO' ? (
-                                          'Nunca realizou briefing'
-                                        ) : (
-                                          <>
-                                            Realizado em: <strong className="text-slate-700 dark:text-slate-300">{st.dataRealizacao?.split('-').reverse().join('/')}</strong>
-                                          </>
-                                        )}
-                                      </span>
-                                    </div>
-
-                                    <div className="shrink-0 font-bold ml-2">
-                                      {st.status === 'VALIDO' ? (
-                                        <span className="text-emerald-700 dark:text-emerald-400 bg-emerald-100/70 dark:bg-emerald-950 px-2 py-0.5 rounded">
-                                          Válido · Restam {st.diasRestantes} dia(s)
-                                        </span>
-                                      ) : st.status === 'VENCIDO' ? (
-                                        <span className="text-amber-800 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950 px-2 py-0.5 rounded">
-                                          Vencido há {st.diasDecorridos} dia(s)
-                                        </span>
-                                      ) : (
-                                        <span className="text-rose-700 dark:text-rose-400 bg-rose-100/70 dark:bg-rose-950 px-2 py-0.5 rounded">
-                                          Pendente (1º Briefing)
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {/* Entrega de material (no lugar do briefing, que foi para Pessoas) */}
+                    {blocoEntrega}
                   </div>
 
                   {/* Lista de Pessoas / Visitantes que Chegaram Juntos */}
@@ -2681,9 +2667,129 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                         </div>
                       ))}
                     </div>
+
+                    {/* Briefing de segurança das pessoas acima: marcar + checar validade (6 meses) */}
+                    {(formOcorrencia.tipo_registro === 'ENTRADA_VEICULO' || formOcorrencia.tipo_registro === 'ENTRADA_VISITANTE') && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/20 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2.5">
+                          <div className="flex items-start gap-2.5 flex-1 min-w-[240px]">
+                            <input
+                              type="checkbox"
+                              id="checkFaraBriefing"
+                              checked={formOcorrencia.fara_briefing}
+                              onChange={(e) => setFormOcorrencia({ ...formOcorrencia, fara_briefing: e.target.checked })}
+                              className="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            />
+                            <label htmlFor="checkFaraBriefing" className="cursor-pointer text-xs font-medium text-emerald-900 dark:text-emerald-200">
+                              <span className="font-bold">Fará Briefing de Segurança? (Validade: 6 meses)</span>
+                              <p className="text-[11px] text-emerald-700 dark:text-emerald-300 mt-0.5">
+                                {formOcorrencia.fara_briefing
+                                  ? 'Marcado: Uma sessão de briefing (FRM.SGP-0013) será aberta para colher assinaturas.'
+                                  : 'Desmarcado: Visitantes com briefing válido nos últimos 6 meses não precisam refazer.'}
+                              </p>
+                            </label>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleChecarBriefing()}
+                            disabled={checandoBriefing}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-xs font-bold text-emerald-800 shadow-2xs hover:bg-emerald-100 dark:border-emerald-700 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-slate-800 transition-all active:scale-95 shrink-0 disabled:opacity-50"
+                          >
+                            {checandoBriefing ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                            )}
+                            <span>Checar Validade de Todos</span>
+                          </button>
+                        </div>
+
+                        {/* Painel de Resumo Inline da Checagem de Validade */}
+                        {Object.keys(statusBriefingPorPessoa).length > 0 && (
+                          <div className="rounded-xl border border-emerald-300/80 bg-white/90 p-3 text-xs space-y-2 dark:border-emerald-800 dark:bg-slate-900/90 shadow-2xs">
+                            <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                <Shield className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                                Relatório de Validade do Briefing (6 meses)
+                              </span>
+                              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                                {Object.values(statusBriefingPorPessoa).some((s) => s.status !== 'VALIDO') ? (
+                                  <span className="text-amber-700 font-bold dark:text-amber-400">⚠️ Briefing Obrigatório</span>
+                                ) : (
+                                  <span className="text-emerald-700 font-bold dark:text-emerald-400">✅ Todos em Dia (Opcional)</span>
+                                )}
+                              </span>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              {pessoasForm.map((p, i) => {
+                                const st = statusBriefingPorPessoa[i];
+                                if (!st) return null;
+                                return (
+                                  <div
+                                    key={i}
+                                    className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px] dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800"
+                                  >
+                                    <div>
+                                      <strong className="text-slate-900 dark:text-slate-100">{p.nome || `Pessoa #${i + 1}`}</strong>
+                                      {p.cpf && <span className="font-mono text-slate-500 ml-1.5">({p.cpf})</span>}
+                                      <span className="text-slate-500 dark:text-slate-400 ml-2">
+                                        · {st.status === 'NUNCA_REALIZADO' ? (
+                                          'Nunca realizou briefing'
+                                        ) : (
+                                          <>
+                                            Realizado em: <strong className="text-slate-700 dark:text-slate-300">{st.dataRealizacao?.split('-').reverse().join('/')}</strong>
+                                          </>
+                                        )}
+                                      </span>
+                                    </div>
+
+                                    <div className="shrink-0 font-bold ml-2">
+                                      {st.status === 'VALIDO' ? (
+                                        <span className="text-emerald-700 dark:text-emerald-400 bg-emerald-100/70 dark:bg-emerald-950 px-2 py-0.5 rounded">
+                                          Válido · Restam {st.diasRestantes} dia(s)
+                                        </span>
+                                      ) : st.status === 'VENCIDO' ? (
+                                        <span className="text-amber-800 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950 px-2 py-0.5 rounded">
+                                          Vencido há {st.diasDecorridos} dia(s)
+                                        </span>
+                                      ) : (
+                                        <span className="text-rose-700 dark:text-rose-400 bg-rose-100/70 dark:bg-rose-950 px-2 py-0.5 rounded">
+                                          Pendente (1º Briefing)
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
+              </div>
+
+              {/* 3.2 Fotos do registro — todos os tipos de lançamento */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                <FotosOcorrenciaCampo
+                  titulo="Fotos do registro"
+                  ajuda="Câmera ou galeria. As fotos são reduzidas antes de subir."
+                  legado={fotoLegado && !fotoLegado.removida ? {
+                    url: fotoLegado.url,
+                    carregando: fotoLegado.carregando,
+                    onRemover: () => setFotoLegado((prev) => (prev ? { ...prev, removida: true } : prev)),
+                  } : null}
+                  salvas={fotosSalvas}
+                  novas={fotosNovas}
+                  onAdicionar={adicionarFotos}
+                  onRemoverSalva={(id) => setFotosSalvas((prev) => prev.filter((f) => f.id !== id))}
+                  onRemoverNova={(key) => setFotosNovas((prev) => descartarNova(prev, key))}
+                  onAbrir={abrirFotos}
+                />
               </div>
 
               {/* 4. Prévia do Registro */}
@@ -2804,32 +2910,29 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         </Modal>
       )}
 
-      {/* Modal Foto Zoom */}
-      {modalFotoZoom && (
-        <Modal onClose={() => setModalFotoZoom(null)} maxWidth="max-w-2xl" zIndexClassName="z-[115]">
-          <ModalHeader onClose={() => setModalFotoZoom(null)}>
-            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-              Registro Fotográfico da Ocorrência
-            </h3>
-          </ModalHeader>
-          <ModalBody className="p-2 sm:p-4 flex items-center justify-center bg-black/5 dark:bg-black/40">
-            <img
-              src={modalFotoZoom}
-              alt="Foto ampliada"
-              className="max-h-[75vh] w-auto rounded-xl object-contain shadow-lg"
-            />
-          </ModalBody>
-          <ModalFooter>
-            <button
-              type="button"
-              onClick={() => setModalFotoZoom(null)}
-              className="rounded-xl bg-purple-600 px-4 py-2 text-xs font-bold text-white hover:bg-purple-500"
-            >
-              Fechar
-            </button>
-          </ModalFooter>
-        </Modal>
-      )}
+      {/* Detalhes do lançamento (clique no registro) */}
+      {ocorrenciaDetalhe && (() => {
+        const oc = ocorrenciaDetalhe;
+        const tipo = TIPOS_REGISTRO.find((t) => t.id === oc.tipo_registro);
+        const pendente = (api.TIPOS_COM_SAIDA as readonly string[]).includes(oc.tipo_registro || '') && !oc.hora_saida;
+        const fechar = () => setOcorrenciaDetalhe(null);
+        return (
+          <DetalheOcorrenciaModal
+            ocorrencia={oc}
+            contexto={relatorioAtivo
+              ? `Livro ${relatorioAtivo.data.split('-').reverse().join('/')} · Turno ${relatorioAtivo.turno} · ${relatorioAtivo.numero_protocolo}`
+              : 'Relatório de Ocorrências'}
+            tipoLabel={tipo?.label}
+            tipoBadgeCor={tipo?.badgeCor}
+            onClose={fechar}
+            onEditar={podeEditarAtivo ? () => { fechar(); abrirModalEdicao(oc); } : undefined}
+            onRegistrarSaida={pendente ? () => { fechar(); abrirModalDarSaida(oc); } : undefined}
+            onAbrirFotos={(imagens, indice) => lightbox.abrir(imagens, indice)}
+          />
+        );
+      })()}
+
+      {lightbox.elemento}
 
       {/* ConfirmDialog: Excluir Plantão */}
       {itemParaExcluir && (

@@ -2178,6 +2178,14 @@ export interface PortRelatorioOcorrencia {
   veiculo_leve_modelo?: string | null;
   condutor_pessoa_id?: string | null;
   condutor_origem?: 'rh_pessoas' | 'manual' | null;
+  /** Fotos do lançamento (bucket port-ocorrencias). `foto_url` é o legado em base64. */
+  fotos?: PortAlcoolemiaFoto[];
+  /** Fotos das notas fiscais — entrada com entrega de material. */
+  fotos_nf?: PortAlcoolemiaFoto[];
+  entrega_material?: boolean;
+  nf_verificada?: boolean;
+  /** Coluna gerada: há foto antiga em `foto_url` (a lista não traz o base64). */
+  tem_foto_legado?: boolean;
   created_at: string;
   updated_at?: string;
   excluido_em?: string | null;

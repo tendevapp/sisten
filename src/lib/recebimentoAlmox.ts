@@ -665,3 +665,35 @@ export function extrairRiPosConferidos(
 
   return Array.from(vistos);
 }
+
+// ---------------------------------------------------------------------------
+// Ficha cega aberta pela Portaria (entrega de material no Relatório de Ocorrências)
+// ---------------------------------------------------------------------------
+
+/** Rótulo do status da ficha cega na tela e no PDF. */
+export const ROTULO_STATUS_CARGA: Record<string, string> = {
+  recebida: 'Recebida',
+  em_conferencia: 'Em conferência',
+  conferida: 'Conferida',
+  divergente: 'Divergente',
+  aguardando_almox: 'Aguardando almoxarifado',
+  nao_chegou: 'Não chegou',
+};
+
+export function rotuloStatusCarga(status: string): string {
+  return ROTULO_STATUS_CARGA[status] ?? status;
+}
+
+/** A portaria registrou a entrega e o almoxarifado ainda não confirmou nem disse que não chegou. */
+export function cargaAguardandoAlmox(c: { status: string; origem?: string | null }): boolean {
+  return c.status === 'aguardando_almox';
+}
+
+/** Entregas da portaria esperando o almoxarifado — a mais antiga primeiro. */
+export function entregasPortariaPendentes<T extends { status: string; data: string; hora?: string | null; created_at: string }>(
+  cargas: T[],
+): T[] {
+  return cargas
+    .filter((c) => cargaAguardandoAlmox(c))
+    .sort((a, b) => `${a.data} ${a.hora ?? ''} ${a.created_at}`.localeCompare(`${b.data} ${b.hora ?? ''} ${b.created_at}`));
+}

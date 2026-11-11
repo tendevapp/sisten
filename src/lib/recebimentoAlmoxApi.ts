@@ -307,6 +307,16 @@ export async function registrarConferencia(
 // Leitura
 // ---------------------------------------------------------------------------
 
+export type StatusCarga = 'recebida' | 'em_conferencia' | 'conferida' | 'divergente' | 'aguardando_almox' | 'nao_chegou';
+
+/** Foto tirada pela portaria na entrada (bucket port-ocorrencias). NF primeiro. */
+export interface FotoPortariaCarga {
+  path: string;
+  nome: string;
+  tipo: string;
+  categoria: 'nf' | 'registro';
+}
+
 export interface CargaRow {
   id: string;
   codigo: string;
@@ -319,7 +329,8 @@ export interface CargaRow {
   nota_fiscal: string | null;
   nro_pedido: string | null;
   qtd_volumes_declarada: number | null;
-  qtd_volumes_contada: number;
+  /** Nula só na entrega aberta pela portaria que o almoxarifado ainda não contou. */
+  qtd_volumes_contada: number | null;
   tipo_embalagem: TipoEmbalagem | null;
   lacre_integro: boolean | null;
   avaria_aparente: boolean;
@@ -329,7 +340,17 @@ export interface CargaRow {
   evidencias: AnexoRecebimento[];
   observacao: string | null;
   divergencia: boolean;
-  status: 'recebida' | 'em_conferencia' | 'conferida' | 'divergente';
+  status: StatusCarga;
+  /** `portaria`: aberta pelo Relatório de Ocorrências (entrega de material). */
+  origem?: 'almox' | 'portaria';
+  port_ocorrencia_id?: string | null;
+  fotos_portaria?: FotoPortariaCarga[];
+  portaria_resumo?: string | null;
+  almox_confirmado_em?: string | null;
+  almox_confirmado_por?: string | null;
+  nao_chegou_motivo?: string | null;
+  nao_chegou_em?: string | null;
+  nao_chegou_por?: string | null;
   criado_por_id: string | null;
   criado_por_nome: string | null;
   created_at: string;
@@ -542,6 +563,33 @@ export async function excluirConferencia(id: string, usuarioId?: string | null):
 // ---------------------------------------------------------------------------
 // Edição pelo autor + log de alterações
 // ---------------------------------------------------------------------------
+
+/** URLs assinadas (24 h) das fotos que a portaria tirou na entrada. */
+export async function assinarFotosPortaria(paths: string[]): Promise<Record<string, string>> {
+  if (!paths.length) return {};
+  const { data } = await supabase.storage.from('port-ocorrencias').createSignedUrls(paths, 60 * 60 * 24);
+  const mapa: Record<string, string> = {};
+  (data ?? []).forEach((item: any) => {
+    if (item?.path && item?.signedUrl) mapa[item.path] = item.signedUrl;
+  });
+  return mapa;
+}
+
+/**
+ * Entrega aberta pela portaria que não chegou ao almoxarifado (desistiu,
+ * descarregou em outro lugar, foi embora). Só sai de `aguardando_almox`; se o
+ * material aparecer depois, "Confirmar e preencher" ainda funciona.
+ */
+export async function informarNaoChegou(
+  id: string,
+  motivo: string,
+  user: { id?: string | null; nome: string },
+): Promise<void> {
+  const { error } = await supabase.rpc('alm_receb_carga_nao_chegou' as any, {
+    p_id: id, p_motivo: motivo, p_user: { id: user.id ?? null, nome: user.nome },
+  } as any);
+  if (error) throw new Error(error.message);
+}
 
 /** Campos editáveis da ficha cega (o que a UI manda no patch). */
 export interface CargaPatch {

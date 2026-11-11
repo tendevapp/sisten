@@ -16,11 +16,12 @@ import { formatarLotesValidade } from '../lotesValidade';
 export type { PdfGerado };
 import { formatDateTimeBR, formatQtd } from '../format';
 import {
-  ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, resumoNfPorPedido, separarNotasFiscais,
+  ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, resumoNfPorPedido, rotuloStatusCarga, separarNotasFiscais,
   type AnexoRecebimento, type FontePedido, type TipoDivergencia,
 } from '../recebimentoAlmox';
 import {
   assinarEvidencias,
+  assinarFotosPortaria,
   type CargaRow, type ConferenciaItemRow, type ConferenciaRow, type NaoConformidadeRow,
 } from '../recebimentoAlmoxApi';
 
@@ -58,10 +59,15 @@ const FOTO_GAP = 10;
 const LEGENDA_ALTURA = 11;
 
 /** Seção de fotos: 2 por linha, mantendo a proporção; legenda embaixo de cada uma. */
-async function desenharFotos(w: PdfTextWriter, titulo: string, fotos: FotoPdf[]): Promise<void> {
+async function desenharFotos(
+  w: PdfTextWriter,
+  titulo: string,
+  fotos: FotoPdf[],
+  assinar: (paths: string[]) => Promise<Record<string, string>> = assinarEvidencias,
+): Promise<void> {
   if (!fotos.length) return;
 
-  const urls = await assinarEvidencias(fotos.map((f) => f.path)).catch(() => ({} as Record<string, string>));
+  const urls = await assinar(fotos.map((f) => f.path)).catch(() => ({} as Record<string, string>));
   const doc = w.getDoc();
   const font = w.getFont();
   const largura = (w.getContentWidth() - FOTO_GAP) / 2;
@@ -114,8 +120,8 @@ export async function gerarFichaCegaPdf(c: CargaRow): Promise<PdfGerado> {
     title: 'Ficha Cega de Volumes',
     formCode: FORM_CODIGO_RECEBIMENTO,
     protocol: c.codigo,
-    statusBadge: c.divergencia ? 'DIVERGENTE' : c.status.replace('_', ' ').toUpperCase(),
-    statusColor: c.divergencia ? 'red' : c.status === 'conferida' ? 'green' : 'blue',
+    statusBadge: c.divergencia ? 'DIVERGENTE' : rotuloStatusCarga(c.status).toUpperCase(),
+    statusColor: c.divergencia || c.status === 'nao_chegou' ? 'red' : c.status === 'conferida' ? 'green' : 'blue',
   });
 
   const notas = separarNotasFiscais(c.nota_fiscal);
@@ -126,7 +132,7 @@ export async function gerarFichaCegaPdf(c: CargaRow): Promise<PdfGerado> {
     { label: 'Motorista', value: vazio(c.motorista) },
     { label: 'CT-e / canhoto', value: vazio(c.doc_transporte) },
     { label: 'PO', value: vazio(c.nro_pedido) },
-    { label: 'Volumes contados', value: String(c.qtd_volumes_contada) },
+    { label: 'Volumes contados', value: c.qtd_volumes_contada == null ? 'Contagem pendente' : String(c.qtd_volumes_contada) },
     { label: 'Volumes declarados', value: vazio(c.qtd_volumes_declarada) },
     { label: 'Embalagem', value: vazio(c.tipo_embalagem) },
     { label: 'Lacre íntegro', value: c.lacre_integro == null ? '-' : c.lacre_integro ? 'Sim' : 'Não' },
@@ -135,13 +141,26 @@ export async function gerarFichaCegaPdf(c: CargaRow): Promise<PdfGerado> {
     { label: 'Notas fiscais', value: notas.length ? notas.join(' · ') : '-', fullWidth: true },
     { label: 'Criado por', value: vazio(c.criado_por_nome) },
     { label: 'Registrado em', value: vazio(formatDateTimeBR(c.created_at)) },
+    ...(c.almox_confirmado_por ? [{ label: 'Confirmada pelo almoxarifado', value: `${c.almox_confirmado_por}${c.almox_confirmado_em ? ` · ${formatDateTimeBR(c.almox_confirmado_em)}` : ''}` }] : []),
   ];
   w.drawInfoGrid(campos, 2);
+
+  if (c.origem === 'portaria') {
+    w.drawCallout(`Aberta pela Portaria${c.hora ? ` às ${c.hora.slice(0, 5)}` : ''}`, c.portaria_resumo || 'Entrega de material registrada na entrada.');
+  }
+  if (c.status === 'nao_chegou') {
+    w.drawCallout('Material não chegou', `${c.nao_chegou_motivo || '-'}${c.nao_chegou_por ? ` — ${c.nao_chegou_por}` : ''}${c.nao_chegou_em ? ` · ${formatDateTimeBR(c.nao_chegou_em)}` : ''}`);
+  }
 
   if (c.avaria_aparente) w.drawCallout('Avaria aparente', c.avaria_descricao || 'Sim, sem descrição.');
   if (c.observacao) w.drawCallout('Observação', c.observacao);
 
   await desenharFotos(w, 'Fotos da carga', fotosDe(c.evidencias, c.codigo));
+  const fotosPortaria = (c.fotos_portaria ?? []).map((f) => ({
+    path: f.path,
+    legenda: f.categoria === 'nf' ? 'Nota fiscal (portaria)' : 'Foto da portaria',
+  }));
+  await desenharFotos(w, 'Fotos da portaria', fotosPortaria, assinarFotosPortaria);
 
   w.drawSignatures([
     { role: 'Conferente (Almoxarifado)', name: c.criado_por_nome || undefined },

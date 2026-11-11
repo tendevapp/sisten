@@ -220,6 +220,7 @@ const RPCS: Record<string, ConfigRpc> = {
     respostaProvisoria: (_args, id) => ({ id, codigo: '', [MARCA_OFFLINE]: true }),
   },
   alm_receb_editar_carga: { rotulo: 'Recebimento — edição da ficha cega', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
+  alm_receb_carga_nao_chegou: { rotulo: 'Recebimento — entrega da portaria não chegou', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
   alm_receb_editar_conferencia: { rotulo: 'Recebimento — edição da conferência', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
   alm_receb_editar_nc: { rotulo: 'Recebimento — edição da NC', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
   // Almoxarifado confirma a devolutiva de Suprimentos na doca. A RPC ignora o
@@ -304,6 +305,7 @@ const BUCKETS: Record<string, ConfigBucket> = {
   'qua-rnc-evidencias': { rotulo: 'RNC — anexo' },
   'alm-recebimento': { rotulo: 'Recebimento — foto' },
   'port-alcoolemia': { rotulo: 'Teste de alcoolemia — foto' },
+  'port-ocorrencias': { rotulo: 'Relatório de ocorrências — foto' },
 };
 
 /** RPCs que só leem (POST por protocolo): a resposta fica guardada como as leituras comuns. */

@@ -4,6 +4,7 @@ import type { PDFDocument } from 'pdf-lib';
 vi.mock('../../db/localDb', () => ({ localDb: {} }));
 vi.mock('../recebimentoAlmoxApi', () => ({
   assinarEvidencias: vi.fn(async (paths: string[]) => Object.fromEntries(paths.map((p) => [p, `https://assinada/${p}`]))),
+  assinarFotosPortaria: vi.fn(async (paths: string[]) => Object.fromEntries(paths.map((p) => [p, `https://portaria/${p}`]))),
 }));
 vi.mock('./core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./core')>()),

@@ -13,6 +13,7 @@
 import { supabase } from '../db/supabaseClient';
 import { buscarTudo } from './buscarTudo';
 import { comprimirImagemUpload } from './imageCompression';
+import { aceitaEntregaMaterial } from './portariaFotosOcorrencia';
 import type {
   PortAlcoolemiaResultado,
   PortAlcoolemiaFoto,
@@ -542,7 +543,8 @@ const dbOcorrencias = () => (supabase.from as any)('port_relatorio_ocorrencias')
 export function obterMetadadosOcorrencia(id: string): Partial<PortRelatorioOcorrencia> {
   try {
     const map = JSON.parse(localStorage.getItem(KEY_OCORRENCIA_EXTRA) || '{}');
-    return map[id] || {};
+    const { foto_url: _f, fotos: _fs, fotos_nf: _nf, ...meta } = map[id] || {};
+    return meta;
   } catch {
     return {};
   }
@@ -551,7 +553,11 @@ export function obterMetadadosOcorrencia(id: string): Partial<PortRelatorioOcorr
 export function salvarMetadadosOcorrencia(id: string, meta: Partial<PortRelatorioOcorrencia>): void {
   try {
     const map = JSON.parse(localStorage.getItem(KEY_OCORRENCIA_EXTRA) || '{}');
-    map[id] = { ...(map[id] || {}), ...meta };
+    // Fotos ficam fora: o banco é a fonte (e o base64 antigo estourava o localStorage).
+    const { foto_url: _f, fotos: _fs, fotos_nf: _nf, tem_foto_legado: _l, ...semFotos } = meta;
+    const anterior = { ...(map[id] || {}) };
+    delete anterior.foto_url;
+    map[id] = { ...anterior, ...semFotos };
     localStorage.setItem(KEY_OCORRENCIA_EXTRA, JSON.stringify(map));
   } catch {}
 }
@@ -562,6 +568,86 @@ export function removerMetadadosOcorrencia(id: string): void {
     delete map[id];
     localStorage.setItem(KEY_OCORRENCIA_EXTRA, JSON.stringify(map));
   } catch {}
+}
+
+// ---------------------------------------------------------------------
+// Fotos dos lançamentos (bucket port-ocorrencias, comprimidas antes)
+// ---------------------------------------------------------------------
+
+const BUCKET_OCORRENCIAS = 'port-ocorrencias';
+
+/** Colunas da lista de livros: tudo menos `foto_url` (base64 legado, pesado). */
+const COLUNAS_OCORRENCIA_LISTA = [
+  'id', 'relatorio_id', 'horario', 'hora_saida', 'vigilante_saida', 'tipo_registro', 'status_permanencia',
+  'local_setor', 'descricao', 'severidade', 'vigilante', 'empresa', 'nome_pessoa', 'documento_cpf',
+  'documento_cnh', 'placa', 'autorizado_por', 'fara_briefing', 'motivo_observacao', 'pessoas',
+  'veiculo_leve_id', 'veiculo_leve_modelo', 'condutor_pessoa_id', 'condutor_origem',
+  'fotos', 'fotos_nf', 'entrega_material', 'nf_verificada', 'tem_foto_legado',
+  'created_at', 'excluido_em', 'excluido_por',
+].join(', ');
+
+/**
+ * Comprime e sobe as fotos para `<ocorrenciaId>/<prefixo>-...`. Foto que falha
+ * não derruba o lançamento: volta em `falhas` para a tela avisar.
+ */
+export async function subirFotosOcorrencia(
+  ocorrenciaId: string,
+  arquivos: File[],
+  prefixo: 'foto' | 'nf' = 'foto',
+): Promise<{ ok: PortAlcoolemiaFoto[]; falhas: number }> {
+  const ok: PortAlcoolemiaFoto[] = [];
+  let falhas = 0;
+  for (const file of arquivos) {
+    try {
+      const blob = await comprimirImagemUpload(file);
+      const ehJpeg = blob !== file;
+      const extensao = ehJpeg ? 'jpg' : (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const fotoId = Math.random().toString(36).substring(2, 9);
+      const path = `${ocorrenciaId}/${prefixo}-${fotoId}.${extensao}`;
+      const mime = ehJpeg ? 'image/jpeg' : file.type;
+      const { error } = await supabase.storage.from(BUCKET_OCORRENCIAS).upload(path, blob, { contentType: mime, upsert: false });
+      if (error) throw new Error(error.message);
+      ok.push({ id: fotoId, path, name: file.name, size: blob.size, mime_type: mime, created_at: new Date().toISOString() });
+    } catch (err) {
+      console.warn('Falha no upload de foto da ocorrência:', err);
+      falhas++;
+    }
+  }
+  return { ok, falhas };
+}
+
+/** URLs novas (24 h) para todas as fotos dos livros, num pedido só. Sem rede, ficam sem prévia. */
+export async function assinarFotosRelatorios(relatorios: PortRelatorioPortaria[]): Promise<PortRelatorioPortaria[]> {
+  const paths = relatorios.flatMap((r) => (r.ocorrencias || []).flatMap((o) =>
+    [...(o.fotos || []), ...(o.fotos_nf || [])].map((f) => f.path))).filter(Boolean);
+  if (paths.length === 0) return relatorios;
+  const urls: Record<string, string> = {};
+  try {
+    const { data } = await supabase.storage.from(BUCKET_OCORRENCIAS).createSignedUrls(paths, 60 * 60 * 24);
+    (data || []).forEach((item) => { if (item.path && item.signedUrl) urls[item.path] = item.signedUrl; });
+  } catch (err) {
+    console.warn('Erro ao assinar fotos das ocorrências:', err);
+  }
+  const comUrl = (fotos?: PortAlcoolemiaFoto[]) => (fotos || []).map((f) => ({ ...f, preview_url: urls[f.path] || '' }));
+  return relatorios.map((r) => ({
+    ...r,
+    ocorrencias: (r.ocorrencias || []).map((o) =>
+      o.fotos?.length || o.fotos_nf?.length ? { ...o, fotos: comUrl(o.fotos), fotos_nf: comUrl(o.fotos_nf) } : o),
+  }));
+}
+
+/** Foto antiga (base64 em `foto_url`) de um lançamento — só quando for mostrar. */
+export async function obterFotoLegadoOcorrencia(id: string): Promise<string | null> {
+  const { data, error } = await dbOcorrencias().select('foto_url').eq('id', id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data?.foto_url as string | null) || null;
+}
+
+/** Apaga do Storage as fotos tiradas do lançamento na edição (falha só avisa no console). */
+export async function removerFotosOcorrencia(paths: string[]): Promise<void> {
+  if (!paths.length) return;
+  const { error } = await supabase.storage.from(BUCKET_OCORRENCIAS).remove(paths);
+  if (error) console.warn('Fotos removidas do lançamento ficaram no Storage:', error.message);
 }
 
 export async function listarRelatorios(filtros?: {
@@ -575,7 +661,7 @@ export async function listarRelatorios(filtros?: {
     .from('port_relatorio_portaria')
     .select(`
       *,
-      ocorrencias:port_relatorio_ocorrencias (id, horario, local_setor, descricao, severidade, vigilante, created_at, excluido_em)
+      ocorrencias:port_relatorio_ocorrencias (${COLUNAS_OCORRENCIA_LISTA})
     `)
     .order('data', { ascending: false })
     .order('created_at', { ascending: false });
@@ -598,12 +684,13 @@ export async function listarRelatorios(filtros?: {
   const { data, error } = await query.limit(200);
   if (error) throw new Error(error.message);
 
-  return (data || []).map((r: any) => ({
+  const relatorios = (data || []).map((r: any) => ({
     ...r,
     ocorrencias: semExcluidos(r.ocorrencias, filtros?.incluirExcluidos)
       .map((o: any) => ({ ...o, ...obterMetadadosOcorrencia(o.id) }))
       .sort((a: any, b: any) => a.horario.localeCompare(b.horario)),
   })) as PortRelatorioPortaria[];
+  return assinarFotosRelatorios(relatorios);
 }
 
 export async function obterRelatorio(id: string, incluirExcluidos = false): Promise<PortRelatorioPortaria | null> {
@@ -619,12 +706,13 @@ export async function obterRelatorio(id: string, incluirExcluidos = false): Prom
   if (error) throw new Error(error.message);
   if (!data) return null;
 
-  return {
+  const [assinado] = await assinarFotosRelatorios([{
     ...data,
     ocorrencias: semExcluidos(data.ocorrencias, incluirExcluidos)
       .map((o: any) => ({ ...o, ...obterMetadadosOcorrencia(o.id) }))
       .sort((a: any, b: any) => a.horario.localeCompare(b.horario)),
-  } as PortRelatorioPortaria;
+  } as PortRelatorioPortaria]);
+  return assinado;
 }
 
 export async function criarRelatorio(dados: Partial<PortRelatorioPortaria>): Promise<PortRelatorioPortaria> {
@@ -672,9 +760,11 @@ export async function atualizarRelatorio(id: string, dados: Partial<PortRelatori
 
 export async function adicionarOcorrencia(
   relatorio_id: string,
-  dados: Omit<PortRelatorioOcorrencia, 'id' | 'relatorio_id' | 'created_at'>
+  dados: Omit<PortRelatorioOcorrencia, 'id' | 'relatorio_id' | 'created_at'> & { id?: string }
 ): Promise<PortRelatorioOcorrencia> {
   const payload = {
+    // Id gerado na tela quando há foto: as fotos sobem antes, na pasta do lançamento.
+    ...(dados.id ? { id: dados.id } : {}),
     relatorio_id,
     horario: dados.horario || horaAgora(),
     hora_saida: dados.hora_saida || null,
@@ -699,6 +789,10 @@ export async function adicionarOcorrencia(
     veiculo_leve_modelo: dados.veiculo_leve_modelo || null,
     condutor_pessoa_id: dados.condutor_pessoa_id || null,
     condutor_origem: dados.condutor_origem || null,
+    fotos: semUrlFotos(dados.fotos),
+    fotos_nf: semUrlFotos(dados.fotos_nf),
+    entrega_material: dados.entrega_material ?? false,
+    nf_verificada: dados.nf_verificada ?? false,
   };
 
   const { data, error } = await dbOcorrencias()
@@ -791,10 +885,12 @@ export async function atualizarOcorrencia(
   for (const campo of [
     'foto_url', 'empresa', 'nome_pessoa', 'documento_cpf', 'documento_cnh', 'placa',
     'autorizado_por', 'fara_briefing', 'motivo_observacao', 'pessoas', 'veiculo_leve_id',
-    'veiculo_leve_modelo', 'condutor_pessoa_id', 'condutor_origem',
+    'veiculo_leve_modelo', 'condutor_pessoa_id', 'condutor_origem', 'entrega_material', 'nf_verificada',
   ]) {
     if (campo in dados) payload[campo] = (dados as any)[campo];
   }
+  if (dados.fotos) payload.fotos = semUrlFotos(dados.fotos);
+  if (dados.fotos_nf) payload.fotos_nf = semUrlFotos(dados.fotos_nf);
 
   const { data, error } = await dbOcorrencias()
     .update(payload)
@@ -868,6 +964,8 @@ export function formatarTextoOcorrencia(dados: {
   fara_briefing?: boolean;
   pessoas?: { nome: string; cpf?: string; cnh?: string; funcao?: string }[];
   veiculo_leve_modelo?: string;
+  entrega_material?: boolean;
+  nf_verificada?: boolean;
 }): string {
   const h = dados.horario ? `${dados.horario} - ` : '';
   const emp = dados.empresa ? `${dados.empresa.trim().toUpperCase()}` : '';
@@ -890,6 +988,9 @@ export function formatarTextoOcorrencia(dados: {
   const aut = dados.autorizado_por ? `, autorizado por ${dados.autorizado_por.trim().toUpperCase()}` : '';
   const mot = dados.motivo_observacao ? ` - ${dados.motivo_observacao.trim().toUpperCase()}` : '';
   const briefingTag = dados.fara_briefing ? ' [BRIEFING PENDENTE]' : '';
+  const entregaTag = dados.entrega_material && aceitaEntregaMaterial(dados.tipo_registro)
+    ? ` [ENTREGA DE MATERIAL${dados.nf_verificada ? ' - NF VERIFICADA' : ''}]`
+    : '';
   const saidaTag = dados.hora_saida
     ? ` (Saída registrada às ${dados.hora_saida}${dados.vigilante_saida ? ` por ${dados.vigilante_saida.toUpperCase()}` : ''})`
     : '';
@@ -897,15 +998,15 @@ export function formatarTextoOcorrencia(dados: {
   switch (dados.tipo_registro) {
     case 'ENTRADA_VEICULO': {
       const placa = dados.placa_veiculo ? ` - Veículo Placa: ${dados.placa_veiculo.trim().toUpperCase()}` : '';
-      return `${h}${emp ? `${emp} - ` : ''}${nome}${cnh}${placa}${briefingTag}${aut}${mot}${saidaTag}`;
+      return `${h}${emp ? `${emp} - ` : ''}${nome}${cnh}${placa}${briefingTag}${entregaTag}${aut}${mot}${saidaTag}`;
     }
     case 'VEICULO_LEVE': {
       const modelo = dados.veiculo_leve_modelo ? ` - Modelo: ${dados.veiculo_leve_modelo.trim().toUpperCase()}` : '';
       const placa = dados.placa_veiculo ? ` - Placa: ${dados.placa_veiculo.trim().toUpperCase()}` : '';
-      return `${h}VEÍCULO LEVE${modelo}${placa}${nome ? ` - Condutor: ${nome}` : ''}${emp ? ` - ${emp}` : ''}${mot}${saidaTag}`;
+      return `${h}VEÍCULO LEVE${modelo}${placa}${nome ? ` - Condutor: ${nome}` : ''}${emp ? ` - ${emp}` : ''}${entregaTag}${mot}${saidaTag}`;
     }
     case 'ENTRADA_VISITANTE': {
-      return `${h}${nome}${cpf}${emp ? ` - ${emp}` : ''}, acessou a fábrica${aut}${briefingTag}${mot}${saidaTag}`;
+      return `${h}${nome}${cpf}${emp ? ` - ${emp}` : ''}, acessou a fábrica${aut}${briefingTag}${entregaTag}${mot}${saidaTag}`;
     }
     case 'SAIDA_COLABORADOR': {
       const retornoTag = dados.hora_saida
@@ -922,7 +1023,7 @@ export function formatarTextoOcorrencia(dados: {
     }
     case 'OUTRO_REGISTRO':
     default: {
-      return `${h}${nome ? `${nome} - ` : ''}${dados.motivo_observacao?.toUpperCase() || 'REGISTRO DE PORTARIA'}`;
+      return `${h}${nome ? `${nome} - ` : ''}${dados.motivo_observacao?.toUpperCase() || 'REGISTRO DE PORTARIA'}${entregaTag}`;
     }
   }
 }
@@ -2134,4 +2235,24 @@ export async function obterMetricasPortaria(): Promise<PortariaMetricas> {
     briefingsHoje: brfCount || 0,
     alcoolemiaHoje: alcCount || 0,
   };
+}
+
+/** Ficha cega que a entrega de material abriu no almoxarifado (trigger no banco). */
+export interface FichaCegaDaOcorrencia {
+  codigo: string;
+  status: string;
+  qtd_volumes_contada: number | null;
+  almox_confirmado_por: string | null;
+  almox_confirmado_em: string | null;
+  nao_chegou_motivo: string | null;
+}
+
+export async function fichaCegaDaOcorrencia(ocorrenciaId: string): Promise<FichaCegaDaOcorrencia | null> {
+  const { data, error } = await (supabase.from as any)('alm_receb_cargas')
+    .select('codigo, status, qtd_volumes_contada, almox_confirmado_por, almox_confirmado_em, nao_chegou_motivo')
+    .eq('port_ocorrencia_id', ocorrenciaId)
+    .eq('excluido', false)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as FichaCegaDaOcorrencia | null) ?? null;
 }
