@@ -22,10 +22,12 @@ import {
   type Contingencia, type GrupoContingencia, type SeveridadeContingencia,
 } from '../../lib/contingenciasAlmox';
 import {
-  corrigirContingencia, historicoContingencia, justificarContingencias, listarTratativas, reabrirContingencia, retiradasCandidatas,
+  corrigirContingencia, datasExportacaoRequisicoes, historicoContingencia, justificarContingencias, listarTratativas, reabrirContingencia, retiradasCandidatas,
   verificarContingencias, vincularRetirada,
   type EventoHistorico, type RetiradaCandidata, type TratativaRegistrada,
 } from '../../lib/contingenciasAlmoxApi';
+import FiltroPeriodoRequisicao from './FiltroPeriodoRequisicao';
+import { PERIODO_VAZIO, dentroDoPeriodo, type FiltroPeriodo } from '../../lib/requisicaoBalcaoAuditoria';
 
 interface Props {
   onNavigate: (path: string) => void;
@@ -65,6 +67,9 @@ export default function PainelContingencias({ onNavigate, onTotal }: Props) {
   const [corrigindo, setCorrigindo] = useState<string | null>(null);
   const [aba, setAba] = useState<'abertas' | 'tratativas'>('abertas');
   const idBusca = useId();
+  // Período pela data do registro (criação) ou pela exportação da requisição (= data na MB51).
+  const [periodo, setPeriodo] = useState<FiltroPeriodo>(PERIODO_VAZIO);
+  const [exportacaoPorRqb, setExportacaoPorRqb] = useState<Map<string, string>>(new Map());
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -83,9 +88,27 @@ export default function PainelContingencias({ onNavigate, onTotal }: Props) {
 
   useEffect(() => { void carregar(); }, [carregar]);
 
-  const abertas = useMemo(() => lista.filter(c => !c.tratativa), [lista]);
+  // Datas de exportação só quando o filtro pede (uma consulta por abertura do filtro).
+  const precisaExportacao = periodo.base === 'exportacao' && !!(periodo.de || periodo.ate);
+  useEffect(() => {
+    if (!precisaExportacao) return;
+    const ids = lista.filter(c => c.entidade === 'req_balcao' && c.ref_id).map(c => c.ref_id as string);
+    let ativo = true;
+    datasExportacaoRequisicoes(ids)
+      .then(m => { if (ativo) setExportacaoPorRqb(m); })
+      .catch(e => { if (ativo) toast.error(e instanceof Error ? e.message : String(e)); });
+    return () => { ativo = false; };
+  }, [precisaExportacao, lista, toast]);
+
+  const noPeriodo = useMemo(
+    () => lista.filter(c => dentroDoPeriodo(
+      periodo, c.data, c.entidade === 'req_balcao' && c.ref_id ? exportacaoPorRqb.get(c.ref_id) ?? null : null,
+    )),
+    [lista, periodo, exportacaoPorRqb],
+  );
+  const abertas = useMemo(() => noPeriodo.filter(c => !c.tratativa), [noPeriodo]);
   const contagem = useMemo(() => contarSeveridades(abertas), [abertas]);
-  const visiveis = useMemo(() => filtrarContingencias(lista, busca, severidade), [lista, busca, severidade]);
+  const visiveis = useMemo(() => filtrarContingencias(noPeriodo, busca, severidade), [noPeriodo, busca, severidade]);
   const grupos = useMemo(() => agruparContingencias(visiveis), [visiveis]);
 
   const alternar = (c: Contingencia) => setSelecao(s => {
@@ -183,6 +206,13 @@ export default function PainelContingencias({ onNavigate, onTotal }: Props) {
               </button>
             ))}
           </div>
+          {aba === 'abertas' && (
+            <FiltroPeriodoRequisicao
+              valor={periodo}
+              onChange={setPeriodo}
+              rotulos={{ criacao: 'Registro (criação)', exportacao: 'Exportação da RQB (data da MB51)' }}
+            />
+          )}
           {aba === 'abertas' && (
             <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
               <input type="checkbox" checked={verJustificadas} onChange={e => setVerJustificadas(e.target.checked)} className="h-3.5 w-3.5 rounded" />

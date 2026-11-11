@@ -22,7 +22,7 @@
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, ArrowLeftRight, Check, CheckSquare, ChevronDown, Download, FileCheck2, FolderPlus, History, Layers, Loader2, LogOut, Plus,
+  AlertTriangle, ArrowLeft, ArrowLeftRight, BarChart3, Check, CheckSquare, ChevronDown, Download, FileCheck2, FolderPlus, History, Layers, Loader2, LogOut, Plus,
   QrCode, RefreshCw, RotateCcw, Search, Square, Trash2, Upload, X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -60,6 +60,12 @@ import SeletorColaborador from '../../components/almoxarifado/SeletorColaborador
 import { BotaoRelatorioSolExtra } from '../../components/almoxarifado/RelatorioSolExtra';
 import type { EstoqueItem, Profile, RhPessoa, RhTurno } from '../../types';
 import { confirmar } from '../../lib/confirmar';
+import LogAlteracoes from '../../components/almoxarifado/LogRequisicaoBalcao';
+import { canAccessPage } from '../../lib/pages';
+import FiltroPeriodoRequisicao from '../../components/almoxarifado/FiltroPeriodoRequisicao';
+import {
+  PERIODO_VAZIO, dataLocalDeTimestamp, dentroDoPeriodo, type FiltroPeriodo,
+} from '../../lib/requisicaoBalcaoAuditoria';
 
 interface Props {
   user: Profile;
@@ -127,6 +133,8 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [docSapAberto, setDocSapAberto] = useState<string[] | null>(null);
   const [filtroExportacao, setFiltroExportacao] = useState<FiltroExportacao>('nao_exportadas');
+  // Período pela criação da requisição ou pela exportação (= data de lançamento na MB51).
+  const [periodo, setPeriodo] = useState<FiltroPeriodo>(PERIODO_VAZIO);
   const [exportacoes, setExportacoes] = useState<ReqBalcaoExportacao[]>([]);
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [exportando, setExportando] = useState(false);
@@ -137,7 +145,8 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     try {
       const [reqs, lotes] = await Promise.all([
         listarRequisicoesBalcao(),
-        listarExportacoesBalcao().catch(() => [] as ReqBalcaoExportacao[]),
+        // Todos os lotes: a data da exportação de cada requisição sai daqui (filtro de período).
+        listarExportacoesBalcao(1000).catch(() => [] as ReqBalcaoExportacao[]),
       ]);
       setRequisicoes(reqs);
       setExportacoes(lotes);
@@ -173,9 +182,21 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     [estoque],
   );
 
+  /** Lote → dia da exportação (horário local), que é a data de lançamento na MB51. */
+  const dataExportacaoPorLote = useMemo(
+    () => new Map(exportacoes.map((e) => [e.id, dataLocalDeTimestamp(e.created_at)])),
+    [exportacoes],
+  );
+  const noPeriodo = useMemo(
+    () => requisicoes.filter((r) => dentroDoPeriodo(
+      periodo, r.data, r.exportacao_id ? dataExportacaoPorLote.get(r.exportacao_id) ?? null : null,
+    )),
+    [requisicoes, periodo, dataExportacaoPorLote],
+  );
+
   const filtradas = useMemo(() => {
     const t = semAcento(busca.trim());
-    return requisicoes.filter((r) => {
+    return noPeriodo.filter((r) => {
       if (soPendentes && r.doc_sap) return false;
       if (filtroExportacao === 'aguardando' && !r.pendente_confirmacao) return false;
       if (filtroExportacao === 'nao_exportadas' && (r.exportacao_id || r.pendente_confirmacao)) return false;
@@ -187,7 +208,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
       ].filter(Boolean).join(' '));
       return t.split(/\s+/).every((p) => alvo.includes(p));
     });
-  }, [requisicoes, busca, soPendentes, filtroExportacao]);
+  }, [noPeriodo, busca, soPendentes, filtroExportacao]);
 
   const porDia = useMemo(() => {
     const grupos = new Map<string, ReqBalcaoRow[]>();
@@ -201,14 +222,15 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
 
   const hoje = hojeISO();
   const qtdHoje = requisicoes.filter((r) => r.data === hoje).length;
-  const qtdPendentes = requisicoes.filter((r) => !r.doc_sap).length;
-  const qtdAguardando = requisicoes.filter((r) => r.pendente_confirmacao).length;
-  const qtdNaoExportadas = requisicoes.filter((r) => !r.exportacao_id && !r.pendente_confirmacao).length;
+  // Contagens no período escolhido (sem período = tudo).
+  const qtdPendentes = noPeriodo.filter((r) => !r.doc_sap).length;
+  const qtdAguardando = noPeriodo.filter((r) => r.pendente_confirmacao).length;
+  const qtdNaoExportadas = noPeriodo.filter((r) => !r.exportacao_id && !r.pendente_confirmacao).length;
   const contagemFiltro: Record<FiltroExportacao, number> = {
     aguardando: qtdAguardando,
     nao_exportadas: qtdNaoExportadas,
-    exportadas: requisicoes.filter((r) => r.exportacao_id).length,
-    todas: requisicoes.length,
+    exportadas: noPeriodo.filter((r) => r.exportacao_id).length,
+    todas: noPeriodo.length,
   };
 
   // Link do QR: tira o `?item=` do endereço (F5 não repete) e consome o pendente do login.
@@ -425,6 +447,17 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canAccessPage(user, 'almox_requisicao_balcao_relatorio') && (
+            <button
+              type="button"
+              onClick={() => onNavigate('/almoxarifado/requisicao-balcao-relatorio')}
+              title="Requisições por item, datas, totais e conferência com a MB51"
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold cursor-pointer"
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+            >
+              <BarChart3 className="h-3.5 w-3.5" /> Relatório × MB51
+            </button>
+          )}
           <BotaoRelatorioSolExtra
             user={user}
             className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold cursor-pointer border-[var(--hairline)] text-[var(--ink-secondary)]"
@@ -514,6 +547,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
           <input type="checkbox" checked={soPendentes} onChange={(e) => setSoPendentes(e.target.checked)} />
           Só sem doc. SAP
         </label>
+        <FiltroPeriodoRequisicao valor={periodo} onChange={setPeriodo} />
         {filtradas.length > 0 && (
           <button
             type="button"
@@ -2228,69 +2262,6 @@ function ModalDetalhe({
         </div>
       </ModalFooter>
     </Modal>
-  );
-}
-
-const ROTULO_ACAO: Record<ReqBalcaoAlteracao['acao'], string> = {
-  criacao: 'Criação',
-  edicao: 'Edição',
-  exclusao: 'Exclusão',
-  doc_sap: 'Doc. SAP',
-  exportacao: 'Exportação',
-  reabertura: 'Reabertura',
-  importacao_sap: 'Importação SAP',
-  restauracao: 'Restauração',
-};
-
-/** Log de alterações da requisição — carregado ao abrir o detalhe. */
-function LogAlteracoes({ requisicaoId }: { requisicaoId: string }) {
-  const [log, setLog] = useState<ReqBalcaoAlteracao[] | null>(null);
-  const [erro, setErro] = useState('');
-  useEffect(() => {
-    let vivo = true;
-    listarAlteracoesBalcao(requisicaoId)
-      .then((l) => { if (vivo) setLog(l); })
-      .catch((e) => { if (vivo) setErro(e?.message || 'Falha ao carregar o log.'); });
-    return () => { vivo = false; };
-  }, [requisicaoId]);
-
-  return (
-    <div>
-      <h3 className="mb-2 flex items-center gap-1.5 text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
-        <History className="h-3.5 w-3.5" /> Log de alterações
-      </h3>
-      {erro ? (
-        <p className="text-[11px]" style={{ color: 'var(--status-critical)' }}>{erro}</p>
-      ) : log === null ? (
-        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Carregando…</p>
-      ) : log.length === 0 ? (
-        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Nenhum registro (requisição anterior ao log).</p>
-      ) : (
-        <ol className="space-y-2">
-          {log.map((a) => (
-            <li key={a.id} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--hairline)' }}>
-              <div className="flex flex-wrap items-baseline justify-between gap-2 text-[11px]">
-                <span className="font-bold" style={{ color: 'var(--ink-primary)' }}>
-                  {ROTULO_ACAO[a.acao] ?? a.acao}{a.resumo && <span className="font-medium" style={{ color: 'var(--ink-secondary)' }}> · {a.resumo}</span>}
-                </span>
-                <span style={{ color: 'var(--ink-muted)' }}>{a.alterado_por_nome ?? '—'} · {formatDateTimeBR(a.created_at)}</span>
-              </div>
-              {a.alteracoes.length > 0 && (
-                <ul className="mt-1 space-y-0.5 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                  {a.alteracoes.map((d, k) => (
-                    <li key={k}>
-                      <span className="font-semibold">{d.campo}:</span>{' '}
-                      <span className="line-through" style={{ color: 'var(--ink-muted)' }}>{d.de ?? '—'}</span>
-                      {' → '}<span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>{d.para ?? '—'}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
   );
 }
 

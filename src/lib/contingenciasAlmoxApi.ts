@@ -5,6 +5,7 @@
  */
 import { supabase } from '../db/supabaseClient';
 import type { Contingencia } from './contingenciasAlmox';
+import { dataLocalDeTimestamp } from './requisicaoBalcaoAuditoria';
 
 export async function verificarContingencias(incluirTratadas = false): Promise<Contingencia[]> {
   const { data, error } = await supabase.rpc('alm_contingencias_verificar' as any, { p_incluir_tratadas: incluirTratadas } as any);
@@ -88,4 +89,39 @@ export async function listarTratativas(limite = 200): Promise<TratativaRegistrad
   const { data, error } = await supabase.rpc('alm_contingencias_tratativas_listar' as any, { p_limite: limite } as any);
   if (error) throw new Error(error.message);
   return (data ?? []) as TratativaRegistrada[];
+}
+
+/**
+ * Requisição no Balcão → dia da exportação (horário local), para o filtro de
+ * período das Contingências. Requisição não exportada fica fora do mapa.
+ */
+export async function datasExportacaoRequisicoes(ids: string[]): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>();
+  const unicos = [...new Set(ids.filter(Boolean))];
+  const loteDe = new Map<string, string>();
+  for (let i = 0; i < unicos.length; i += 200) {
+    const { data, error } = await (supabase.from as any)('alm_req_balcao')
+      .select('id, exportacao_id')
+      .in('id', unicos.slice(i, i + 200))
+      .not('exportacao_id', 'is', null);
+    if (error) throw new Error(error.message);
+    for (const r of (data || []) as { id: string; exportacao_id: string }[]) loteDe.set(r.id, r.exportacao_id);
+  }
+  const lotes = [...new Set(loteDe.values())];
+  const dataDoLote = new Map<string, string>();
+  for (let i = 0; i < lotes.length; i += 200) {
+    const { data, error } = await (supabase.from as any)('alm_req_balcao_exportacoes')
+      .select('id, created_at')
+      .in('id', lotes.slice(i, i + 200));
+    if (error) throw new Error(error.message);
+    for (const e of (data || []) as { id: string; created_at: string }[]) {
+      const d = dataLocalDeTimestamp(e.created_at);
+      if (d) dataDoLote.set(e.id, d);
+    }
+  }
+  for (const [id, lote] of loteDe) {
+    const d = dataDoLote.get(lote);
+    if (d) mapa.set(id, d);
+  }
+  return mapa;
 }

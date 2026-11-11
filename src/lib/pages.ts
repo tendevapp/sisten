@@ -130,6 +130,8 @@ export const PAGES: PageDef[] = [
   { id: 'almox_controle_estoque', group: 'ALMOXARIFADO', label: 'Controle de Estoque', path: '/almoxarifado/controle-estoque', icon: Scale, defaultRoles: ['admin'] },
   // Novo módulo: nasce restrito (regra 4 do CLAUDE.md); o admin libera pela Gestão de Acessos.
   { id: 'almox_inventario_analise', group: 'ALMOXARIFADO', label: 'Inventário', path: '/almoxarifado/inventario-analise', icon: BarChart3, defaultRoles: ['admin'] },
+  // Relatório da Requisição no Balcão × MB51 (auditoria do que foi exportado). Nasce restrito (regra 4).
+  { id: 'almox_requisicao_balcao_relatorio', group: 'ALMOXARIFADO', label: 'Requisição no Balcão — Relatório', path: '/almoxarifado/requisicao-balcao-relatorio', icon: BarChart3, defaultRoles: ['admin'] },
   // Gemba: galpão em 3D com o lugar de cada item. Nasce restrito (regra 4).
   { id: 'almox_gemba', group: 'ALMOXARIFADO', label: 'Gemba', path: '/almoxarifado/gemba', icon: Warehouse, defaultRoles: ['admin'] },
   { id: 'almox_dashboards', group: 'ALMOXARIFADO', label: 'Dashboards', path: '/almoxarifado/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },

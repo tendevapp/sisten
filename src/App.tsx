@@ -85,6 +85,7 @@ const RequisicaoBalcao = lazy(() => import('./views/almoxarifado/RequisicaoBalca
 const SolicitacaoExtraordinaria = lazy(() => import('./views/almoxarifado/SolicitacaoExtraordinaria'));
 const InventarioCiclico = lazy(() => import('./views/almoxarifado/InventarioCiclico'));
 const InventarioAnalise = lazy(() => import('./views/almoxarifado/InventarioAnalise'));
+const RequisicaoBalcaoRelatorio = lazy(() => import('./views/almoxarifado/RequisicaoBalcaoRelatorio'));
 const Gemba = lazy(() => import('./views/almoxarifado/Gemba'));
 const CadastroItensPagina = lazy(() => import('./views/almoxarifado/CadastroItensPagina'));
 const SsmaFichaEpiView = lazy(() => import('./views/ssma/SsmaFichaEpiView'));
@@ -1328,6 +1329,12 @@ export default function App() {
       case '/almoxarifado/movimentacoes/minimo':
         if (canAccessPage(user, 'almox_movimentacoes')) {
           return <Movimentacoes user={user} abaInicial="minimo" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/requisicao-balcao-relatorio':
+        if (canAccessPage(user, 'almox_requisicao_balcao_relatorio')) {
+          return <RequisicaoBalcaoRelatorio user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
