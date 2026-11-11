@@ -20,40 +20,22 @@ import PdfPreviewModal from '../ui/PdfPreviewModal';
 import { useToast } from '../ui/Toast';
 import { hojeISO } from '../../lib/fichaEpi';
 import {
-  ROTULO_AGRUPAMENTO, ROTULO_MODO_RELATORIO,
+  ROTULO_AGRUPAMENTO, ROTULO_MODO_RELATORIO, ROTULO_PRESET_PERIODO, intervaloPreset as intervaloPresetLib,
+  type PresetPeriodo,
   type AgrupamentoRelatorio, type FiltroRelatorioSolExtra, type ModoRelatorio,
 } from '../../lib/relatorioSolExtra';
 import type { DadosRelatorioSolExtra } from '../../lib/pdfExport/exportRelatorioSolExtraPdf';
 
-type Preset = 'mes' | 'mes_anterior' | '30d' | 'ano' | 'tudo';
-
-const ROTULO_PRESET: Record<Preset, string> = {
-  mes: 'Este mês',
-  mes_anterior: 'Mês passado',
-  '30d': 'Últimos 30 dias',
-  ano: 'Este ano',
-  tudo: 'Tudo',
-};
-
-/** Intervalo do atalho, em datas ISO locais. */
-function intervaloPreset(p: Preset, hoje = hojeISO()): { de: string | null; ate: string | null } {
-  const [a, m] = hoje.split('-').map(Number);
-  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  switch (p) {
-    case 'mes': return { de: `${hoje.slice(0, 7)}-01`, ate: hoje };
-    case 'mes_anterior': return { de: iso(new Date(a, m - 2, 1)), ate: iso(new Date(a, m - 1, 0)) };
-    case '30d': { const [, , d] = hoje.split('-').map(Number); return { de: iso(new Date(a, m - 1, d - 29)), ate: hoje }; }
-    case 'ano': return { de: `${a}-01-01`, ate: hoje };
-    default: return { de: null, ate: null };
-  }
-}
+type Preset = PresetPeriodo;
+const ROTULO_PRESET = ROTULO_PRESET_PERIODO;
+const intervaloPreset = (p: Preset) => intervaloPresetLib(p, hojeISO());
 
 const campo = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100';
 const rotulo = 'mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400';
 
-function Segmentado<T extends string>({ opcoes, valor, onChange }: { opcoes: [T, string][]; valor: T; onChange: (v: T) => void }) {
+export function Segmentado<T extends string>({ opcoes, valor, onChange, ariaLabel }: { opcoes: [T, string][]; valor: T; onChange: (v: T) => void; ariaLabel?: string }) {
   return (
-    <div className="flex flex-wrap gap-1.5" role="group">
+    <div className="flex flex-wrap gap-1.5" role="group" aria-label={ariaLabel}>
       {opcoes.map(([v, r]) => (
         <button
           key={v}

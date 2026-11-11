@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Loader2, PackageOpen, RefreshCw, Search, XCircle } from 'lucide-react';
+import { BarChart3, CheckCircle2, List, Loader2, PackageOpen, RefreshCw, Search, XCircle } from 'lucide-react';
 import type { Profile } from '../../types';
 import { useToast } from '../ui/Toast';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
@@ -19,6 +19,7 @@ import { TableEmpty } from '../ui/DataTable';
 import { formatarDataBR } from '../../lib/fichaEpi';
 import { podeAprovarRetirada, setoresDeAprovacao, type AprovacaoSolExtra } from '../../lib/solicitacaoExtra';
 import { aprovarRetiradasSemSaldo, listarRetiradasSemSaldo, type SolExtra } from '../../lib/solicitacaoExtraApi';
+import RelatorioRetiradasSemSaldo from './RelatorioRetiradasSemSaldo';
 import { AprovacaoChip, BotaoPdfRetirada, ResumoRetirada, resumoItensRetirada } from '../almoxarifado/RetiradaSemSaldo';
 
 type Filtro = AprovacaoSolExtra | 'todas';
@@ -46,6 +47,7 @@ export default function RetiradasSemSaldoPainel({
   const [carregando, setCarregando] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>('PENDENTE');
   const [busca, setBusca] = useState('');
+  const [relatorio, setRelatorio] = useState(false);
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [abertoId, setAbertoId] = useState<string | null>(idInicial ?? null);
   const [decidindo, setDecidindo] = useState<{ registros: SolExtra[]; aprovar: boolean } | null>(null);
@@ -93,6 +95,9 @@ export default function RetiradasSemSaldoPainel({
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center">
+        {relatorio ? (
+          <p className="flex-1 text-sm font-bold text-slate-900 dark:text-slate-50">Relatório de retiradas sem saldo</p>
+        ) : (<>
         <div className="flex min-w-0 overflow-x-auto no-scrollbar rounded-lg bg-slate-100 p-1 dark:bg-slate-800/80">
           {FILTROS.map(f => (
             <button
@@ -117,6 +122,15 @@ export default function RetiradasSemSaldoPainel({
             className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           />
         </div>
+        </>)}
+        <button
+          type="button"
+          aria-pressed={relatorio}
+          onClick={() => { setRelatorio(v => !v); setSelecionadas(new Set()); }}
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/40"
+        >
+          {relatorio ? <><List className="h-3.5 w-3.5" /> Voltar à lista</> : <><BarChart3 className="h-3.5 w-3.5" /> Relatório</>}
+        </button>
         <button
           type="button"
           onClick={carregar}
@@ -127,7 +141,9 @@ export default function RetiradasSemSaldoPainel({
         </button>
       </div>
 
-      {pendentesVisiveis.length > 0 && (
+      {relatorio && <RelatorioRetiradasSemSaldo registros={lista} carregando={carregando} />}
+
+      {!relatorio && pendentesVisiveis.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs dark:border-amber-900 dark:bg-amber-950/30">
           <label className="inline-flex items-center gap-2 font-semibold text-amber-900 dark:text-amber-200">
             <input
@@ -149,7 +165,7 @@ export default function RetiradasSemSaldoPainel({
         </div>
       )}
 
-      {filtradas.length === 0 ? (
+      {relatorio ? null : filtradas.length === 0 ? (
         <TableEmpty
           icon={PackageOpen}
           title={carregando ? 'Carregando...' : filtro === 'PENDENTE' ? 'Nenhuma retirada aguardando aprovação' : 'Nenhuma retirada encontrada'}

@@ -26,6 +26,7 @@
 
 import { supabase } from '../db/supabaseClient';
 import { buscarTudo } from './buscarTudo';
+import { codigoMaterialRetirada } from './relatorioRetiradasSemSaldo';
 import type { PreparedAttachment } from './imageCompression';
 import type {
   AprovacaoSolExtra, DadosSolExtra, FotoSolExtra, ItemSolExtra, MotivoSolExtra, StatusSolExtra, TipoSolExtra, TurnoSolExtra,
@@ -159,24 +160,44 @@ export async function listarSolicitacoesExtraPendentes(): Promise<SolExtra[]> {
 }
 
 /**
- * Retiradas sem saldo de um recorte — sem o teto de 1.000 do PostgREST
- * importar aqui: as pendentes são poucas; o histórico da Aprovação vem limitado.
+ * Histórico completo, paginado e restrito aos setores de aprovação do usuário.
  */
 export async function listarRetiradasSemSaldo(filtro: {
   status?: StatusSolExtra;
   aprovacao?: AprovacaoSolExtra;
   setores?: string[];
 } = {}): Promise<SolExtra[]> {
-  let q = db().select('*').eq('tipo', 'SEM_SALDO').is('excluido_em', null);
-  if (filtro.status) q = q.eq('status', filtro.status);
-  if (filtro.aprovacao) q = q.eq('aprovacao_status', filtro.aprovacao);
-  if (filtro.setores) q = q.in('setor_solicitante_id', filtro.setores.length ? filtro.setores : ['__nenhum__']);
-  const { data, error } = await q
-    .order('data', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(1000);
-  if (error) throw new Error(error.message);
-  return comTipo(data || []);
+  const data = await buscarTudo<SolExtra>((de, ate) => {
+    let q = db().select('*').eq('tipo', 'SEM_SALDO').is('excluido_em', null);
+    if (filtro.status) q = q.eq('status', filtro.status);
+    if (filtro.aprovacao) q = q.eq('aprovacao_status', filtro.aprovacao);
+    if (filtro.setores) q = q.in('setor_solicitante_id', filtro.setores.length ? filtro.setores : ['__nenhum__']);
+    return q.order('data', { ascending: false }).order('created_at', { ascending: false }).order('id').range(de, ate);
+  });
+  return comTipo(data);
+}
+
+/** Classificação cadastral; inclui inativos para reconhecer materiais do histórico. */
+export async function listarClassificacaoEpiRetiradas(): Promise<Map<string, boolean>> {
+  const [catalogo, book] = await Promise.all([
+    buscarTudo<{ codigo_sap: string; grp_mercad: string | null; grupo_mercadorias: string | null; classificacao_nivel2: string | null }>((de, ate) =>
+      (supabase.from as any)('alm_catalogo_itens').select('codigo_sap, grp_mercad, grupo_mercadorias, classificacao_nivel2').order('id').range(de, ate)),
+    buscarTudo<{ codigo_sap: string | null }>((de, ate) =>
+      (supabase.from as any)('ssma_book_epis').select('codigo_sap').order('id').range(de, ate)),
+  ]);
+  const mapa = new Map<string, boolean>();
+  for (const item of catalogo) {
+    if (!item.codigo_sap) continue;
+    const grupo = item.grp_mercad?.trim().toUpperCase();
+    const texto = `${item.grupo_mercadorias || ''} ${item.classificacao_nivel2 || ''}`;
+    const epi = grupo === 'B7001' || grupo === 'M11003002' || /\bEPIS?\b|PROTE[CÇ][AÃ]O INDIVIDUAL/i.test(texto);
+    if (epi || grupo || texto.trim()) {
+      const chave = codigoMaterialRetirada(item.codigo_sap);
+      mapa.set(chave, epi || mapa.get(chave) === true);
+    }
+  }
+  for (const item of book) if (item.codigo_sap) mapa.set(codigoMaterialRetirada(item.codigo_sap), true);
+  return mapa;
 }
 
 /**

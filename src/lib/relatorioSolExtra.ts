@@ -357,3 +357,30 @@ export function materiaisAguardandoNf(linhas: LinhaRelatorioSolExtra[]): string[
 
 /** Rótulo do tipo para a tabela. */
 export const rotuloTipo = (t: TipoSolExtra) => TIPO_SOL_EXTRA_ROTULO[t];
+
+// ---------------------------------------------------------------------------
+// Atalhos de período (também usados no relatório de retiradas sem saldo)
+// ---------------------------------------------------------------------------
+
+export type PresetPeriodo = 'mes' | 'mes_anterior' | '30d' | 'ano' | 'tudo';
+
+export const ROTULO_PRESET_PERIODO: Record<PresetPeriodo, string> = {
+  mes: 'Este mês',
+  mes_anterior: 'Mês passado',
+  '30d': 'Últimos 30 dias',
+  ano: 'Este ano',
+  tudo: 'Tudo',
+};
+
+/** Intervalo do atalho, em datas ISO locais (`hoje` também ISO local). */
+export function intervaloPreset(p: PresetPeriodo, hoje: string): { de: string | null; ate: string | null } {
+  const [a, m, d] = hoje.split('-').map(Number);
+  const iso = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  switch (p) {
+    case 'mes': return { de: `${hoje.slice(0, 7)}-01`, ate: hoje };
+    case 'mes_anterior': return { de: iso(new Date(a, m - 2, 1)), ate: iso(new Date(a, m - 1, 0)) };
+    case '30d': return { de: iso(new Date(a, m - 1, d - 29)), ate: hoje };
+    case 'ano': return { de: `${a}-01-01`, ate: hoje };
+    default: return { de: null, ate: null };
+  }
+}
