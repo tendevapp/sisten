@@ -39,6 +39,7 @@ import {
 } from '../lib/rhApi';
 import { mapearPlanilhaPessoas } from '../lib/rhPessoasImport';
 import UsersByModuleView from '../components/admin/UsersByModuleView';
+import { CATEGORIAS_TI } from '../lib/chamadoTi';
 
 interface AdminPanelProps {
   user: Profile;
@@ -4910,7 +4911,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       <div className="flex flex-wrap gap-1.5">
                         {/* Render based on what is in NewRequest.tsx */}
                         {selectedHelpdeskSectorId === '9' ? (
-                          ['Acesso/Senha', 'Equipamento', 'Software', 'Rede', 'E-mail', 'Outro'].map((cat, idx) => (
+                          CATEGORIAS_TI.map((cat, idx) => (
                             <span key={idx} className="bg-white border border-slate-200 px-2.5 py-1 rounded font-bold text-slate-700 text-[11px]">
                               {cat}
                             </span>

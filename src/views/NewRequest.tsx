@@ -76,6 +76,11 @@ import {
   type StatusEpiMaterial,
 } from '../lib/epiCompras';
 import { dataHojeLocal } from '../lib/dataLocal';
+import {
+  CATEGORIAS_TI, SETOR_TI_ID, camposTiPendentes, descricaoObrigatoriaTi, montarEmailChamadoTi,
+  montarJustificativaTi, placeholderDescricaoTi, separarJustificativaTi, type DadosChamadoTi,
+} from '../lib/chamadoTi';
+import CamposChamadoTi from '../components/solicitacoes/CamposChamadoTi';
 
 const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
   {
@@ -525,6 +530,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [helpdeskSectorId, setHelpdeskSectorId] = useState(''); // E.g., '9' for TI, '3' for Facilities
   const [helpdeskCategory, setHelpdeskCategory] = useState('');
   const [helpdeskLocal, setHelpdeskLocal] = useState('');
+  // Campos fixos do chamado de TI (Pasta de Rede, Conta e E-mail) — ver lib/chamadoTi.
+  const [dadosTi, setDadosTi] = useState<DadosChamadoTi>({});
   // Específicos do destino Jurídico
   const [juridicoTitulo, setJuridicoTitulo] = useState('');
   const [juridicoTipoContrato, setJuridicoTipoContrato] = useState('');
@@ -648,6 +655,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     if (req.target_sector_id) setHelpdeskSectorId(req.target_sector_id);
     if (req.category_id) setHelpdeskCategory(req.category_id);
     if (req.local) setHelpdeskLocal(req.local);
+    if (req.type === 'chamado' && req.target_sector_id === SETOR_TI_ID && req.category_id) {
+      const { dados, descricao } = separarJustificativaTi(req.category_id, req.justificativa || '');
+      setDadosTi(dados);
+      setJustificativa(descricao);
+    }
     if (req.titulo) setJuridicoTitulo(req.titulo);
     if (req.contrato_tipo) setJuridicoTipoContrato(req.contrato_tipo);
     if (req.fornecedor_terceiro) setJuridicoFornecedor(req.fornecedor_terceiro);
@@ -737,6 +749,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         }
         if (parsed.helpdeskCategory) setHelpdeskCategory(parsed.helpdeskCategory);
         if (parsed.helpdeskLocal) setHelpdeskLocal(parsed.helpdeskLocal);
+        if (parsed.dadosTi && typeof parsed.dadosTi === 'object') setDadosTi(parsed.dadosTi);
         if (parsed.juridicoTitulo) setJuridicoTitulo(parsed.juridicoTitulo);
         if (parsed.juridicoTipoContrato) setJuridicoTipoContrato(parsed.juridicoTipoContrato);
         if (parsed.juridicoFornecedor) setJuridicoFornecedor(parsed.juridicoFornecedor);
@@ -777,7 +790,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     items, registrationType, sapFornecedorOperacao, sapVendorCode, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
     sapRegimeTributario, sapMeiCpf,
     sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
-    chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
+    chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal, dadosTi,
     juridicoTitulo, juridicoTipoContrato, juridicoFornecedor, pendenciasTexto,
     pendObservacao, pendCausa, pendResponsavel, pendImpacto, pendRecorrencia,
     ajusteDemanda, ajusteNf, ajustePedido, ajusteFornecedor, ajusteComprador,
@@ -798,7 +811,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       registrationType, sapFornecedorOperacao, sapVendorCode, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
       sapRegimeTributario, sapMeiCpf,
       sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
-      chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
+      chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal, dadosTi,
       juridicoTitulo, juridicoTipoContrato, juridicoFornecedor, pendenciasTexto,
     pendObservacao, pendCausa, pendResponsavel, pendImpacto, pendRecorrencia,
       ajusteDemanda, ajusteNf, ajustePedido, ajusteFornecedor, ajusteComprador,
@@ -850,6 +863,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     setHelpdeskSectorId(supportSectors.length > 0 ? supportSectors[0].id : '');
     setHelpdeskCategory('');
     setHelpdeskLocal('');
+    setDadosTi({});
     setJuridicoTitulo('');
     setJuridicoTipoContrato('');
     setJuridicoFornecedor('');
@@ -1090,8 +1104,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   };
 
   const getHelpdeskCategories = (secId: string) => {
-    if (secId === '9') { // TI
-      return ['Acesso/Senha', 'Equipamento', 'Software', 'Rede', 'E-mail', 'Outro'];
+    if (secId === SETOR_TI_ID) { // TI
+      return [...CATEGORIAS_TI];
     } else if (secId === '3') { // Facilities
       return servicosFacilities;
     } else if (isJuridicoSector(sectors.find(s => s.id === secId))) {
@@ -1104,6 +1118,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   };
 
   const isDestinoJuridico = isJuridicoSector(sectors.find(s => s.id === helpdeskSectorId));
+  const isDestinoTi = helpdeskSectorId === SETOR_TI_ID;
   // "Assinatura de Documento": só encaminha um documento já fechado — tipo de
   // contrato, fornecedor/terceiro e descrição ficam opcionais.
   const isJuridicoAssinatura = isDestinoJuridico && helpdeskCategory === CHAMADO_JURIDICO_ASSINATURA_DOCUMENTO;
@@ -1497,6 +1512,13 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       }
     }
 
+    if (activeTab === 'chamado' && isDestinoTi) {
+      const faltando = camposTiPendentes(helpdeskCategory, dadosTi);
+      if (faltando.length > 0) {
+        alert(`Preencha: ${faltando.join(', ')}.`);
+        return;
+      }
+    }
     if (activeTab === 'chamado' && isDestinoSuprimentos && !helpdeskCategory) {
       alert('Selecione a categoria do chamado.');
       return;
@@ -1606,8 +1628,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             ? `${pendenciasParse.linhas.length} ${pendenciasParse.modelo === 'documento' ? 'lançamento(s)' : 'nota(s) fiscal(is)'} para processamento (protocolo ${protocoloSup}). Ver a relação no chamado.`
             : isAjustePedido
               ? justificativaAjustePedido(protocoloSup, ajusteNf, ajustePedido, ajusteFornecedor)
-              : justificativa,
-          local: isDestinoSuprimentos ? '' : helpdeskLocal,
+              : isDestinoTi
+                ? montarJustificativaTi(helpdeskCategory, dadosTi, justificativa)
+                : justificativa,
+          // TI não pede local de ocorrência.
+          local: isDestinoSuprimentos || isDestinoTi ? '' : helpdeskLocal,
           ...(isDestinoJuridico && {
             titulo: juridicoTitulo,
             contrato_tipo: juridicoTipoContrato,
@@ -1748,6 +1773,34 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           assunto,
           corpo,
         });
+      }
+
+      // Chamado novo para a TI: abre o Outlook para a equipe (Cadastros > E-mails,
+      // gatilho helpdesk_ti). Na edição não reenvia.
+      if (activeTab === 'chamado' && isDestinoTi && !editandoId) {
+        const configEmail = await obterConfigEmail('helpdesk_ti');
+        const email = montarEmailChamadoTi({
+          numero: reqNumero,
+          categoria: helpdeskCategory,
+          solicitante: user.name,
+          cargo: user.cargo,
+          setorSolicitante: sectors.find(sec => sec.id === chamadoSectorId)?.name || '',
+          criticidade: criticality,
+          justificativa: montarJustificativaTi(helpdeskCategory, dadosTi, justificativa),
+          totalAnexos: sapAttachments.length,
+          link: `${window.location.origin}/#/solicitacoes?id=${reqId}`,
+          assuntoPadrao: configEmail?.assunto_padrao,
+        });
+        window.location.href = montarMailtoComConfig({
+          destinatarios: configEmail?.destinatarios || 'moab.barbosa@ten.ind.br; elaine.luz@ten.ind.br',
+          copia: configEmail?.copia,
+          copiaOculta: configEmail?.copia_oculta,
+          assunto: email.assunto,
+          corpo: email.corpo,
+        });
+        toast.info(sapAttachments.length > 0
+          ? 'E-mail aberto no Outlook para a TI. Anexe os arquivos manualmente antes de enviar — o link não inclui anexos.'
+          : 'E-mail aberto no Outlook para a TI. Confira e envie.');
       }
 
       if (activeTab === 'compra' && ehServico) {
@@ -3210,7 +3263,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       <button
                         key={s.id}
                         type="button"
-                        onClick={() => { setHelpdeskSectorId(s.id); setHelpdeskCategory(''); }}
+                        onClick={() => { setHelpdeskSectorId(s.id); setHelpdeskCategory(''); setDadosTi({}); }}
                         aria-pressed={active}
                         className="flex items-center gap-3 p-4 rounded-xl border text-left cursor-pointer transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2"
                         style={{
@@ -3263,12 +3316,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   </select>
                 </div>
               ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className={`grid grid-cols-1 gap-4 ${isDestinoTi ? '' : 'sm:grid-cols-2'}`}>
                 <div>
                   <label className={labelClass} style={labelStyle}>Categoria do incidente/pedido *</label>
                   <select
                     value={helpdeskCategory}
-                    onChange={(e) => setHelpdeskCategory(e.target.value)}
+                    onChange={(e) => { setHelpdeskCategory(e.target.value); setDadosTi({}); }}
                     required
                     className={`${fieldClass} cursor-pointer`}
                     style={fieldStyle}
@@ -3296,7 +3349,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       ))}
                     </select>
                   </div>
-                ) : (
+                ) : isDestinoTi ? null : (
                   <div>
                     <label className={labelClass} style={labelStyle}>
                       Local de ocorrência {helpdeskSectorId === '3' ? '*' : '(Opcional)'}
@@ -3313,6 +3366,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   </div>
                 )}
               </div>
+              )}
+
+              {isDestinoTi && (
+                <CamposChamadoTi categoria={helpdeskCategory} dados={dadosTi} onChange={setDadosTi} />
               )}
 
               {isDestinoJuridico && (
@@ -3517,11 +3574,17 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </p>
               ) : (
               <div data-tour="novasol-justificativa">
-                <label className={labelClass} style={labelStyle}>Descrição detalhada {isJuridicoAssinatura ? '(opcional)' : '*'}</label>
+                <label className={labelClass} style={labelStyle}>
+                  {isDestinoTi && !descricaoObrigatoriaTi(helpdeskCategory)
+                    ? 'Observações (opcional)'
+                    : `Descrição detalhada ${isJuridicoAssinatura ? '(opcional)' : '*'}`}
+                </label>
                 <textarea
-                  required={!isJuridicoAssinatura}
+                  required={!isJuridicoAssinatura && !(isDestinoTi && !descricaoObrigatoriaTi(helpdeskCategory))}
                   rows={4}
-                  placeholder="Descreva as características do erro, mensagens de sistema apresentadas, impactos causados no setor, e passos já efetuados para tentar resolver."
+                  placeholder={isDestinoTi
+                    ? placeholderDescricaoTi(helpdeskCategory)
+                    : 'Descreva as características do erro, mensagens de sistema apresentadas, impactos causados no setor, e passos já efetuados para tentar resolver.'}
                   value={justificativa}
                   onChange={(e) => setJustificativa(e.target.value)}
                   className="w-full rounded-lg border py-2 px-3 text-base transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
