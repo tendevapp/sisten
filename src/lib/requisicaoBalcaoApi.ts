@@ -192,6 +192,25 @@ export async function listarRequisicoesBalcao(limite = 500): Promise<ReqBalcaoRo
   if (recentes.error) throw new Error(recentes.error.message);
   const porId = new Map<string, ReqBalcaoRow>();
   for (const r of [...(recentes.data || []), ...emAberto] as ReqBalcaoRow[]) porId.set(r.id, r);
+  // Importação parcial: a RQB já tem doc. SAP, mas algum item não — fica na aba
+  // Exportadas mesmo fora das recentes. Poucas; erro aqui não derruba a lista.
+  try {
+    const parciais = await buscarTudo<{ requisicao_id: string }>((de, ate) => (supabase.from as any)('alm_req_balcao_itens')
+      .select('requisicao_id, req:alm_req_balcao!inner(doc_sap, excluido)')
+      .is('doc_sap', null)
+      .not('req.doc_sap', 'is', null)
+      .eq('req.excluido', false)
+      .order('id', { ascending: true })
+      .range(de, ate));
+    const faltam = [...new Set(parciais.map((p) => p.requisicao_id))].filter((id) => !porId.has(id));
+    for (let i = 0; i < faltam.length; i += 100) {
+      const { data, error } = await dbReq().select('*, itens:alm_req_balcao_itens(*)').in('id', faltam.slice(i, i + 100));
+      if (error) throw error;
+      for (const r of (data || []) as ReqBalcaoRow[]) porId.set(r.id, r);
+    }
+  } catch (err) {
+    console.warn('Requisição no Balcão: não carregou as importações parciais.', err);
+  }
   return [...porId.values()]
     .sort((a, b) => (b.data === a.data ? (b.created_at || '').localeCompare(a.created_at || '') : b.data.localeCompare(a.data)))
     .map(comItensOrdenados);
@@ -354,19 +373,163 @@ export async function listarAlteracoesBalcao(requisicaoId: string): Promise<ReqB
   return (data || []) as ReqBalcaoAlteracao[];
 }
 
-/** Grava o doc. SAP/status lidos da planilha concluída. */
+/** Limites de um dia local como instante UTC, para filtrar `created_at`. */
+const inicioDoDia = (d: string) => (d ? new Date(`${d}T00:00:00`).toISOString() : null);
+const fimDoDia = (d: string) => (d ? new Date(`${d}T23:59:59.999`).toISOString() : null);
+
+/** Evento do log geral — o de uma requisição mais o código e o id dela. */
+export interface ReqBalcaoAlteracaoGeral extends ReqBalcaoAlteracao {
+  requisicao_id: string;
+  codigo: string | null;
+}
+
+/**
+ * Log de todas as requisições num período (datas locais, inclusivas), do mais
+ * recente para o mais antigo. Pagina: passa de mil eventos em poucos dias.
+ */
+export async function listarLogGeralBalcao(de: string, ate: string): Promise<ReqBalcaoAlteracaoGeral[]> {
+  const inicio = inicioDoDia(de);
+  const fim = fimDoDia(ate);
+  return buscarTudo<ReqBalcaoAlteracaoGeral>((a, b) => {
+    let q = (supabase.from as any)('alm_req_balcao_alteracoes')
+      .select('id, requisicao_id, codigo, acao, alteracoes, resumo, alterado_por_nome, created_at');
+    if (inicio) q = q.gte('created_at', inicio);
+    if (fim) q = q.lte('created_at', fim);
+    return q.order('created_at', { ascending: false }).order('id', { ascending: true }).range(a, b);
+  });
+}
+
+/** Linha que a prévia leu mas não mandou gravar — só vai para o log. */
+export interface LinhaNaoEnviadaBalcao {
+  codigo: string;
+  material: string;
+  doc_sap: string;
+  status: string;
+  /** Situação na prévia: igual, nao_encontrado ou sem_doc (linha sem doc. SAP). */
+  situacao: string;
+}
+
+/** Resumo da leitura da planilha, gravado no log da importação. */
+export interface LeituraImportacaoBalcao {
+  coluna_sap: string;
+  total_linhas: number;
+  sem_codigo: number;
+  sem_doc_sap: number;
+  nao_enviadas: LinhaNaoEnviadaBalcao[];
+}
+
+/** Grava o doc. SAP/status lidos da planilha concluída e registra a importação. */
 export async function importarSapBalcao(
   linhas: { codigo: string; material: string; doc_sap: string; status: string }[],
   arquivo: string,
   por: string,
-): Promise<{ requisicoes: number; itens: number; nao_encontrados: string[] }> {
+  leitura?: LeituraImportacaoBalcao,
+): Promise<{ requisicoes: number; itens: number; iguais?: number; nao_encontrados: string[]; importacao_id?: string }> {
   const { data, error } = await supabase.rpc('alm_req_balcao_importar_sap' as any, {
     p_linhas: linhas,
     p_arquivo: arquivo,
     p_por: por,
+    p_leitura: leitura ?? null,
   } as any);
   if (error) throw new Error(error.message);
   return data as any;
+}
+
+export type ResultadoLinhaImportacao = 'gravado' | 'igual' | 'nao_encontrado' | 'sem_doc' | 'fora_da_gravacao';
+
+export interface LinhaImportacaoLog {
+  codigo: string;
+  material: string;
+  doc_sap: string | null;
+  status?: string | null;
+  resultado: ResultadoLinhaImportacao;
+  motivo?: string;
+  lote?: string | null;
+  doc_anterior?: string | null;
+  ordem?: number;
+}
+
+/** Uma importação da planilha concluída (`alm_req_balcao_importacoes`). */
+export interface ImportacaoBalcao {
+  id: string;
+  arquivo: string | null;
+  coluna_sap: string | null;
+  importado_por_nome: string | null;
+  created_at: string;
+  total_linhas: number;
+  sem_codigo: number;
+  sem_doc_sap: number;
+  enviadas: number;
+  gravados: number;
+  iguais: number;
+  nao_encontrados: number;
+  requisicoes: number;
+  docs: string[];
+  lotes: string[];
+  detalhe: LinhaImportacaoLog[];
+  /** Montada a partir do log antigo: só as linhas que gravaram algo. */
+  reconstruida: boolean;
+}
+
+/** Importações da planilha concluída num período (datas locais, inclusivas). */
+export async function listarImportacoesBalcao(de: string, ate: string): Promise<ImportacaoBalcao[]> {
+  const inicio = inicioDoDia(de);
+  const fim = fimDoDia(ate);
+  return buscarTudo<ImportacaoBalcao>((a, b) => {
+    let q = (supabase.from as any)('alm_req_balcao_importacoes').select('*');
+    if (inicio) q = q.gte('created_at', inicio);
+    if (fim) q = q.lte('created_at', fim);
+    return q.order('created_at', { ascending: false }).order('id', { ascending: true }).range(a, b);
+  }, 200);
+}
+
+export interface PendenteLoteBalcao {
+  requisicao_id: string;
+  codigo: string;
+  tipo: string;
+  ordem: number;
+  material: string;
+  descricao: string | null;
+  quantidade: number;
+  unidade: string | null;
+  deposito: string | null;
+}
+
+export interface DocMb51SemVinculo {
+  doc: string;
+  tipo: string;
+  data: string;
+  linhas: number;
+  /** Materiais de item sem doc. do lote que aparecem nesse documento. */
+  materiais_pendentes: number;
+}
+
+/** Lote exportado × o que voltou da planilha concluída. */
+export interface LoteImportacaoBalcao {
+  exportacao_id: string;
+  arquivo: string;
+  exportada_em: string;
+  data_exportacao: string;
+  exportado_por: string | null;
+  total_requisicoes: number;
+  total_itens: number;
+  requisicoes_vigentes: number;
+  itens_vigentes: number;
+  itens_com_doc: number;
+  itens_sem_doc: number;
+  docs_lote: string | null;
+  importacoes: number;
+  ultima_importacao_em: string | null;
+  pendentes: PendenteLoteBalcao[];
+  mb51_sem_vinculo: DocMb51SemVinculo[];
+}
+
+/** Por lote exportado no período: itens com/sem doc. SAP e docs da MB51 sem vínculo. */
+export async function listarLotesImportacaoBalcao(de: string, ate: string): Promise<LoteImportacaoBalcao[]> {
+  return buscarTudo<LoteImportacaoBalcao>((a, b) => (supabase.rpc as any)('alm_req_balcao_lotes_importacao', {
+    p_de: de || null,
+    p_ate: ate || null,
+  }).range(a, b));
 }
 
 /**

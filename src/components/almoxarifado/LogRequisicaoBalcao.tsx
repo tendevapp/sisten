@@ -11,17 +11,7 @@ import React, { useEffect, useState } from 'react';
 import { History } from 'lucide-react';
 import { formatDateTimeBR } from '../../lib/format';
 import { listarAlteracoesBalcao, type ReqBalcaoAlteracao } from '../../lib/requisicaoBalcaoApi';
-
-const ROTULO_ACAO: Record<ReqBalcaoAlteracao['acao'], string> = {
-  criacao: 'Criação',
-  edicao: 'Edição',
-  exclusao: 'Exclusão',
-  doc_sap: 'Doc. SAP',
-  exportacao: 'Exportação',
-  reabertura: 'Reabertura',
-  importacao_sap: 'Importação SAP',
-  restauracao: 'Restauração',
-};
+import { ROTULO_ACAO_LOG } from '../../lib/logRequisicaoBalcao';
 
 /** Log de alterações da requisição — carregado ao abrir o detalhe. */
 export default function LogAlteracoes({ requisicaoId }: { requisicaoId: string }) {
@@ -52,7 +42,7 @@ export default function LogAlteracoes({ requisicaoId }: { requisicaoId: string }
             <li key={a.id} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--hairline)' }}>
               <div className="flex flex-wrap items-baseline justify-between gap-2 text-[11px]">
                 <span className="font-bold" style={{ color: 'var(--ink-primary)' }}>
-                  {ROTULO_ACAO[a.acao] ?? a.acao}{a.resumo && <span className="font-medium" style={{ color: 'var(--ink-secondary)' }}> · {a.resumo}</span>}
+                  {ROTULO_ACAO_LOG[a.acao] ?? a.acao}{a.resumo && <span className="font-medium" style={{ color: 'var(--ink-secondary)' }}> · {a.resumo}</span>}
                 </span>
                 <span style={{ color: 'var(--ink-muted)' }}>{a.alterado_por_nome ?? '—'} · {formatDateTimeBR(a.created_at)}</span>
               </div>

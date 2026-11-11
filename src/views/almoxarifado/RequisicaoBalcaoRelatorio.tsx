@@ -22,7 +22,7 @@
 import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
-  ArrowLeft, CheckSquare, ChevronDown, ChevronRight, ClipboardList, Download, Loader2, PackageSearch, RefreshCw,
+  ArrowLeft, CheckSquare, ChevronDown, ChevronRight, ClipboardList, Download, History, Loader2, PackageSearch, RefreshCw,
   Search, Square, X,
 } from 'lucide-react';
 import type { Profile } from '../../types';
@@ -33,6 +33,7 @@ import { paraISOLocal } from '../../lib/dataLocal';
 import { canAccessForm } from '../../lib/pages';
 import FiltroPeriodoRequisicao from '../../components/almoxarifado/FiltroPeriodoRequisicao';
 import DetalheAuditoriaModal from '../../components/almoxarifado/auditoriaRqb/DetalheAuditoriaModal';
+import LogGeralModal from '../../components/almoxarifado/auditoriaRqb/LogGeralModal';
 import { DetalheMb51, SeloStatus } from '../../components/almoxarifado/auditoriaRqb/selos';
 import {
   TableBody, TableCardRow, TableCards, TableDesktop, TableHeadRow, TableShell, Td, Th, Tr,
@@ -102,6 +103,7 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
   const [detalhe, setDetalhe] = useState<string | null>(null);
   const [selecao, setSelecao] = useState<Set<string>>(new Set());
   const [abrindoInventario, setAbrindoInventario] = useState(false);
+  const [logAberto, setLogAberto] = useState(false);
   const podeInventario = canAccessForm(user, 'form_almoxarifado_inventario');
 
   const carregar = useCallback(async () => {
@@ -148,6 +150,8 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
     () => (detalhe ? linhas.filter((l) => l.requisicao_id === detalhe) : []),
     [linhas, detalhe],
   );
+  const requisicoesCarregadas = useMemo(() => new Set(linhas.map((l) => l.requisicao_id)), [linhas]);
+  const idPorCodigo = useMemo(() => new Map(linhas.map((l) => [l.codigo, l.requisicao_id])), [linhas]);
 
   // Busca que é exatamente um código de material: já abre o item.
   useEffect(() => {
@@ -271,6 +275,9 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setLogAberto(true)} className={`inline-flex items-center gap-1.5 ${botaoSecundario}`} style={estiloSecundario}>
+            <History className="h-3.5 w-3.5" /> Log
+          </button>
           <button type="button" onClick={() => void carregar()} className={`inline-flex items-center gap-1.5 ${botaoSecundario}`} style={estiloSecundario}>
             <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'animate-spin' : ''}`} /> Atualizar
           </button>
@@ -495,6 +502,15 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
         </>
       )}
 
+      {logAberto && (
+        <LogGeralModal
+          visivel={!(detalhe && itensDetalhe.length > 0)}
+          onClose={() => setLogAberto(false)}
+          onAbrirRequisicao={(id) => setDetalhe(id)}
+          podeAbrir={(id) => requisicoesCarregadas.has(id)}
+          idPorCodigo={(c) => idPorCodigo.get(c.toUpperCase())}
+        />
+      )}
       {detalhe && itensDetalhe.length > 0 && (
         <DetalheAuditoriaModal itens={itensDetalhe} onClose={() => setDetalhe(null)} />
       )}

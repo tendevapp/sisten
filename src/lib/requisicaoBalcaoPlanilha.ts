@@ -126,6 +126,8 @@ export interface LeituraPlanilhaBalcao {
   semCodigo: number;
   /** Linhas com código mas sem doc. SAP nem status — ainda não processadas. */
   semDocSap: number;
+  /** Quais são essas linhas — vão para o log da importação. */
+  linhasSemDoc: { codigo: string; material: string }[];
 }
 
 const chave = (s: unknown) =>
@@ -162,6 +164,7 @@ export function lerPlanilhaBalcaoConcluida(matriz: unknown[][]): LeituraPlanilha
   let semCodigo = 0;
   let semDocSap = 0;
   let totalLinhas = 0;
+  const linhasSemDoc: { codigo: string; material: string }[] = [];
   for (const row of corpo) {
     if (!row || row.every((c) => texto(c) === '')) continue;
     totalLinhas++;
@@ -169,10 +172,10 @@ export function lerPlanilhaBalcaoConcluida(matriz: unknown[][]): LeituraPlanilha
     if (!codigo) { semCodigo++; continue; }
     const docSap = texto(row[iSap]);
     const status = iStatus >= 0 ? texto(row[iStatus]) : '';
-    if (!docSap && !status) { semDocSap++; continue; }
+    if (!docSap && !status) { semDocSap++; linhasSemDoc.push({ codigo, material: texto(row[iMat]) }); continue; }
     linhas.push({ codigo, material: texto(row[iMat]), docSap, status });
   }
-  return { linhas, colunaSap: nomes[iSap], totalLinhas, semCodigo, semDocSap };
+  return { linhas, colunaSap: nomes[iSap], totalLinhas, semCodigo, semDocSap, linhasSemDoc };
 }
 
 export type SituacaoImportacao = 'novo' | 'igual' | 'diferente' | 'nao_encontrado';

@@ -63,6 +63,8 @@ import { confirmar } from '../../lib/confirmar';
 import LogAlteracoes from '../../components/almoxarifado/LogRequisicaoBalcao';
 import { canAccessPage } from '../../lib/pages';
 import FiltroPeriodoRequisicao from '../../components/almoxarifado/FiltroPeriodoRequisicao';
+import { etapaSapBalcao, itensSemDocParcial, type EtapaSapBalcao } from '../../lib/requisicaoBalcaoEtapa';
+import { formatarIntervalo } from '../../lib/logRequisicaoBalcao';
 import {
   PERIODO_VAZIO, dataLocalDeTimestamp, dentroDoPeriodo, type FiltroPeriodo,
 } from '../../lib/requisicaoBalcaoAuditoria';
@@ -103,13 +105,27 @@ function gravarPreferencias(p: Preferencias): void {
 
 const DESTINO_PADRAO_TRANSFERENCIA = '0105';
 
-type FiltroExportacao = 'aguardando' | 'nao_exportadas' | 'exportadas' | 'todas';
+/**
+ * Abas no caminho até o SAP: não exportada → exportada (alerta: ainda sem
+ * doc. SAP) → Concluído SAP (a planilha concluída voltou com o doc.).
+ */
+type FiltroExportacao = 'aguardando' | 'nao_exportadas' | 'exportadas' | 'concluidas' | 'todas';
 const ROTULO_FILTRO_EXPORTACAO: Record<FiltroExportacao, string> = {
   aguardando: 'Aguardando confirmação',
   nao_exportadas: 'Não exportadas',
-  exportadas: 'Exportadas',
+  exportadas: 'Exportadas · sem SAP',
+  concluidas: 'Concluído SAP',
   todas: 'Todas',
 };
+const ETAPA_DO_FILTRO: Partial<Record<FiltroExportacao, EtapaSapBalcao>> = {
+  aguardando: 'aguardando',
+  nao_exportadas: 'nao_exportada',
+  exportadas: 'exportada',
+  concluidas: 'concluida',
+};
+
+/** Exportada há mais que isso sem doc. SAP: o alerta fica vermelho. */
+const ALERTA_EXPORTADA_MS = 24 * 3600 * 1000;
 
 // ===========================================================================
 // Tela
@@ -129,7 +145,6 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const [itemQr, setItemQr] = useState<{ codigo: string; n: number } | null>(null);
   const [detalhe, setDetalhe] = useState<ReqBalcaoRow | null>(null);
   const [busca, setBusca] = useState('');
-  const [soPendentes, setSoPendentes] = useState(false);
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [docSapAberto, setDocSapAberto] = useState<string[] | null>(null);
   const [filtroExportacao, setFiltroExportacao] = useState<FiltroExportacao>('nao_exportadas');
@@ -197,10 +212,8 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const filtradas = useMemo(() => {
     const t = semAcento(busca.trim());
     return noPeriodo.filter((r) => {
-      if (soPendentes && r.doc_sap) return false;
-      if (filtroExportacao === 'aguardando' && !r.pendente_confirmacao) return false;
-      if (filtroExportacao === 'nao_exportadas' && (r.exportacao_id || r.pendente_confirmacao)) return false;
-      if (filtroExportacao === 'exportadas' && !r.exportacao_id) return false;
+      const etapa = ETAPA_DO_FILTRO[filtroExportacao];
+      if (etapa && etapaSapBalcao(r) !== etapa) return false;
       if (!t) return true;
       const alvo = semAcento([
         r.codigo, r.colaborador_nome, r.colaborador_registro, r.aplicacao_pep, r.aplicacao, r.doc_sap, r.deposito_origem,
@@ -208,7 +221,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
       ].filter(Boolean).join(' '));
       return t.split(/\s+/).every((p) => alvo.includes(p));
     });
-  }, [noPeriodo, busca, soPendentes, filtroExportacao]);
+  }, [noPeriodo, busca, filtroExportacao]);
 
   const porDia = useMemo(() => {
     const grupos = new Map<string, ReqBalcaoRow[]>();
@@ -223,15 +236,22 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const hoje = hojeISO();
   const qtdHoje = requisicoes.filter((r) => r.data === hoje).length;
   // Contagens no período escolhido (sem período = tudo).
-  const qtdPendentes = noPeriodo.filter((r) => !r.doc_sap).length;
-  const qtdAguardando = noPeriodo.filter((r) => r.pendente_confirmacao).length;
-  const qtdNaoExportadas = noPeriodo.filter((r) => !r.exportacao_id && !r.pendente_confirmacao).length;
+  const porEtapa = useMemo(() => {
+    const c: Record<EtapaSapBalcao, number> = { aguardando: 0, nao_exportada: 0, exportada: 0, concluida: 0 };
+    for (const r of noPeriodo) c[etapaSapBalcao(r)] += 1;
+    return c;
+  }, [noPeriodo]);
+  const qtdAguardando = porEtapa.aguardando;
+  const qtdNaoExportadas = porEtapa.nao_exportada;
+  const qtdExportadasSemSap = porEtapa.exportada;
   const contagemFiltro: Record<FiltroExportacao, number> = {
     aguardando: qtdAguardando,
     nao_exportadas: qtdNaoExportadas,
-    exportadas: noPeriodo.filter((r) => r.exportacao_id).length,
+    exportadas: qtdExportadasSemSap,
+    concluidas: porEtapa.concluida,
     todas: noPeriodo.length,
   };
+  const exportadaEmPorLote = useMemo(() => new Map(exportacoes.map((e) => [e.id, e.created_at])), [exportacoes]);
 
   // Link do QR: tira o `?item=` do endereço (F5 não repete) e consome o pendente do login.
   useEffect(() => {
@@ -512,24 +532,30 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
           ativo={filtroExportacao === 'nao_exportadas'}
         />
         <Indicador
-          rotulo="Sem documento SAP"
-          valor={qtdPendentes}
-          destaque={qtdPendentes > 0}
-          onClick={() => setSoPendentes((v) => !v)}
-          ativo={soPendentes}
+          rotulo="Exportadas sem doc. SAP"
+          valor={qtdExportadasSemSap}
+          destaque={qtdExportadasSemSap > 0}
+          alerta={qtdExportadasSemSap > 0}
+          onClick={() => setFiltroExportacao('exportadas')}
+          ativo={filtroExportacao === 'exportadas'}
         />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)' }}>
+        <div className="inline-flex flex-wrap rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)' }} role="group" aria-label="Etapa até o SAP">
           {(Object.keys(ROTULO_FILTRO_EXPORTACAO) as FiltroExportacao[]).map((f) => (
             <button
               key={f}
               type="button"
               onClick={() => setFiltroExportacao(f)}
-              className="rounded-md px-2.5 py-1 text-[11px] font-bold"
-              style={filtroExportacao === f ? { background: 'var(--brand)', color: 'white' } : { color: 'var(--ink-secondary)' }}
+              aria-pressed={filtroExportacao === f}
+              className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold"
+              style={filtroExportacao === f
+                ? { background: f === 'exportadas' && contagemFiltro[f] > 0 ? 'var(--status-serious)' : 'var(--brand)', color: 'white' }
+                : { color: f === 'exportadas' && contagemFiltro[f] > 0 ? 'var(--status-serious)' : 'var(--ink-secondary)' }}
             >
+              {f === 'exportadas' && contagemFiltro[f] > 0 && <AlertTriangle className="h-3 w-3" />}
+              {f === 'concluidas' && <Check className="h-3 w-3" />}
               {ROTULO_FILTRO_EXPORTACAO[f]} ({contagemFiltro[f]})
             </button>
           ))}
@@ -543,10 +569,6 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
             className={`${inputCls} pl-8 text-xs`}
           />
         </div>
-        <label className="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer" style={{ color: 'var(--ink-secondary)' }}>
-          <input type="checkbox" checked={soPendentes} onChange={(e) => setSoPendentes(e.target.checked)} />
-          Só sem doc. SAP
-        </label>
         <FiltroPeriodoRequisicao valor={periodo} onChange={setPeriodo} />
         {filtradas.length > 0 && (
           <button
@@ -602,6 +624,20 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
         </div>
       )}
 
+      {filtroExportacao === 'exportadas' && qtdExportadasSemSap > 0 && (
+        <div
+          className="flex items-start gap-2 rounded-xl border px-3 py-2 text-xs"
+          style={{ borderColor: 'var(--status-serious)', background: 'color-mix(in srgb, var(--status-serious) 8%, transparent)', color: 'var(--ink-primary)' }}
+          role="status"
+        >
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: 'var(--status-serious)' }} />
+          <span>
+            {qtdExportadasSemSap} requisição(ões) já saíram na planilha e ainda não voltaram com doc. SAP. Importe a planilha
+            concluída (ou informe o doc.) para irem para <strong>Concluído SAP</strong>. Em vermelho, exportadas há mais de 24 h.
+          </span>
+        </div>
+      )}
+
       {loading && requisicoes.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-12 text-xs" style={{ color: 'var(--ink-muted)' }}>
           <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
@@ -633,6 +669,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
                   <CartaoRequisicao
                     key={r.id}
                     r={r}
+                    exportadaEm={r.exportacao_id ? exportadaEmPorLote.get(r.exportacao_id) ?? null : null}
                     selecionada={selecionadas.has(r.id)}
                     podeEditar={podeEditarFormulario(user, r) || !!r.pendente_confirmacao}
                     onSelecionar={(v) => alternarSelecao([r.id], v)}
@@ -692,14 +729,27 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
           leitura={importacao.leitura}
           requisicoes={requisicoes}
           onClose={() => setImportacao(null)}
-          onConfirmar={async (linhas) => {
+          onConfirmar={async (linhas, naoEnviadas) => {
             try {
+              const { leitura } = importacao;
               const r = await importarSapBalcao(
                 linhas.map((l) => ({ codigo: l.codigo, material: l.material, doc_sap: l.docSap, status: l.status })),
                 importacao.arquivo,
                 user.name,
+                {
+                  coluna_sap: leitura.colunaSap,
+                  total_linhas: leitura.totalLinhas,
+                  sem_codigo: leitura.semCodigo,
+                  sem_doc_sap: leitura.semDocSap,
+                  nao_enviadas: [
+                    ...naoEnviadas.map((l) => ({ codigo: l.codigo, material: l.material, doc_sap: l.docSap, status: l.status, situacao: l.situacao })),
+                    ...leitura.linhasSemDoc.map((l) => ({ ...l, doc_sap: '', status: '', situacao: 'sem_doc' })),
+                  ],
+                },
               );
-              toast.success(`Doc. SAP gravado em ${r.itens} item(ns) de ${r.requisicoes} requisição(ões).`);
+              toast.success(r.itens > 0
+                ? `Doc. SAP gravado em ${r.itens} item(ns) de ${r.requisicoes} requisição(ões). A importação ficou no log.`
+                : 'Nada gravado. A leitura da planilha ficou no log da importação.');
               if (r.nao_encontrados?.length) toast.error(`Não encontrados: ${r.nao_encontrados.join(', ')}`);
               setImportacao(null);
               await recarregarRequisicoes();
@@ -734,8 +784,8 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
 }
 
 function Indicador({
-  rotulo, valor, destaque, onClick, ativo,
-}: { rotulo: string; valor: number; destaque?: boolean; onClick?: () => void; ativo?: boolean }) {
+  rotulo, valor, destaque, onClick, ativo, alerta,
+}: { rotulo: string; valor: number; destaque?: boolean; onClick?: () => void; ativo?: boolean; alerta?: boolean }) {
   return (
     <button
       type="button"
@@ -743,11 +793,13 @@ function Indicador({
       disabled={!onClick}
       className="rounded-xl border px-4 py-3 text-left disabled:cursor-default"
       style={{
-        borderColor: ativo ? 'var(--brand)' : 'var(--hairline)',
-        background: 'var(--surface-raised)',
+        borderColor: ativo ? 'var(--brand)' : alerta ? 'var(--status-serious)' : 'var(--hairline)',
+        background: alerta ? 'color-mix(in srgb, var(--status-serious) 6%, var(--surface-raised))' : 'var(--surface-raised)',
       }}
     >
-      <span className="block text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>{rotulo}</span>
+      <span className="flex items-center gap-1 text-[11px] font-bold" style={{ color: alerta ? 'var(--status-serious)' : 'var(--ink-muted)' }}>
+        {alerta && <AlertTriangle className="h-3 w-3" />}{rotulo}
+      </span>
       <span className="block text-2xl font-extrabold tabular-nums" style={{ color: destaque ? 'var(--status-serious)' : 'var(--ink-primary)' }}>
         {valor}
       </span>
@@ -767,14 +819,32 @@ function ChipTipo({ tipo }: { tipo: TipoMovimentoBalcao }) {
   );
 }
 
-function ChipDocSap({ doc }: { doc: string | null }) {
-  const token = doc ? 'var(--status-good)' : 'var(--status-serious)';
+function ChipDocSap({ doc, semDocParcial = 0 }: { doc: string | null; semDocParcial?: number }) {
+  const token = semDocParcial > 0 ? 'var(--status-serious)' : doc ? 'var(--status-good)' : 'var(--status-serious)';
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
       style={{ background: `color-mix(in srgb, ${token} 14%, transparent)`, color: token }}
+      title={semDocParcial > 0 ? `${semDocParcial} item(ns) ainda sem doc. SAP` : undefined}
     >
-      {doc ? <><Check className="h-3 w-3" /> SAP {doc}</> : 'Sem doc. SAP'}
+      {semDocParcial > 0
+        ? <><AlertTriangle className="h-3 w-3" /> SAP parcial · faltam {semDocParcial}</>
+        : doc ? <><Check className="h-3 w-3" /> SAP {doc}</> : 'Sem doc. SAP'}
+    </span>
+  );
+}
+
+/** Exportada e ainda sem doc. SAP: há quanto tempo a planilha saiu. */
+function ChipAguardandoSap({ exportadaEm }: { exportadaEm: string | null }) {
+  const ms = exportadaEm ? Date.now() - new Date(exportadaEm).getTime() : null;
+  const token = ms != null && ms > ALERTA_EXPORTADA_MS ? 'var(--status-critical)' : 'var(--status-serious)';
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+      style={{ background: `color-mix(in srgb, ${token} 14%, transparent)`, color: token }}
+      title={exportadaEm ? `Exportada em ${formatDateTimeBR(exportadaEm)} — falta importar a planilha concluída` : undefined}
+    >
+      <AlertTriangle className="h-3 w-3" /> Aguardando SAP{ms != null && ms > 0 ? ` · há ${formatarIntervalo(ms)}` : ''}
     </span>
   );
 }
@@ -804,9 +874,10 @@ function ChipPendenteConfirmacao({ origemRef }: { origemRef?: string | null }) {
 }
 
 function CartaoRequisicao({
-  r, selecionada, podeEditar, onSelecionar, onAbrir, onEditar, onExcluir,
+  r, exportadaEm, selecionada, podeEditar, onSelecionar, onAbrir, onEditar, onExcluir,
 }: {
   r: ReqBalcaoRow;
+  exportadaEm: string | null;
   selecionada: boolean;
   podeEditar: boolean;
   onSelecionar: (v: boolean) => void;
@@ -843,8 +914,17 @@ function CartaoRequisicao({
           <span className="font-mono text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{r.codigo}</span>
           <ChipTipo tipo={r.tipo_movimento} />
           {r.pendente_confirmacao && <ChipPendenteConfirmacao origemRef={r.origem_ref} />}
-          <ChipDocSap doc={r.doc_sap} />
-          {r.exportacao_id && <ChipExportada />}
+          {etapaSapBalcao(r) === 'exportada' ? (
+            <>
+              <ChipAguardandoSap exportadaEm={exportadaEm} />
+              {itensSemDocParcial(r) > 0 && <ChipDocSap doc={r.doc_sap} semDocParcial={itensSemDocParcial(r)} />}
+            </>
+          ) : (
+            <>
+              <ChipDocSap doc={r.doc_sap} />
+              {r.exportacao_id && <ChipExportada />}
+            </>
+          )}
           {temSemSaldo && (
             <span
               className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300"
@@ -2084,7 +2164,7 @@ function ModalDetalhe({
           <h2 className="font-mono text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>{r.codigo}</h2>
           <ChipTipo tipo={r.tipo_movimento} />
           {r.pendente_confirmacao && <ChipPendenteConfirmacao origemRef={r.origem_ref} />}
-          <ChipDocSap doc={r.doc_sap} />
+          <ChipDocSap doc={r.doc_sap} semDocParcial={itensSemDocParcial(r)} />
           {r.exportacao_id && <ChipExportada />}
           {temSemSaldo && (
             <span
@@ -2283,11 +2363,15 @@ function ModalImportacaoSap({
   leitura: LeituraPlanilhaBalcao;
   requisicoes: ReqBalcaoRow[];
   onClose: () => void;
-  onConfirmar: (linhas: LeituraPlanilhaBalcao['linhas']) => Promise<void>;
+  onConfirmar: (
+    linhas: LeituraPlanilhaBalcao['linhas'],
+    naoEnviadas: (LeituraPlanilhaBalcao['linhas'][number] & { situacao: SituacaoImportacao })[],
+  ) => Promise<void>;
 }) {
   const [gravando, setGravando] = useState(false);
   const classificadas = useMemo(() => classificarImportacao(leitura.linhas, requisicoes), [leitura, requisicoes]);
   const aGravar = classificadas.filter((l) => l.situacao === 'novo' || l.situacao === 'diferente');
+  const naoEnviadas = classificadas.filter((l) => l.situacao !== 'novo' && l.situacao !== 'diferente');
   const conta = (s: SituacaoImportacao) => classificadas.filter((l) => l.situacao === s).length;
 
   return (
@@ -2347,12 +2431,13 @@ function ModalImportacaoSap({
         <div className="flex w-full justify-end gap-2">
           <button onClick={onClose} className="rounded-lg border px-4 py-2 text-xs font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Cancelar</button>
           <button
-            onClick={async () => { setGravando(true); try { await onConfirmar(aGravar); } finally { setGravando(false); } }}
-            disabled={gravando || aGravar.length === 0}
+            onClick={async () => { setGravando(true); try { await onConfirmar(aGravar, naoEnviadas); } finally { setGravando(false); } }}
+            disabled={gravando || leitura.totalLinhas === 0}
+            title={aGravar.length === 0 ? 'Nada a gravar — registra a leitura no log da importação' : undefined}
             className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
             style={{ background: 'var(--brand)' }}
           >
-            {gravando && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Gravar {aGravar.length} item(ns)
+            {gravando && <Loader2 className="h-3.5 w-3.5 animate-spin" />} {aGravar.length > 0 ? `Gravar ${aGravar.length} item(ns)` : 'Só registrar no log'}
           </button>
         </div>
       </ModalFooter>
