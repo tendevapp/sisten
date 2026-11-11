@@ -2951,6 +2951,19 @@ export interface AlmoxRmExportacaoSolicitacao {
   liberado_exportar_em?: string | null;
   liberado_exportar_por_id?: string | null;
   liberado_exportar_por_nome?: string | null;
+  /**
+   * Solicitação cancelada ou excluída depois de exportada — carimbado pelo
+   * gatilho `trg_core_solicitacoes_rm_encerrada`. A RM pode existir no SAP e
+   * precisa ser eliminada lá; `sap_baixa_*` é a confirmação do almoxarifado.
+   */
+  solicitacao_situacao?: 'cancelada' | 'excluida' | null;
+  solicitacao_situacao_em?: string | null;
+  solicitacao_situacao_por_nome?: string | null;
+  /** Número da RM no momento do cancelamento/exclusão (a excluída leva o vínculo embora). */
+  rm_numero?: string | null;
+  sap_baixa_em?: string | null;
+  sap_baixa_por_id?: string | null;
+  sap_baixa_por_nome?: string | null;
 }
 
 // =====================================================================

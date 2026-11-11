@@ -17,6 +17,7 @@
  */
 
 import type { Request, RequestItem } from '../types';
+import type { SituacaoSolicitacaoRm } from './rmSolicitacaoAlterada';
 import { desformatarObservacaoItemGenerico } from './solicitacoes';
 import { sanitizeTechnicalText } from './materiais';
 
@@ -25,6 +26,8 @@ export interface VinculoSistenRm {
   requestNumber: string;
   solicitanteName?: string;
   item: RequestItem;
+  /** Cancelada ou editada depois de virar RM (selo na tag "SISTEN #"). */
+  situacao?: SituacaoSolicitacaoRm | null;
 }
 
 /** Tolera zero à esquerda dos dois lados — mesmo padrão usado no resto da Central de Compras. */
@@ -49,6 +52,7 @@ function chaveVinculo(rm: string | null | undefined, materialCode: string | null
 export function indexarVinculosSistenPorRm(
   requests: Request[],
   itensPorRequest: Map<string, RequestItem[]>,
+  situacaoPorRequest?: Map<string, SituacaoSolicitacaoRm | null>,
 ): Map<string, VinculoSistenRm> {
   const indice = new Map<string, VinculoSistenRm>();
 
@@ -61,11 +65,13 @@ export function indexarVinculosSistenPorRm(
 
       const chave = chaveVinculo(request.linked_rm_number, item.sap_code);
       if (!indice.has(chave)) {
+        const situacao = situacaoPorRequest?.get(request.id);
         indice.set(chave, {
           requestId: request.id,
           requestNumber: request.number,
           solicitanteName: request.solicitante_name,
           item,
+          ...(situacao ? { situacao } : {}),
         });
       }
     }

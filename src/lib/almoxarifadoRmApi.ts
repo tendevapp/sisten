@@ -11,6 +11,7 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import { buscarTudo } from './buscarTudo';
 import type { AlmoxRmExportacao, AlmoxRmExportacaoSolicitacao } from '../types';
 
 /** As duas tabelas ainda não estão em `database.types.ts` — mesmo atalho de `facilitiesApi`. */
@@ -112,15 +113,17 @@ export async function listarSolicitacoesDaExportacaoRm(
 
 /** Toda marca de exportação, sem recorte de lote. Alimenta o filtro da tela. */
 export async function listarMarcasExportacaoRm(): Promise<AlmoxRmExportacaoSolicitacao[]> {
-  const { data, error } = await dbExportacaoSolicitacoes()
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Erro ao carregar as marcas de exportação de RM:', error);
-    throw new Error(error.message);
+  try {
+    return await buscarTudo<AlmoxRmExportacaoSolicitacao>((de, ate) =>
+      dbExportacaoSolicitacoes()
+        .select('*')
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(de, ate));
+  } catch (err) {
+    console.error('Erro ao carregar as marcas de exportação de RM:', err);
+    throw err;
   }
-  return (data || []) as AlmoxRmExportacaoSolicitacao[];
 }
 
 /**
@@ -332,6 +335,35 @@ export async function liberarParaExportarRm(
 
   if (error) {
     console.error('Erro ao liberar a solicitação para exportar:', error);
+    throw new Error(error.message);
+  }
+  return (data || []).length;
+}
+
+/**
+ * Confirma que a RM da solicitação cancelada/excluída foi eliminada no SAP:
+ * o aviso sai do grupo "Eliminar no SAP". Recebe o id da marca (a solicitação
+ * excluída não existe mais). Devolve quantas marcas foram carimbadas.
+ */
+export async function confirmarEliminacaoSapRm(
+  marcaIds: string[],
+  usuario: UsuarioReabertura,
+): Promise<number> {
+  if (marcaIds.length === 0) return 0;
+
+  const { data, error } = await dbExportacaoSolicitacoes()
+    .update({
+      sap_baixa_em: new Date().toISOString(),
+      sap_baixa_por_id: usuario.id || null,
+      sap_baixa_por_nome: usuario.nome,
+    })
+    .in('id', marcaIds)
+    .not('solicitacao_situacao', 'is', null)
+    .is('sap_baixa_em', null)
+    .select('id');
+
+  if (error) {
+    console.error('Erro ao confirmar a eliminação da RM no SAP:', error);
     throw new Error(error.message);
   }
   return (data || []).length;

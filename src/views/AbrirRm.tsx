@@ -59,6 +59,8 @@ import { mapaGrupoComprasPorSetor } from '../lib/setorCompradorApi';
 import { compradorFixoRm, obterRmConfig } from '../lib/rmConfigApi';
 import { ESTAGIOS_AUTOMATICOS_COMPRA } from '../lib/statusAutomaticoCompra';
 import { useToast } from '../components/ui/Toast';
+import GrupoEliminarNoSap from '../components/almoxarifado/GrupoEliminarNoSap';
+import { pendentesEliminarNoSap } from '../lib/rmSolicitacaoAlterada';
 import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../lib/buscaKeywords';
 import SearchKeywordsChips from '../components/ui/SearchKeywordsChips';
 import { TableEmpty } from '../components/ui/DataTable';
@@ -531,6 +533,8 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   const exportacaoVigentePorRequest = useMemo(() => indexarExportacaoVigente(marcas), [marcas]);
   const ultimaExportacaoPorRequest = useMemo(() => indexarUltimaExportacao(marcas), [marcas]);
   const marcasPorLote = useMemo(() => agruparMarcasPorExportacao(marcas), [marcas]);
+  /** Canceladas/excluídas depois de exportadas: a RM tem de ser eliminada no SAP. */
+  const pendentesEliminar = useMemo(() => pendentesEliminarNoSap(marcas), [marcas]);
   const loteById = useMemo(() => new Map(exportacoes.map(e => [e.id, e])), [exportacoes]);
 
   const contexto: ContextoRm = useMemo(
@@ -1401,6 +1405,13 @@ export default function AbrirRm({ user, onNavigate }: Props) {
           </ul>
         </div>
       )}
+
+      <GrupoEliminarNoSap
+        pendentes={pendentesEliminar}
+        loteById={loteById}
+        usuario={user}
+        onAtualizado={carregarLog}
+      />
 
       {erroLog && (
         <div className="flex items-start gap-3 p-4 border border-amber-200 dark:border-amber-900/50 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300">

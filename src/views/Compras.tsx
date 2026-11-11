@@ -42,6 +42,12 @@ import {
   buscarVinculoSistenRm, formatarItemCotacao, indexarVinculosSistenPorRm, textoTecnicoParaCotacao,
   type VinculoSistenRm,
 } from '../lib/centralComprasSisten';
+import { listarMarcasExportacaoRm } from '../lib/almoxarifadoRmApi';
+import {
+  agruparMarcasPorRequest, buscarExcluidaPorRm, detalheExcluida, indexarExcluidasPorRm, situacaoSolicitacaoRm,
+} from '../lib/rmSolicitacaoAlterada';
+import TagSituacaoSisten from '../components/suprimentos/TagSituacaoSisten';
+import type { AlmoxRmExportacaoSolicitacao } from '../types';
 import { buscarCotacoesItensMap, type CotacaoItemVinculo } from '../lib/cotacoesApi';
 import {
   agruparPorMaterial, buscarSugestoesCatalogo, buscarSugestoesCotacao, mesclarFornecedoresMaterial,
@@ -783,6 +789,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // Local (não a base SAP inteira), então atualiza sozinho a cada mudança no
   // localDb — vincular uma RM lá reflete aqui sem precisar de "Atualizar".
   const [vinculosSistenPorRm, setVinculosSistenPorRm] = useState<Map<string, VinculoSistenRm>>(new Map());
+  // Marcas de exportação de RM: dizem se a solicitação foi editada, cancelada
+  // ou excluída depois de virar RM (selo ao lado de "SISTEN #").
+  const [marcasRm, setMarcasRm] = useState<AlmoxRmExportacaoSolicitacao[]>([]);
+  const excluidasPorRm = useMemo(() => indexarExcluidasPorRm(marcasRm), [marcasRm]);
   // Fotos ao lado da descrição: anexos do item da solicitação vinculada e,
   // na falta ou além deles, o Cadastro de Itens (ver `lib/fotosItemCompra.ts`).
   const [fotosSolicitacaoPorItem, setFotosSolicitacaoPorItem] = useState<Map<string, RequestAttachment[]>>(new Map());
@@ -1843,16 +1853,26 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // Fonte local e pequena (não a base SAP), então recalcula a cada mudança
   // no localDb — vincular uma RM em Abrir RM aparece aqui sem "Atualizar".
   useEffect(() => {
+    let ativo = true;
+    listarMarcasExportacaoRm()
+      .then(m => { if (ativo) setMarcasRm(m); })
+      .catch(() => { /* sem as marcas a tag só não mostra o selo */ });
+    return () => { ativo = false; };
+  }, []);
+
+  useEffect(() => {
+    const marcasPorRequest = agruparMarcasPorRequest(marcasRm);
     const recalcularVinculos = () => {
       const compras = localDb.getRequests().filter(r => r.type === 'compra' && r.linked_rm_number);
       const itensPorRequest = new Map(compras.map(r => [r.id, localDb.getRequestItems(r.id)]));
-      setVinculosSistenPorRm(indexarVinculosSistenPorRm(compras, itensPorRequest));
+      const situacaoPorRequest = new Map(compras.map(r => [r.id, situacaoSolicitacaoRm(r, marcasPorRequest.get(r.id))]));
+      setVinculosSistenPorRm(indexarVinculosSistenPorRm(compras, itensPorRequest, situacaoPorRequest));
       setFotosSolicitacaoPorItem(indexarFotosSolicitacaoPorItem(compras.flatMap(r => localDb.getAttachments(r.id))));
     };
     recalcularVinculos();
     const unsubscribe = localDb.subscribe(recalcularVinculos);
     return () => unsubscribe();
-  }, []);
+  }, [marcasRm]);
 
   useEffect(() => {
     let ativo = true;
@@ -3582,6 +3602,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                   >
                                     SISTEN #{vinculoSisten.requestNumber}
                                   </button>
+                                  {vinculoSisten.situacao && <TagSituacaoSisten {...vinculoSisten.situacao} />}
                                   {vinculoSisten.solicitanteName && (
                                     <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                                       · {vinculoSisten.solicitanteName}
@@ -3589,6 +3610,16 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                   )}
                                 </>
                               )}
+                              {!vinculoSisten && (() => {
+                                const excluida = buscarExcluidaPorRm(excluidasPorRm, rm);
+                                return excluida && (
+                                  <>
+                                    <span className="text-[10px] text-slate-350">•</span>
+                                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 line-through">SISTEN #{excluida.request_number}</span>
+                                    <TagSituacaoSisten tipo="excluida" pendenteSap={!excluida.sap_baixa_em} detalhe={detalheExcluida(excluida)} />
+                                  </>
+                                );
+                              })()}
                               {validacaoPorRi.get(r.ri) && (
                                 <ValidacaoTag v={validacaoPorRi.get(r.ri)!} onClick={() => abrirValidacao(r, rm, vinculoSisten)} />
                               )}
@@ -4040,6 +4071,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                       >
                                         SISTEN #{vinculoSisten.requestNumber}
                                       </button>
+                                      {vinculoSisten.situacao && <TagSituacaoSisten {...vinculoSisten.situacao} />}
                                       {vinculoSisten.solicitanteName && (
                                         <span className="font-semibold text-slate-500 dark:text-slate-400">
                                           · {vinculoSisten.solicitanteName}
@@ -4047,6 +4079,15 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                                       )}
                                     </div>
                                   )}
+                                  {!vinculoSisten && (() => {
+                                    const excluida = buscarExcluidaPorRm(excluidasPorRm, rm);
+                                    return excluida && (
+                                      <div className="text-[10px] flex items-center gap-1 flex-wrap">
+                                        <span className="font-bold text-slate-500 dark:text-slate-400 line-through">SISTEN #{excluida.request_number}</span>
+                                        <TagSituacaoSisten tipo="excluida" pendenteSap={!excluida.sap_baixa_em} detalhe={detalheExcluida(excluida)} />
+                                      </div>
+                                    );
+                                  })()}
                                   {validacaoPorRi.get(r.ri) && (
                                     <div className="mt-1">
                                       <ValidacaoTag v={validacaoPorRi.get(r.ri)!} onClick={() => abrirValidacao(r, rm, vinculoSisten)} />
