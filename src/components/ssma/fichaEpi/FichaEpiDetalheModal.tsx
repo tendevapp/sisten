@@ -150,7 +150,7 @@ export default function FichaEpiDetalheModal({ user, pessoaId, fichaId, onClose,
     setProcessando(true);
     try {
       await cancelarFichaEpi(fichaAberta.id, cancelando);
-      toast.success(`Ficha ${fichaAberta.codigo} cancelada. Ela sai da análise de consumo.`);
+      toast.success(`Ficha ${fichaAberta.codigo} cancelada. Ela sai da análise de consumo; a requisição e a retirada ainda não exportadas saem junto (as já exportadas aparecem nas Contingências para estorno).`);
       setCancelando(null);
       await carregar();
       onAlterada();

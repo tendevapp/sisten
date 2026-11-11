@@ -632,6 +632,7 @@ export default function NovaFichaEpi({ user, pessoaInicial, onVerFichas, onAbrir
       if (assinatura === null) toast.warning(`Ficha ${resultado.codigo} salva PENDENTE DE ASSINATURA — colete a assinatura do colaborador depois.`);
       else toast.success(`Ficha ${resultado.codigo} salva com a assinatura do colaborador.`);
       const entrada: EntradaRequisicaoDaFicha = {
+        fichaId: resultado.id,
         fichaCodigo: resultado.codigo,
         pessoa,
         dataEntrega,

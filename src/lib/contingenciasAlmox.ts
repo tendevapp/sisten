@@ -18,6 +18,8 @@ export type VerificacaoContingencia =
   | 'rss_excluida_requisicao_viva'
   | 'epi_sem_requisicao'
   | 'epi_cancelada_requisicao_viva'
+  | 'epi_itens_divergentes'
+  | 'epi_requisicao_outra_pessoa'
   | 'rqb_aguardando_confirmacao'
   | 'rqb_nao_exportada'
   | 'rqb_exportada_sem_doc'
@@ -48,6 +50,17 @@ export interface Contingencia {
   acao: AcaoCorrecao | null;
   acao_ref: string | null;
   tratativa: TratativaContingencia | null;
+  /** Itens do registro (RQB, retirada ou ficha de EPI) — vêm da RPC. */
+  itens?: ItemContingencia[];
+}
+
+export interface ItemContingencia {
+  material: string | null;
+  descricao: string | null;
+  quantidade: number | null;
+  unidade: string | null;
+  /** Só na RQB: documento SAP do item (vazio = ainda não lançado). */
+  doc_sap?: string | null;
 }
 
 export interface InfoVerificacao {
@@ -79,7 +92,15 @@ export const VERIFICACOES: Record<VerificacaoContingencia, InfoVerificacao> = {
   },
   epi_sem_requisicao: {
     rotulo: 'EPI entregue sem requisição',
-    comoTratar: 'A ficha entregou EPI e nenhuma requisição vai baixar no SAP. Confira a "possível substituta"; se não houver, "Restaurar" traz de volta a requisição excluída.',
+    comoTratar: 'A ficha entregou EPI e nenhuma requisição vai baixar no SAP. Se o EPI saiu por uma Retirada sem Saldo feita à mão, use "Vincular retirada"; senão, "Restaurar" traz de volta a requisição excluída. Ficha duplicada ou entrega que não aconteceu: cancele a ficha no SSMA.',
+  },
+  epi_itens_divergentes: {
+    rotulo: 'Ficha de EPI diferente da saída',
+    comoTratar: 'A ficha assinada diz o que o colaborador recebeu; a requisição (e a retirada) é o que baixa no SAP — e agora o sistema só aceita a requisição igual à ficha. Faltando item: acerte a requisição ou vincule a Retirada sem Saldo. Material ou tamanho trocado na entrega: cancele e refaça a ficha. Requisição já exportada: lance o ajuste no SAP e justifique.',
+  },
+  epi_requisicao_outra_pessoa: {
+    rotulo: 'Requisição na ficha de outra pessoa',
+    comoTratar: 'A requisição está ligada a uma ficha de outro colaborador. Descubra de qual ficha ela é (mesmo item e data) e corrija o vínculo com o suporte.',
   },
   epi_cancelada_requisicao_viva: {
     rotulo: 'Ficha cancelada com requisição',
@@ -171,13 +192,22 @@ export function agruparContingencias(lista: Contingencia[]): GrupoContingencia[]
 export function filtrarContingencias(lista: Contingencia[], busca: string, severidade: SeveridadeContingencia | 'todas' = 'todas'): Contingencia[] {
   const termo = busca.trim().toUpperCase();
   return lista.filter(c => (severidade === 'todas' || c.severidade === severidade)
-    && (!termo || [c.referencia, c.titulo, c.detalhe, c.acao_ref ?? ''].some(t => t.toUpperCase().includes(termo))));
+    && (!termo || [
+      c.referencia, c.titulo, c.detalhe, c.acao_ref ?? '',
+      ...(c.itens ?? []).flatMap(it => [it.material ?? '', it.descricao ?? '']),
+    ].some(t => t.toUpperCase().includes(termo))));
+}
+
+/** Ficha de EPI sem baixa (ou com baixa diferente): pode receber a Retirada sem Saldo aberta à mão. */
+export function podeVincularRetirada(c: Contingencia): boolean {
+  return !c.tratativa && c.entidade === 'ficha_epi'
+    && (c.verificacao === 'epi_sem_requisicao' || c.verificacao === 'epi_itens_divergentes');
 }
 
 /** Código da Requisição no Balcão viva que a tela pode abrir para corrigir, se houver. */
 export function requisicaoParaAbrir(c: Contingencia): string | null {
   if (c.entidade === 'req_balcao') return c.referencia;
-  if (c.verificacao === 'rss_nao_regularizada') return c.acao_ref;
+  if (c.verificacao === 'rss_nao_regularizada' || c.verificacao === 'epi_itens_divergentes') return c.acao_ref;
   return null;
 }
 

@@ -50,6 +50,28 @@ export async function historicoContingencia(codigo: string): Promise<EventoHisto
   return (data ?? []) as EventoHistorico[];
 }
 
+export interface RetiradaCandidata {
+  codigo: string;
+  data: string;
+  status: string;
+  itens: { material: string; descricao?: string; quantidade: number; unidade?: string }[];
+  itens_iguais: number;
+}
+
+/** Retiradas sem saldo sem origem, da mesma pessoa, até 15 dias da ficha, com item da ficha. */
+export async function retiradasCandidatas(fichaCodigo: string): Promise<RetiradaCandidata[]> {
+  const { data, error } = await supabase.rpc('alm_contingencia_rss_candidatas' as any, { p_ficha: fichaCodigo } as any);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as RetiradaCandidata[];
+}
+
+/** Liga a retirada à ficha (o banco confere pessoa e itens). Devolve o resumo. */
+export async function vincularRetirada(rssCodigo: string, fichaCodigo: string): Promise<string> {
+  const { data, error } = await supabase.rpc('alm_contingencia_vincular_rss' as any, { p_rss: rssCodigo, p_ficha: fichaCodigo } as any);
+  if (error) throw new Error(error.message);
+  return String(data ?? '');
+}
+
 export interface TratativaRegistrada {
   id: string;
   verificacao: string;

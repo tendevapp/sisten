@@ -245,6 +245,11 @@ export interface RequisicaoPendenteInput {
   observacao: string | null;
   /** Código da ficha que originou a saída (ex.: EPI-300926-01). */
   origemRef: string;
+  /**
+   * Id da ficha. É ele que liga a requisição: sem rede o código da ficha é
+   * provisório e pode mudar no envio; o id a fila troca pelo real.
+   */
+  origemId?: string | null;
   criadoPorNome: string;
   itens: { material: string; quantidade: number; descricao: string; unidade: string; deposito: string }[];
   /** Padrão `ficha_epi`. A retirada sem saldo usa `ORIGEM_RETIRADA_SEM_SALDO`. */
@@ -286,6 +291,7 @@ export async function criarRequisicaoPendenteDeFicha(input: RequisicaoPendenteIn
       pendente_confirmacao: input.pendenteConfirmacao ?? true,
       origem: input.origem ?? ORIGEM_FICHA_EPI,
       origem_ref: input.origemRef,
+      origem_id: input.origemId ?? null,
     },
     p_itens: input.itens.map((i) => ({
       material: i.material,
@@ -301,6 +307,18 @@ export async function criarRequisicaoPendenteDeFicha(input: RequisicaoPendenteIn
   if (ehRespostaOffline(data)) return { codigo: '', offline: true, pendente: true };
   const row = data as { codigo?: string; pendente_confirmacao?: boolean } | null;
   return { codigo: row?.codigo ?? '', offline: false, pendente: row?.pendente_confirmacao === true };
+}
+
+/** Requisição viva gerada pela ficha de EPI (pelo id da ficha, nunca pelo código). */
+export async function codigoRequisicaoDaFicha(fichaId: string): Promise<string | null> {
+  const { data, error } = await dbReq()
+    .select('codigo')
+    .eq('origem', ORIGEM_FICHA_EPI)
+    .eq('origem_id', fichaId)
+    .eq('excluido', false)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  return ((data || []) as { codigo: string | null }[])[0]?.codigo || null;
 }
 
 /** Código da requisição já gerada por outro formulário (para não gerar duas vezes). */

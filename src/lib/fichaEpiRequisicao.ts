@@ -27,7 +27,7 @@ import { criarSolicitacaoExtra, solicitacaoExtraPorOrigem } from './solicitacaoE
 import { horaAgora } from './portariaApi';
 import { localDb } from '../db/localDb';
 import {
-  buscarEstoqueBalcao, criarRequisicaoPendenteDeFicha, listarAplicacoesBalcao,
+  buscarEstoqueBalcao, codigoRequisicaoDaFicha, criarRequisicaoPendenteDeFicha, listarAplicacoesBalcao,
 } from './requisicaoBalcaoApi';
 import { setorDoColaborador, type ColaboradorFichaEpi } from './ssmaFichaEpiApi';
 
@@ -49,6 +49,8 @@ export type ResultadoRequisicaoDaFicha =
   | { situacao: 'sem_itens'; semCodigo: string[] };
 
 export interface EntradaRequisicaoDaFicha {
+  /** Id da ficha — liga requisição e retirada mesmo se o código mudar no envio da fila. */
+  fichaId: string;
   fichaCodigo: string;
   pessoa: ColaboradorFichaEpi;
   dataEntrega: string;
@@ -117,12 +119,21 @@ async function abrirRetiradaSemSaldoDaFicha(
     aplicacao: pep.nome,
     origem: ORIGEM_SOL_EXTRA_FICHA_EPI,
     origem_ref: entrada.fichaCodigo,
+    origem_id: entrada.fichaId,
   }, entrada.usuarioNome);
   if (!criada.codigo) return { situacao: 'offline', itens: rotulos };
   return { situacao: 'criada', codigo: criada.codigo, itens: rotulos, reaproveitada: false };
 }
 
 export async function gerarRequisicaoPendenteDaFicha(entrada: EntradaRequisicaoDaFicha): Promise<ResultadoRequisicaoDaFicha> {
+  // "Tentar novamente" depois de uma resposta perdida não pode gerar a segunda
+  // requisição (baixaria o EPI duas vezes). O banco também recusa: uma viva por ficha.
+  // Pelo id: o código provisório de uma ficha feita sem rede pode ser o de outra ficha.
+  const jaGerada = await codigoRequisicaoDaFicha(entrada.fichaId).catch(() => null);
+  if (jaGerada) {
+    return { situacao: 'criada', codigo: jaGerada, pepSugerido: '', semCodigo: [], pendente: true };
+  }
+
   // Saldo atual: é ele que decide o que vai para a Retirada sem Saldo.
   const [estoqueLido, peps] = await Promise.all([
     buscarEstoqueBalcao(true).catch(() => null),
@@ -184,6 +195,7 @@ export async function gerarRequisicaoPendenteDaFicha(entrada: EntradaRequisicaoD
     pep,
     observacao,
     origemRef: entrada.fichaCodigo,
+    origemId: entrada.fichaId,
     criadoPorNome: entrada.usuarioNome,
     itens: paraRequisicao,
   });

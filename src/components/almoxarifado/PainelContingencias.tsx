@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import {
-  AlertOctagon, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, History, Loader2, RefreshCw, RotateCcw, Search,
+  AlertOctagon, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, History, Link2, Loader2, RefreshCw, RotateCcw, Search,
   ShieldCheck, Wrench,
 } from 'lucide-react';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
@@ -18,12 +18,13 @@ import { formatarDataBR } from '../../lib/fichaEpi';
 import { CHAVE_ABRIR_REQUISICAO_BALCAO } from '../../lib/fichaEpiRequisicao';
 import {
   JUSTIFICATIVA_MINIMA, ROTULO_CORRECAO, ROTULO_SEVERIDADE, agruparContingencias, contarSeveridades, filtrarContingencias,
-  infoVerificacao, requisicaoParaAbrir, textoValorLog,
+  infoVerificacao, podeVincularRetirada, requisicaoParaAbrir, textoValorLog,
   type Contingencia, type GrupoContingencia, type SeveridadeContingencia,
 } from '../../lib/contingenciasAlmox';
 import {
-  corrigirContingencia, historicoContingencia, justificarContingencias, listarTratativas, reabrirContingencia, verificarContingencias,
-  type EventoHistorico, type TratativaRegistrada,
+  corrigirContingencia, historicoContingencia, justificarContingencias, listarTratativas, reabrirContingencia, retiradasCandidatas,
+  verificarContingencias, vincularRetirada,
+  type EventoHistorico, type RetiradaCandidata, type TratativaRegistrada,
 } from '../../lib/contingenciasAlmoxApi';
 
 interface Props {
@@ -59,6 +60,8 @@ export default function PainelContingencias({ onNavigate, onTotal }: Props) {
   const [severidade, setSeveridade] = useState<SeveridadeContingencia | 'todas'>('todas');
   const [selecao, setSelecao] = useState<Set<string>>(new Set());
   const [justificando, setJustificando] = useState<{ verificacao: string; itens: Contingencia[] } | null>(null);
+  /** Ficha de EPI que vai receber uma Retirada sem Saldo aberta à mão. */
+  const [vinculando, setVinculando] = useState<Contingencia | null>(null);
   const [corrigindo, setCorrigindo] = useState<string | null>(null);
   const [aba, setAba] = useState<'abertas' | 'tratativas'>('abertas');
   const idBusca = useId();
@@ -226,9 +229,18 @@ export default function PainelContingencias({ onNavigate, onTotal }: Props) {
               onCorrigir={c => void corrigir(c)}
               onAbrirRequisicao={abrirRequisicao}
               onJustificar={itens => setJustificando({ verificacao: g.verificacao, itens })}
+              onVincular={setVinculando}
             />
           ))}
         </>
+      )}
+
+      {vinculando && (
+        <VincularRetiradaModal
+          ficha={vinculando}
+          onClose={() => setVinculando(null)}
+          onFeito={() => { setVinculando(null); void carregar(); }}
+        />
       )}
 
       {justificando && (
@@ -244,7 +256,7 @@ export default function PainelContingencias({ onNavigate, onTotal }: Props) {
 }
 
 function GrupoCard({
-  grupo: g, selecao, corrigindo, onAlternar, onSelecionarTodos, onCorrigir, onAbrirRequisicao, onJustificar,
+  grupo: g, selecao, corrigindo, onAlternar, onSelecionarTodos, onCorrigir, onAbrirRequisicao, onJustificar, onVincular,
 }: {
   grupo: GrupoContingencia;
   selecao: Set<string>;
@@ -254,6 +266,7 @@ function GrupoCard({
   onCorrigir: (c: Contingencia) => void;
   onAbrirRequisicao: (codigo: string) => void;
   onJustificar: (itens: Contingencia[]) => void;
+  onVincular: (c: Contingencia) => void;
 }) {
   const [aberto, setAberto] = useState(g.severidade !== 'media');
   const [todos, setTodos] = useState(false);
@@ -316,6 +329,7 @@ function GrupoCard({
                 onCorrigir={() => onCorrigir(c)}
                 onAbrirRequisicao={onAbrirRequisicao}
                 onJustificar={() => onJustificar([c])}
+                onVincular={() => onVincular(c)}
               />
             ))}
           </ul>
@@ -331,7 +345,7 @@ function GrupoCard({
 }
 
 function ItemContingencia({
-  item: c, selecionavel, selecionado, corrigindo, onAlternar, onCorrigir, onAbrirRequisicao, onJustificar,
+  item: c, selecionavel, selecionado, corrigindo, onAlternar, onCorrigir, onAbrirRequisicao, onJustificar, onVincular,
 }: {
   item: Contingencia;
   selecionavel: boolean;
@@ -341,6 +355,7 @@ function ItemContingencia({
   onCorrigir: () => void;
   onAbrirRequisicao: (codigo: string) => void;
   onJustificar: () => void;
+  onVincular: () => void;
 }) {
   const [verHistorico, setVerHistorico] = useState(false);
   const requisicao = requisicaoParaAbrir(c);
@@ -367,6 +382,26 @@ function ItemContingencia({
             </span>
           </div>
           <p className="text-xs text-slate-700 dark:text-slate-200">{c.detalhe}</p>
+          {(c.itens?.length ?? 0) > 0 && (
+            <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50/60 text-xs dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-950/40" aria-label={`Itens de ${c.referencia}`}>
+              {c.itens!.map((it, i) => (
+                <li key={i} className="flex items-baseline justify-between gap-3 px-2.5 py-1.5">
+                  <span className="min-w-0">
+                    {it.material && <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{it.material}</span>}
+                    {it.descricao && <span className="text-slate-700 dark:text-slate-300">{it.material ? ' · ' : ''}{it.descricao}</span>}
+                    {c.entidade === 'req_balcao' && (
+                      <span className={`ml-1.5 whitespace-nowrap text-[10px] font-bold ${it.doc_sap ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                        {it.doc_sap ? `doc. ${it.doc_sap}` : 'sem doc. SAP'}
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 whitespace-nowrap font-bold tabular-nums text-slate-900 dark:text-slate-100">
+                    {it.quantidade == null ? '—' : Number(it.quantidade).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {it.unidade ?? ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
           {c.tratativa && (
             <p className="rounded-lg bg-emerald-50 px-2 py-1 text-[11px] text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
               Justificada por {c.tratativa.por ?? '—'} em {formatDateTimeBR(c.tratativa.em)}: {c.tratativa.justificativa}
@@ -381,6 +416,11 @@ function ItemContingencia({
         {requisicao && (
           <button type="button" onClick={() => onAbrirRequisicao(requisicao)} className={botao}>
             <ExternalLink className="h-3.5 w-3.5" /> Abrir {requisicao}
+          </button>
+        )}
+        {podeVincularRetirada(c) && (
+          <button type="button" onClick={onVincular} className={botao}>
+            <Link2 className="h-3.5 w-3.5" /> Vincular retirada
           </button>
         )}
         {!c.tratativa && (
@@ -402,6 +442,105 @@ function ItemContingencia({
       </div>
       {verHistorico && <HistoricoCodigo codigo={c.referencia} />}
     </li>
+  );
+}
+
+/**
+ * Liga à ficha a Retirada sem Saldo aberta à mão para o mesmo EPI. Mostra as
+ * candidatas (mesma pessoa, até 15 dias, com item da ficha); o banco confere de novo.
+ */
+function VincularRetiradaModal({ ficha, onClose, onFeito }: { ficha: Contingencia; onClose: () => void; onFeito: () => void }) {
+  const toast = useToast();
+  const idCodigo = useId();
+  const [candidatas, setCandidatas] = useState<RetiradaCandidata[] | null>(null);
+  const [erro, setErro] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    retiradasCandidatas(ficha.referencia)
+      .then(l => { if (vivo) setCandidatas(l); })
+      .catch(e => { if (vivo) { setCandidatas([]); setErro(e instanceof Error ? e.message : String(e)); } });
+    return () => { vivo = false; };
+  }, [ficha.referencia]);
+
+  const vincular = async (rss: string) => {
+    if (!rss.trim()) return;
+    setEnviando(true);
+    try {
+      toast.success(await vincularRetirada(rss.trim().toUpperCase(), ficha.referencia));
+      onFeito();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <Modal onClose={() => !enviando && onClose()} maxWidth="max-w-lg" ariaLabel={`Vincular retirada à ficha ${ficha.referencia}`}>
+      <ModalHeader onClose={() => !enviando && onClose()}>
+        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Vincular retirada à {ficha.referencia}</h3>
+        <p className="text-xs text-slate-500">A retirada passa a contar como baixa desta ficha. Mesma pessoa e só itens da ficha.</p>
+      </ModalHeader>
+      <ModalBody className="space-y-3">
+        {candidatas === null ? (
+          <p className="flex items-center gap-2 text-xs text-slate-500"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Procurando retiradas…</p>
+        ) : candidatas.length === 0 ? (
+          <p className="text-xs text-slate-600 dark:text-slate-300">{erro || 'Nenhuma retirada sem saldo da mesma pessoa com item desta ficha nos 15 dias em volta. Digite o código abaixo se souber qual é.'}</p>
+        ) : (
+          <ul className="space-y-2">
+            {candidatas.map(r => (
+              <li key={r.codigo} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-2.5 text-xs dark:border-slate-800">
+                <div className="min-w-0">
+                  <p className="font-mono font-bold text-blue-700 dark:text-blue-400">
+                    {r.codigo} <span className="font-sans font-normal text-slate-500">· {formatarDataBR(r.data)} · {r.status.toLowerCase()}</span>
+                  </p>
+                  <p className="mt-0.5 text-slate-700 dark:text-slate-300">
+                    {r.itens.map(i => `${i.material}${i.descricao ? ` ${i.descricao}` : ''} — ${i.quantidade} ${i.unidade ?? ''}`.trim()).join('; ')}
+                  </p>
+                  <p className="text-[11px] text-slate-500">{r.itens_iguais} de {r.itens.length} item(ns) na ficha</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={enviando}
+                  onClick={() => void vincular(r.codigo)}
+                  className="shrink-0 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  Vincular
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div>
+          <label htmlFor={idCodigo} className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Ou digite o código da retirada</label>
+          <div className="flex gap-2">
+            <input
+              id={idCodigo}
+              value={codigo}
+              onChange={e => setCodigo(e.target.value.toUpperCase())}
+              placeholder="RSS-281026-23"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            />
+            <button
+              type="button"
+              disabled={enviando || !codigo.trim()}
+              onClick={() => void vincular(codigo)}
+              className="shrink-0 rounded-lg border border-blue-600 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-300 dark:hover:bg-blue-950/40"
+            >
+              Vincular
+            </button>
+          </div>
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" onClick={onClose} disabled={enviando} className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
+          Fechar
+        </button>
+      </ModalFooter>
+    </Modal>
   );
 }
 

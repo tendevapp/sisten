@@ -121,6 +121,11 @@ export interface DadosSolExtra {
   /** Aberta por outro formulário (ex.: 'ficha_epi' + código da ficha); ausente = lançada à mão. */
   origem?: string | null;
   origem_ref?: string | null;
+  /**
+   * Id do registro de origem (ficha de EPI). Para `ficha_epi` o banco deriva o
+   * `origem_ref` dele — o código da ficha feita sem rede pode mudar no envio.
+   */
+  origem_id?: string | null;
 }
 
 /** Número digitado com vírgula ou ponto; vazio vira null, inválido vira NaN. */

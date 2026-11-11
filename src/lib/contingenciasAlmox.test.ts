@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   VERIFICACOES, agruparContingencias, contarSeveridades, filtrarContingencias, infoVerificacao, piorSeveridade,
-  requisicaoParaAbrir, textoValorLog, type Contingencia,
+  podeVincularRetirada, requisicaoParaAbrir, textoValorLog, type Contingencia,
 } from './contingenciasAlmox';
 
 const c = (p: Partial<Contingencia>): Contingencia => ({
@@ -41,10 +41,30 @@ describe('contingências do almoxarifado', () => {
     expect(filtrarContingencias(l, '  ')).toHaveLength(2);
   });
 
+  it('busca também pelo material e pela descrição dos itens', () => {
+    const l = [
+      c({ referencia: 'RQB-1', itens: [{ material: '1322870', descricao: 'FILME STRETCH PVC', quantidade: 2, unidade: 'UN', doc_sap: null }] }),
+      c({ referencia: 'RQB-2', itens: [] }),
+    ];
+    expect(filtrarContingencias(l, '1322870').map(x => x.referencia)).toEqual(['RQB-1']);
+    expect(filtrarContingencias(l, 'stretch').map(x => x.referencia)).toEqual(['RQB-1']);
+  });
+
   it('requisição a abrir: a própria RQB ou a confirmada da retirada', () => {
     expect(requisicaoParaAbrir(c({ entidade: 'req_balcao', referencia: 'RQB-1' }))).toBe('RQB-1');
     expect(requisicaoParaAbrir(c({ entidade: 'sol_extra', verificacao: 'rss_nao_regularizada', referencia: 'RSS-1', acao_ref: 'RQB-2' }))).toBe('RQB-2');
     expect(requisicaoParaAbrir(c({ entidade: 'ficha_epi', verificacao: 'epi_sem_requisicao', referencia: 'EPI-1', acao_ref: 'RQB-3' }))).toBeNull();
+  });
+
+  it('vincular retirada só na ficha sem baixa ou com baixa diferente, ainda não justificada', () => {
+    expect(podeVincularRetirada(c({ entidade: 'ficha_epi', verificacao: 'epi_sem_requisicao' }))).toBe(true);
+    expect(podeVincularRetirada(c({ entidade: 'ficha_epi', verificacao: 'epi_itens_divergentes' }))).toBe(true);
+    expect(podeVincularRetirada(c({ entidade: 'req_balcao', verificacao: 'rqb_nao_exportada' }))).toBe(false);
+    expect(podeVincularRetirada(c({ entidade: 'ficha_epi', verificacao: 'epi_sem_requisicao', tratativa: { id: 't', justificativa: 'x', por: 'a', em: '2026-11-11' } }))).toBe(false);
+  });
+
+  it('a divergência de ficha abre a requisição dela', () => {
+    expect(requisicaoParaAbrir(c({ entidade: 'ficha_epi', verificacao: 'epi_itens_divergentes', referencia: 'EPI-1', acao_ref: 'RQB-9' }))).toBe('RQB-9');
   });
 
   it('toda verificação do banco tem rótulo e orientação', () => {
