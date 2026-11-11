@@ -1434,10 +1434,14 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const [lastUpdated, setLastUpdated] = useState<string | null>(() => comprasMemoryCache ? comprasMemoryCache.lastUpdated : null);
 
   const buildSuppliersData = useCallback(async (force = false) => {
+    // Registros da Central nos dois caminhos (cache de 5 min e carga completa). "Concluída" = X na
+    // ME5A: RM encerrada no SAP, nada mais a comprar — sai como os eliminados (que getEnriched já tira).
+    const registrosDaCentral = () => localDb.getEnrichedSAPRequisicoes().filter(r => !itemConcluidoNaMe5a(r));
+
     // Se temos dados em cache recentes (menos de 5 min) e NÃO é refresh forçado,
     // sincroniza apenas os inputs e registros da memória local de forma instantânea (sem rede)
     if (!force && comprasMemoryCache && (Date.now() - comprasMemoryCache.cachedAt < 5 * 60 * 1000)) {
-      const allRecords = localDb.getEnrichedSAPRequisicoes();
+      const allRecords = registrosDaCentral();
       const initialObs: Record<string, string> = {};
       const initialDates: Record<string, string> = {};
       const initialStatus: Record<string, ItemStatus> = {};
@@ -1499,9 +1503,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       // outros usuários (que não disparam um sync completo do dataset).
       await localDb.refreshBuyerFieldsFromSupabase();
 
-      // "Concluída" = X na ME5A: RM encerrada no SAP, nada mais a comprar — sai
-      // da Central como os eliminados (que getEnrichedSAPRequisicoes já tira).
-      const allRecords = localDb.getEnrichedSAPRequisicoes().filter(r => !itemConcluidoNaMe5a(r));
+      const allRecords = registrosDaCentral();
       const semPoRecords = allRecords;
 
       // Automação de itens com PO emitida: o pedido já foi colocado, então o
