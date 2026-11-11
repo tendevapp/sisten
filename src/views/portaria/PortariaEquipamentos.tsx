@@ -25,6 +25,7 @@ import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorA
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import CampoFaraBafometro from '../../components/portaria/CampoFaraBafometro';
 import { MostrarExcluidosToggle, BadgeExcluido, RestaurarButton, classeLinhaExcluida } from '../../components/ui/ExcluidosControls';
 
 interface Props {
@@ -180,6 +181,9 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
     observacoes: '',
   });
 
+  // "Fará teste de bafômetro?" do funcionário do terceiro que entra com o equipamento.
+  const [faraBafometro, setFaraBafometro] = useState(false);
+
   const [formSaida, setFormSaida] = useState({
     vigilante_saida: user.name,
     data_saida: api.hojeISO(),
@@ -232,6 +236,12 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
         criado_por: user.id,
       });
       toast.success('Entrada de equipamento registrada com sucesso!');
+        if (faraBafometro) {
+          const teste = await api.cadastrarBafometroNaEntrada({ nome: formEntrada.funcionario, empresa: formEntrada.nome_empresa }, { data: formEntrada.data_entrada, horario: formEntrada.hora_entrada, origem: 'Entrada de Equipamentos', criadoPor: user });
+          if (teste) toast.success(`${teste.nome} entrou no Teste de Alcoolemia (pendente).`);
+          else toast.error('A pessoa não entrou no Teste de Alcoolemia. Cadastre pela tela do teste.');
+        }
+      setFaraBafometro(false);
       setModalNovoAberto(false);
       setFormEntrada({
         nome_empresa: '',
@@ -558,6 +568,8 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                   </datalist>
                 </div>
               </div>
+
+              <CampoFaraBafometro marcado={faraBafometro} onChange={setFaraBafometro} nome={formEntrada.funcionario || 'funcionário'} />
 
               <div data-tour="equipamentos-form-descricao">
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">

@@ -34,6 +34,7 @@ describe('entrega de material', () => {
     expect(aceitaEntregaMaterial('ENTRADA_VEICULO')).toBe(true);
     expect(aceitaEntregaMaterial('ENTRADA_VISITANTE')).toBe(true);
     expect(aceitaEntregaMaterial('VEICULO_LEVE')).toBe(true);
+    expect(aceitaEntregaMaterial('ENTRADA_COLABORADOR')).toBe(true);
     expect(aceitaEntregaMaterial('SAIDA_COLABORADOR')).toBe(false);
     expect(aceitaEntregaMaterial('RONDA_PATRIMONIAL')).toBe(false);
   });

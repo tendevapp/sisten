@@ -27,6 +27,7 @@ import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { MostrarExcluidosToggle, BadgeExcluido, RestaurarButton, classeLinhaExcluida } from '../../components/ui/ExcluidosControls';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import CampoFaraBafometro from '../../components/portaria/CampoFaraBafometro';
 import NavegadorRegistros, { ListaRegistrosSheet, rotuloDiaCompleto } from '../../components/portaria/NavegadorRegistros';
 
 interface Props {
@@ -216,6 +217,8 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const tourNovo = usePageTour('portaria-transportes-novo', PORTARIA_TRANSPORTES_NOVO_TOUR_STEPS.length, modalNovoAberto);
 
   const [formNovo, setFormNovo] = useState(() => ({ ...formTransporteVazio(), vigilante: user.name }));
+  // "Fará teste de bafômetro?" do motorista — só no lançamento novo.
+  const [faraBafometro, setFaraBafometro] = useState(false);
   // Enquanto false, os dropdowns de sugestão ficam fechados — evita reabri-los
   // logo após um preenchimento. Volta a true assim que o usuário digita.
   const [sugestoesAtivas, setSugestoesAtivas] = useState(true);
@@ -257,6 +260,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
     setModalNovoAberto(false);
     setItemEditando(null);
     setFormNovo({ ...formTransporteVazio(), vigilante: user.name });
+    setFaraBafometro(false);
     setSugestoesAtivas(true);
     setRotaModoOutro(false);
   };
@@ -312,6 +316,11 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
           criado_por: user.id,
         });
         toast.success('Chegada de transporte registrada!');
+        if (faraBafometro) {
+          const teste = await api.cadastrarBafometroNaEntrada({ nome: formNovo.motorista, empresa: formNovo.empresa }, { data: formNovo.data, horario: formNovo.hora_chegada, origem: 'Chegada de Transporte', criadoPor: user });
+          if (teste) toast.success(`${teste.nome} entrou no Teste de Alcoolemia (pendente).`);
+          else toast.error('A pessoa não entrou no Teste de Alcoolemia. Cadastre pela tela do teste.');
+        }
       }
       fecharModal();
       carregarDados();
@@ -1039,6 +1048,10 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                   <SugestoesChegadaTransporte termo={formNovo.motorista} ativo={sugestoesAtivas} aoSelecionar={preencherDeRegistro} />
                 </div>
               </div>
+
+              {!itemEditando && (
+                <CampoFaraBafometro marcado={faraBafometro} onChange={setFaraBafometro} nome={formNovo.motorista || 'motorista'} />
+              )}
 
               <div data-tour="transportes-form-horarios" className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div>

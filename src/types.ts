@@ -2131,6 +2131,7 @@ export type PortTipoRegistroOcorrencia =
   | 'VEICULO_LEVE'         // Carro alugado / Veículo leve da empresa
   | 'ENTRADA_VISITANTE'    // Visitante / Terceiro a Pé (com saída pendente)
   | 'SAIDA_COLABORADOR'    // Saída Temporária de Colaborador TEN (com retorno pendente)
+  | 'ENTRADA_COLABORADOR'  // Entrada de Colaborador TEN (sem saída a registrar; pode trazer material)
   | 'RONDA_PATRIMONIAL'    // Ronda Patrimonial (texto livre + foto)
   | 'OCORRENCIA_GERAL'     // Ocorrência / Alerta / Evento (texto livre + foto)
   | 'OUTRO_REGISTRO';      // Outro Registro Geral (texto livre + foto)
@@ -2173,7 +2174,14 @@ export interface PortRelatorioOcorrencia {
   autorizado_por?: string;
   fara_briefing?: boolean;
   motivo_observacao?: string;
-  pessoas?: { nome: string; cpf?: string; cnh?: string; funcao?: string }[];
+  pessoas?: {
+    nome: string; cpf?: string; cnh?: string; funcao?: string;
+    /** Marcada para o bafômetro na entrada; `alcoolemia_teste_id` = teste criado no livro. */
+    fara_bafometro?: boolean;
+    alcoolemia_teste_id?: string | null;
+    /** Id em rh_pessoas (colaborador escolhido na busca do RH). */
+    pessoa_id?: string | null;
+  }[];
   veiculo_leve_id?: string | null;
   veiculo_leve_modelo?: string | null;
   condutor_pessoa_id?: string | null;
@@ -2363,6 +2371,8 @@ export interface PortAlcoolemiaTeste {
   observacoes?: string | null;
   razao_teste?: PortAlcoolemiaRazao;
   local_teste?: string | null;
+  /** Onde a aferição foi feita (PORTARIA = ETIL-02, SSMA = ETIL-01). Nulo enquanto pendente. */
+  local_afericao?: 'PORTARIA' | 'SSMA' | null;
   examinador_nome?: string | null;
   examinador_cargo?: string | null;
   termo_assinado_fisicamente?: boolean;

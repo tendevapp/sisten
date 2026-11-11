@@ -14,6 +14,7 @@ import { supabase } from '../db/supabaseClient';
 import { buscarTudo } from './buscarTudo';
 import { comprimirImagemUpload } from './imageCompression';
 import { aceitaEntregaMaterial } from './portariaFotosOcorrencia';
+import { montarTesteBafometroPortaria, type PessoaParaBafometro } from './alcoolemiaLocal';
 import type {
   PortAlcoolemiaResultado,
   PortAlcoolemiaFoto,
@@ -962,7 +963,7 @@ export function formatarTextoOcorrencia(dados: {
   autorizado_por?: string;
   motivo_observacao?: string;
   fara_briefing?: boolean;
-  pessoas?: { nome: string; cpf?: string; cnh?: string; funcao?: string }[];
+  pessoas?: { nome: string; cpf?: string; cnh?: string; funcao?: string; fara_bafometro?: boolean; alcoolemia_teste_id?: string | null }[];
   veiculo_leve_modelo?: string;
   entrega_material?: boolean;
   nf_verificada?: boolean;
@@ -977,7 +978,8 @@ export function formatarTextoOcorrencia(dados: {
       .map((p) => {
         const doc = p.cpf ? ` (${p.cpf.trim()})` : p.cnh ? ` (CNH: ${p.cnh.trim()})` : '';
         const func = p.funcao ? ` [${p.funcao.trim().toUpperCase()}]` : '';
-        return `${p.nome.trim().toUpperCase()}${doc}${func}`;
+        const bafometro = p.fara_bafometro || p.alcoolemia_teste_id ? ' [BAFÔMETRO]' : '';
+        return `${p.nome.trim().toUpperCase()}${doc}${func}${bafometro}`;
       })
       .join(', ');
   }
@@ -1014,6 +1016,11 @@ export function formatarTextoOcorrencia(dados: {
         : '';
       const docMatricula = (dados.documento_cpf && !pessoasTexto) ? ` (Matrícula: ${dados.documento_cpf.trim()})` : '';
       return `${h}SAÍDA DE COLABORADOR: ${nome}${docMatricula}${aut}${mot}${retornoTag}`;
+    }
+    case 'ENTRADA_COLABORADOR': {
+      // Entrada não tem saída a registrar (não entra em TIPOS_COM_SAIDA).
+      const docMatricula = (dados.documento_cpf && !pessoasTexto) ? ` (Matrícula: ${dados.documento_cpf.trim()})` : '';
+      return `${h}ENTRADA DE COLABORADOR: ${nome}${docMatricula}${entregaTag}${aut}${mot}`;
     }
     case 'RONDA_PATRIMONIAL': {
       return `${h}Ronda Patrimonial: ${dados.motivo_observacao?.toUpperCase() || 'REALIZADA SEM ALTERAÇÕES'}`;
@@ -2046,6 +2053,7 @@ export async function criarTesteAlcoolemia(
     observacoes: dados.observacoes ? dados.observacoes.trim() : null,
     razao_teste: dados.razao_teste || 'ALEATORIO',
     local_teste: dados.local_teste ? dados.local_teste.trim() : 'Ambulatório TEN',
+    local_afericao: dados.local_afericao ?? null,
     examinador_nome: dados.examinador_nome ? dados.examinador_nome.trim() : null,
     examinador_cargo: dados.examinador_cargo ? dados.examinador_cargo.trim() : null,
     termo_assinado_fisicamente: dados.termo_assinado_fisicamente ?? false,
@@ -2074,6 +2082,43 @@ export async function criarTesteAlcoolemia(
     console.error('Erro ao criar teste de alcoolemia:', error);
     throw new Error(error.message);
   }
+}
+
+/**
+ * Cadastra no livro de alcoolemia as pessoas marcadas com "Fará teste de
+ * bafômetro?" num formulário de entrada da Portaria. Um por vez (o código
+ * ALC é sequencial no dia). Cada item traz o id já gravado no formulário de
+ * origem, para o vínculo valer também sem rede. Falha de um não para os outros.
+ */
+export async function cadastrarTestesBafometroPortaria(
+  itens: { id: string; teste: Partial<PortAlcoolemiaTeste> }[],
+): Promise<{ criados: PortAlcoolemiaTeste[]; falhas: number }> {
+  const criados: PortAlcoolemiaTeste[] = [];
+  let falhas = 0;
+  for (const { id, teste } of itens) {
+    try {
+      criados.push(await criarTesteAlcoolemia({ ...teste, id }));
+    } catch (err) {
+      console.error('Erro ao cadastrar teste de bafômetro pela portaria:', err);
+      falhas += 1;
+    }
+  }
+  return { criados, falhas };
+}
+
+/**
+ * Atalho dos formulários de entrada com uma pessoa só (Chegada de Transporte,
+ * Carretas, Equipamentos): cadastra o teste pendente de quem foi marcado em
+ * "Fará teste de bafômetro?". Devolve null se não gravou (o formulário já salvou).
+ */
+export async function cadastrarBafometroNaEntrada(
+  pessoa: PessoaParaBafometro,
+  contexto: Parameters<typeof montarTesteBafometroPortaria>[1],
+): Promise<PortAlcoolemiaTeste | null> {
+  const { criados } = await cadastrarTestesBafometroPortaria([
+    { id: crypto.randomUUID(), teste: montarTesteBafometroPortaria(pessoa, contexto) },
+  ]);
+  return criados[0] ?? null;
 }
 
 export async function atualizarTesteAlcoolemia(

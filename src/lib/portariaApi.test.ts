@@ -57,4 +57,21 @@ describe('Módulo Portaria — Utilitários de API', () => {
     expect(texto).toContain('MARIA SILVA');
     expect(texto).toContain('Saída registrada às 17:40');
   });
+
+  it('formata entrada de colaborador com matrícula e entrega de material, sem saída', () => {
+    const texto = formatarTextoOcorrencia({
+      tipo_registro: 'ENTRADA_COLABORADOR',
+      horario: '07:10',
+      hora_saida: '12:00',
+      nome_pessoa: 'JOSE SANTOS',
+      documento_cpf: '004512',
+      motivo_observacao: 'RETORNO DE SERVIÇO EXTERNO',
+      entrega_material: true,
+      nf_verificada: true,
+    });
+
+    expect(texto).toContain('ENTRADA DE COLABORADOR: JOSE SANTOS (Matrícula: 004512)');
+    expect(texto).toContain('[ENTREGA DE MATERIAL - NF VERIFICADA]');
+    expect(texto).not.toMatch(/Saída registrada|Retornou/);
+  });
 });

@@ -40,13 +40,14 @@ import {
 } from '../../lib/alcoolemiaPeriodo';
 import {
   BotaoCartao, BuscaColaborador, CartaoTeste, ExportarLivroModal, FiltrosResultado, ListaVazia, SeletorPeriodo,
-  LogAlteracoesAlcoolemia, SeloAssinatura, SeloExcluido, SeloQuemAferiu, SeloRazao, SeloResultado, SeloTermo, type FiltroResultado,
+  EtilometroDoLocal, LogAlteracoesAlcoolemia, SeloAssinatura, SeloExcluido, SeloLocalAfericao, SeloQuemAferiu, SeloRazao, SeloResultado, SeloTermo, type FiltroResultado,
 } from '../../components/ssma/AlcoolemiaPainel';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import CampoAssinatura from '../../components/portaria/CampoAssinatura';
 import { assinaturaColhida, assinaturaDoTeste, type AssinaturaColhida } from '../../lib/alcoolemiaAssinatura';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { etilometroAoRegistrar, localAoRegistrar } from '../../lib/alcoolemiaLocal';
 import TourSpotlight from '../../components/help/TourSpotlight';
 import { usePageTour } from '../../components/help/TourRegistryContext';
 import type { TourStep } from '../../components/help/types';
@@ -141,7 +142,6 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
   const [termoRazao, setTermoRazao] = useState<PortAlcoolemiaRazao>('ALEATORIO');
   const [termoResultado, setTermoResultado] = useState<PortAlcoolemiaResultado>('NEGATIVO');
   const [termoValorMedido, setTermoValorMedido] = useState<string>('0.00');
-  const [termoEtilometro, setTermoEtilometro] = useState<string>('ETIL-01');
   const [termoLocal, setTermoLocal] = useState<string>('Ambulatório TEN');
   const [termoExaminador, setTermoExaminador] = useState<string>(user.name || '');
   const [termoExaminadorCargo, setTermoExaminadorCargo] = useState<string>('Técnico de SSMA');
@@ -291,7 +291,6 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
     setTermoRazao(teste.razao_teste || 'ALEATORIO');
     setTermoResultado(teste.resultado === 'PENDENTE' ? 'NEGATIVO' : teste.resultado);
     setTermoValorMedido(String(teste.valor_medido ?? '0.00'));
-    setTermoEtilometro(teste.etilometro_codigo || 'ETIL-01');
     setTermoLocal(teste.local_teste || 'Ambulatório TEN');
     setTermoExaminador(teste.examinador_nome || user.name || '');
     setTermoExaminadorCargo(teste.examinador_cargo || 'Técnico de SSMA');
@@ -312,7 +311,9 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
         razao_teste: termoRazao,
         resultado: termoResultado,
         valor_medido: termoResultado === 'POSITIVO' ? valorNum : 0.0,
-        etilometro_codigo: termoEtilometro.trim() || null,
+        // Aferição no SSMA = ETIL-01; teste que já veio aferido da portaria mantém local e aparelho.
+        etilometro_codigo: etilometroAoRegistrar(testeAtivo, 'SSMA'),
+        local_afericao: localAoRegistrar(testeAtivo, 'SSMA'),
         local_teste: termoLocal.trim() || 'Ambulatório TEN',
         examinador_nome: termoExaminador.trim() || null,
         examinador_cargo: termoExaminadorCargo.trim() || null,
@@ -609,7 +610,7 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
                             )}
                           </>
                         )}
-                        rodape={<div className="flex flex-col gap-1"><SeloTermo teste={item} />{item.vigilante && <SeloQuemAferiu teste={item} />}<SeloAssinatura teste={item} /></div>}
+                        rodape={<div className="flex flex-col gap-1"><SeloTermo teste={item} /><SeloQuemAferiu teste={item} /><SeloAssinatura teste={item} /></div>}
                       />
                     ))}
                   </div>
@@ -627,6 +628,7 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
                     <th className="px-4 py-3">Empresa e função</th>
                     <th className="px-4 py-3">Razão</th>
                     <th className="px-4 py-3">Resultado</th>
+                    <th className="px-4 py-3">Local</th>
                     <th className="px-4 py-3">Termo</th>
                     <th className="px-4 py-3 text-right"><span className="sr-only">Ações</span></th>
                   </tr>
@@ -659,6 +661,11 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
                         <td className="whitespace-nowrap px-4 py-3"><SeloRazao razao={item.razao_teste || 'ALEATORIO'} /></td>
                         <td className="whitespace-nowrap px-4 py-3">
                           <div className="flex flex-col items-start gap-1"><SeloResultado teste={item} /><SeloExcluido teste={item} /></div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          {item.resultado === 'PENDENTE'
+                            ? <span className="text-xs text-slate-500">—</span>
+                            : <SeloLocalAfericao teste={item} />}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3"><div className="flex flex-col gap-1"><SeloTermo teste={item} /><SeloAssinatura teste={item} /></div></td>
                         <td className="whitespace-nowrap px-4 py-3 text-right">
@@ -959,18 +966,10 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
                 />
               </div>
 
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Código do Etilômetro / Aparelho
-                </label>
-                <input
-                  type="text"
-                  value={termoEtilometro}
-                  onChange={(e) => setTermoEtilometro(e.target.value)}
-                  placeholder="Ex: ETIL-01"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-emerald-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
-                />
-              </div>
+              <EtilometroDoLocal
+                local={localAoRegistrar(testeAtivo, 'SSMA')}
+                codigo={etilometroAoRegistrar(testeAtivo, 'SSMA')}
+              />
 
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">

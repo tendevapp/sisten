@@ -47,6 +47,8 @@ import { exportRelatorioPortariaPdf, gerarRelatorioPortariaPdf } from '../../lib
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import VeiculoLeveFormFields from '../../components/portaria/VeiculoLeveFormFields';
+import CampoFaraBafometro from '../../components/portaria/CampoFaraBafometro';
+import { montarTesteBafometroPortaria } from '../../lib/alcoolemiaLocal';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
@@ -119,7 +121,18 @@ interface ItemPessoaForm {
   cpf: string;
   cnh: string;
   funcao: string;
+  /** "Fará teste de bafômetro?" — vira teste pendente no livro de alcoolemia ao salvar. */
+  fara_bafometro?: boolean;
+  /** Teste já criado no livro (lançamento salvo antes); não cria de novo. */
+  alcoolemia_teste_id?: string | null;
+  /** Id em rh_pessoas quando a pessoa veio da busca do RH. */
+  pessoa_id?: string | null;
 }
+
+/** Lançamentos de gente entrando na fábrica: oferecem "Fará teste de bafômetro?". */
+const TIPOS_ENTRADA_COM_BAFOMETRO: readonly PortTipoRegistroOcorrencia[] = [
+  'ENTRADA_VEICULO', 'ENTRADA_VISITANTE', 'VEICULO_LEVE', 'ENTRADA_COLABORADOR',
+];
 
 const TIPOS_REGISTRO: {
   id: PortTipoRegistroOcorrencia;
@@ -167,6 +180,17 @@ const TIPOS_REGISTRO: {
     isLivre: false,
   },
   {
+    // Não aparece como cartão próprio: o cartão "Colaborador" (SAIDA_COLABORADOR)
+    // troca entre Entrada e Saída. Fica aqui para o selo e o rótulo da lista.
+    id: 'ENTRADA_COLABORADOR',
+    label: 'Entrada de Colaborador',
+    sublabel: 'Chegada / Retorno / Entrega de material',
+    icon: UserPlus,
+    cor: 'text-teal-600 bg-teal-50 dark:bg-teal-950/60 dark:text-teal-400',
+    badgeCor: 'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300',
+    isLivre: false,
+  },
+  {
     id: 'RONDA_PATRIMONIAL',
     label: 'Ronda Patrimonial',
     sublabel: 'Inspeção de posto / Perímetro / Ronda',
@@ -195,6 +219,28 @@ const TIPOS_REGISTRO: {
   },
 ];
 
+/** Lançamento de colaborador TEN, seja entrada ou saída (um cartão só no formulário). */
+const ehColaborador = (tipo?: PortTipoRegistroOcorrencia | null) =>
+  tipo === 'SAIDA_COLABORADOR' || tipo === 'ENTRADA_COLABORADOR';
+
+const MOTIVOS_SAIDA_COLABORADOR = [
+  'CONSULTA MÉDICA',
+  'SERVIÇO EXTERNO',
+  'PARTICULAR / FAMILIAR',
+  'ALMOÇO / INTERVALO',
+  'LIBERAÇÃO AMBULATÓRIO',
+  'COMPENSAÇÃO DE HORAS',
+  'TREINAMENTO EXTERNO',
+];
+
+const MOTIVOS_ENTRADA_COLABORADOR = [
+  'RETORNO DE SERVIÇO EXTERNO',
+  'RETORNO DE CONSULTA MÉDICA',
+  'CHEGADA FORA DO HORÁRIO',
+  'ENTREGA DE MATERIAL',
+  'RETORNO DE TREINAMENTO EXTERNO',
+];
+
 const SETORES: { id: PortLocalSetor; label: string }[] = [
   { id: 'PORTARIA', label: 'Portaria Geral' },
   { id: 'RONDA_01', label: 'Ronda 01 (Perímetro Fábrica)' },
@@ -217,7 +263,7 @@ const PORTARIA_OCORRENCIA_NOVO_TOUR_STEPS: TourStep[] = [
     icon: Car,
     title: 'Tipo de Lançamento',
     description:
-      'Escolha entre Entrada de Veículo, Entrada de Visitante, Saída de Colaborador (RH), Ronda Patrimonial, Ocorrência Geral ou Outro Registro.',
+      'Escolha entre Entrada de Veículo, Entrada de Visitante, Colaborador (RH — entrada ou saída), Ronda Patrimonial, Ocorrência Geral ou Outro Registro.',
   },
   {
     target: 'relatorio-form-horario-local',
@@ -481,18 +527,20 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   }, [buscaColaborador, colaboradoresRh]);
 
   const aplicarColaborador = (p: RhPessoa) => {
-    setPessoasForm([
+    setPessoasForm((prev) => [
       {
         nome: p.nome.toUpperCase(),
         cpf: p.registro, // Salva o registro / matrícula como identificador
         cnh: '',
         funcao: (p.cargo || '').toUpperCase(),
+        pessoa_id: p.id || null,
+        fara_bafometro: prev[0]?.fara_bafometro,
       },
     ]);
     setFormOcorrencia((prev) => ({
       ...prev,
       empresa: 'TEN - TORRES EÓLICAS DO NORDESTE',
-      tipo_registro: 'SAIDA_COLABORADOR',
+      tipo_registro: ehColaborador(prev.tipo_registro) ? prev.tipo_registro : 'SAIDA_COLABORADOR',
     }));
     setBuscaColaborador('');
     setMostrandoSugestoesColab(false);
@@ -677,7 +725,11 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     setPessoasForm((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleAlterarPessoa = (index: number, campo: keyof ItemPessoaForm, valor: string) => {
+  const marcarBafometro = (index: number, marcado: boolean) => {
+    setPessoasForm((prev) => prev.map((p, i) => (i === index ? { ...p, fara_bafometro: marcado } : p)));
+  };
+
+  const handleAlterarPessoa = (index: number, campo: 'nome' | 'cpf' | 'cnh' | 'funcao', valor: string) => {
     setPessoasForm((prev) => {
       const nova = [...prev];
       nova[index] = {
@@ -738,6 +790,9 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
           cpf: p.cpf || '',
           cnh: p.cnh || '',
           funcao: p.funcao || '',
+          fara_bafometro: !!p.fara_bafometro,
+          alcoolemia_teste_id: p.alcoolemia_teste_id || null,
+          pessoa_id: p.pessoa_id || null,
         }))
       );
     } else {
@@ -915,7 +970,9 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         }
       }
 
-      const statusPermanencia: PortStatusPermanencia = tipoAtual.isLivre
+      // Entrada de colaborador não fica "no pátio" aguardando saída.
+      const entradaColaborador = formOcorrencia.tipo_registro === 'ENTRADA_COLABORADOR';
+      const statusPermanencia: PortStatusPermanencia = tipoAtual.isLivre || entradaColaborador
         ? 'NAO_APLICA'
         : formOcorrencia.hora_saida
         ? 'FINALIZADO'
@@ -924,6 +981,16 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         : 'NO_PATIO';
 
       const primeiraPessoa = pessoasValidas[0] || { nome: '', cpf: '', cnh: '', funcao: '' };
+
+      // "Fará teste de bafômetro?": o id do teste é gerado aqui e gravado na
+      // pessoa, então editar o lançamento não cadastra de novo (vale sem rede).
+      const aceitaBafometro = TIPOS_ENTRADA_COM_BAFOMETRO.includes(formOcorrencia.tipo_registro);
+      const pessoasGravadas: ItemPessoaForm[] = pessoasValidas.map((p) => {
+        if (p.alcoolemia_teste_id) return p;
+        if (aceitaBafometro && p.fara_bafometro) return { ...p, alcoolemia_teste_id: crypto.randomUUID() };
+        return { ...p, fara_bafometro: false };
+      });
+      const novosBafometro = pessoasGravadas.filter((p, i) => p.alcoolemia_teste_id && !pessoasValidas[i].alcoolemia_teste_id);
 
       // Fotos sobem antes, na pasta do lançamento (id gerado aqui no lançamento novo).
       const ocorrenciaId = ocorrenciaEmEdicao?.id ?? crypto.randomUUID();
@@ -945,8 +1012,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
       const payloadOcorrencia = {
         horario: formOcorrencia.horario,
-        hora_saida: formOcorrencia.hora_saida || null,
-        vigilante_saida: formOcorrencia.vigilante_saida ? formOcorrencia.vigilante_saida.toUpperCase() : null,
+        hora_saida: entradaColaborador ? null : (formOcorrencia.hora_saida || null),
+        vigilante_saida: !entradaColaborador && formOcorrencia.vigilante_saida ? formOcorrencia.vigilante_saida.toUpperCase() : null,
         tipo_registro: formOcorrencia.tipo_registro,
         status_permanencia: statusPermanencia,
         local_setor: formOcorrencia.local_setor,
@@ -967,7 +1034,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         autorizado_por: formOcorrencia.autorizado_por.toUpperCase(),
         fara_briefing: formOcorrencia.fara_briefing,
         motivo_observacao: formOcorrencia.motivo_observacao.toUpperCase(),
-        pessoas: pessoasValidas,
+        pessoas: pessoasGravadas,
         veiculo_leve_id: formOcorrencia.veiculo_leve_id || null,
         veiculo_leve_modelo: formOcorrencia.veiculo_leve_modelo || null,
         condutor_pessoa_id: formOcorrencia.condutor_pessoa_id || null,
@@ -983,6 +1050,29 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       }
       if (falhasFoto > 0) toast.warning(`${falhasFoto} foto(s) não subiram — o lançamento foi salvo sem elas.`);
       void api.removerFotosOcorrencia(removidas);
+
+      if (novosBafometro.length > 0) {
+        // Colaborador TEN (entrada ou condutor do RH): o campo "cpf" guarda a matrícula.
+        const porMatricula =
+          formOcorrencia.tipo_registro === 'ENTRADA_COLABORADOR'
+          || (formOcorrencia.tipo_registro === 'VEICULO_LEVE' && formOcorrencia.condutor_origem === 'rh_pessoas');
+        const { criados, falhas } = await api.cadastrarTestesBafometroPortaria(novosBafometro.map((p) => ({
+          id: p.alcoolemia_teste_id!,
+          teste: montarTesteBafometroPortaria(
+            {
+              nome: p.nome,
+              matricula: porMatricula ? p.cpf : null,
+              documento: porMatricula ? null : (p.cpf || p.cnh || null),
+              pessoa_id: p.pessoa_id || (porMatricula ? formOcorrencia.condutor_pessoa_id : null) || null,
+              empresa: porMatricula ? 'TEN' : formOcorrencia.empresa,
+              cargo_funcao: p.funcao,
+            },
+            { data: api.hojeISO(), horario: formOcorrencia.horario, origem: `Relatório de Ocorrências (${tipoAtual.label})`, criadoPor: user },
+          ),
+        })));
+        if (criados.length) toast.success(`${criados.length === 1 ? `${criados[0].nome} entrou` : `${criados.length} pessoas entraram`} no Teste de Alcoolemia (pendente).`);
+        if (falhas) toast.error(`${falhas} pessoa(s) não entraram no Teste de Alcoolemia. Cadastre pela tela do teste.`);
+      }
       limparFotosForm();
 
       // Salva no histórico para autocompletar futuramente
@@ -1118,7 +1208,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       return lista.filter(
         (o) =>
           o.tipo_registro === 'ENTRADA_VISITANTE' ||
-          o.tipo_registro === 'SAIDA_COLABORADOR' ||
+          ehColaborador(o.tipo_registro) ||
           o.descricao.toLowerCase().includes('acessou') ||
           o.descricao.toLowerCase().includes('saiu')
       );
@@ -1958,9 +2048,14 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   Tipo de Lançamento *
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2">
-                  {TIPOS_REGISTRO.map((tipo) => {
-                    const Icon = tipo.icon;
-                    const isSelected = formOcorrencia.tipo_registro === tipo.id;
+                  {TIPOS_REGISTRO.filter((tipo) => tipo.id !== 'ENTRADA_COLABORADOR').map((tipo) => {
+                    // Entrada e Saída de colaborador dividem o cartão "Colaborador";
+                    // o sentido é escolhido dentro do formulário (padrão: Saída).
+                    const cartaoColaborador = tipo.id === 'SAIDA_COLABORADOR';
+                    const Icon = cartaoColaborador ? User : tipo.icon;
+                    const isSelected = cartaoColaborador
+                      ? ehColaborador(formOcorrencia.tipo_registro)
+                      : formOcorrencia.tipo_registro === tipo.id;
                     return (
                       <button
                         key={tipo.id}
@@ -1968,9 +2063,11 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                         onClick={() =>
                           setFormOcorrencia((prev) => ({
                             ...prev,
-                            tipo_registro: tipo.id,
+                            tipo_registro: cartaoColaborador
+                              ? (ehColaborador(prev.tipo_registro) ? prev.tipo_registro : 'SAIDA_COLABORADOR')
+                              : tipo.id,
                             empresa:
-                              tipo.id === 'SAIDA_COLABORADOR'
+                              cartaoColaborador
                                 ? (prev.empresa || 'TEN - TORRES EÓLICAS DO NORDESTE')
                                 : prev.empresa,
                           }))
@@ -1985,10 +2082,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                           <Icon className="h-4 w-4" />
                         </span>
                         <span className="text-xs font-bold text-slate-900 dark:text-slate-100 leading-tight">
-                          {tipo.label}
+                          {cartaoColaborador ? 'Colaborador' : tipo.label}
                         </span>
                         <span className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">
-                          {tipo.sublabel}
+                          {cartaoColaborador ? 'Entrada ou saída (RH)' : tipo.sublabel}
                         </span>
                       </button>
                     );
@@ -2105,16 +2202,61 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   origem={formOcorrencia.condutor_origem}
                   onCondutorChange={(condutor) => setPessoasForm((prev) => [{ ...(prev[0] || { cnh: '' }), ...condutor }])}
                   onCondutorSelecionado={(pessoa) => {
-                    setPessoasForm([{ nome: pessoa.nome.toUpperCase(), cpf: pessoa.registro, cnh: '', funcao: (pessoa.cargo || '').toUpperCase() }]);
+                    setPessoasForm((prev) => [{ nome: pessoa.nome.toUpperCase(), cpf: pessoa.registro, cnh: '', funcao: (pessoa.cargo || '').toUpperCase(), pessoa_id: pessoa.id || null, fara_bafometro: prev[0]?.fara_bafometro }]);
                     setFormOcorrencia((prev) => ({ ...prev, condutor_pessoa_id: pessoa.id, condutor_origem: 'rh_pessoas' }));
                   }}
                   onOrigemChange={(origem) => setFormOcorrencia((prev) => ({ ...prev, condutor_origem: origem, condutor_pessoa_id: origem === 'rh_pessoas' ? prev.condutor_pessoa_id : null }))}
                 />
+                <CampoFaraBafometro
+                  marcado={!!pessoasForm[0]?.fara_bafometro}
+                  jaCadastrado={!!pessoasForm[0]?.alcoolemia_teste_id}
+                  onChange={(v) => marcarBafometro(0, v)}
+                />
                 {blocoEntrega}
                 </div>
-              ) : formOcorrencia.tipo_registro === 'SAIDA_COLABORADOR' ? (
-                /* CASO B: Saída de Colaborador (TEN) integrado à tabela rh_pessoas */
+              ) : ehColaborador(formOcorrencia.tipo_registro) ? (
+                /* CASO B: Colaborador (TEN) — Entrada ou Saída, integrado à tabela rh_pessoas */
                 <div className="space-y-4">
+                  {/* Entrada ou Saída */}
+                  <div role="group" aria-label="Sentido do lançamento do colaborador" className="grid grid-cols-2 gap-2">
+                    {([
+                      { id: 'ENTRADA_COLABORADOR', rotulo: 'Entrada', ajuda: 'Chegada ou retorno · pode trazer material', Icone: LogIn },
+                      { id: 'SAIDA_COLABORADOR', rotulo: 'Saída', ajuda: 'Saída temporária · aguarda retorno', Icone: LogOut },
+                    ] as const).map(({ id, rotulo, ajuda, Icone }) => {
+                      const ativo = formOcorrencia.tipo_registro === id;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          aria-pressed={ativo}
+                          onClick={() =>
+                            setFormOcorrencia((prev) => ({
+                              ...prev,
+                              tipo_registro: id,
+                              // Entrada não tem retorno a registrar; Saída não leva entrega de material.
+                              ...(id === 'ENTRADA_COLABORADOR'
+                                ? { hora_saida: '' }
+                                : { entrega_material: false, nf_verificada: false }),
+                            }))
+                          }
+                          className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${
+                            ativo
+                              ? id === 'ENTRADA_COLABORADOR'
+                                ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-500/20 dark:border-teal-500 dark:bg-teal-950/30'
+                                : 'border-amber-600 bg-amber-50 ring-2 ring-amber-500/20 dark:border-amber-500 dark:bg-amber-950/30'
+                              : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900'
+                          }`}
+                        >
+                          <Icone className={`h-5 w-5 shrink-0 ${id === 'ENTRADA_COLABORADOR' ? 'text-teal-600 dark:text-teal-400' : 'text-amber-600 dark:text-amber-400'}`} aria-hidden="true" />
+                          <span>
+                            <span className="block text-sm font-bold text-slate-900 dark:text-slate-100">{rotulo}</span>
+                            <span className="block text-[11px] text-slate-500 dark:text-slate-400">{ajuda}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   {/* Autocomplete de Colaboradores do RH */}
                   <div className="relative rounded-2xl border border-amber-200 bg-amber-50/50 p-3.5 sm:p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
                     <div className="flex items-center justify-between mb-1.5">
@@ -2240,11 +2382,11 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Autorizado por (Gestor / Supervisor / Ambulatório) *
+                          Autorizado por (Gestor / Supervisor / Ambulatório){formOcorrencia.tipo_registro === 'SAIDA_COLABORADOR' ? ' *' : ' (opcional)'}
                         </label>
                         <input
                           type="text"
-                          required
+                          required={formOcorrencia.tipo_registro === 'SAIDA_COLABORADOR'}
                           list="lista-ocorrencia-autorizado_por"
                           placeholder="EX: SUPERVISOR MARCOS, DR. ROBERTO (AMBULATÓRIO)..."
                           value={formOcorrencia.autorizado_por}
@@ -2259,13 +2401,17 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                        Motivo da Saída do Colaborador *
+                        {formOcorrencia.tipo_registro === 'ENTRADA_COLABORADOR'
+                          ? 'Motivo da Entrada do Colaborador (opcional)'
+                          : 'Motivo da Saída do Colaborador *'}
                       </label>
                       <input
                         type="text"
-                        required
+                        required={formOcorrencia.tipo_registro === 'SAIDA_COLABORADOR'}
                         list="lista-ocorrencia-motivo_observacao"
-                        placeholder="EX: CONSULTA MÉDICA, SERVIÇO EXTERNO, PARTICULAR..."
+                        placeholder={formOcorrencia.tipo_registro === 'ENTRADA_COLABORADOR'
+                          ? 'EX: RETORNO DE SERVIÇO EXTERNO, ENTREGA DE MATERIAL...'
+                          : 'EX: CONSULTA MÉDICA, SERVIÇO EXTERNO, PARTICULAR...'}
                         value={formOcorrencia.motivo_observacao}
                         onChange={(e) => setFormOcorrencia({ ...formOcorrencia, motivo_observacao: e.target.value.toUpperCase() })}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
@@ -2277,15 +2423,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                       {/* Motivos Rápidos */}
                       <div className="mt-2 flex flex-wrap gap-1.5 items-center">
                         <span className="text-[11px] font-semibold text-slate-500 mr-1">Sugestões rápidas:</span>
-                        {[
-                          'CONSULTA MÉDICA',
-                          'SERVIÇO EXTERNO',
-                          'PARTICULAR / FAMILIAR',
-                          'ALMOÇO / INTERVALO',
-                          'LIBERAÇÃO AMBULATÓRIO',
-                          'COMPENSAÇÃO DE HORAS',
-                          'TREINAMENTO EXTERNO',
-                        ].map((motivo) => (
+                        {(formOcorrencia.tipo_registro === 'ENTRADA_COLABORADOR'
+                          ? MOTIVOS_ENTRADA_COLABORADOR
+                          : MOTIVOS_SAIDA_COLABORADOR
+                        ).map((motivo) => (
                           <button
                             key={motivo}
                             type="button"
@@ -2298,6 +2439,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                       </div>
                     </div>
 
+                    {formOcorrencia.tipo_registro === 'SAIDA_COLABORADOR' && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -2328,7 +2470,19 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                         </p>
                       </div>
                     </div>
+                    )}
                   </div>
+
+                  {formOcorrencia.tipo_registro === 'ENTRADA_COLABORADOR' && (
+                    <CampoFaraBafometro
+                      marcado={!!pessoasForm[0]?.fara_bafometro}
+                      jaCadastrado={!!pessoasForm[0]?.alcoolemia_teste_id}
+                      onChange={(v) => marcarBafometro(0, v)}
+                    />
+                  )}
+
+                  {/* Entrada pode trazer material: abre a ficha cega do almoxarifado */}
+                  {formOcorrencia.tipo_registro === 'ENTRADA_COLABORADOR' && blocoEntrega}
                 </div>
               ) : (
                 /* CASO C: Entrada de Veículo ou Entrada de Visitante */
@@ -2663,6 +2817,16 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                                 />
                               </div>
                             )}
+                          </div>
+
+                          <div className="mt-3">
+                            <CampoFaraBafometro
+                              compacto
+                              nome={pessoa.nome || `pessoa ${idx + 1}`}
+                              marcado={!!pessoa.fara_bafometro}
+                              jaCadastrado={!!pessoa.alcoolemia_teste_id}
+                              onChange={(v) => marcarBafometro(idx, v)}
+                            />
                           </div>
                         </div>
                       ))}

@@ -3985,6 +3985,7 @@ export type Database = {
           horario: string
           id: string
           local_teste: string | null
+          local_afericao: string | null
           matricula: string | null
           nome: string
           numero_protocolo: string | null
@@ -4019,6 +4020,7 @@ export type Database = {
           horario: string
           id?: string
           local_teste?: string | null
+          local_afericao?: string | null
           matricula?: string | null
           nome: string
           numero_protocolo?: string | null
@@ -4053,6 +4055,7 @@ export type Database = {
           horario?: string
           id?: string
           local_teste?: string | null
+          local_afericao?: string | null
           matricula?: string | null
           nome?: string
           numero_protocolo?: string | null

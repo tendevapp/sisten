@@ -19,7 +19,7 @@ export interface FotoOcorrencia {
 
 /** Lançamentos que podem trazer entrega de material: as entradas e o Outro registro. */
 export const TIPOS_COM_ENTREGA_MATERIAL: readonly PortTipoRegistroOcorrencia[] = [
-  'ENTRADA_VEICULO', 'ENTRADA_VISITANTE', 'VEICULO_LEVE', 'OUTRO_REGISTRO',
+  'ENTRADA_VEICULO', 'ENTRADA_VISITANTE', 'VEICULO_LEVE', 'ENTRADA_COLABORADOR', 'OUTRO_REGISTRO',
 ];
 
 export function aceitaEntregaMaterial(tipo?: PortTipoRegistroOcorrencia | null): boolean {

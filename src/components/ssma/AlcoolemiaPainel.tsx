@@ -26,6 +26,9 @@ import {
   type Intervalo, type ModoPeriodo,
 } from '../../lib/alcoolemiaPeriodo';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
+import {
+  ETILOMETRO_DO_LOCAL, ROTULO_LOCAL_AFERICAO, localDaAfericao, type LocalAfericaoAlcoolemia,
+} from '../../lib/alcoolemiaLocal';
 
 const MODOS: ModoPeriodo[] = ['dia', 'semana', 'mes', 'periodo'];
 
@@ -346,15 +349,53 @@ export function SeloExcluido({ teste }: { teste: PortAlcoolemiaTeste }) {
  * (o teste pode ser aberto na Portaria e ter o resultado lançado no SSMA).
  */
 export function SeloQuemAferiu({ teste }: { teste: PortAlcoolemiaTeste }) {
-  if (teste.resultado === 'PENDENTE') return null;
-  const pelaPortaria = !!teste.vigilante;
+  const local = localDaAfericao(teste);
+  if (!local) return null;
+  const pelaPortaria = local === 'PORTARIA';
   const nome = (pelaPortaria ? teste.vigilante : teste.examinador_nome) || '';
-  if (!nome) return null;
+  const primeiro = nome.split(' ')[0].toLowerCase().replace(/^./, (c) => c.toUpperCase());
   return (
     <span className="text-[11px] text-slate-500 dark:text-slate-400">
-      {pelaPortaria ? 'Aferido na portaria' : 'Registrado no SSMA'} por {nome.split(' ')[0].toLowerCase().replace(/^./, (c) => c.toUpperCase())}
+      {pelaPortaria ? 'Aferido na portaria' : 'Aferido no SSMA'}
+      {primeiro ? ` por ${primeiro}` : ''}
       {teste.etilometro_codigo ? `, ${teste.etilometro_codigo}` : ''}
     </span>
+  );
+}
+
+const COR_LOCAL: Record<LocalAfericaoAlcoolemia, string> = {
+  PORTARIA: 'bg-rose-50 text-rose-800 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900',
+  SSMA: 'bg-emerald-50 text-emerald-800 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900',
+};
+
+/** Onde a aferição foi feita, com o etilômetro usado. Pendente não mostra nada. */
+export function SeloLocalAfericao({ teste }: { teste: PortAlcoolemiaTeste }) {
+  const local = localDaAfericao(teste);
+  if (!local) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ring-inset ${COR_LOCAL[local]}`}>
+      {ROTULO_LOCAL_AFERICAO[local]}
+      {teste.etilometro_codigo && <span className="font-mono font-semibold opacity-80">· {teste.etilometro_codigo}</span>}
+    </span>
+  );
+}
+
+/**
+ * Etilômetro do formulário de aferição: sai do local (Portaria = ETIL-02,
+ * SSMA = ETIL-01), não é digitado. `codigo` vem de `etilometroAoRegistrar`
+ * (teste já aferido mantém o aparelho gravado).
+ */
+export function EtilometroDoLocal({ local, codigo }: { local: LocalAfericaoAlcoolemia; codigo?: string }) {
+  return (
+    <div>
+      <span className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Etilômetro</span>
+      <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-950">
+        <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{codigo || ETILOMETRO_DO_LOCAL[local]}</span>
+        <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ring-inset ${COR_LOCAL[local]}`}>
+          Aferição {local === 'PORTARIA' ? 'na portaria' : 'no SSMA'}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -388,7 +429,7 @@ const ROTULO_CAMPO_ALCOOLEMIA: Record<string, string> = {
   matricula: 'Matrícula', nome: 'Nome', empresa: 'Empresa', cargo_funcao: 'Cargo/função', setor_area: 'Setor/área',
   documento: 'Documento', resultado: 'Resultado', valor_medido: 'Valor medido (mg/L)', etilometro_codigo: 'Etilômetro',
   vigilante: 'Vigilante', testemunha: 'Testemunha', observacoes: 'Observações', razao_teste: 'Razão do teste',
-  local_teste: 'Local', examinador_nome: 'Examinador', examinador_cargo: 'Cargo do examinador',
+  local_teste: 'Local', local_afericao: 'Local da aferição', examinador_nome: 'Examinador', examinador_cargo: 'Cargo do examinador',
   termo_assinado_fisicamente: 'Termo assinado no papel', termo_impresso_em: 'Termo impresso em',
   fotos: 'Fotos', assinatura_sorteado: 'Assinatura do sorteado', assinatura_sorteado_em: 'Assinada em',
   excluido_em: 'Excluído em', excluido_por: 'Excluído por', codigo_formulario: 'Código', numero_protocolo: 'Protocolo',

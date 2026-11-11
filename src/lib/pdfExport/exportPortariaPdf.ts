@@ -14,6 +14,7 @@
 import { createDoc, PdfTextWriter, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
 import { dataHojeLocal } from '../dataLocal';
 import { contarFotosOcorrencia, fotosDaOcorrencia } from '../portariaFotosOcorrencia';
+import { ROTULO_LOCAL_AFERICAO, localDaAfericao } from '../alcoolemiaLocal';
 export type { PdfGerado };
 import type {
   PortControleEquipamento,
@@ -577,6 +578,11 @@ export async function gerarAlcoolemiaPeriodoPdf(
     // corte ("ANTONIO SEVERO NETO (1730...").
     const nome = (t: PortAlcoolemiaTeste) => t.nome;
     const matricula = (t: PortAlcoolemiaTeste) => t.matricula || '-';
+    // Onde foi aferido (Portaria = ETIL-02, SSMA = ETIL-01); pendente fica em branco.
+    const local = (t: PortAlcoolemiaTeste) => {
+      const l = localDaAfericao(t);
+      return l ? ROTULO_LOCAL_AFERICAO[l].toUpperCase() : '-';
+    };
     // Última coluna: assinatura do sorteado. Digital = imagem; sem ela, o
     // espaço fica em branco para assinar à mão na folha impressa.
     const assinaturas = testes.map((t) => t.assinatura_sorteado);
@@ -585,29 +591,31 @@ export async function gerarAlcoolemiaPeriodoPdf(
       const headers = [
         { label: 'CÓDIGO', width: 72, align: 'left' as const },
         { label: 'HORA', width: 36, align: 'center' as const },
-        { label: 'NOME / COLABORADOR', width: 150, align: 'left' as const },
+        { label: 'NOME / COLABORADOR', width: 110, align: 'left' as const },
         { label: 'MATRÍCULA', width: 56, align: 'center' as const },
         { label: 'EMPRESA', width: 64, align: 'left' as const },
         { label: 'RESULTADO', width: 57, align: 'center' as const },
+        { label: 'LOCAL', width: 40, align: 'center' as const },
         { label: 'ASSINATURA', width: 80, align: 'center' as const },
       ];
       await writer.drawTableComAssinaturas(headers, testes.map((t) => [
-        t.codigo_formulario, t.horario, nome(t), matricula(t), t.empresa || 'TEN', resultado(t), '',
-      ]), assinaturas, 6);
+        t.codigo_formulario, t.horario, nome(t), matricula(t), t.empresa || 'TEN', resultado(t), local(t), '',
+      ]), assinaturas, 7);
     } else {
       const headers = [
         { label: 'DATA', width: 34, align: 'center' as const },
         { label: 'CÓDIGO', width: 70, align: 'left' as const },
         { label: 'HORA', width: 34, align: 'center' as const },
-        { label: 'NOME / COLABORADOR', width: 128, align: 'left' as const },
+        { label: 'NOME / COLABORADOR', width: 100, align: 'left' as const },
         { label: 'MATRÍCULA', width: 54, align: 'center' as const },
-        { label: 'EMPRESA', width: 60, align: 'left' as const },
+        { label: 'EMPRESA', width: 48, align: 'left' as const },
         { label: 'RESULTADO', width: 57, align: 'center' as const },
+        { label: 'LOCAL', width: 40, align: 'center' as const },
         { label: 'ASSINATURA', width: 78, align: 'center' as const },
       ];
       await writer.drawTableComAssinaturas(headers, testes.map((t) => [
-        formatDataBR(t.data).slice(0, 5), t.codigo_formulario, t.horario, nome(t), matricula(t), t.empresa || 'TEN', resultado(t), '',
-      ]), assinaturas, 7);
+        formatDataBR(t.data).slice(0, 5), t.codigo_formulario, t.horario, nome(t), matricula(t), t.empresa || 'TEN', resultado(t), local(t), '',
+      ]), assinaturas, 8);
     }
   }
 

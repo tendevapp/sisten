@@ -32,7 +32,7 @@ import {
 } from '../../lib/alcoolemiaPeriodo';
 import {
   BotaoCartao, BuscaColaborador, CartaoTeste, ExportarLivroModal, FiltrosResultado, ListaVazia, SeletorPeriodo,
-  LogAlteracoesAlcoolemia, SeloAssinatura, SeloExcluido, SeloQuemAferiu, SeloResultado, type FiltroResultado,
+  EtilometroDoLocal, LogAlteracoesAlcoolemia, SeloAssinatura, SeloExcluido, SeloLocalAfericao, SeloQuemAferiu, SeloResultado, type FiltroResultado,
 } from '../../components/ssma/AlcoolemiaPainel';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
@@ -46,6 +46,7 @@ import type { TourStep } from '../../components/help/types';
 import CampoAssinatura from '../../components/portaria/CampoAssinatura';
 
 import { assinaturaColhida, assinaturaDoTeste } from '../../lib/alcoolemiaAssinatura';
+import { etilometroAoRegistrar, localAoRegistrar } from '../../lib/alcoolemiaLocal';
 
 interface Props {
   user: Profile;
@@ -199,7 +200,6 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   const [registrarAfericaoImediata, setRegistrarAfericaoImediata] = useState<boolean>(false);
   const [formResultado, setFormResultado] = useState<PortAlcoolemiaResultado>('PENDENTE');
   const [formValorMedido, setFormValorMedido] = useState<string>('0.00');
-  const [formEtilometro, setFormEtilometro] = useState<string>('ETIL-01');
   const [formVigilante, setFormVigilante] = useState<string>(user.name || '');
   const [formTestemunha, setFormTestemunha] = useState<string>('');
   const [formObservacoes, setFormObservacoes] = useState<string>('');
@@ -213,7 +213,6 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   const [modalAfericaoAberto, setModalAfericaoAberto] = useState<boolean>(false);
   const [testeParaAferir, setTesteParaAferir] = useState<PortAlcoolemiaTeste | null>(null);
   const [afericaoHorario, setAfericaoHorario] = useState<string>(api.horaAgora());
-  const [afericaoEtilometro, setAfericaoEtilometro] = useState<string>('ETIL-01');
   const [afericaoResultado, setAfericaoResultado] = useState<PortAlcoolemiaResultado>('NEGATIVO');
   const [afericaoValorMedido, setAfericaoValorMedido] = useState<string>('0.00');
   const [afericaoVigilante, setAfericaoVigilante] = useState<string>(user.name || '');
@@ -347,7 +346,6 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setRegistrarAfericaoImediata(false);
     setFormResultado('PENDENTE');
     setFormValorMedido('0.00');
-    setFormEtilometro('ETIL-01');
     setFormVigilante(user.name || '');
     setFormTestemunha('');
     setFormObservacoes('');
@@ -375,7 +373,6 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setRegistrarAfericaoImediata(temAfericao);
     setFormResultado(teste.resultado);
     setFormValorMedido(String(teste.valor_medido ?? '0.00'));
-    setFormEtilometro(teste.etilometro_codigo || 'ETIL-01');
     setFormVigilante(teste.vigilante || user.name || '');
     setFormTestemunha(teste.testemunha || '');
     setFormObservacoes(teste.observacoes || '');
@@ -389,7 +386,6 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   const abrirModalAfericao = (teste: PortAlcoolemiaTeste) => {
     setTesteParaAferir(teste);
     setAfericaoHorario(api.horaAgora());
-    setAfericaoEtilometro(teste.etilometro_codigo || 'ETIL-01');
     setAfericaoResultado(teste.resultado === 'PENDENTE' ? 'NEGATIVO' : teste.resultado);
     setAfericaoValorMedido(String(teste.valor_medido ?? '0.00'));
     setAfericaoVigilante(teste.vigilante || user.name || '');
@@ -426,7 +422,9 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
         fotos,
         resultado: afericaoResultado,
         valor_medido: afericaoResultado === 'POSITIVO' ? valorNum : 0.0,
-        etilometro_codigo: afericaoEtilometro.trim() || null,
+        // Aferição na portaria = ETIL-02 (teste já aferido mantém local e aparelho).
+        etilometro_codigo: etilometroAoRegistrar(testeParaAferir, 'PORTARIA'),
+        local_afericao: localAoRegistrar(testeParaAferir, 'PORTARIA'),
         vigilante: afericaoVigilante.trim() || null,
         testemunha: afericaoTestemunha.trim() || null,
         observacoes: afericaoObservacoes.trim() || null,
@@ -479,7 +477,8 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
         documento: tipoVinculo === 'PJ' ? formDocumento.trim() || null : null,
         resultado: resultadoFinal,
         valor_medido: registrarAfericaoImediata && formResultado === 'POSITIVO' ? valorNum : 0.0,
-        etilometro_codigo: registrarAfericaoImediata ? formEtilometro.trim() || null : null,
+        etilometro_codigo: registrarAfericaoImediata ? etilometroAoRegistrar(editandoTeste, 'PORTARIA') : null,
+        local_afericao: registrarAfericaoImediata ? localAoRegistrar(editandoTeste, 'PORTARIA') : null,
         vigilante: registrarAfericaoImediata ? formVigilante.trim() || null : null,
         testemunha: registrarAfericaoImediata ? formTestemunha.trim() || null : null,
         observacoes: formObservacoes.trim() || null,
@@ -539,13 +538,18 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   // Troca rápida de resultado na tabela
   const atualizarResultadoRapido = async (teste: PortAlcoolemiaTeste, novoResultado: PortAlcoolemiaResultado) => {
     try {
-      await api.atualizarTesteAlcoolemia(teste.id, {
+      // "Apto rápido" também é aferição na portaria: ETIL-02 e o vigilante da vez.
+      const afericao = {
         resultado: novoResultado,
         valor_medido: novoResultado === 'NEGATIVO' ? 0.0 : teste.valor_medido,
-      });
+        etilometro_codigo: etilometroAoRegistrar(teste, 'PORTARIA'),
+        local_afericao: localAoRegistrar(teste, 'PORTARIA'),
+        vigilante: teste.vigilante || user.name || null,
+      };
+      await api.atualizarTesteAlcoolemia(teste.id, afericao);
       setTestes((prev) =>
         prev.map((item) =>
-          item.id === teste.id ? { ...item, resultado: novoResultado } : item
+          item.id === teste.id ? { ...item, ...afericao } : item
         )
       );
       toast.success(`Resultado alterado para ${novoResultado}`);
@@ -854,7 +858,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                           <div className="flex flex-col items-start gap-1"><SeloResultado teste={item} /><SeloExcluido teste={item} /></div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex flex-col gap-0.5"><SeloQuemAferiu teste={item} /><SeloAssinatura teste={item} /></div>
+                          <div className="flex flex-col items-start gap-0.5"><SeloLocalAfericao teste={item} /><SeloQuemAferiu teste={item} /><SeloAssinatura teste={item} /></div>
                           {!!item.fotos?.length && (
                             <div className="mt-1.5">
                               <MiniaturasFotosTeste fotos={item.fotos} tamanho="h-9 w-9" onAbrir={(i) => abrirFotos(item.fotos, i)} />
@@ -1244,22 +1248,10 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
               {registrarAfericaoImediata && (
                 <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700 space-y-3">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">
-                        Código do Etilômetro
-                      </label>
-                      <input
-                        type="text"
-                        list="lista-alc-etilometro_codigo"
-                        placeholder="Ex: ETIL-01"
-                        value={formEtilometro}
-                        onChange={(e) => setFormEtilometro(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
-                      />
-                      <datalist id="lista-alc-etilometro_codigo">
-                        {(historico.etilometro_codigo || []).map((v) => <option key={v} value={v} />)}
-                      </datalist>
-                    </div>
+                    <EtilometroDoLocal
+                      local={localAoRegistrar(editandoTeste, 'PORTARIA')}
+                      codigo={etilometroAoRegistrar(editandoTeste, 'PORTARIA')}
+                    />
 
                     <div>
                       <VigilanteOperadorAtual nome={formVigilante} label="Vigilante Operador do Teste" />
@@ -1517,22 +1509,10 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                 />
               </div>
 
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Código do Etilômetro *
-                </label>
-                <input
-                  type="text"
-                  list="lista-alc-etilometro_codigo-afericao"
-                  placeholder="Ex: ETIL-01"
-                  value={afericaoEtilometro}
-                  onChange={(e) => setAfericaoEtilometro(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
-                />
-                <datalist id="lista-alc-etilometro_codigo-afericao">
-                  {(historico.etilometro_codigo || []).map((v) => <option key={v} value={v} />)}
-                </datalist>
-              </div>
+              <EtilometroDoLocal
+                local={localAoRegistrar(testeParaAferir, 'PORTARIA')}
+                codigo={etilometroAoRegistrar(testeParaAferir, 'PORTARIA')}
+              />
             </div>
 
             {/* Resultado do Teste */}

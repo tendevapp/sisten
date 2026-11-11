@@ -26,6 +26,7 @@ import SignaturePadModal from '../../components/portaria/SignaturePadModal';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import CampoFaraBafometro from '../../components/portaria/CampoFaraBafometro';
 import { MostrarExcluidosToggle, BadgeExcluido, RestaurarButton, classeLinhaExcluida } from '../../components/ui/ExcluidosControls';
 
 interface Props {
@@ -191,6 +192,9 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
     observacoes: '',
   });
 
+  // "Fará teste de bafômetro?" do motorista da carreta.
+  const [faraBafometro, setFaraBafometro] = useState(false);
+
   const [formSaida, setFormSaida] = useState({
     vigilante_saida: user.name,
     data_saida: api.hojeISO(),
@@ -244,6 +248,12 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
         criado_por: user.id,
       });
       toast.success('Entrada de carreta de chapas registrada com sucesso!');
+        if (faraBafometro) {
+          const teste = await api.cadastrarBafometroNaEntrada({ nome: formNovo.nome_motorista, documento: formNovo.cpf_motorista, empresa: formNovo.empresa }, { data: formNovo.data_entrada, horario: formNovo.hora_entrada, origem: 'Carretas de Chapas', criadoPor: user });
+          if (teste) toast.success(`${teste.nome} entrou no Teste de Alcoolemia (pendente).`);
+          else toast.error('A pessoa não entrou no Teste de Alcoolemia. Cadastre pela tela do teste.');
+        }
+      setFaraBafometro(false);
       setModalNovoAberto(false);
       setFormNovo({
         empresa: '',
@@ -639,6 +649,8 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                   </datalist>
                 </div>
               </div>
+
+              <CampoFaraBafometro marcado={faraBafometro} onChange={setFaraBafometro} nome={formNovo.nome_motorista || 'motorista'} />
 
               <div data-tour="carretas-form-entrada" className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <div>
