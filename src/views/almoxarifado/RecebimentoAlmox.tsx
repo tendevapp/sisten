@@ -38,7 +38,7 @@ import {
 } from '../../lib/imageCompression';
 import { prepararFotoCarimbada } from '../../lib/carimboFoto';
 import {
-  EPSILON_QTD, PREFIXO_RECEB, juntarNotasFiscais, separarNotasFiscais, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarItensComPo, itensMercadoLivreComPo, buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
+  EPSILON_QTD, PREFIXO_RECEB, juntarNotasFiscais, separarNotasFiscais, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarItensComPo, itensMercadoLivreComPo, recebidoNoSistenPorLinha,buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
   entregaParcialAnterior, listarFornecedoresDoCache, parcialPrecisaConfirmarNf, pendentePedido, podeExcluirNaoConformidade, posAbertosDoFornecedor,
   resumoConferencia, tipoNcSugerido, validarNovaNcAvulsa, entregasPortariaPendentes, rotuloStatusCarga,
   NF_SEM_PO, itensSemNf, nfDoItem, nfPorPedidoDosItens, nfsDoPedido, pedidosSemNf, resumoNfPorPedido,
@@ -407,6 +407,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
           <ModalConferencia
             user={user}
             cargas={cargas}
+            conferencias={conferencias}
             registro={form.registro}
             rascunhoId={form.rascunhoId}
             onClose={() => { setForm(null); sincronizarRascunhos(); }}
@@ -2533,10 +2534,12 @@ function Recolhivel({
 }
 
 function ModalConferencia({
-  user, cargas, registro, rascunhoId, onClose, onSalvo,
+  user, cargas, conferencias, registro, rascunhoId, onClose, onSalvo,
 }: {
   user: Profile;
   cargas: CargaRow[];
+  /** Conferências já gravadas — tiram do filtro Mercado Livre o que já foi recebido. */
+  conferencias: ConferenciaRow[];
   registro?: ConferenciaRow;
   /** Id do rascunho a continuar; ausente = conferência nova (id novo abaixo). */
   rascunhoId?: string;
@@ -2722,10 +2725,16 @@ function ModalConferencia({
       .finally(() => setCarregandoMl(false));
   }, [modoBusca, compraMlPorRi, carregandoMl, toast]);
 
-  /** Itens do ML que já têm PO e ainda têm saldo a chegar (cache do SAP). */
+  /** Quanto cada linha de PO já teve contado em outras conferências do SISTEN. */
+  const recebidoSisten = useMemo(
+    () => recebidoNoSistenPorLinha(conferencias, ed?.id),
+    [conferencias, ed?.id],
+  );
+
+  /** Itens do ML que já têm PO e ainda têm saldo a chegar — nem no SAP nem no SISTEN já recebidos. */
   const itensMl = useMemo<ItemPoMercadoLivre[]>(
-    () => (compraMlPorRi ? itensMercadoLivreComPo(sapCache, compraMlPorRi, mlBusca) : []),
-    [sapCache, compraMlPorRi, mlBusca],
+    () => (compraMlPorRi ? itensMercadoLivreComPo(sapCache, compraMlPorRi, mlBusca, recebidoSisten) : []),
+    [sapCache, compraMlPorRi, mlBusca, recebidoSisten],
   );
 
   /** Uma linha de PO achada (busca por item ou Mercado Livre) com o botão de adicionar. */

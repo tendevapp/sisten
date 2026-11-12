@@ -454,15 +454,43 @@ export interface ItemPoMercadoLivre extends ItemPoEncontrado {
 }
 
 /**
+ * Quanto já foi contado em conferências do SISTEN por linha de PO (`linha_ref`
+ * = ri_po). `ignorarId` tira a conferência que está sendo editada, para o item
+ * dela não sumir da própria lista.
+ */
+export function recebidoNoSistenPorLinha(
+  conferencias: { id: string; itens?: { linha_ref?: string | null; qtd_recebida?: number | null }[] | null }[],
+  ignorarId?: string | null,
+): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const c of conferencias) {
+    if (ignorarId && c.id === ignorarId) continue;
+    for (const it of c.itens ?? []) {
+      const ref = String(it.linha_ref ?? '').trim();
+      const qtd = Number(it.qtd_recebida ?? 0);
+      if (!ref || !(qtd > 0)) continue;
+      m.set(ref, (m.get(ref) ?? 0) + qtd);
+    }
+  }
+  return m;
+}
+
+/**
  * Opção "Mercado Livre" do Recebimento e contagem: os itens destinados ao ML
  * (sup_ml_itens, por `ri`) que **já têm PO** e ainda têm saldo a chegar.
  * Item sem PO não entra — não há pedido para conferir. `termo` filtra por
  * descrição, código, PO ou nº da compra do ML.
+ *
+ * O que já foi recebido no SISTEN (`recebidoNoSisten`, por ri_po) também sai:
+ * o cache do SAP só desconta depois da MIGO e da próxima importação. Para não
+ * descontar duas vezes o que já está no SAP, o pendente é o menor entre o do
+ * SAP (pedido − fornecido) e o do SISTEN (pedido − contado nas conferências).
  */
 export function itensMercadoLivreComPo(
   records: LinhaCacheSAP[],
   compraPorRi: Map<string, string | null>,
   termo = '',
+  recebidoNoSisten?: Map<string, number>,
 ): ItemPoMercadoLivre[] {
   if (!compraPorRi.size) return [];
   const tokens = extrairPalavrasChave(termo);
@@ -474,7 +502,11 @@ export function itensMercadoLivreComPo(
     if (!numero) continue;
     const qtdPedido = typeof r.qtd_po === 'number' ? r.qtd_po : null;
     const qtdJaFornecida = typeof r.qtd_fornecida_po === 'number' ? r.qtd_fornecida_po : null;
-    const pendente = pendentePedido(qtdPedido, qtdJaFornecida);
+    const recebidoSisten = (r.ri_po && recebidoNoSisten?.get(r.ri_po)) || 0;
+    const pendente = Math.min(
+      pendentePedido(qtdPedido, qtdJaFornecida),
+      pendentePedido(qtdPedido, recebidoSisten),
+    );
     if (pendente <= EPSILON_QTD) continue;
     const materialCode = String(r.material_code ?? '');
     const descricao = r.texto_breve ?? '';

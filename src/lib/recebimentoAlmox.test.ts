@@ -31,7 +31,7 @@ import {
   validarNovaNcAvulsa,
   type LinhaCacheSAP,
   type LinhaConferencia,
-  parcialPrecisaConfirmarNf, itensMercadoLivreComPo
+  parcialPrecisaConfirmarNf, itensMercadoLivreComPo, recebidoNoSistenPorLinha
 } from './recebimentoAlmox';
 
 const linha = (over: Partial<LinhaConferencia> = {}): LinhaConferencia => ({
@@ -515,5 +515,32 @@ describe('itensMercadoLivreComPo', () => {
 
   it('sem itens do ML, lista vazia', () => {
     expect(itensMercadoLivreComPo(linhas, new Map())).toEqual([]);
+  });
+
+  it('some quando o SISTEN já recebeu tudo, mesmo com o SAP defasado', () => {
+    const recebido = recebidoNoSistenPorLinha([
+      { id: 'c1', itens: [{ linha_ref: 'R1-P', qtd_recebida: 10 }] },
+    ]);
+    expect(itensMercadoLivreComPo(linhas, ml, '', recebido)).toEqual([]);
+  });
+
+  it('recebimento parcial no SISTEN reduz o pendente sem contar duas vezes o do SAP', () => {
+    // SAP: 10 pedidos, 4 fornecidos (pendente 6). SISTEN contou 5 → pendente 5.
+    const parcial = recebidoNoSistenPorLinha([
+      { id: 'c1', itens: [{ linha_ref: 'R1-P', qtd_recebida: 3 }] },
+      { id: 'c2', itens: [{ linha_ref: 'R1-P', qtd_recebida: 2 }] },
+    ]);
+    expect(itensMercadoLivreComPo(linhas, ml, '', parcial)[0].pendente).toBe(5);
+    // SISTEN contou 2 (o SAP já tem 4): vale o pendente do SAP, 6.
+    const pouco = recebidoNoSistenPorLinha([{ id: 'c1', itens: [{ linha_ref: 'R1-P', qtd_recebida: 2 }] }]);
+    expect(itensMercadoLivreComPo(linhas, ml, '', pouco)[0].pendente).toBe(6);
+  });
+
+  it('a conferência em edição não esconde o próprio item', () => {
+    const recebido = recebidoNoSistenPorLinha(
+      [{ id: 'c1', itens: [{ linha_ref: 'R1-P', qtd_recebida: 10 }] }],
+      'c1',
+    );
+    expect(itensMercadoLivreComPo(linhas, ml, '', recebido)).toHaveLength(1);
   });
 });
