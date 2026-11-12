@@ -36,6 +36,9 @@ import {
 } from '../../components/ssma/AlcoolemiaPainel';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import AvisoRascunho from '../../components/ui/AvisoRascunho';
+import { useRascunhoFormulario } from '../../hooks/useRascunhoFormulario';
+import { chaveRascunho } from '../../lib/rascunhoFormulario';
 import { useToast } from '../../components/ui/Toast';
 import { useLightbox } from '../../components/ui/Lightbox';
 import KaizenFotosCampo, { type FotoLocal } from '../../components/planejamento/KaizenFotosCampo';
@@ -222,6 +225,69 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   const [afericaoFotosNovas, setAfericaoFotosNovas] = useState<FotoLocal[]>([]);
   const [afericaoAssinatura, setAfericaoAssinatura] = useState<{ img: string; em: string } | null>(null);
   const [salvandoAfericao, setSalvandoAfericao] = useState<boolean>(false);
+
+  // Rascunho no aparelho: a página pode recarregar no meio do preenchimento
+  // (o Android fecha a aba ao abrir a câmera, logoff da meia-noite, versão
+  // nova). Fotos e assinatura vão junto. Fechar o formulário descarta.
+  const reabrirFotos = (lista: { id: string; file: File | null }[] | undefined): FotoLocal[] =>
+    (lista ?? []).flatMap((f) => (f.file ? [{ id: f.id, file: f.file, previewUrl: URL.createObjectURL(f.file) }] : []));
+  const rascunhoTeste = useRascunhoFormulario({
+    chave: chaveRascunho(user.id, 'portaria-alcoolemia-sorteado'),
+    aberto: modalAberto,
+    dados: {
+      dataNovoRegistro, editandoTeste, tipoVinculo, rhSelecionado,
+      formHorario, formTurno, formNome, formMatricula, formEmpresa, formCargo, formSetor, formDocumento,
+      registrarAfericaoImediata, formResultado, formValorMedido, formVigilante, formTestemunha, formObservacoes,
+      formFotosMantidas,
+      formFotosNovas: formFotosNovas.map((f) => ({ id: f.id, file: f.file as File | null })),
+      formAssinatura,
+    },
+    temConteudo: (d, aberto) => aberto && (
+      !!d.editandoTeste || !!d.formNome.trim() || !!d.formObservacoes.trim() || d.formFotosNovas.length > 0 || !!d.formAssinatura
+    ),
+    aplicar: (d) => {
+      if (!d.editandoTeste && d.dataNovoRegistro && d.dataNovoRegistro !== api.hojeISO()) {
+        setModoPeriodo('dia');
+        setDataSelecionada(d.dataNovoRegistro);
+      }
+      setEditandoTeste(d.editandoTeste ?? null);
+      setTipoVinculo(d.tipoVinculo);
+      setRhSelecionado(d.rhSelecionado ?? null);
+      setBuscaRh('');
+      setFormHorario(d.formHorario); setFormTurno(d.formTurno);
+      setFormNome(d.formNome); setFormMatricula(d.formMatricula); setFormEmpresa(d.formEmpresa);
+      setFormCargo(d.formCargo); setFormSetor(d.formSetor); setFormDocumento(d.formDocumento);
+      setRegistrarAfericaoImediata(!!d.registrarAfericaoImediata);
+      setFormResultado(d.formResultado); setFormValorMedido(d.formValorMedido);
+      setFormVigilante(d.formVigilante); setFormTestemunha(d.formTestemunha); setFormObservacoes(d.formObservacoes);
+      setFormFotosMantidas(d.formFotosMantidas ?? []);
+      setFormFotosNovas(reabrirFotos(d.formFotosNovas));
+      setFormAssinatura(d.formAssinatura ?? null);
+    },
+    abrir: () => setModalAberto(true),
+  });
+  const rascunhoAfericao = useRascunhoFormulario({
+    chave: chaveRascunho(user.id, 'portaria-alcoolemia-afericao'),
+    aberto: modalAfericaoAberto,
+    dados: {
+      testeParaAferir, afericaoHorario, afericaoResultado, afericaoValorMedido, afericaoVigilante,
+      afericaoTestemunha, afericaoObservacoes, afericaoFotosMantidas,
+      afericaoFotosNovas: afericaoFotosNovas.map((f) => ({ id: f.id, file: f.file as File | null })),
+      afericaoAssinatura,
+    },
+    temConteudo: (d, aberto) => aberto && !!d.testeParaAferir,
+    aplicar: (d) => {
+      if (!d.testeParaAferir) return;
+      setTesteParaAferir(d.testeParaAferir);
+      setAfericaoHorario(d.afericaoHorario); setAfericaoResultado(d.afericaoResultado);
+      setAfericaoValorMedido(d.afericaoValorMedido); setAfericaoVigilante(d.afericaoVigilante);
+      setAfericaoTestemunha(d.afericaoTestemunha); setAfericaoObservacoes(d.afericaoObservacoes);
+      setAfericaoFotosMantidas(d.afericaoFotosMantidas ?? []);
+      setAfericaoFotosNovas(reabrirFotos(d.afericaoFotosNovas));
+      setAfericaoAssinatura(d.afericaoAssinatura ?? null);
+    },
+    abrir: (d) => { if (d.testeParaAferir) setModalAfericaoAberto(true); },
+  });
 
   // Valores já digitados antes, por campo — vira opção de preenchimento
   // rápido (datalist) em vez de redigitar o mesmo texto toda hora.
@@ -434,6 +500,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
       });
 
       toast.success(`Aferição registrada com sucesso para ${testeParaAferir.nome}!`);
+      rascunhoAfericao.concluir();
       setModalAfericaoAberto(false);
       setTesteParaAferir(null);
       await carregarTestes();
@@ -501,6 +568,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
         const criado = await api.criarTesteAlcoolemia(payload);
         toast.success(`Sorteado inserido no livro: ${criado.codigo_formulario}`);
       }
+      rascunhoTeste.concluir();
 
       await carregarTestes();
 
@@ -958,6 +1026,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
           </ModalHeader>
 
           <ModalBody className="max-h-[80vh] overflow-y-auto p-5 space-y-4">
+            <AvisoRascunho salvoEm={rascunhoTeste.recuperadoEm} onDescartar={() => { rascunhoTeste.descartar(); setModalAberto(false); }} />
             {/* Escolha do Tipo de Vínculo */}
             {!editandoTeste && (
               <div>
@@ -1465,6 +1534,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
           </ModalHeader>
 
           <ModalBody className="max-h-[80vh] overflow-y-auto p-5 space-y-4">
+            <AvisoRascunho salvoEm={rascunhoAfericao.recuperadoEm} onDescartar={() => { rascunhoAfericao.descartar(); setModalAfericaoAberto(false); }} />
             {/* Banner com os dados do sorteado */}
             <div className="rounded-2xl border border-rose-100 bg-rose-50/50 p-3.5 dark:border-rose-900/40 dark:bg-rose-950/20">
               <div className="flex items-center justify-between">

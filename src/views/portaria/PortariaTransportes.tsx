@@ -29,6 +29,9 @@ import { MostrarExcluidosToggle, BadgeExcluido, RestaurarButton, classeLinhaExcl
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import CampoFaraBafometro from '../../components/portaria/CampoFaraBafometro';
 import NavegadorRegistros, { ListaRegistrosSheet, rotuloDiaCompleto } from '../../components/portaria/NavegadorRegistros';
+import AvisoRascunho from '../../components/ui/AvisoRascunho';
+import { useRascunhoFormulario } from '../../hooks/useRascunhoFormulario';
+import { algumTextoPreenchido, chaveRascunho } from '../../lib/rascunhoFormulario';
 
 interface Props {
   user: Profile;
@@ -256,6 +259,24 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
     setModalNovoAberto(true);
   };
 
+  // Rascunho no aparelho: a página pode recarregar no meio do preenchimento
+  // (câmera/outro app no celular, logoff da meia-noite, versão nova). Fechar
+  // o formulário descarta, como antes; o rascunho só cobre a queda da página.
+  const rascunho = useRascunhoFormulario({
+    chave: chaveRascunho(user.id, 'portaria-transportes'),
+    aberto: modalNovoAberto,
+    dados: { formNovo, itemEditando, faraBafometro, rotaModoOutro },
+    temConteudo: (d, aberto) => aberto && algumTextoPreenchido(d.formNovo, ['data', 'turno', 'vigilante', 'veiculo', 'hora_chegada']),
+    aplicar: (d) => {
+      setSugestoesAtivas(false);
+      setFormNovo({ ...formTransporteVazio(), vigilante: user.name, ...d.formNovo });
+      setItemEditando(d.itemEditando ?? null);
+      setFaraBafometro(!!d.faraBafometro);
+      setRotaModoOutro(!!d.rotaModoOutro);
+    },
+    abrir: () => setModalNovoAberto(true),
+  });
+
   const fecharModal = () => {
     setModalNovoAberto(false);
     setItemEditando(null);
@@ -322,6 +343,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
           else toast.error('A pessoa não entrou no Teste de Alcoolemia. Cadastre pela tela do teste.');
         }
       }
+      rascunho.concluir();
       fecharModal();
       carregarDados();
     } catch (e) {
@@ -984,6 +1006,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
           <form onSubmit={handleSalvar} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <ModalBody className="space-y-4">
+              <AvisoRascunho salvoEm={rascunho.recuperadoEm} onDescartar={() => { rascunho.descartar(); fecharModal(); }} />
               <div data-tour="transportes-form-veiculo" className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">

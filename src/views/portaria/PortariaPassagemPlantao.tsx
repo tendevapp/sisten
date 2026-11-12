@@ -32,6 +32,9 @@ import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorA
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import AvisoRascunho from '../../components/ui/AvisoRascunho';
+import { useRascunhoFormulario } from '../../hooks/useRascunhoFormulario';
+import { chaveRascunho } from '../../lib/rascunhoFormulario';
 import {
   MostrarExcluidosToggle,
   BadgeExcluido,
@@ -240,6 +243,30 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   const [formObs, setFormObs] = useState('');
   const [formItens, setFormItens] = useState<PortItemConferido[]>([]);
 
+  // Rascunho no aparelho: a página pode recarregar no meio do preenchimento
+  // (câmera/outro app no celular, logoff da meia-noite, versão nova). Fechar
+  // o formulário descarta, como antes; o rascunho só cobre a queda da página.
+  const rascunho = useRascunhoFormulario({
+    chave: chaveRascunho(user.id, 'portaria-passagem-plantao'),
+    aberto: modalNovoAberto,
+    dados: {
+      formData, formTurno, formHoraInicio, formHoraFim, formPreenchedor, formPortaria,
+      formRonda01, formRonda02, formAnterior01, formAnterior02, formObs, formItens, plantaoAFechar,
+    },
+    temConteudo: (d, aberto) => aberto && (
+      !!(d.formPortaria.trim() || d.formRonda01.trim() || d.formRonda02.trim() || d.formObs.trim())
+      || d.formItens.some((i) => i.conferido || !!i.observacao?.trim())
+    ),
+    aplicar: (d) => {
+      setFormData(d.formData); setFormTurno(d.formTurno); setFormHoraInicio(d.formHoraInicio); setFormHoraFim(d.formHoraFim);
+      setFormPreenchedor(d.formPreenchedor); setFormPortaria(d.formPortaria);
+      setFormRonda01(d.formRonda01); setFormRonda02(d.formRonda02);
+      setFormAnterior01(d.formAnterior01); setFormAnterior02(d.formAnterior02);
+      setFormObs(d.formObs); setFormItens(d.formItens ?? []); setPlantaoAFechar(d.plantaoAFechar ?? null);
+    },
+    abrir: () => setModalNovoAberto(true),
+  });
+
   // Justificativas já digitadas antes nos itens conferidos — vira opção de
   // preenchimento rápido (datalist) em vez de redigitar o mesmo motivo.
   const [historicoObsItem, setHistoricoObsItem] = useState<string[]>([]);
@@ -408,6 +435,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
       } else {
         toast.success(`Plantão ${novo.numero_protocolo} registrado com sucesso!`);
       }
+      rascunho.concluir();
       setPlantaoAFechar(null);
       setModalNovoAberto(false);
       carregarDados();
@@ -902,6 +930,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
 
           <form onSubmit={handleSalvar} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <ModalBody className="space-y-5">
+              <AvisoRascunho salvoEm={rascunho.recuperadoEm} onDescartar={() => { rascunho.descartar(); setModalNovoAberto(false); }} />
               {plantaoAFechar && (
                 <div className="flex flex-wrap items-start justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs dark:border-amber-900/50 dark:bg-amber-950/20">
                   <p className="min-w-0 flex-1 text-amber-900 dark:text-amber-200">

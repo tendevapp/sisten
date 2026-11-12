@@ -52,6 +52,9 @@ import { montarTesteBafometroPortaria } from '../../lib/alcoolemiaLocal';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import AvisoRascunho from '../../components/ui/AvisoRascunho';
+import { useRascunhoFormulario } from '../../hooks/useRascunhoFormulario';
+import { algumTextoPreenchido, chaveRascunho } from '../../lib/rascunhoFormulario';
 import NavegadorRegistros, { ListaRegistrosSheet, rotuloDiaCompleto, vizinhos } from '../../components/portaria/NavegadorRegistros';
 import {
   MostrarExcluidosToggle,
@@ -453,6 +456,67 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     motivo_observacao: '',
   });
 
+  /** Foto antiga (base64) do lançamento em edição: mostra já se veio na linha, senão busca. */
+  const carregarFotoLegado = (oc: PortRelatorioOcorrencia, removida = false) => {
+    if (!oc.foto_url && !oc.tem_foto_legado) return;
+    setFotoLegado({ url: oc.foto_url || null, carregando: !oc.foto_url, removida });
+    if (!oc.foto_url) {
+      api.obterFotoLegadoOcorrencia(oc.id)
+        .then((url) => setFotoLegado((prev) => (prev ? { ...prev, url, carregando: false } : prev)))
+        .catch(() => setFotoLegado((prev) => (prev ? { ...prev, carregando: false } : prev)));
+    }
+  };
+
+  // Rascunho no aparelho: a página pode recarregar no meio do preenchimento
+  // (o Android fecha a aba ao abrir a câmera, logoff da meia-noite, versão
+  // nova). As fotos novas vão junto. Fechar o formulário descarta, como antes.
+  const rascunhoOcorrencia = useRascunhoFormulario({
+    chave: chaveRascunho(user.id, 'portaria-relatorio-ocorrencia'),
+    aberto: modalNovaOcorrencia,
+    dados: {
+      formOcorrencia,
+      pessoasForm,
+      ocorrenciaEmEdicao,
+      fotosSalvas,
+      fotosNfSalvas,
+      fotosNovas: fotosNovas.map((f) => ({ key: f.key, file: f.file as File | null })),
+      fotosNfNovas: fotosNfNovas.map((f) => ({ key: f.key, file: f.file as File | null })),
+      legadoRemovido: !!fotoLegado?.removida,
+    },
+    temConteudo: (d, aberto) => aberto && (
+      !!d.ocorrenciaEmEdicao
+      || d.fotosNovas.length > 0 || d.fotosNfNovas.length > 0
+      || algumTextoPreenchido(d.formOcorrencia, ['tipo_registro', 'horario', 'local_setor', 'severidade', 'vigilante'])
+      || d.pessoasForm.some((p) => algumTextoPreenchido({ ...p }))
+    ),
+    aplicar: (d) => {
+      const reabrir = (lista: { key: string; file: File | null }[] | undefined): FotoNova[] =>
+        (lista ?? []).flatMap((f) => (f.file ? [{ key: f.key, file: f.file, url: URL.createObjectURL(f.file) }] : []));
+      setFormOcorrencia(d.formOcorrencia);
+      setPessoasForm(d.pessoasForm?.length ? d.pessoasForm : [{ nome: '', cpf: '', cnh: '', funcao: '' }]);
+      setOcorrenciaEmEdicao(d.ocorrenciaEmEdicao ?? null);
+      setFotosSalvas(d.fotosSalvas ?? []);
+      setFotosNfSalvas(d.fotosNfSalvas ?? []);
+      setFotosNovas(reabrir(d.fotosNovas));
+      setFotosNfNovas(reabrir(d.fotosNfNovas));
+      setFotoLegado(null);
+      if (d.ocorrenciaEmEdicao) carregarFotoLegado(d.ocorrenciaEmEdicao, d.legadoRemovido);
+    },
+    abrir: () => setModalNovaOcorrencia(true),
+  });
+  const rascunhoSaidaRapida = useRascunhoFormulario({
+    chave: chaveRascunho(user.id, 'portaria-relatorio-saida'),
+    aberto: modalRegistrarSaida,
+    dados: { ocorrenciaParaSaida, formSaidaRapida },
+    temConteudo: (d, aberto) => aberto && !!d.ocorrenciaParaSaida && !!d.formSaidaRapida.motivo_observacao.trim(),
+    aplicar: (d) => {
+      if (!d.ocorrenciaParaSaida) return;
+      setOcorrenciaParaSaida(d.ocorrenciaParaSaida);
+      setFormSaidaRapida(d.formSaidaRapida);
+    },
+    abrir: (d) => { if (d.ocorrenciaParaSaida) setModalRegistrarSaida(true); },
+  });
+
   // Autocomplete e busca histórica (Visitantes e Veículos)
   const [buscaHistorico, setBuscaHistorico] = useState('');
   const [sugestoesHistorico, setSugestoesHistorico] = useState<PortPessoaVeiculoHistorico[]>([]);
@@ -830,14 +894,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     limparFotosForm();
     setFotosSalvas(oc.fotos || []);
     setFotosNfSalvas(oc.fotos_nf || []);
-    if (oc.foto_url || oc.tem_foto_legado) {
-      setFotoLegado({ url: oc.foto_url || null, carregando: !oc.foto_url, removida: false });
-      if (!oc.foto_url) {
-        api.obterFotoLegadoOcorrencia(oc.id)
-          .then((url) => setFotoLegado((prev) => (prev ? { ...prev, url, carregando: false } : prev)))
-          .catch(() => setFotoLegado((prev) => (prev ? { ...prev, carregando: false } : prev)));
-      }
-    }
+    carregarFotoLegado(oc);
     setModalNovaOcorrencia(true);
   };
 
@@ -888,6 +945,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       });
 
       toast.success(`Saída registrada às ${horaS}!`);
+      rascunhoSaidaRapida.concluir();
       setModalRegistrarSaida(false);
       setOcorrenciaParaSaida(null);
 
@@ -939,11 +997,14 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       let relId: string;
 
       if (ocorrenciaEmEdicao?.id) {
-        if (!relatorioAtivo) {
+        // Edições preservam o vínculo histórico já gravado. O livro vem da
+        // própria ocorrência: a edição recuperada do rascunho reabre com outro
+        // livro selecionado na tela.
+        const livroDaOcorrencia = ocorrenciaEmEdicao.relatorio_id || relatorioAtivo?.id;
+        if (!livroDaOcorrencia) {
           throw new Error('Livro da ocorrência não encontrado. Atualize a página e tente novamente.');
         }
-        // Edições preservam o vínculo histórico já gravado.
-        relId = relatorioAtivo.id;
+        relId = livroDaOcorrencia;
       } else {
         const dataLancamento = api.hojeISO();
         const turnoLancamento = api.sugerirTurno();
@@ -1101,6 +1162,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         toast.success(`Sessão de Briefing criada para ${pessoasValidas.length} participante(s)!`);
       }
 
+      rascunhoOcorrencia.concluir();
       setModalNovaOcorrencia(false);
       setOcorrenciaEmEdicao(null);
 
@@ -2042,6 +2104,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
           <form onSubmit={handleSalvarOcorrencia} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <ModalBody className="space-y-4">
+              <AvisoRascunho
+                salvoEm={rascunhoOcorrencia.recuperadoEm}
+                onDescartar={() => { rascunhoOcorrencia.descartar(); limparFotosForm(); setModalNovaOcorrencia(false); setOcorrenciaEmEdicao(null); }}
+              />
               {/* 1. Seleção Visual do Tipo de Lançamento */}
               <div data-tour="relatorio-form-tipo">
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
@@ -3010,6 +3076,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
           <form onSubmit={handleSalvarSaidaRapida}>
             <ModalBody className="space-y-4">
+              <AvisoRascunho
+                salvoEm={rascunhoSaidaRapida.recuperadoEm}
+                onDescartar={() => { rascunhoSaidaRapida.descartar(); setModalRegistrarSaida(false); }}
+              />
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 dark:border-slate-800 dark:bg-slate-950">
                 <p className="text-xs text-slate-600 dark:text-slate-300">
                   <strong>Entrada às {ocorrenciaParaSaida.horario}:</strong> {ocorrenciaParaSaida.descricao}

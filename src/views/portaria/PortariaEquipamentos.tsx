@@ -27,6 +27,9 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import CampoFaraBafometro from '../../components/portaria/CampoFaraBafometro';
 import { MostrarExcluidosToggle, BadgeExcluido, RestaurarButton, classeLinhaExcluida } from '../../components/ui/ExcluidosControls';
+import AvisoRascunho from '../../components/ui/AvisoRascunho';
+import { useRascunhoFormulario } from '../../hooks/useRascunhoFormulario';
+import { algumTextoPreenchido, chaveRascunho } from '../../lib/rascunhoFormulario';
 
 interface Props {
   user: Profile;
@@ -170,7 +173,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
 
   // Form states
   const [salvando, setSalvando] = useState(false);
-  const [formEntrada, setFormEntrada] = useState({
+  const formEntradaVazio = () => ({
     nome_empresa: '',
     funcionario: '',
     descricao_materiais: '',
@@ -180,15 +183,36 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
     hora_entrada: api.horaAgora(),
     observacoes: '',
   });
+  const [formEntrada, setFormEntrada] = useState(formEntradaVazio);
 
   // "Fará teste de bafômetro?" do funcionário do terceiro que entra com o equipamento.
   const [faraBafometro, setFaraBafometro] = useState(false);
 
-  const [formSaida, setFormSaida] = useState({
+  const formSaidaVazio = () => ({
     vigilante_saida: user.name,
     data_saida: api.hojeISO(),
     hora_saida: api.horaAgora(),
     observacoes: '',
+  });
+  const [formSaida, setFormSaida] = useState(formSaidaVazio);
+
+  // Rascunho no aparelho: a página pode recarregar no meio do preenchimento
+  // (câmera/outro app no celular, logoff da meia-noite, versão nova).
+  const rascunhoEntrada = useRascunhoFormulario({
+    chave: chaveRascunho(user.id, 'portaria-equipamentos-entrada'),
+    aberto: modalNovoAberto,
+    dados: { formEntrada, faraBafometro },
+    temConteudo: (d) => algumTextoPreenchido(d.formEntrada, ['data_entrada', 'hora_entrada', 'vigilante_entrada']),
+    aplicar: (d) => { setFormEntrada({ ...formEntradaVazio(), ...d.formEntrada }); setFaraBafometro(!!d.faraBafometro); },
+    abrir: () => setModalNovoAberto(true),
+  });
+  const rascunhoSaida = useRascunhoFormulario({
+    chave: chaveRascunho(user.id, 'portaria-equipamentos-saida'),
+    aberto: modalSaidaAberto,
+    dados: { item: itemSelecionado, formSaida },
+    temConteudo: (d, aberto) => aberto && !!d.item && algumTextoPreenchido(d.formSaida, ['vigilante_saida', 'data_saida', 'hora_saida']),
+    aplicar: (d) => { if (d.item) { setItemSelecionado(d.item); setFormSaida({ ...formSaidaVazio(), ...d.formSaida }); } },
+    abrir: (d) => { if (d.item) setModalSaidaAberto(true); },
   });
 
   // Valores já digitados antes, por campo — vira opção de preenchimento
@@ -241,18 +265,10 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
           if (teste) toast.success(`${teste.nome} entrou no Teste de Alcoolemia (pendente).`);
           else toast.error('A pessoa não entrou no Teste de Alcoolemia. Cadastre pela tela do teste.');
         }
+      rascunhoEntrada.concluir();
       setFaraBafometro(false);
       setModalNovoAberto(false);
-      setFormEntrada({
-        nome_empresa: '',
-        funcionario: '',
-        descricao_materiais: '',
-        responsavel: '',
-        vigilante_entrada: user.name,
-        data_entrada: api.hojeISO(),
-        hora_entrada: api.horaAgora(),
-        observacoes: '',
-      });
+      setFormEntrada(formEntradaVazio());
       carregarDados();
     } catch (e) {
       toast.error(`Falha ao salvar: ${(e as Error).message}`);
@@ -269,6 +285,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
     try {
       await api.registrarSaidaEquipamento(itemSelecionado.id, formSaida);
       toast.success('Saída/Devolução registrada com sucesso!');
+      rascunhoSaida.concluir();
       setModalSaidaAberto(false);
       setItemSelecionado(null);
       carregarDados();
@@ -464,6 +481,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                           <button
                             type="button"
                             onClick={() => {
+                              if (itemSelecionado?.id !== item.id) setFormSaida(formSaidaVazio());
                               setItemSelecionado(item);
                               setModalSaidaAberto(true);
                             }}
@@ -532,6 +550,10 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
 
           <form onSubmit={handleSalvarEntrada} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <ModalBody className="space-y-4">
+              <AvisoRascunho
+                salvoEm={rascunhoEntrada.recuperadoEm}
+                onDescartar={() => { rascunhoEntrada.descartar(); setFormEntrada(formEntradaVazio()); setFaraBafometro(false); }}
+              />
               <div data-tour="equipamentos-form-empresa" className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -690,6 +712,10 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
 
           <form onSubmit={handleSalvarSaida} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <ModalBody className="space-y-4">
+              <AvisoRascunho
+                salvoEm={rascunhoSaida.recuperadoEm}
+                onDescartar={() => { rascunhoSaida.descartar(); setFormSaida(formSaidaVazio()); }}
+              />
               <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-300">
                 <span className="font-bold">Conferência de Materiais:</span> Certifique-se de que todos os itens descritos no momento da entrada estão sendo levados de volta pelo portador.
               </div>
