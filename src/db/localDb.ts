@@ -117,6 +117,8 @@ class LocalDatabase {
   private requisicoesKey = 'sisten_requisicoes';
   private pedidosKey = 'sisten_pedidos';
   private obsHistoryKey = 'sisten_obs_history';
+  // Até onde o histórico de observações já foi baixado (ver syncObsHistory).
+  private obsHistoryMarcaKey = 'sisten_obs_history_marca';
   private importLogsKey = 'sisten_import_logs';
   private buyerGroupsKey = 'sisten_buyer_groups';
   private compradoresKey = 'sisten_compradores';
@@ -552,29 +554,62 @@ class LocalDatabase {
     this.setStorageItem(storageKey, [...rows, ...somenteLocais]);
   }
 
+  /**
+   * Histórico de observações do comprador. A tabela só recebe INSERT, então
+   * depois do primeiro download basta buscar o que o servidor recebeu desde a
+   * última vez (`recebido_em`, hora do servidor — `created_at` vem do aparelho
+   * e, na fila offline, chega com hora antiga). Antes, cada aparelho baixava as
+   * ~6 mil linhas a cada 15 min: 7,7 mil chamadas por dia.
+   *
+   * Baixa tudo de novo uma vez por dia, por segurança (linha apagada à mão no
+   * banco, cache corrompido).
+   */
   private async syncObsHistory(): Promise<void> {
+    const mapear = (oh: any) => {
+      let comment = '';
+      let deliveryDate = '';
+      try {
+        const val = JSON.parse(oh.valor_novo || '{}');
+        comment = val.obs || '';
+        deliveryDate = val.date || '';
+      } catch {
+        comment = oh.valor_novo || '';
+      }
+      return {
+        id: oh.id,
+        ri: oh.ri,
+        obs_comprador: comment,
+        data_entrega_prevista: deliveryDate,
+        user_name: oh.user_name,
+        created_at: oh.created_at
+      };
+    };
+    const maiorRecebido = (linhas: any[], atual: string | null): string | null =>
+      linhas.reduce<string | null>((max, l) => (l.recebido_em && (!max || l.recebido_em > max) ? l.recebido_em : max), atual);
+
+    const marca = this.getStorageItem<{ recebidoEm: string | null; completoEm: string } | null>(this.obsHistoryMarcaKey, null);
+    const locais = this.getStorageItem<any[]>(this.obsHistoryKey, []);
+    const completoRecente = !!marca && Date.now() - Date.parse(marca.completoEm) < 24 * 60 * 60_000;
+
+    if (marca?.recebidoEm && completoRecente && locais.length > 0) {
+      // Folga de 2 min: uma transação que começou antes e terminou depois da
+      // última leitura tem recebido_em anterior à marca.
+      const desde = new Date(Date.parse(marca.recebidoEm) - 120_000).toISOString();
+      const novas = await this.fetchAllFromTable<any>('sap_requisicoes_observacoes', '*', 1000, q => q.gt('recebido_em', desde), 'id');
+      if (novas.length === 0) return;
+      const ids = new Set(novas.map(n => n.id));
+      this.setStorageItem(this.obsHistoryKey, [...locais.filter(l => !ids.has(l.id)), ...novas.map(mapear)]);
+      this.setStorageItem(this.obsHistoryMarcaKey, { ...marca, recebidoEm: maiorRecebido(novas, marca.recebidoEm) });
+      return;
+    }
+
     const dbObsHistory = await this.fetchAllFromTable<any>('sap_requisicoes_observacoes', '*', 1000, undefined, 'id');
     if (dbObsHistory && dbObsHistory.length > 0) {
-      const mappedObsHist = dbObsHistory.map(oh => {
-        let comment = '';
-        let deliveryDate = '';
-        try {
-          const val = JSON.parse(oh.valor_novo || '{}');
-          comment = val.obs || '';
-          deliveryDate = val.date || '';
-        } catch {
-          comment = oh.valor_novo || '';
-        }
-        return {
-          id: oh.id,
-          ri: oh.ri,
-          obs_comprador: comment,
-          data_entrega_prevista: deliveryDate,
-          user_name: oh.user_name,
-          created_at: oh.created_at
-        };
+      this.setStorageItem(this.obsHistoryKey, dbObsHistory.map(mapear));
+      this.setStorageItem(this.obsHistoryMarcaKey, {
+        recebidoEm: maiorRecebido(dbObsHistory, null),
+        completoEm: new Date().toISOString(),
       });
-      this.setStorageItem(this.obsHistoryKey, mappedObsHist);
     }
   }
 
@@ -920,6 +955,21 @@ class LocalDatabase {
         console.warn(`Tentativa ${attempt} de recalcular materialized view do histórico falhou (${msg}). Tentando novamente...`);
       }
     }
+  }
+
+  /**
+   * Recalcula a parte SAP de `vw_sap_requisicoes_enriquecidas` (pedido ZL0132,
+   * fallback ME2L, totais por RI), que fica materializada em
+   * `private.mv_sap_requisicoes_po` desde 11/11/2026 — calculá-la a cada
+   * página era 71% do tempo do banco. Chamar depois de gravar a ME5A e antes
+   * de reler a view. ZL0132/ME2L não precisam: `refresh_historico_pedidos`
+   * já recalcula. O bump de 'requisicoes' também recalcula, então uma falha
+   * aqui só deixa o cache de quem importou para trás até a próxima carga.
+   */
+  private async refreshRequisicoesPo(): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.rpc('refresh_sap_requisicoes_po' as any);
+    if (error) console.warn('Falha ao recalcular os pedidos das requisições (refresh_sap_requisicoes_po):', error);
   }
 
   /**
@@ -6108,11 +6158,14 @@ class LocalDatabase {
         ignored_rows: ignoredRows,
         created_at: new Date().toISOString()
       };
+      // A parte SAP da view é materializada: recalcula antes de reler a view
+      // e antes dos sinais de material, que leem a view (via vw_demandas).
+      await this.refreshRequisicoesPo();
       await this.refreshMaterialSinais();
       await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(90);
 
-      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
+      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po');
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
           ...ur,
@@ -6514,16 +6567,18 @@ class LocalDatabase {
         ignored_rows: ignoredRows,
         created_at: new Date().toISOString()
       };
-      await this.refreshMaterialSinais();
       await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(90);
 
       // Sincroniza a tabela local de pedidosforn e vw_historico_pedidos
       await this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
+      // refresh_historico_pedidos também recalcula a parte SAP das requisições;
+      // os sinais de material vêm depois porque leem essa view.
       await this.refreshPedidosMatViews();
+      await this.refreshMaterialSinais();
       await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
 
-      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
+      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po');
       const updatedPeds = await this.fetchAllFromTable<any>('vw_sap_pedidos_enriquecidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
 
       if (updatedReqs) {
@@ -6963,7 +7018,11 @@ class LocalDatabase {
       // Sincroniza a tabela local e recalcula a materialized view do Histórico de Pedidos
       onProgress?.(95, 'Sincronizando cache local...');
       await this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
+      // Também recalcula a parte SAP das requisições (mv_sap_requisicoes_po).
       await this.refreshPedidosMatViews();
+      // "Pedido a caminho" da busca de material vem da ZL0132; o recálculo
+      // ficava de fora desta carga quando levava 17 s (hoje ~3 s).
+      await this.refreshMaterialSinais();
       await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
 
       // sap_zl0132_po alimenta vw_sap_pedidos_enriquecidos/vw_sap_requisicoes_enriquecidas (status_requisicao,
@@ -6971,7 +7030,7 @@ class LocalDatabase {
       // 'pedidos' aqui, essa importação atualiza o PO no Supabase mas nenhum cliente (nem o que
       // importou) nota, porque o gate de sincronização só olha a versão de 'requisicoes'.
       onProgress?.(96, 'Atualizando requisições e pedidos com os novos POs...');
-      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
+      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po');
       const updatedPeds = await this.fetchAllFromTable<any>('vw_sap_pedidos_enriquecidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
 
       if (updatedReqs) {
