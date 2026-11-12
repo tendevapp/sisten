@@ -1776,8 +1776,12 @@ export async function criarPassagemPlantao(
 ): Promise<PortPassagemPlantao> {
   const dataPlantao = dados.data || hojeISO();
   const turnoSigla = dados.turno ? dados.turno.substring(0, 3) : undefined;
+  // PLT-DDMMAA-TURNO colide quando já existe passagem do mesmo dia e turno —
+  // inclusive uma excluída (a exclusão é lógica e a linha guarda o protocolo),
+  // como o noturno lançado por engano de manhã e refeito como diurno. Nesse
+  // caso cai no sufixo aleatório, como os demais formulários da portaria.
+  const protocoloInicial = dados.numero_protocolo || gerarProtocolo('PLT', dataPlantao, turnoSigla);
   const payload = {
-    numero_protocolo: dados.numero_protocolo || gerarProtocolo('PLT', dataPlantao, turnoSigla),
     codigo_formulario: 'FRM.SGP-0010',
     data: dataPlantao,
     turno: dados.turno || 'DIURNO',
@@ -1796,17 +1800,21 @@ export async function criarPassagemPlantao(
     criado_por: dados.criado_por || null,
   };
 
-  const { data, error } = await supabase
-    .from('port_passagem_plantao')
-    .insert(payload as any)
-    .select('*')
-    .single();
-
-  if (error) {
-    console.error('Erro ao criar passagem de plantao:', error);
-    throw new Error(error.message);
+  try {
+    return await inserirComProtocoloUnico<PortPassagemPlantao>(
+      (numero_protocolo) => supabase
+        .from('port_passagem_plantao')
+        .insert({ ...payload, numero_protocolo } as any)
+        .select('*')
+        .single() as unknown as PromiseLike<{ data: PortPassagemPlantao | null; error: { code?: string; message: string } | null }>,
+      protocoloInicial,
+      'PLT',
+      dataPlantao,
+    );
+  } catch (err) {
+    console.error('Erro ao criar passagem de plantao:', err);
+    throw err;
   }
-  return data as unknown as PortPassagemPlantao;
 }
 
 export async function atualizarPassagemPlantao(
