@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
-import { Camera, Loader2, PenTool, RotateCcw, X } from 'lucide-react';
+import { PenTool, RotateCcw, X } from 'lucide-react';
 import { useToast } from '../ui/Toast';
 import { useLightbox } from '../ui/Lightbox';
 import SignaturePadModal from '../portaria/SignaturePadModal';
@@ -21,6 +21,7 @@ import { prepararFotoCarimbada } from '../../lib/carimboFoto';
 import { AnexoInvalidoError, type PreparedAttachment } from '../../lib/imageCompression';
 import { MAX_FOTOS_SOL_EXTRA, type FotoSolExtra } from '../../lib/solicitacaoExtra';
 import { assinarFotosSolExtra } from '../../lib/solicitacaoExtraApi';
+import BotoesCameraGaleria from '../ui/BotoesCameraGaleria';
 
 /** URLs assinadas das fotos gravadas (somem quando a lista muda). */
 function useUrlsFotos(fotos: FotoSolExtra[]): Record<string, string> {
@@ -109,11 +110,11 @@ export function SeletorFotosSolExtra({
         </div>
       ))}
       {total < MAX_FOTOS_SOL_EXTRA && !disabled && (
-        <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-dashed border-slate-300 text-slate-500 hover:border-blue-400 hover:text-blue-700 dark:border-slate-700 dark:text-slate-400">
-          {preparando ? <Loader2 className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}
-          <span className="text-[10px] font-bold">{total ? `${total}/${MAX_FOTOS_SOL_EXTRA}` : 'Foto'}</span>
-          <input type="file" accept="image/*" capture="environment" multiple hidden onChange={e => { void anexar(e.target.files); e.target.value = ''; }} />
-        </label>
+        <BotoesCameraGaleria
+          onArquivos={lista => void anexar(lista)}
+          carregando={preparando}
+          contagem={total ? `${total}/${MAX_FOTOS_SOL_EXTRA}` : undefined}
+        />
       )}
       {lightbox.elemento}
     </div>

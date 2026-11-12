@@ -72,6 +72,7 @@ import { normalizarLotesValidade, type LoteValidade } from '../../lib/lotesValid
 import { confirmar } from '../../lib/confirmar';
 import { listarItensMercadoLivre } from '../../lib/compraMercadoLivreApi';
 import { rotuloCompraMl } from '../../lib/compraMercadoLivre';
+import BotoesCameraGaleria from '../../components/ui/BotoesCameraGaleria';
 
 interface Props {
   user: Profile;
@@ -2059,10 +2060,11 @@ function GaleriaFotos({
         </div>
       ))}
       {arquivos.length < max && (
-        <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed hover:opacity-70" style={{ borderColor: 'var(--hairline)' }}>
-          <Camera className="h-5 w-5" style={{ color: 'var(--ink-muted)' }} />
-          <input type="file" accept={ACCEPT_ANEXO} capture="environment" multiple hidden onChange={(e) => { void anexar(e.target.files); e.target.value = ''; }} />
-        </label>
+        <BotoesCameraGaleria
+          onArquivos={(lista) => void anexar(lista)}
+          acceptGaleria={ACCEPT_ANEXO}
+          className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-dashed border-[var(--hairline)] text-[var(--ink-muted)] hover:opacity-70"
+        />
       )}
     </div>
   );
