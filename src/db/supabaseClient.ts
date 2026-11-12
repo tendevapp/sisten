@@ -1,6 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 import { configurarFilaOffline, fetchOffline } from '../lib/offline/filaSupabase';
+import { medirFetch } from '../lib/desempenho/medidorFetch';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -17,6 +18,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // sobe quando a conexão volta (ver lib/offline/filaSupabase.ts). Fora das
 // tabelas dos formulários é o `fetch` de sempre.
 //
+// `medirFetch` por fora: cada chamada entra no Monitor de Desempenho (tempo,
+// erro, volume) com o tempo que o usuário sentiu, cópia offline incluída
+// (ver lib/desempenho/medidorFetch.ts).
+//
 // Este é o único cliente do navegador. Não existe cliente `service_role` aqui:
 // tudo que começa com `VITE_` vai para o JavaScript público, então uma chave de
 // serviço no build dá a qualquer visitante acesso total ao banco. Operações
@@ -24,7 +29,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // `admin-criar-usuario` e `admin-reset-password`, e a edição de perfis por
 // admin passa pela RLS/trigger de `core_perfis` com o JWT do próprio admin.
 export const supabase: SupabaseClient<Database> = supabaseUrl && supabaseAnonKey
-  ? createClient<Database>(supabaseUrl, supabaseAnonKey, { global: { fetch: fetchOffline } })
+  ? createClient<Database>(supabaseUrl, supabaseAnonKey, { global: { fetch: medirFetch(fetchOffline) } })
   : null as any;
 
 if (supabase) {

@@ -17,6 +17,7 @@ import { TourRegistryProvider } from './components/help/TourRegistryContext';
 import FeedbackButton from './components/feedback/FeedbackButton';
 import FilaOfflineFormularios from './components/offline/FilaOfflineFormularios';
 import ReporterSincronizacao from './components/offline/ReporterSincronizacao';
+import ReporterDesempenho from './components/desempenho/ReporterDesempenho';
 import NovaVersaoAviso from './components/NovaVersaoAviso';
 import ForcePasswordChangeModal from './components/auth/ForcePasswordChangeModal';
 import ResumoLoginGate from './components/solicitacoes/ResumoLoginGate';
@@ -73,6 +74,7 @@ const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards
 const Sobre = lazy(() => import('./views/Sobre'));
 const BuscaGlobal = lazy(() => import('./components/BuscaGlobal'));
 const CentralSincronizacao = lazy(() => import('./views/admin/CentralSincronizacao'));
+const MonitorDesempenho = lazy(() => import('./views/admin/desempenho/MonitorDesempenho'));
 const Formularios = lazy(() => import('./views/Formularios'));
 const TreinamentosHub = lazy(() => import('./views/treinamentos/TreinamentosHub'));
 const TreinamentosSetor = lazy(() => import('./views/treinamentos/TreinamentosSetor'));
@@ -1666,6 +1668,12 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/admin/desempenho':
+        if (canAccessPage(user, 'admin_desempenho')) {
+          return <MonitorDesempenho />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/admin/cadastros':
         if (canAccessPage(user, 'admin_cadastros')) {
           return <CadastrosAdmin user={user} onNavigate={handleNavigate} />;
@@ -1762,6 +1770,7 @@ export default function App() {
         </Suspense>
       )}
       {user && <ReporterSincronizacao usuarioId={user.id} usuarioNome={user.name} />}
+      {user && <ReporterDesempenho usuarioId={user.id} />}
       {user && <NovaVersaoAviso />}
       {user && <FilaOfflineFormularios usuarioId={user.id} emFormulario={currentPath.startsWith('/formularios') || currentPath.startsWith('/qualidade')} />}
       {activeUser && <ResumoLoginGate user={activeUser} onNavigate={handleNavigate} />}

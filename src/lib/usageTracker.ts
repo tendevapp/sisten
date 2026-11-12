@@ -53,6 +53,7 @@ const PATH_LABELS: Record<string, string> = {
   '/admin/uso': 'Admin: Uso do App',
   '/admin/equipes': 'Admin: Equipes',
   '/admin/sincronizacao': 'Admin: Central de Sincronização',
+  '/admin/desempenho': 'Admin: Monitor de Desempenho',
 };
 
 export function labelForPath(path: string): string {
