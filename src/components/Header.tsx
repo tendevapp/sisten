@@ -11,7 +11,7 @@ import {
 import { localDb } from '../db/localDb';
 import { Profile, Notification, Role } from '../types';
 import { resolverRotaNotificacao } from '../lib/notificationRouting';
-import AlertaNotificacoes, { type ItemAviso } from './notifications/AlertaNotificacoes';
+import AlertaNotificacoes, { tipoDoAviso, type ItemAviso } from './notifications/AlertaNotificacoes';
 import LeitorQrHeader from './LeitorQrHeader';
 import {
   atualizarTituloAba, avisarNoDesktop, filtrarNovas, gravarIdsAlertados, gravarPrefsAviso,
@@ -96,16 +96,19 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
     }
 
     // Movimentação com o app aberto: um cartão por aviso, o mais novo no topo.
-    const cartoes: ItemAviso[] = [...novas].reverse().map(n => ({
-      id: n.id,
-      tipo: n.type,
-      titulo: n.title,
-      descricao: n.description || '',
-      rodape: n.request_number ? `#${n.request_number}` : undefined,
-      // Prazo e alerta ficam: sumir sozinho é justamente o que faz perder status.
-      permanente: n.type === 'alert' || n.type === 'critical',
-      rotuloAcao: 'Abrir',
-    }));
+    const cartoes: ItemAviso[] = [...novas].reverse().map(n => {
+      const tipo = tipoDoAviso(n.type);
+      return {
+        id: n.id,
+        tipo,
+        titulo: n.title,
+        descricao: n.description || '',
+        rodape: n.request_number ? `#${n.request_number}` : undefined,
+        // Prazo e alerta ficam: sumir sozinho é justamente o que faz perder status.
+        permanente: tipo === 'alert' || tipo === 'critical',
+        rotuloAcao: 'Abrir',
+      };
+    });
     setAvisos(prev => [...cartoes, ...prev.filter(p => p.id !== 'resumo')]);
 
     // Três batidas de 1 s: o selo aparece e o sino sacode.
@@ -444,7 +447,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
                         {grupo.rotulo}
                       </p>
                       {grupo.itens.map(n => {
-                        const { Icone, cor } = ESTILO_NOTIFICACAO[n.type] ?? ESTILO_NOTIFICACAO.info;
+                        const { Icone, cor } = ESTILO_NOTIFICACAO[tipoDoAviso(n.type) as Notification['type']] ?? ESTILO_NOTIFICACAO.info;
                         return (
                           <button
                             key={n.id}

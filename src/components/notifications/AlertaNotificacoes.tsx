@@ -51,6 +51,18 @@ const ESTILO: Record<ItemAviso['tipo'], Estilo> = {
   resumo: { Icone: Bell, barra: 'bg-slate-500', icone: 'text-slate-600 dark:text-slate-300', anel: 'bg-slate-100 dark:bg-slate-800' },
 };
 
+/**
+ * Tipo do cartão a partir do `type` gravado em core_notificacoes. O banco não
+ * restringe a coluna e já recebe `warning` (Produção, almoxarifado), que o
+ * tipo `Notification` não lista — um tipo sem estilo derrubava a tela inteira
+ * ao chegar o aviso. `warning` vira `alert` (fica até a pessoa agir); qualquer
+ * outro desconhecido vira `info`.
+ */
+export function tipoDoAviso(tipo: string | null | undefined): ItemAviso['tipo'] {
+  if (tipo === 'warning') return 'alert';
+  return tipo && Object.prototype.hasOwnProperty.call(ESTILO, tipo) ? (tipo as ItemAviso['tipo']) : 'info';
+}
+
 interface Props {
   itens: ItemAviso[];
   onAbrir: (item: ItemAviso) => void;
@@ -96,7 +108,7 @@ export default function AlertaNotificacoes({ itens, onAbrir, onDispensar, onDisp
 }
 
 function CartaoAviso({ item, onAbrir, onFechar }: { item: ItemAviso; onAbrir: () => void; onFechar: () => void }) {
-  const { Icone, barra, icone, anel } = ESTILO[item.tipo];
+  const { Icone, barra, icone, anel } = ESTILO[tipoDoAviso(item.tipo)];
 
   React.useEffect(() => {
     if (item.permanente) return;
