@@ -6,6 +6,7 @@
  */
 
 import { Request, RequestAttachment } from '../../types';
+import { separarJustificativaCadastroSap } from '../cadastroSapTexto';
 import { createDoc, PdfTextWriter, embedAttachments, downloadPdf, docToPdfGerado, baixarPdfGerado, type PdfGerado } from './core';
 export type { PdfGerado };
 
@@ -19,17 +20,10 @@ export interface ExportCadastroSapPdfResult {
 
 export function parseNomeEspecificacoes(request: Request): { nome: string; especificacoes: string } {
   const texto = request.justificativa || '';
-  const itemMatch = texto.match(/^Nome: (.*?)\. Specs: (.*?)\. Justificativa: [\s\S]*$/);
-  if (itemMatch) return { nome: itemMatch[1], especificacoes: itemMatch[2] };
-
-  const atualizacaoMatch = texto.match(/Operação:\s*Atualização de Cadastro\.\s*Cód\. Fornecedor SAP:\s*.*?(?:\s*NOVO Nome:\s*(.*?)\.)?\s*Justificativa:\s*[\s\S]*$/i);
-  if (atualizacaoMatch) {
-    return { nome: atualizacaoMatch[1] || 'Conforme cadastro SAP', especificacoes: '-' };
-  }
-
-  const fornecedorMatch = texto.match(/^Nome: (.*?)\. Justificativa: [\s\S]*$/);
-  if (fornecedorMatch) return { nome: fornecedorMatch[1], especificacoes: '-' };
-
+  const p = separarJustificativaCadastroSap(texto);
+  if (p.tipo === 'item') return { nome: p.nome, especificacoes: p.specs };
+  if (p.tipo === 'atualizacao') return { nome: p.nome || 'Conforme cadastro SAP', especificacoes: '-' };
+  if (p.tipo === 'fornecedor') return { nome: p.nome, especificacoes: '-' };
   return { nome: texto || '-', especificacoes: '-' };
 }
 

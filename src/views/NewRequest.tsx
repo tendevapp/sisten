@@ -18,6 +18,7 @@ import {
 } from '../lib/almoxCatalogoApi';
 import { localDb } from '../db/localDb';
 import { listarRhSetores } from '../lib/rhApi';
+import { separarJustificativaCadastroSap } from '../lib/cadastroSapTexto';
 import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus, RequestAttachment } from '../types';
 import { formatBRL, formatDateBR } from '../lib/format';
@@ -624,26 +625,22 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       // Ao criar, Nome/Specs/Justificativa são compostos num único texto (ver
       // handleSubmit) porque o Request não tem campos próprios pra eles. Ao
       // editar, faz o parse reverso pra não deixar os campos em branco.
-      const itemMatch = req.justificativa.match(/^Nome: (.*?)\. Specs: (.*?)\. Justificativa: ([\s\S]*)$/);
-      const atualizacaoMatch = req.justificativa.match(/Operação:\s*Atualização de Cadastro\.\s*Cód\. Fornecedor SAP:\s*(.*?)\.(?:\s*NOVO Nome:\s*(.*?)\.)?\s*Justificativa:\s*([\s\S]*)$/i);
-      const fornecedorMatch = itemMatch || atualizacaoMatch
-        ? null
-        : req.justificativa.match(/^Nome: (.*?)\.(?: CNPJ: (.*?)\.)?(?: Regime: (.*?)\.)?(?: CPF do titular: (.*?)\.)?(?: Pendente:[^.]*\.)? Justificativa: ([\s\S]*)$/);
-      if (itemMatch) {
-        setSapRegName(itemMatch[1]);
-        setSapRegSpecs(itemMatch[2]);
-        setJustificativa(itemMatch[3]);
-      } else if (atualizacaoMatch) {
+      const partes = separarJustificativaCadastroSap(req.justificativa);
+      if (partes.tipo === 'item') {
+        setSapRegName(partes.nome);
+        setSapRegSpecs(partes.specs);
+        setJustificativa(partes.justificativa);
+      } else if (partes.tipo === 'atualizacao') {
         setSapFornecedorOperacao('atualizacao');
-        if (!req.codigo_fornecedor_sap) setSapVendorCode(atualizacaoMatch[1].trim());
-        setSapRegName(atualizacaoMatch[2] ? atualizacaoMatch[2].trim() : '');
-        setJustificativa(atualizacaoMatch[3].trim());
-      } else if (fornecedorMatch) {
-        setSapRegName(fornecedorMatch[1]);
-        if (fornecedorMatch[2] && fornecedorMatch[2] !== '—') setSapRegBrand(fornecedorMatch[2].trim());
-        if (fornecedorMatch[3] && fornecedorMatch[3] !== '—') setSapRegimeTributario(fornecedorMatch[3].trim());
-        if (fornecedorMatch[4]) setSapMeiCpf(fornecedorMatch[4].trim());
-        setJustificativa(fornecedorMatch[5]);
+        if (!req.codigo_fornecedor_sap) setSapVendorCode(partes.codigoFornecedor);
+        setSapRegName(partes.nome);
+        setJustificativa(partes.justificativa);
+      } else if (partes.tipo === 'fornecedor') {
+        setSapRegName(partes.nome);
+        if (partes.cnpj) setSapRegBrand(partes.cnpj);
+        if (partes.regime) setSapRegimeTributario(partes.regime);
+        if (partes.cpfMei) setSapMeiCpf(partes.cpfMei);
+        setJustificativa(partes.justificativa);
       }
       if (req.brand) setSapRegBrand(req.brand);
       if (req.suggested_supplier) setSapRegVendorInfo(req.suggested_supplier);

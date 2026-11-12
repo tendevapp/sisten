@@ -14,6 +14,7 @@ import { rotuloTipo, rotuloCriticidade } from '../lib/solicitacoes';
 import { isChamadoSuprimentosPendencia, camposExibicao, rotuloNumero } from '../lib/supPendenciasProcessamento';
 import { listarPendenciasPorRequest } from '../lib/supPendenciasApi';
 import { localDb } from '../db/localDb';
+import { separarJustificativaCadastroSap } from '../lib/cadastroSapTexto';
 
 interface RequestDetailsModalProps {
   request: Request;
@@ -47,21 +48,9 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
  * compostos em `justificativa` na criação (ver NewRequest.handleSubmit). O
  * parse reverso é o mesmo usado lá para reabrir o formulário em modo edição.
  */
-function parseCadastroSapJustificativa(texto: string, tipo?: 'Item' | 'Fornecedor') {
-  const itemMatch = texto.match(/^Nome: (.*?)\. Specs: (.*?)\. Justificativa: ([\s\S]*)$/);
-  const atualizacaoMatch = texto.match(/Operação:\s*Atualização de Cadastro\.\s*Cód\. Fornecedor SAP:\s*(.*?)\.(?:\s*NOVO Nome:\s*(.*?)\.)?\s*Justificativa:\s*([\s\S]*)$/i);
-  const fornecedorMatch = itemMatch || atualizacaoMatch ? null : texto.match(/^Nome: (.*?)\. Justificativa: ([\s\S]*)$/);
-  if (itemMatch) return { nome: itemMatch[1], specs: itemMatch[2], justificativa: itemMatch[3], codigoFornecedor: '' };
-  if (atualizacaoMatch) {
-    return {
-      nome: atualizacaoMatch[2]?.trim() || '',
-      specs: '',
-      justificativa: atualizacaoMatch[3]?.trim() || '',
-      codigoFornecedor: atualizacaoMatch[1]?.trim() || '',
-    };
-  }
-  if (fornecedorMatch) return { nome: fornecedorMatch[1], specs: '', justificativa: fornecedorMatch[2], codigoFornecedor: '' };
-  return { nome: '', specs: '', justificativa: texto, codigoFornecedor: '' };
+function parseCadastroSapJustificativa(texto: string, _tipo?: 'Item' | 'Fornecedor') {
+  const { nome, specs, justificativa, codigoFornecedor } = separarJustificativaCadastroSap(texto);
+  return { nome, specs, justificativa, codigoFornecedor };
 }
 
 export default function RequestDetailsModal({ request: r, items, sectors, onClose }: RequestDetailsModalProps) {
