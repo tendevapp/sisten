@@ -197,6 +197,7 @@ export function normalizarLinhaControleEstoque(row: Record<string, unknown>): Co
     config_updated_at: row.config_updated_at == null ? null : String(row.config_updated_at),
     fora_zl0024: row.fora_zl0024 === true,
     ultimo_movimento_geral: row.ultimo_movimento_geral == null ? null : String(row.ultimo_movimento_geral),
+    calculado_em: row.calculado_em == null ? null : String(row.calculado_em),
   };
 }
 
@@ -339,6 +340,18 @@ export async function listarConfigsControleEstoque(): Promise<ControleEstoqueCon
   return (data ?? []) as ControleEstoqueConfig[];
 }
 
+/**
+ * Recalcula o Controle de Estoque (materialized views no banco). A view só
+ * lê a última "foto"; ela é refeita após as importações SAP, a cada 30 min
+ * em horário comercial e aqui, quando a janela/lead/intervalo mudam.
+ * Devolve a hora do cálculo, ou null quando já havia um recálculo rodando.
+ */
+export async function recalcularControleEstoque(): Promise<string | null> {
+  const { data, error } = await (supabase as any).rpc('refresh_almox_controle_estoque');
+  if (error) throw new Error(error.message || 'Falha ao recalcular o controle de estoque.');
+  return data == null ? null : String(data);
+}
+
 export async function salvarConfigControleEstoque(
   input: ControleEstoqueConfigInput,
   user: UsuarioAutor,
@@ -364,6 +377,13 @@ export async function salvarConfigControleEstoque(
       created_by: user.id,
     }).select().single();
   if (resultado.error) throw new Error(resultado.error.message || 'Falha ao salvar os parâmetros.');
+  // Janela, lead e intervalo entram no cálculo materializado: refaz a foto
+  // para a tela recarregar já com os parâmetros novos.
+  try {
+    await recalcularControleEstoque();
+  } catch (err) {
+    console.warn('Parâmetros salvos, mas o recálculo do controle de estoque falhou:', err);
+  }
   return resultado.data as ControleEstoqueConfig;
 }
 

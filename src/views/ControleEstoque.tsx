@@ -195,6 +195,7 @@ export default function ControleEstoque({ user, abaInicial = 'geral' }: Props) {
     estoque: maiorData(itens.map(i => i.estoque_importado_em)),
     movimentos: maiorData(itens.map(i => i.movimentos_importados_em)),
     ultimoMovimento: maiorData(itens.map(i => i.ultimo_movimento)),
+    calculado: maiorData(itens.map(i => i.calculado_em ?? null)),
   }), [itens]);
 
   const baseDesatualizada = useMemo(() => {
@@ -237,6 +238,7 @@ export default function ControleEstoque({ user, abaInicial = 'geral' }: Props) {
               {' · '}lead time {parametros.lead_time_padrao_dias} d · intervalo de compra {parametros.intervalo_compra_dias} d
               {frescor.estoque && <> {' · '}ZL0024 em {formatDateTimeBR(frescor.estoque)}</>}
               {frescor.movimentos && <> {' · '}MB51 em {formatDateTimeBR(frescor.movimentos)}</>}
+              {frescor.calculado && <> {' · '}calculado em {formatDateTimeBR(frescor.calculado)}</>}
             </p>
           )}
         </div>

@@ -990,6 +990,18 @@ class LocalDatabase {
     limparCacheBusca();
   }
 
+  /**
+   * Refaz a foto do Controle de Estoque / Dossiê (materialized views). Não
+   * espera: o recálculo leva alguns segundos no banco e a importação já
+   * terminou; se falhar, o pg_cron refaz em até 30 min.
+   */
+  private refreshControleEstoque(): void {
+    if (!supabase) return;
+    void supabase.rpc('refresh_almox_controle_estoque' as any).then(({ error }) => {
+      if (error) console.warn('Falha ao recalcular o controle de estoque:', error);
+    });
+  }
+
   // Check and run seeds
   private initialize() {
     // 1. Sectors
@@ -6162,6 +6174,7 @@ class LocalDatabase {
       // e antes dos sinais de material, que leem a view (via vw_demandas).
       await this.refreshRequisicoesPo();
       await this.refreshMaterialSinais();
+      this.refreshControleEstoque();
       await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(90);
 
@@ -6576,6 +6589,7 @@ class LocalDatabase {
       // os sinais de material vêm depois porque leem essa view.
       await this.refreshPedidosMatViews();
       await this.refreshMaterialSinais();
+      this.refreshControleEstoque();
       await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
 
       const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po');
@@ -7459,6 +7473,7 @@ class LocalDatabase {
       };
 
       await this.refreshMaterialSinais();
+      this.refreshControleEstoque();
       await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(95);
 
@@ -8048,6 +8063,7 @@ class LocalDatabase {
       this.setStorageItem(this.importLogsKey, logs);
 
       await this.bumpDatasetVersion('mb51_mov_estoque', dbRows.length);
+      this.refreshControleEstoque();
 
       this.logActivity(
         user?.id || 'sistema',
