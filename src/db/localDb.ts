@@ -43,6 +43,8 @@ import { descreverAlteracoesCompra, resumoAlteracoes } from '../lib/solicitacoes
 import { reabrirSolicitacaoPorRequestId } from '../lib/almoxarifadoRmApi';
 import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
 import { dataHojeLocal } from '../lib/dataLocal';
+import { buscarPorChave, buscarPorGrupo } from '../lib/paginacaoChave';
+import { buscarTudo } from '../lib/buscarTudo';
 import {
   STATUS_DERIVADOS_DO_ATRASO, alertaAtrasoComprador, diasUteisEntre, faixaAtrasoComprador, statusPorAtraso,
 } from '../lib/diasUteis';
@@ -404,7 +406,7 @@ class LocalDatabase {
           // Preço Médio de Suprimentos, Mapa Comparativo) já chamam
           // `fetchHistoricoPedidos`, que baixa sob demanda com o mesmo gate.
           ['contatos', gated('contatos', () => this.syncSimpleTable('sup_fornecedores_contatos', this.contatosKey, true, undefined, 'id'))],
-          ['cidadeforn', gated('cidadeforn', () => this.syncSimpleTable('sup_fornecedores_cidades', this.cidadeFornKey, true, undefined, 'id'))],
+          ['cidadeforn', gated('cidadeforn', () => this.syncSimpleTable('sup_fornecedores_cidades', this.cidadeFornKey, true, undefined, 'id', true))],
           // Cadastro de referência pequeno (~1,4 mil linhas) e estático: decodifica
           // o grupo de mercadoria do SAP para a descrição exibida na Central
           // Compras. Resolvido no cliente porque acrescentar a coluna em
@@ -526,9 +528,13 @@ class LocalDatabase {
     storageKey: string,
     alwaysSet: boolean = false,
     filterFn?: (query: any) => any,
-    orderCol?: string
+    orderCol?: string,
+    /** `orderCol` é única e indexada: pagina pela chave em vez de OFFSET (tabela grande). */
+    porChave = false
   ): Promise<void> {
-    const rows = await this.fetchAllFromTable<any>(table, '*', 1000, filterFn, orderCol);
+    const rows = porChave && orderCol
+      ? await this.fetchAllPorChave<any>(table, orderCol, filterFn)
+      : await this.fetchAllFromTable<any>(table, '*', 1000, filterFn, orderCol);
     if (alwaysSet || (rows && rows.length > 0)) {
       this.setStorageItem(storageKey, rows || []);
     }
@@ -603,7 +609,7 @@ class LocalDatabase {
       return;
     }
 
-    const dbObsHistory = await this.fetchAllFromTable<any>('sap_requisicoes_observacoes', '*', 1000, undefined, 'id');
+    const dbObsHistory = await this.fetchAllPorChave<any>('sap_requisicoes_observacoes', 'id');
     if (dbObsHistory && dbObsHistory.length > 0) {
       this.setStorageItem(this.obsHistoryKey, dbObsHistory.map(mapear));
       this.setStorageItem(this.obsHistoryMarcaKey, {
@@ -1905,6 +1911,50 @@ class LocalDatabase {
       from += pageSize;
     }
     return allRows;
+  }
+
+  /**
+   * Como `fetchAllFromTable`, mas pagina pela chave (`chave > último`) em vez
+   * de OFFSET — ver lib/paginacaoChave.ts. `chave` precisa ser única, não nula
+   * e indexada (ex.: `id`).
+   */
+  private async fetchAllPorChave<T>(table: string, chave: string, filterFn?: (query: any) => any): Promise<T[]> {
+    const sb = supabase as any;
+    return buscarPorChave<T>((depois, limite) => {
+      let query = sb.from(table).select('*');
+      if (filterFn) query = filterFn(query);
+      if (depois !== null) query = query.gt(chave, depois);
+      return query.order(chave, { ascending: true }).limit(limite);
+    }, (linha: any) => linha[chave]);
+  }
+
+  /**
+   * `vw_historico_pedidos` inteira (~62 mil linhas). Não tem coluna única
+   * simples — a chave é material + fornecedor + CNPJ + pedido —, então pagina
+   * pelo `material` (índice da MV) fechando cada página no fim de um material.
+   * Antes ia por OFFSET e sem ORDER BY: a última página custava 286 ms (pela
+   * chave, 9 ms) e a ordem entre páginas não era garantida.
+   */
+  private async baixarHistoricoPedidos(): Promise<HistoricoPedidoView[]> {
+    const view = 'vw_historico_pedidos';
+    const sb = supabase as any;
+    const doGrupo = (montar: (q: any) => any) => buscarTudo<HistoricoPedidoView>((de, ate) =>
+      montar(sb.from(view).select('*'))
+        .order('cod_forn', { ascending: true, nullsFirst: false })
+        .order('cnpj', { ascending: true, nullsFirst: false })
+        .order('doc_compra', { ascending: true, nullsFirst: false })
+        .range(de, ate));
+    const comMaterial = await buscarPorGrupo<HistoricoPedidoView>({
+      paginaDesde: (desde, inclusivo, limite) => {
+        let query = sb.from(view).select('*').not('material', 'is', null);
+        if (desde !== null) query = inclusivo ? query.gte('material', desde) : query.gt('material', desde);
+        return query.order('material', { ascending: true }).limit(limite);
+      },
+      grupoInteiro: (material) => doGrupo((q) => q.eq('material', material)),
+      chave: (linha) => String(linha.material),
+    });
+    const semMaterial = await doGrupo((q) => q.is('material', null));
+    return [...comMaterial, ...semMaterial];
   }
 
   public async importMaterials(
@@ -4211,7 +4261,7 @@ class LocalDatabase {
       if (!force && !this.needsSync('historico_pedidos', this.historicoPedidosKey, markers)) {
         return this.getHistoricoPedidos();
       }
-      const rows = await this.fetchAllFromTable<HistoricoPedidoView>('vw_historico_pedidos', '*', 1000);
+      const rows = await this.baixarHistoricoPedidos();
       this.setStorageItem(this.historicoPedidosKey, rows);
       this.commitDatasetMeta('historico_pedidos', markers);
       return rows;
@@ -4293,7 +4343,7 @@ class LocalDatabase {
       return this.getMb51();
     }
     try {
-      const rows = await this.fetchAllFromTable<MB51Classificado>('vw_mb51_classificado', '*', 1000, undefined, 'id');
+      const rows = await this.fetchAllPorChave<MB51Classificado>('vw_mb51_classificado', 'id');
       this.setStorageItem(this.mb51Key, rows);
       return rows;
     } catch (err) {
@@ -6590,7 +6640,7 @@ class LocalDatabase {
       await this.refreshPedidosMatViews();
       await this.refreshMaterialSinais();
       this.refreshControleEstoque();
-      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
+      this.setStorageItem(this.historicoPedidosKey, await this.baixarHistoricoPedidos());
 
       const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po');
       const updatedPeds = await this.fetchAllFromTable<any>('vw_sap_pedidos_enriquecidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
@@ -7037,7 +7087,7 @@ class LocalDatabase {
       // "Pedido a caminho" da busca de material vem da ZL0132; o recálculo
       // ficava de fora desta carga quando levava 17 s (hoje ~3 s).
       await this.refreshMaterialSinais();
-      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
+      this.setStorageItem(this.historicoPedidosKey, await this.baixarHistoricoPedidos());
 
       // sap_zl0132_po alimenta vw_sap_pedidos_enriquecidos/vw_sap_requisicoes_enriquecidas (status_requisicao,
       // documento_compra, data_pedido, criado_por_pedido) — sem reidratar e bumpar 'requisicoes'/
@@ -7306,7 +7356,7 @@ class LocalDatabase {
       };
 
       await supabase.from('ops_importacoes').insert(logObj);
-      await this.syncSimpleTable('sup_fornecedores_cidades', this.cidadeFornKey, true);
+      await this.syncSimpleTable('sup_fornecedores_cidades', this.cidadeFornKey, true, undefined, 'id', true);
       await this.bumpDatasetVersion('cidadeforn', this.getCidadeForn().length);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
