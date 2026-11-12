@@ -33,7 +33,7 @@ import type {
 import * as api from '../../lib/portariaApi';
 import { ocorrenciaCombina, trechosDestacados } from '../../lib/portariaBuscaOcorrencias';
 import {
-  aceitaEntregaMaterial, contarFotosOcorrencia, fotosDaOcorrencia, validarEntregaMaterial,
+  aceitaEntregaMaterial, contarFotosOcorrencia, empresaSemFichaCega, fotosDaOcorrencia, validarEntregaMaterial,
 } from '../../lib/portariaFotosOcorrencia';
 import FotosOcorrenciaCampo, { type FotoNova } from '../../components/portaria/FotosOcorrenciaCampo';
 import DetalheOcorrenciaModal from '../../components/portaria/DetalheOcorrenciaModal';
@@ -1107,7 +1107,9 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         toast.success('Lançamento atualizado com sucesso!');
       } else {
         await api.adicionarOcorrencia(relId, { ...payloadOcorrencia, id: ocorrenciaId });
-        toast.success(comEntrega ? 'Lançamento registrado. Ficha cega enviada ao almoxarifado.' : 'Lançamento registrado no livro de ocorrências!');
+        toast.success(comEntrega && !empresaSemFichaCega(formOcorrencia.empresa)
+          ? 'Lançamento registrado. Ficha cega enviada ao almoxarifado.'
+          : 'Lançamento registrado no livro de ocorrências!');
       }
       if (falhasFoto > 0) toast.warning(`${falhasFoto} foto(s) não subiram — o lançamento foi salvo sem elas.`);
       void api.removerFotosOcorrencia(removidas);
@@ -1482,7 +1484,9 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
             É entrega de material?
           </span>
           <span className="mt-0.5 block text-[11px] text-emerald-800 dark:text-emerald-300">
-            Marque quando chegar material para a fábrica. Ao salvar, o almoxarifado recebe a ficha cega para conferir, com as fotos.
+            {empresaSemFichaCega(formOcorrencia.empresa)
+              ? 'Entrega da PRC (refeitório): fica registrada aqui com a NF, sem ficha cega para o almoxarifado.'
+              : 'Marque quando chegar material para a fábrica. Ao salvar, o almoxarifado recebe a ficha cega para conferir, com as fotos.'}
           </span>
         </label>
       </div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  aceitaEntregaMaterial, contarFotosOcorrencia, fotosDaOcorrencia, validarEntregaMaterial,
+  aceitaEntregaMaterial, contarFotosOcorrencia, empresaSemFichaCega, fotosDaOcorrencia, validarEntregaMaterial,
 } from './portariaFotosOcorrencia';
 import { formatarTextoOcorrencia } from './portariaApi';
 
@@ -47,6 +47,16 @@ describe('entrega de material', () => {
     expect(validarEntregaMaterial({ ...base, entrega_material: false }).ok).toBe(true);
     // Tipo que não é entrada ignora a marcação que sobrou ao trocar o tipo.
     expect(validarEntregaMaterial({ ...base, tipo: 'RONDA_PATRIMONIAL' }).ok).toBe(true);
+  });
+
+  it('entrega da PRC não abre ficha cega', () => {
+    expect(empresaSemFichaCega('PRC')).toBe(true);
+    expect(empresaSemFichaCega(' prc refeições ')).toBe(true);
+    expect(empresaSemFichaCega('P.R.C.')).toBe(true);
+    expect(empresaSemFichaCega('ATLANTA')).toBe(false);
+    expect(empresaSemFichaCega('PRCX TRANSPORTES')).toBe(false);
+    expect(empresaSemFichaCega('')).toBe(false);
+    expect(empresaSemFichaCega(null)).toBe(false);
   });
 
   it('texto do livro leva a marcação de entrega', () => {

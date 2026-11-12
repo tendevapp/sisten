@@ -48,6 +48,17 @@ export function fotosDaOcorrencia(oc: ComFotos): FotoOcorrencia[] {
   ];
 }
 
+/**
+ * Entrega da PRC (refeitório) é recebida pela cozinha, não pelo almoxarifado:
+ * o lançamento continua com "entrega de material" e NF, mas não abre ficha
+ * cega. Mesma regra do banco em `port_empresa_sem_ficha_cega` — mudar os dois.
+ */
+const EMPRESAS_SEM_FICHA_CEGA = /(^|[^A-Z0-9])P\.?R\.?C($|[^A-Z0-9])/;
+
+export function empresaSemFichaCega(empresa: string | null | undefined): boolean {
+  return EMPRESAS_SEM_FICHA_CEGA.test(String(empresa ?? '').toUpperCase());
+}
+
 export interface ValidacaoEntrega {
   ok: boolean;
   erro?: string;
