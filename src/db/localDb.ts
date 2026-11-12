@@ -23,6 +23,7 @@ import { CompradorInfo } from '../lib/demandas';
 import { limparCacheBusca, sanitizeTechnicalText } from '../lib/materiais';
 import { canAccessPage } from '../lib/pages';
 import { NOME_SETOR_JURIDICO } from '../lib/juridico';
+import { erroTrocaSenhaSemResposta, interpretarErroTrocaSenha, type ResultadoTrocaSenha } from '../lib/trocaSenha';
 import { isSuprimentosSector } from '../lib/supPendenciasProcessamento';
 import { formatDateTimeBR } from '../lib/format';
 import { INITIAL_SECTORS } from '../data/sectors';
@@ -10285,17 +10286,23 @@ class LocalDatabase {
     return users[idx];
   }
 
-  public async changePassword(newPass: string): Promise<boolean> {
-    if (!supabase) return false;
+  /**
+   * Grava a nova senha no Supabase Auth. Senha igual à atual (ex.: manter a
+   * provisória do reset) conta como feita — ver lib/trocaSenha.ts.
+   */
+  public async changePassword(newPass: string): Promise<ResultadoTrocaSenha> {
+    if (!supabase) return { ok: false, erro: 'Servidor indisponível.' };
     try {
       const { error } = await supabase.auth.updateUser({ password: newPass });
-      if (error) {
-        console.error('Erro ao atualizar senha no Supabase Auth:', error);
-        return false;
-      }
+      if (error) console.error('Erro ao atualizar senha no Supabase Auth:', error);
+      const resultado = interpretarErroTrocaSenha(error);
+      if (!resultado.ok) return resultado;
       const user = this.getCurrentUser();
       if (user) {
-        this.logActivity(user.id, 'Perfil', 'Alterar Senha', 'Senha de usuário alterada com sucesso.');
+        this.logActivity(
+          user.id, 'Perfil', 'Alterar Senha',
+          resultado.mantida ? 'Senha mantida (igual à atual).' : 'Senha de usuário alterada com sucesso.',
+        );
 
         // Se havia um reset forçado pelo admin pendente, a exigência é cumprida
         // agora que o usuário definiu a própria senha — limpa a flag no cache,
@@ -10319,10 +10326,10 @@ class LocalDatabase {
           }
         }
       }
-      return true;
+      return resultado;
     } catch (err) {
       console.error('Falha de comunicação ao alterar senha:', err);
-      return false;
+      return erroTrocaSenhaSemResposta();
     }
   }
 

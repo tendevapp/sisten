@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { KeyRound, AlertCircle, Loader2, Eye, EyeOff, ShieldAlert } from 'lucide-react';
 import Modal, { ModalBody, ModalFooter } from '../ui/Modal';
 import { localDb } from '../../db/localDb';
@@ -23,6 +23,8 @@ export default function ForcePasswordChangeModal({ user, onDone, onLogout }: For
   const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const idNova = useId();
+  const idConfirma = useId();
 
   const firstName = (user.name || '').trim().split(/\s+/)[0];
 
@@ -40,11 +42,11 @@ export default function ForcePasswordChangeModal({ user, onDone, onLogout }: For
     }
 
     setLoading(true);
-    const ok = await localDb.changePassword(newPass);
+    const resultado = await localDb.changePassword(newPass);
     setLoading(false);
 
-    if (!ok) {
-      setError('Não foi possível salvar a nova senha. Ela precisa ser diferente da senha provisória — tente novamente.');
+    if (!resultado.ok) {
+      setError(resultado.erro || 'Não foi possível salvar a nova senha. Tente de novo.');
       return;
     }
     onDone();
@@ -61,8 +63,8 @@ export default function ForcePasswordChangeModal({ user, onDone, onLogout }: For
             {firstName ? `${firstName}, defina uma nova senha` : 'Defina uma nova senha'}
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-            Um administrador redefiniu sua senha de acesso. Por segurança, crie agora uma nova
-            senha pessoal para continuar usando o SISTEN.
+            Um administrador redefiniu sua senha de acesso. Defina agora a senha que você vai
+            usar no SISTEN — pode ser a mesma que você já usava, ou a provisória.
           </p>
         </div>
       </div>
@@ -77,11 +79,13 @@ export default function ForcePasswordChangeModal({ user, onDone, onLogout }: For
           )}
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nova Senha</label>
+            <label htmlFor={idNova} className="text-xs font-bold text-slate-700 dark:text-slate-300">Nova Senha</label>
             <div className="relative">
               <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <input
+                id={idNova}
                 type={show ? 'text' : 'password'}
+                autoComplete="new-password"
                 autoFocus
                 required
                 placeholder="Mín. 6 caracteres"
@@ -101,11 +105,13 @@ export default function ForcePasswordChangeModal({ user, onDone, onLogout }: For
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Confirmar Nova Senha</label>
+            <label htmlFor={idConfirma} className="text-xs font-bold text-slate-700 dark:text-slate-300">Confirmar Nova Senha</label>
             <div className="relative">
               <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
               <input
+                id={idConfirma}
                 type={show ? 'text' : 'password'}
+                autoComplete="new-password"
                 required
                 placeholder="Repita a nova senha"
                 value={confirmPass}

@@ -110,14 +110,14 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
       return;
     }
 
-    const ok = await localDb.changePassword(newPass);
-    if (ok) {
+    const resultado = await localDb.changePassword(newPass);
+    if (resultado.ok) {
       setPasswordSuccess(true);
       setNewPass('');
       setConfirmPass('');
       setTimeout(() => setPasswordSuccess(false), 4000);
     } else {
-      setPasswordError('Erro ao atualizar a senha no servidor.');
+      setPasswordError(resultado.erro || 'Erro ao atualizar a senha no servidor.');
     }
   };
 
