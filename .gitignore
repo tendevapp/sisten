@@ -36,3 +36,6 @@ nul
 # Screenshots temporarios de QA do motor de trilhas
 .agents/skills/trilha-gamificada-po/assets/motor/prints*/
 
+
+# Documentação, manuais e relatórios ficam só na máquina (não sobem ao Git)
+docs/
