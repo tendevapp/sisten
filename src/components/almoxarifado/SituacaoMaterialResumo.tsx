@@ -220,6 +220,11 @@ export default function SituacaoMaterialResumo({ material, mostrarCabecalho = tr
                   {r.requisitante && ` · ${r.requisitante}`}
                   {r.entrega_prevista && ` · entrega ${r.entrega_confirmada ? 'confirmada' : 'prevista'} ${dataCurta(r.entrega_prevista)}`}
                 </p>
+                {r.fora_ultima_carga && (
+                  <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-300">
+                    A última carga da ME5A não trouxe o grupo de compradores{r.grupo ? ` ${r.grupo}` : ''}: confira no SAP se a RM segue aberta.
+                  </p>
+                )}
               </li>
             ))}
           </ul>

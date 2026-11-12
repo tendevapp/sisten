@@ -40,6 +40,9 @@ import {
 import { mapearPlanilhaPessoas } from '../lib/rhPessoasImport';
 import UsersByModuleView from '../components/admin/UsersByModuleView';
 import { CATEGORIAS_TI } from '../lib/chamadoTi';
+import { avaliarCargaMe5a, mensagemCargaParcialMe5a } from '../lib/cargaMe5a';
+import { referenciaCargaMe5a } from '../lib/cargaMe5aApi';
+import { confirmar } from '../lib/confirmar';
 
 interface AdminPanelProps {
   user: Profile;
@@ -3136,15 +3139,34 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
-                            setSapLogMessage('Enviando os dados…');
-                            localDb.importME5ARaw(rawRows, file.name, setSapProgress).then(log => {
-                              setLastUploadLog(log);
-                              setSapLogStatus('success');
-                              loadData();
-                            }).catch(err => {
-                              setSapLogError(err.message || 'Falha ao processar planilha.');
-                              setSapLogStatus('error');
-                            });
+                            void (async () => {
+                              // Arquivo bem menor que as cargas recentes (ME5A extraída com
+                              // filtro): pergunta antes, porque tudo o que faltar vira RM fechada.
+                              const avaliacao = avaliarCargaMe5a(rawRows, await referenciaCargaMe5a());
+                              if (avaliacao.parcial) {
+                                setSapLogStatus('idle');
+                                const seguir = await confirmar({
+                                  titulo: 'A ME5A parece filtrada',
+                                  mensagem: mensagemCargaParcialMe5a(avaliacao),
+                                  confirmarLabel: 'Importar assim mesmo',
+                                  variante: 'perigo',
+                                });
+                                if (!seguir) {
+                                  toast.info('Importação da ME5A cancelada. Nada foi gravado.');
+                                  return;
+                                }
+                                setSapLogStatus('saving');
+                              }
+                              setSapLogMessage('Enviando os dados…');
+                              localDb.importME5ARaw(rawRows, file.name, setSapProgress).then(log => {
+                                setLastUploadLog(log);
+                                setSapLogStatus('success');
+                                loadData();
+                              }).catch(err => {
+                                setSapLogError(err.message || 'Falha ao processar planilha.');
+                                setSapLogStatus('error');
+                              });
+                            })();
                           } catch (err: any) {
                             setSapLogError(err.message || 'Falha ao processar planilha.');
                             setSapLogStatus('error');

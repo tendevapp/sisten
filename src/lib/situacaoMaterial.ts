@@ -38,6 +38,13 @@ export interface RmSituacao {
   entrega_prevista: string | null;
   entrega_confirmada: boolean;
   situacao: SituacaoRm;
+  /** Grupo de compradores da RM. */
+  grupo?: string | null;
+  /**
+   * Não veio na última carga da ME5A, mas o grupo dela também não — carga
+   * filtrada por grupo. Aparece com aviso para conferir no SAP.
+   */
+  fora_ultima_carga?: boolean;
 }
 
 export interface PedidoSituacao {
