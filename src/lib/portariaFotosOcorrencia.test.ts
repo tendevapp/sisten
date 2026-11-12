@@ -40,8 +40,11 @@ describe('entrega de material', () => {
   });
 
   it('exige NF verificada e foto da nota', () => {
-    const base = { tipo: 'ENTRADA_VEICULO' as const, entrega_material: true, nf_verificada: false, fotosNf: 0 };
+    const base = { tipo: 'ENTRADA_VEICULO' as const, entrega_material: true, nf_verificada: false, fotosNf: 0, vai_almoxarifado: true as boolean | null };
     expect(validarEntregaMaterial(base).ok).toBe(false);
+    // "Vai para o Almoxarifado?" sem resposta não passa; "Não" é resposta válida.
+    expect(validarEntregaMaterial({ ...base, nf_verificada: true, fotosNf: 1, vai_almoxarifado: null }).erro).toMatch(/Almoxarifado/);
+    expect(validarEntregaMaterial({ ...base, nf_verificada: true, fotosNf: 1, vai_almoxarifado: false }).ok).toBe(true);
     expect(validarEntregaMaterial({ ...base, nf_verificada: true }).erro).toMatch(/foto/);
     expect(validarEntregaMaterial({ ...base, nf_verificada: true, fotosNf: 2 }).ok).toBe(true);
     expect(validarEntregaMaterial({ ...base, entrega_material: false }).ok).toBe(true);
@@ -69,5 +72,7 @@ describe('entrega de material', () => {
     expect(r).not.toContain('ENTREGA');
     const o = formatarTextoOcorrencia({ tipo_registro: 'OUTRO_REGISTRO', motivo_observacao: 'PALETES DO ALMOX', entrega_material: true, nf_verificada: true });
     expect(o).toContain('PALETES DO ALMOX [ENTREGA DE MATERIAL - NF VERIFICADA]');
+    const n = formatarTextoOcorrencia({ tipo_registro: 'ENTRADA_VEICULO', empresa: 'PRC', pessoas: [{ nome: 'QUELI' }], entrega_material: true, nf_verificada: true, vai_almoxarifado: false });
+    expect(n).toContain('[ENTREGA DE MATERIAL - NF VERIFICADA - NÃO VAI AO ALMOXARIFADO]');
   });
 });

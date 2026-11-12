@@ -221,6 +221,7 @@ const RPCS: Record<string, ConfigRpc> = {
   },
   alm_receb_editar_carga: { rotulo: 'Recebimento — edição da ficha cega', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
   alm_receb_carga_nao_chegou: { rotulo: 'Recebimento — entrega da portaria não chegou', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
+  alm_receb_carga_nao_se_aplica: { rotulo: 'Recebimento — entrega da portaria não se aplica', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
   alm_receb_editar_conferencia: { rotulo: 'Recebimento — edição da conferência', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
   alm_receb_editar_nc: { rotulo: 'Recebimento — edição da NC', respostaProvisoria: () => ({ [MARCA_OFFLINE]: true }) },
   // Almoxarifado confirma a devolutiva de Suprimentos na doca. A RPC ignora o

@@ -307,7 +307,7 @@ export async function registrarConferencia(
 // Leitura
 // ---------------------------------------------------------------------------
 
-export type StatusCarga = 'recebida' | 'em_conferencia' | 'conferida' | 'divergente' | 'aguardando_almox' | 'nao_chegou';
+export type StatusCarga = 'recebida' | 'em_conferencia' | 'conferida' | 'divergente' | 'aguardando_almox' | 'nao_chegou' | 'nao_se_aplica';
 
 /** Foto tirada pela portaria na entrada (bucket port-ocorrencias). NF primeiro. */
 export interface FotoPortariaCarga {
@@ -351,6 +351,10 @@ export interface CargaRow {
   nao_chegou_motivo?: string | null;
   nao_chegou_em?: string | null;
   nao_chegou_por?: string | null;
+  /** Entrega da portaria que não era para o almoxarifado — fechada sem contar contra ele. */
+  nao_se_aplica_motivo?: string | null;
+  nao_se_aplica_em?: string | null;
+  nao_se_aplica_por?: string | null;
   criado_por_id: string | null;
   criado_por_nome: string | null;
   created_at: string;
@@ -586,6 +590,23 @@ export async function informarNaoChegou(
   user: { id?: string | null; nome: string },
 ): Promise<void> {
   const { error } = await supabase.rpc('alm_receb_carga_nao_chegou' as any, {
+    p_id: id, p_motivo: motivo, p_user: { id: user.id ?? null, nome: user.nome },
+  } as any);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Entrega aberta pela portaria que não é do almoxarifado (outro setor, marcada
+ * por engano). Fecha a ficha como `nao_se_aplica` — não é divergência nem
+ * "não chegou". Se o material for mesmo do almox, "Confirmar e preencher" ainda
+ * funciona a partir desse status.
+ */
+export async function informarNaoSeAplica(
+  id: string,
+  motivo: string,
+  user: { id?: string | null; nome: string },
+): Promise<void> {
+  const { error } = await supabase.rpc('alm_receb_carga_nao_se_aplica' as any, {
     p_id: id, p_motivo: motivo, p_user: { id: user.id ?? null, nome: user.nome },
   } as any);
   if (error) throw new Error(error.message);

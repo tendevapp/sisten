@@ -2192,6 +2192,8 @@ export interface PortRelatorioOcorrencia {
   fotos_nf?: PortAlcoolemiaFoto[];
   entrega_material?: boolean;
   nf_verificada?: boolean;
+  /** Entrega de material: a portaria indicou se vai para o Almoxarifado (abre ficha cega). Nulo = antigo. */
+  vai_almoxarifado?: boolean | null;
   /** Coluna gerada: há foto antiga em `foto_url` (a lista não traz o base64). */
   tem_foto_legado?: boolean;
   created_at: string;

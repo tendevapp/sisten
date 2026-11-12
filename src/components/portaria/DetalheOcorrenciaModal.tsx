@@ -8,7 +8,7 @@ import { Camera, CheckCircle2, Edit3, Loader2, LogOut, Package, XCircle } from '
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import type { PortRelatorioOcorrencia } from '../../types';
 import * as api from '../../lib/portariaApi';
-import { aceitaEntregaMaterial, fotosDaOcorrencia, type FotoOcorrencia } from '../../lib/portariaFotosOcorrencia';
+import { aceitaEntregaMaterial, empresaSemFichaCega, fotosDaOcorrencia, type FotoOcorrencia } from '../../lib/portariaFotosOcorrencia';
 
 interface Props {
   ocorrencia: PortRelatorioOcorrencia;
@@ -104,6 +104,8 @@ export default function DetalheOcorrenciaModal({
   const pessoas = (oc.pessoas || []).filter((p) => p.nome?.trim());
   const controlaSaida = (api.TIPOS_COM_SAIDA as readonly string[]).includes(oc.tipo_registro || '');
   const aceitaEntrega = aceitaEntregaMaterial(oc.tipo_registro);
+  /** Sem resposta (lançamento antigo): mesma regra do banco — PRC não vai, o resto vai. */
+  const vaiAoAlmox = oc.vai_almoxarifado ?? !empresaSemFichaCega(oc.empresa);
 
   return (
     <Modal onClose={onClose} maxWidth="max-w-2xl">
@@ -158,13 +160,16 @@ export default function DetalheOcorrenciaModal({
                   {' · '}{dasNotas.length} foto(s) da NF
                 </p>
                 <p className="mt-1 text-[11px]">
-                  {ficha === undefined
+                  {!vaiAoAlmox
+                    ? 'Não vai para o almoxarifado — sem ficha cega.'
+                    : ficha === undefined
                     ? 'Consultando o almoxarifado…'
                     : ficha === null
                       ? 'Ficha cega no almoxarifado: aguardando sincronização.'
                       : <>Almoxarifado: ficha cega <strong className="font-mono">{ficha.codigo}</strong> — {
                           ficha.status === 'aguardando_almox' ? 'aguardando conferência'
                           : ficha.status === 'nao_chegou' ? `não chegou${ficha.nao_chegou_motivo ? ` (${ficha.nao_chegou_motivo})` : ''}`
+                          : ficha.status === 'nao_se_aplica' ? `não se aplica ao almoxarifado${ficha.nao_se_aplica_motivo ? ` (${ficha.nao_se_aplica_motivo})` : ''}`
                           : `recebida${ficha.qtd_volumes_contada != null ? `, ${ficha.qtd_volumes_contada} volume(s)` : ''}${ficha.almox_confirmado_por ? ` por ${ficha.almox_confirmado_por}` : ''}`
                         }</>}
                 </p>

@@ -424,6 +424,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     fara_briefing: boolean;
     entrega_material: boolean;
     nf_verificada: boolean;
+    /** "Vai para o Almoxarifado?" — nulo até a portaria responder. */
+    vai_almoxarifado: boolean | null;
     veiculo_leve_id?: string | null;
     veiculo_leve_modelo?: string | null;
     condutor_pessoa_id?: string | null;
@@ -443,6 +445,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     fara_briefing: false,
     entrega_material: false,
     nf_verificada: false,
+    vai_almoxarifado: null,
     veiculo_leve_id: null,
     veiculo_leve_modelo: null,
     condutor_pessoa_id: null,
@@ -831,6 +834,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       fara_briefing: false,
       entrega_material: false,
       nf_verificada: false,
+      vai_almoxarifado: null,
       veiculo_leve_id: null,
       veiculo_leve_modelo: null,
       condutor_pessoa_id: null,
@@ -886,6 +890,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       fara_briefing: !!oc.fara_briefing,
       entrega_material: !!oc.entrega_material,
       nf_verificada: !!oc.nf_verificada,
+      // Lançamento antigo não tem a resposta: vale o que o banco decidiu (PRC não vai, o resto vai).
+      vai_almoxarifado: oc.entrega_material
+        ? (oc.vai_almoxarifado ?? !empresaSemFichaCega(oc.empresa))
+        : null,
       veiculo_leve_id: oc.veiculo_leve_id || null,
       veiculo_leve_modelo: oc.veiculo_leve_modelo || null,
       condutor_pessoa_id: oc.condutor_pessoa_id || null,
@@ -934,6 +942,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         veiculo_leve_modelo: ocorrenciaParaSaida.veiculo_leve_modelo || undefined,
         entrega_material: ocorrenciaParaSaida.entrega_material,
         nf_verificada: ocorrenciaParaSaida.nf_verificada,
+        vai_almoxarifado: ocorrenciaParaSaida.vai_almoxarifado,
       });
 
       await api.atualizarOcorrencia(ocorrenciaParaSaida.id, {
@@ -986,6 +995,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       entrega_material: formOcorrencia.entrega_material,
       nf_verificada: formOcorrencia.nf_verificada,
       fotosNf: fotosNfSalvas.length + fotosNfNovas.length,
+      vai_almoxarifado: formOcorrencia.vai_almoxarifado,
     });
     if (!entrega.ok) {
       toast.error(entrega.erro!);
@@ -1087,6 +1097,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         fotos_nf: fotosNfFinais,
         entrega_material: comEntrega,
         nf_verificada: comEntrega && formOcorrencia.nf_verificada,
+        vai_almoxarifado: comEntrega ? formOcorrencia.vai_almoxarifado : null,
         empresa: formOcorrencia.empresa.toUpperCase(),
         nome_pessoa: primeiraPessoa.nome.toUpperCase(),
         documento_cpf: primeiraPessoa.cpf,
@@ -1107,7 +1118,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         toast.success('Lançamento atualizado com sucesso!');
       } else {
         await api.adicionarOcorrencia(relId, { ...payloadOcorrencia, id: ocorrenciaId });
-        toast.success(comEntrega && !empresaSemFichaCega(formOcorrencia.empresa)
+        toast.success(comEntrega && formOcorrencia.vai_almoxarifado
           ? 'Lançamento registrado. Ficha cega enviada ao almoxarifado.'
           : 'Lançamento registrado no livro de ocorrências!');
       }
@@ -1475,6 +1486,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
             ...prev,
             entrega_material: e.target.checked,
             nf_verificada: e.target.checked ? prev.nf_verificada : false,
+            // PRC (refeitório) já vem com "Não"; o resto a portaria responde.
+            vai_almoxarifado: e.target.checked ? (empresaSemFichaCega(prev.empresa) ? false : null) : null,
           }))}
           className="mt-0.5 h-4 w-4 cursor-pointer rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
         />
@@ -1484,15 +1497,46 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
             É entrega de material?
           </span>
           <span className="mt-0.5 block text-[11px] text-emerald-800 dark:text-emerald-300">
-            {empresaSemFichaCega(formOcorrencia.empresa)
-              ? 'Entrega da PRC (refeitório): fica registrada aqui com a NF, sem ficha cega para o almoxarifado.'
-              : 'Marque quando chegar material para a fábrica. Ao salvar, o almoxarifado recebe a ficha cega para conferir, com as fotos.'}
+            Marque quando chegar material para a fábrica. Depois diga se vai para o Almoxarifado: se sim, ele recebe a ficha cega para conferir, com as fotos.
           </span>
         </label>
       </div>
 
       {formOcorrencia.entrega_material && (
         <div className="space-y-3 border-t border-emerald-200 pt-3 dark:border-emerald-900/60">
+          <fieldset>
+            <legend className="text-xs font-bold text-emerald-950 dark:text-emerald-100">
+              Vai para o Almoxarifado? <span className="text-rose-600">*</span>
+            </legend>
+            <div className="mt-1.5 grid grid-cols-2 gap-2" role="radiogroup">
+              {([
+                { valor: true, rotulo: 'Sim', ajuda: 'Abre a ficha cega no almoxarifado' },
+                { valor: false, rotulo: 'Não', ajuda: 'Fica só no livro, com a NF' },
+              ] as const).map((op) => {
+                const ativo = formOcorrencia.vai_almoxarifado === op.valor;
+                return (
+                  <button
+                    key={op.rotulo}
+                    type="button"
+                    role="radio"
+                    aria-checked={ativo}
+                    onClick={() => setFormOcorrencia((prev) => ({ ...prev, vai_almoxarifado: op.valor }))}
+                    className={`rounded-xl border px-3 py-2 text-left transition-colors cursor-pointer ${
+                      ativo
+                        ? 'border-emerald-600 bg-emerald-100 ring-2 ring-emerald-500/20 dark:border-emerald-500 dark:bg-emerald-900/40'
+                        : 'border-emerald-200 bg-white hover:border-emerald-400 dark:border-emerald-900/60 dark:bg-slate-900'
+                    }`}
+                  >
+                    <span className="block text-xs font-bold text-emerald-950 dark:text-emerald-100">{op.rotulo}</span>
+                    <span className="block text-[11px] text-emerald-800 dark:text-emerald-300">{op.ajuda}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {formOcorrencia.vai_almoxarifado === false && empresaSemFichaCega(formOcorrencia.empresa) && (
+              <p className="mt-1 text-[11px] text-emerald-800 dark:text-emerald-300">Entrega da PRC (refeitório) — já marcada como "Não".</p>
+            )}
+          </fieldset>
           <div className="flex items-start gap-2.5">
             <input
               type="checkbox"
@@ -1950,6 +1994,11 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                                     Entrega de material{oc.nf_verificada ? ' · NF verificada' : ' · NF não verificada'}
                                   </span>
                                 )}
+                                {oc.entrega_material && (oc.vai_almoxarifado ?? !empresaSemFichaCega(oc.empresa)) === false && (
+                                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                    Não vai ao almoxarifado
+                                  </span>
+                                )}
                               </div>
 
                               <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 break-words leading-relaxed">
@@ -2306,7 +2355,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                               // Entrada não tem retorno a registrar; Saída não leva entrega de material.
                               ...(id === 'ENTRADA_COLABORADOR'
                                 ? { hora_saida: '' }
-                                : { entrega_material: false, nf_verificada: false }),
+                                : { entrega_material: false, nf_verificada: false, vai_almoxarifado: null }),
                             }))
                           }
                           className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${

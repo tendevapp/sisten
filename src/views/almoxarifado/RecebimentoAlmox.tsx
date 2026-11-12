@@ -23,7 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, FileDown, FileSpreadsheet, HardHat, Loader2,
-  ClipboardList, ClipboardPlus, DoorOpen, GraduationCap, MessageSquareReply, PackageCheck, PackageMinus, PackageX, Plus, RefreshCw, Search, ShieldAlert, ShoppingCart, Truck, X,
+  Ban, ClipboardList, ClipboardPlus, DoorOpen, GraduationCap, MessageSquareReply, PackageCheck, PackageMinus, PackageX, Plus, RefreshCw, Search, ShieldAlert, ShoppingCart, Truck, X,
 } from 'lucide-react';
 import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -47,7 +47,7 @@ import {
   type LinhaCacheSAP, type TipoDivergencia, type TipoEmbalagem,
 } from '../../lib/recebimentoAlmox';
 import {
-  assinarEvidencias, assinarFotosPortaria, informarNaoChegou, carregarLinhasPedido, editarCarga, editarConferencia, editarNc,
+  assinarEvidencias, assinarFotosPortaria, informarNaoChegou, informarNaoSeAplica,carregarLinhasPedido, editarCarga, editarConferencia, editarNc,
   excluirCarga, excluirConferencia, excluirNcAberta, hojeISO, listarAlteracoes, listarCargas, listarConferencias,
   listarNaoConformidades, listarTransportadorasSugeridas, marcarEncaminhadoProjetos,
   registrarCarga, registrarConferencia, registrarNcAvulsa, sincronizarChegadaItensConferidos, subirEvidencia, atualizarNaoConformidade,
@@ -140,7 +140,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   const [ncEd, setNcEd] = useState<NaoConformidadeRow | null>(null);
   const [ncNova, setNcNova] = useState(false);
   /** Entrega da portaria que o almoxarifado vai marcar como "não chegou". */
-  const [naoChegou, setNaoChegou] = useState<CargaRow | null>(null);
+  /** Entrega da portaria sendo fechada sem contagem: não chegou, ou não se aplica ao almox. */
+  const [fechandoEntrega, setFechandoEntrega] = useState<{ carga: CargaRow; modo: ModoFecharEntrega } | null>(null);
   const [detalhe, setDetalhe] = useState<
     | { tipo: 'carga'; row: CargaRow }
     | { tipo: 'conferencia'; row: ConferenciaRow }
@@ -313,8 +314,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       row={detalhe.row}
       cargas={cargas}
       podeEditar={true}
-      onNaoChegou={detalhe.tipo === 'carga' && detalhe.row.status === 'aguardando_almox'
-        ? () => { setNaoChegou(detalhe.row as CargaRow); setDetalhe(null); }
+      onFecharEntrega={detalhe.tipo === 'carga' && detalhe.row.status === 'aguardando_almox'
+        ? (modo) => { setFechandoEntrega({ carga: detalhe.row as CargaRow, modo }); setDetalhe(null); }
         : undefined}
       onEditar={() => {
         if (detalhe.tipo === 'carga') setForm({ tipo: 'carga', registro: detalhe.row });
@@ -337,7 +338,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
           onVoltar={voltarAoHub}
           onNova={() => setForm({ tipo: 'carga' })}
           onEditar={(row) => setForm({ tipo: 'carga', registro: row })}
-          onNaoChegou={(row) => setNaoChegou(row)}
+          onFecharEntrega={(row, modo) => setFechandoEntrega({ carga: row, modo })}
           onAbrir={(row) => setDetalhe({ tipo: 'carga', row })}
           onRecarregar={recarregar}
           onExcluir={async (id, codigo) => {
@@ -355,12 +356,13 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
             onSalvo={async () => { setForm(null); await recarregar(); }}
           />
         )}
-        {naoChegou && (
-          <ModalNaoChegou
+        {fechandoEntrega && (
+          <ModalFecharEntrega
             user={user}
-            carga={naoChegou}
-            onClose={() => setNaoChegou(null)}
-            onSalvo={async () => { setNaoChegou(null); await recarregar(); }}
+            carga={fechandoEntrega.carga}
+            modo={fechandoEntrega.modo}
+            onClose={() => setFechandoEntrega(null)}
+            onSalvo={async () => { setFechandoEntrega(null); await recarregar(); }}
           />
         )}
         {detalheModal}
@@ -798,7 +800,7 @@ function ListaAgrupada<T>({
 // ===========================================================================
 
 function VistaFichaCega({
-  cargas, loading, podeEditar, podeExcluir, onVoltar, onNova, onEditar, onNaoChegou, onAbrir, onRecarregar, onExcluir,
+  cargas, loading, podeEditar, podeExcluir, onVoltar, onNova, onEditar, onFecharEntrega, onAbrir, onRecarregar, onExcluir,
 }: {
   cargas: CargaRow[];
   loading: boolean;
@@ -807,7 +809,7 @@ function VistaFichaCega({
   onVoltar: () => void;
   onNova: () => void;
   onEditar: (row: CargaRow) => void;
-  onNaoChegou: (row: CargaRow) => void;
+  onFecharEntrega: (row: CargaRow, modo: ModoFecharEntrega) => void;
   onAbrir: (row: CargaRow) => void;
   onRecarregar: () => void;
   onExcluir: (id: string, codigo: string) => void;
@@ -878,6 +880,10 @@ function VistaFichaCega({
               <p className="mt-1.5 text-[11px] italic" style={{ color: 'var(--status-critical)' }}>
                 Não chegou: {c.nao_chegou_motivo}
               </p>
+            ) : c.status === 'nao_se_aplica' ? (
+              <p className="mt-1.5 text-[11px] italic" style={{ color: 'var(--ink-muted)' }}>
+                Não se aplica ao almoxarifado: {c.nao_se_aplica_motivo}
+              </p>
             ) : aguardando && c.portaria_resumo ? (
               <p className="mt-1.5 line-clamp-2 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
                 {c.portaria_resumo}{fotosPortaria ? ` · ${fotosPortaria} foto(s) da portaria` : ''}
@@ -891,11 +897,14 @@ function VistaFichaCega({
         <AcaoCard onClick={() => onAbrir(c)} cor="var(--ink-muted)">Detalhes</AcaoCard>
         {aguardando ? (
           <>
-            <AcaoCard onClick={() => onNaoChegou(c)} cor="var(--status-critical)">Não chegou</AcaoCard>
+            <AcaoCard onClick={() => onFecharEntrega(c, 'nao_se_aplica')} cor="var(--ink-secondary)">Não se aplica</AcaoCard>
+            <AcaoCard onClick={() => onFecharEntrega(c, 'nao_chegou')} cor="var(--status-critical)">Não chegou</AcaoCard>
             <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">Confirmar e preencher</AcaoCard>
           </>
         ) : (
-          <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">{c.status === 'nao_chegou' ? 'Chegou depois' : 'Editar'}</AcaoCard>
+          <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">
+            {c.status === 'nao_chegou' ? 'Chegou depois' : c.status === 'nao_se_aplica' ? 'Era do almox' : 'Editar'}
+          </AcaoCard>
         )}
         {podeExcluir(c) && !aguardando && (
           <AcaoCard onClick={() => onExcluir(c.id, c.codigo)} cor="var(--status-critical)">Excluir</AcaoCard>
@@ -937,7 +946,7 @@ function VistaFichaCega({
                 Entregas registradas pela portaria ({pendentes.length})
               </h3>
               <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                A portaria marcou entrega de material na entrada. Confirme fazendo a contagem cega, ou informe que não chegou.
+                A portaria marcou entrega de material na entrada. Confirme fazendo a contagem cega, informe que não chegou, ou feche como "não se aplica" quando a entrega não era para o almoxarifado (não conta contra o almox).
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {pendentes.map(renderCarga)}
@@ -1583,10 +1592,37 @@ function PainelPortaria({ carga, onAbrir }: {
   );
 }
 
-/** Almoxarifado informa que a entrega registrada pela portaria não chegou. */
-function ModalNaoChegou({ user, carga, onClose, onSalvo }: {
+/** Como a entrega da portaria é fechada sem contagem. */
+type ModoFecharEntrega = 'nao_chegou' | 'nao_se_aplica';
+
+const TEXTO_FECHAR_ENTREGA: Record<ModoFecharEntrega, {
+  titulo: string; pergunta: string; exemplo: string; ajuda: string; botao: string; sucesso: string; cor: string;
+}> = {
+  nao_chegou: {
+    titulo: 'Material não chegou',
+    pergunta: 'O que aconteceu?',
+    exemplo: 'EX: VEÍCULO NÃO PASSOU NA DOCA · DESCARREGOU NA PRODUÇÃO · FOI EMBORA',
+    ajuda: 'A ficha fica registrada como "não chegou". Se o material aparecer depois, use "Chegou depois" e faça a contagem.',
+    botao: 'Registrar que não chegou',
+    sucesso: 'registrado que o material não chegou',
+    cor: 'var(--status-critical)',
+  },
+  nao_se_aplica: {
+    titulo: 'Não se aplica ao almoxarifado',
+    pergunta: 'Por que não é do almoxarifado?',
+    exemplo: 'EX: MERCADORIA DO REFEITÓRIO · MATERIAL DA MANUTENÇÃO · PORTARIA MARCOU ENTREGA POR ENGANO',
+    ajuda: 'Fecha a ficha sem contagem e sem contar contra o almoxarifado — não é divergência nem "não chegou". Se depois se mostrar que era do almox, use "Era do almox" e faça a contagem.',
+    botao: 'Fechar como não se aplica',
+    sucesso: 'fechada como não se aplica',
+    cor: 'var(--ink-secondary)',
+  },
+};
+
+/** Almoxarifado fecha a entrega da portaria sem contagem: não chegou, ou não era para o almox. */
+function ModalFecharEntrega({ user, carga, modo, onClose, onSalvo }: {
   user: Profile;
   carga: CargaRow;
+  modo: ModoFecharEntrega;
   onClose: () => void;
   onSalvo: () => void;
 }) {
@@ -1594,12 +1630,15 @@ function ModalNaoChegou({ user, carga, onClose, onSalvo }: {
   const idMotivo = React.useId();
   const [motivo, setMotivo] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const t = TEXTO_FECHAR_ENTREGA[modo];
   const salvar = async () => {
-    if (motivo.trim().length < 5) { toast.error('Explique o que aconteceu (mínimo 5 caracteres).'); return; }
+    if (motivo.trim().length < 5) { toast.error('Explique o motivo (mínimo 5 caracteres).'); return; }
     setSalvando(true);
     try {
-      await informarNaoChegou(carga.id, motivo.trim(), { id: user.id, nome: user.name });
-      toast.success(`${carga.codigo}: registrado que o material não chegou.`);
+      const quem = { id: user.id, nome: user.name };
+      if (modo === 'nao_se_aplica') await informarNaoSeAplica(carga.id, motivo.trim(), quem);
+      else await informarNaoChegou(carga.id, motivo.trim(), quem);
+      toast.success(`${carga.codigo}: ${t.sucesso}.`);
       onSalvo();
     } catch (err: any) {
       toast.error(err?.message || 'Não foi possível registrar.');
@@ -1608,9 +1647,9 @@ function ModalNaoChegou({ user, carga, onClose, onSalvo }: {
     }
   };
   return (
-    <Modal onClose={() => !salvando && onClose()} maxWidth="max-w-lg" ariaLabel={`Não chegou — ${carga.codigo}`}>
+    <Modal onClose={() => !salvando && onClose()} maxWidth="max-w-lg" ariaLabel={`${t.titulo} — ${carga.codigo}`}>
       <ModalHeader onClose={() => !salvando && onClose()}>
-        <h3 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>Material não chegou — {carga.codigo}</h3>
+        <h3 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>{t.titulo} — {carga.codigo}</h3>
         <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
           {carga.transportadora}{carga.veiculo_placa ? ` · ${carga.veiculo_placa}` : ''}{carga.hora ? ` · portaria às ${carga.hora.slice(0, 5)}` : ''}
         </p>
@@ -1618,7 +1657,7 @@ function ModalNaoChegou({ user, carga, onClose, onSalvo }: {
       <ModalBody>
         <div className="space-y-2">
           <label htmlFor={idMotivo} className="block text-xs font-bold" style={{ color: 'var(--ink-secondary)' }}>
-            O que aconteceu?
+            {t.pergunta}
           </label>
           <textarea
             id={idMotivo}
@@ -1626,10 +1665,10 @@ function ModalNaoChegou({ user, carga, onClose, onSalvo }: {
             onChange={(e) => setMotivo(e.target.value.toUpperCase())}
             rows={3}
             className={`${inputCls} uppercase`}
-            placeholder="EX: VEÍCULO NÃO PASSOU NA DOCA · DESCARREGOU NA PRODUÇÃO · ENTREGA ERA DE OUTRO SETOR"
+            placeholder={t.exemplo}
           />
           <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            A ficha fica registrada como "não chegou". Se o material aparecer depois, use "Chegou depois" e faça a contagem.
+            {t.ajuda}
           </p>
         </div>
       </ModalBody>
@@ -1637,8 +1676,8 @@ function ModalNaoChegou({ user, carga, onClose, onSalvo }: {
         <button onClick={onClose} disabled={salvando} className="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
           Cancelar
         </button>
-        <button onClick={() => void salvar()} disabled={salvando} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50" style={{ background: 'var(--status-critical)' }}>
-          {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageX className="h-4 w-4" />} Registrar que não chegou
+        <button onClick={() => void salvar()} disabled={salvando} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50" style={{ background: t.cor }}>
+          {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : modo === 'nao_se_aplica' ? <Ban className="h-4 w-4" /> : <PackageX className="h-4 w-4" />} {t.botao}
         </button>
       </ModalFooter>
     </Modal>
@@ -1646,7 +1685,7 @@ function ModalNaoChegou({ user, carga, onClose, onSalvo }: {
 }
 
 function ModalDetalhe({
-  user, tipo, row, cargas, podeEditar, onEditar, onNaoChegou, onClose,
+  user, tipo, row, cargas, podeEditar, onEditar, onFecharEntrega, onClose,
 }: {
   user: Profile;
   tipo: 'carga' | 'conferencia' | 'nc';
@@ -1655,7 +1694,7 @@ function ModalDetalhe({
   podeEditar: boolean;
   onEditar: () => void;
   /** Só na entrega da portaria aguardando o almoxarifado. */
-  onNaoChegou?: () => void;
+  onFecharEntrega?: (modo: ModoFecharEntrega) => void;
   onClose: () => void;
 }) {
   const lb = useLightbox();
@@ -1742,6 +1781,7 @@ function ModalDetalhe({
                 <DetLinha rotulo="Status" valor={<StatusChip texto={rotuloStatusCarga(c.status)} tom={c.divergencia || c.status === 'nao_chegou' ? 'alerta' : c.status === 'aguardando_almox' ? 'atencao' : 'neutro'} />} />
                 <DetLinha rotulo="Confirmada por" valor={c.almox_confirmado_por ? `${c.almox_confirmado_por}${c.almox_confirmado_em ? ` · ${formatDateTimeBR(c.almox_confirmado_em)}` : ''}` : ''} />
                 <DetLinha rotulo="Não chegou" valor={c.nao_chegou_motivo ? `${c.nao_chegou_motivo} — ${c.nao_chegou_por ?? ''}${c.nao_chegou_em ? ` · ${formatDateTimeBR(c.nao_chegou_em)}` : ''}` : ''} />
+                <DetLinha rotulo="Não se aplica" valor={c.nao_se_aplica_motivo ? `${c.nao_se_aplica_motivo} — ${c.nao_se_aplica_por ?? ''}${c.nao_se_aplica_em ? ` · ${formatDateTimeBR(c.nao_se_aplica_em)}` : ''}` : ''} />
                 <DetLinha rotulo="Observação" valor={c.observacao} />
                 <DetLinha rotulo="Criado por" valor={c.criado_por_nome} />
               </div>
@@ -1991,14 +2031,23 @@ function ModalDetalhe({
           <FileDown className="h-4 w-4" />
           Visualizar PDF
         </button>
-        {onNaoChegou && (
-          <button
-            onClick={onNaoChegou}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border"
-            style={{ borderColor: 'var(--status-critical)', color: 'var(--status-critical)' }}
-          >
-            <PackageX className="h-4 w-4" /> Não chegou
-          </button>
+        {onFecharEntrega && (
+          <>
+            <button
+              onClick={() => onFecharEntrega('nao_se_aplica')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border"
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+            >
+              <Ban className="h-4 w-4" /> Não se aplica
+            </button>
+            <button
+              onClick={() => onFecharEntrega('nao_chegou')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border"
+              style={{ borderColor: 'var(--status-critical)', color: 'var(--status-critical)' }}
+            >
+              <PackageX className="h-4 w-4" /> Não chegou
+            </button>
+          </>
         )}
         {podeEditar && (
           <button onClick={onEditar} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white" style={{ background: 'var(--brand)' }}>
@@ -2168,7 +2217,7 @@ function ModalFichaCega({
   const [declarada, setDeclarada] = useState(numTxt(ed?.qtd_volumes_declarada));
   const [contada, setContada] = useState(ed?.qtd_volumes_contada != null ? String(ed.qtd_volumes_contada) : '');
   /** Ficha aberta pela portaria, sem contagem ainda: o salvar confirma a entrega. */
-  const confirmando = !!ed && (ed.status === 'aguardando_almox' || ed.status === 'nao_chegou');
+  const confirmando = !!ed && (ed.status === 'aguardando_almox' || ed.status === 'nao_chegou' || ed.status === 'nao_se_aplica');
   const lbPortaria = useLightbox();
   const [embalagem, setEmbalagem] = useState<TipoEmbalagem | ''>(ed?.tipo_embalagem ?? '');
   const [lacre, setLacre] = useState(ed?.lacre_integro ?? true);

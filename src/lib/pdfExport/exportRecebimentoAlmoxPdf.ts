@@ -151,6 +151,9 @@ export async function gerarFichaCegaPdf(c: CargaRow): Promise<PdfGerado> {
   if (c.status === 'nao_chegou') {
     w.drawCallout('Material não chegou', `${c.nao_chegou_motivo || '-'}${c.nao_chegou_por ? ` — ${c.nao_chegou_por}` : ''}${c.nao_chegou_em ? ` · ${formatDateTimeBR(c.nao_chegou_em)}` : ''}`);
   }
+  if (c.status === 'nao_se_aplica') {
+    w.drawCallout('Não se aplica ao almoxarifado', `${c.nao_se_aplica_motivo || '-'}${c.nao_se_aplica_por ? ` — ${c.nao_se_aplica_por}` : ''}${c.nao_se_aplica_em ? ` · ${formatDateTimeBR(c.nao_se_aplica_em)}` : ''}`);
+  }
 
   if (c.avaria_aparente) w.drawCallout('Avaria aparente', c.avaria_descricao || 'Sim, sem descrição.');
   if (c.observacao) w.drawCallout('Observação', c.observacao);

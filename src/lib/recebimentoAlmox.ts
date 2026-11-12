@@ -710,6 +710,7 @@ export const ROTULO_STATUS_CARGA: Record<string, string> = {
   divergente: 'Divergente',
   aguardando_almox: 'Aguardando almoxarifado',
   nao_chegou: 'Não chegou',
+  nao_se_aplica: 'Não se aplica',
 };
 
 export function rotuloStatusCarga(status: string): string {

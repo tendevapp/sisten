@@ -7,6 +7,7 @@ describe('ficha cega aberta pela portaria', () => {
   it('rótulos de status, inclusive os novos', () => {
     expect(rotuloStatusCarga('aguardando_almox')).toBe('Aguardando almoxarifado');
     expect(rotuloStatusCarga('nao_chegou')).toBe('Não chegou');
+    expect(rotuloStatusCarga('nao_se_aplica')).toBe('Não se aplica');
     expect(rotuloStatusCarga('recebida')).toBe('Recebida');
     expect(rotuloStatusCarga('outro')).toBe('outro');
   });

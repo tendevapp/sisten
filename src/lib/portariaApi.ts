@@ -583,7 +583,7 @@ const COLUNAS_OCORRENCIA_LISTA = [
   'local_setor', 'descricao', 'severidade', 'vigilante', 'empresa', 'nome_pessoa', 'documento_cpf',
   'documento_cnh', 'placa', 'autorizado_por', 'fara_briefing', 'motivo_observacao', 'pessoas',
   'veiculo_leve_id', 'veiculo_leve_modelo', 'condutor_pessoa_id', 'condutor_origem',
-  'fotos', 'fotos_nf', 'entrega_material', 'nf_verificada', 'tem_foto_legado',
+  'fotos', 'fotos_nf', 'entrega_material', 'nf_verificada', 'vai_almoxarifado', 'tem_foto_legado',
   'created_at', 'excluido_em', 'excluido_por',
 ].join(', ');
 
@@ -794,6 +794,7 @@ export async function adicionarOcorrencia(
     fotos_nf: semUrlFotos(dados.fotos_nf),
     entrega_material: dados.entrega_material ?? false,
     nf_verificada: dados.nf_verificada ?? false,
+    vai_almoxarifado: dados.entrega_material ? (dados.vai_almoxarifado ?? null) : null,
   };
 
   const { data, error } = await dbOcorrencias()
@@ -887,6 +888,7 @@ export async function atualizarOcorrencia(
     'foto_url', 'empresa', 'nome_pessoa', 'documento_cpf', 'documento_cnh', 'placa',
     'autorizado_por', 'fara_briefing', 'motivo_observacao', 'pessoas', 'veiculo_leve_id',
     'veiculo_leve_modelo', 'condutor_pessoa_id', 'condutor_origem', 'entrega_material', 'nf_verificada',
+    'vai_almoxarifado',
   ]) {
     if (campo in dados) payload[campo] = (dados as any)[campo];
   }
@@ -967,6 +969,7 @@ export function formatarTextoOcorrencia(dados: {
   veiculo_leve_modelo?: string;
   entrega_material?: boolean;
   nf_verificada?: boolean;
+  vai_almoxarifado?: boolean | null;
 }): string {
   const h = dados.horario ? `${dados.horario} - ` : '';
   const emp = dados.empresa ? `${dados.empresa.trim().toUpperCase()}` : '';
@@ -991,7 +994,7 @@ export function formatarTextoOcorrencia(dados: {
   const mot = dados.motivo_observacao ? ` - ${dados.motivo_observacao.trim().toUpperCase()}` : '';
   const briefingTag = dados.fara_briefing ? ' [BRIEFING PENDENTE]' : '';
   const entregaTag = dados.entrega_material && aceitaEntregaMaterial(dados.tipo_registro)
-    ? ` [ENTREGA DE MATERIAL${dados.nf_verificada ? ' - NF VERIFICADA' : ''}]`
+    ? ` [ENTREGA DE MATERIAL${dados.nf_verificada ? ' - NF VERIFICADA' : ''}${dados.vai_almoxarifado === false ? ' - NÃO VAI AO ALMOXARIFADO' : ''}]`
     : '';
   const saidaTag = dados.hora_saida
     ? ` (Saída registrada às ${dados.hora_saida}${dados.vigilante_saida ? ` por ${dados.vigilante_saida.toUpperCase()}` : ''})`
@@ -2290,11 +2293,12 @@ export interface FichaCegaDaOcorrencia {
   almox_confirmado_por: string | null;
   almox_confirmado_em: string | null;
   nao_chegou_motivo: string | null;
+  nao_se_aplica_motivo?: string | null;
 }
 
 export async function fichaCegaDaOcorrencia(ocorrenciaId: string): Promise<FichaCegaDaOcorrencia | null> {
   const { data, error } = await (supabase.from as any)('alm_receb_cargas')
-    .select('codigo, status, qtd_volumes_contada, almox_confirmado_por, almox_confirmado_em, nao_chegou_motivo')
+    .select('codigo, status, qtd_volumes_contada, almox_confirmado_por, almox_confirmado_em, nao_chegou_motivo, nao_se_aplica_motivo')
     .eq('port_ocorrencia_id', ocorrenciaId)
     .eq('excluido', false)
     .maybeSingle();

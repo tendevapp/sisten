@@ -49,9 +49,10 @@ export function fotosDaOcorrencia(oc: ComFotos): FotoOcorrencia[] {
 }
 
 /**
- * Entrega da PRC (refeitório) é recebida pela cozinha, não pelo almoxarifado:
- * o lançamento continua com "entrega de material" e NF, mas não abre ficha
- * cega. Mesma regra do banco em `port_empresa_sem_ficha_cega` — mudar os dois.
+ * Entrega da PRC (refeitório) é recebida pela cozinha, não pelo almoxarifado.
+ * No formulário ela só pré-marca "Não" em "Vai para o Almoxarifado?"; no banco
+ * (`port_empresa_sem_ficha_cega`) decide quando o lançamento não tem resposta
+ * (antigo ou de aparelho com versão anterior). Mudar os dois juntos.
  */
 const EMPRESAS_SEM_FICHA_CEGA = /(^|[^A-Z0-9])P\.?R\.?C($|[^A-Z0-9])/;
 
@@ -65,16 +66,19 @@ export interface ValidacaoEntrega {
 }
 
 /**
- * Entrada com entrega de material exige NF conferida pela portaria e ao menos
- * uma foto da nota. `fotosNf` conta as já salvas e as novas do formulário.
+ * Entrada com entrega de material exige a resposta "Vai para o Almoxarifado?",
+ * NF conferida pela portaria e ao menos uma foto da nota. `fotosNf` conta as
+ * já salvas e as novas do formulário.
  */
 export function validarEntregaMaterial(dados: {
   tipo: PortTipoRegistroOcorrencia;
   entrega_material: boolean;
   nf_verificada: boolean;
   fotosNf: number;
+  vai_almoxarifado: boolean | null;
 }): ValidacaoEntrega {
   if (!aceitaEntregaMaterial(dados.tipo) || !dados.entrega_material) return { ok: true };
+  if (dados.vai_almoxarifado === null) return { ok: false, erro: 'Entrega de material: responda se vai para o Almoxarifado.' };
   if (!dados.nf_verificada) return { ok: false, erro: 'Entrega de material: confirme que a nota fiscal foi verificada.' };
   if (dados.fotosNf < 1) return { ok: false, erro: 'Entrega de material: tire a foto da(s) nota(s) fiscal(is).' };
   return { ok: true };
