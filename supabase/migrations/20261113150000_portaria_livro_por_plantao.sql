@@ -75,8 +75,8 @@ begin
 
   update public.port_relatorio_portaria
      set plantao_id = v_noturno.id,
-         horario_inicio = v_noturno.horario_inicio,
-         horario_fim = v_noturno.horario_fim,
+         horario_inicio = v_noturno.horario_inicio::time,
+         horario_fim = v_noturno.horario_fim::time,
          status = case when v_noturno.status = 'CONCLUIDO' then 'CONCLUIDO' else status end,
          updated_at = now()
    where id = v_livro_noite;
@@ -85,7 +85,7 @@ begin
     codigo_formulario, numero_protocolo, data, turno, horario_inicio, horario_fim,
     vigilante_principal, vigilante_ronda01, vigilante_ronda02, status, criado_por, plantao_id
   ) values (
-    'FRM.SGP-0010', 'REL-131126-DIU', v_diurno.data, 'DIURNO', v_diurno.horario_inicio, v_diurno.horario_fim,
+    'FRM.SGP-0010', 'REL-131126-DIU', v_diurno.data, 'DIURNO', v_diurno.horario_inicio::time, v_diurno.horario_fim::time,
     coalesce(v_diurno.vigilante_portaria, ''), v_diurno.vigilante_ronda01, v_diurno.vigilante_ronda02,
     case when v_diurno.status = 'CONCLUIDO' then 'CONCLUIDO' else 'EM_ANDAMENTO' end,
     v_diurno.criado_por, v_diurno.id
