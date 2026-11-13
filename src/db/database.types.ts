@@ -4865,6 +4865,7 @@ export type Database = {
           id: string
           numero_protocolo: string
           observacoes_gerais: string | null
+          plantao_id: string | null
           status: string
           turno: string
           updated_at: string
@@ -4884,6 +4885,7 @@ export type Database = {
           id?: string
           numero_protocolo: string
           observacoes_gerais?: string | null
+          plantao_id?: string | null
           status?: string
           turno?: string
           updated_at?: string
@@ -4903,6 +4905,7 @@ export type Database = {
           id?: string
           numero_protocolo?: string
           observacoes_gerais?: string | null
+          plantao_id?: string | null
           status?: string
           turno?: string
           updated_at?: string

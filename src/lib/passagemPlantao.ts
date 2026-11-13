@@ -2,7 +2,74 @@
  * Passagem de Plantão: o que o plantão novo herda do anterior quando a
  * equipe que chega fecha o plantão aberto (FRM.SGP-0010).
  */
-import type { PortItemConferido, PortMaterialSeguranca, PortPassagemPlantao } from '../types';
+import type {
+  PortItemConferido, PortMaterialSeguranca, PortPassagemPlantao, PortRelatorioPortaria, PortTurno,
+} from '../types';
+
+const TURNOS_DO_LIVRO: readonly PortTurno[] = ['MANHA', 'TARDE', 'NOITE', 'DIURNO', 'NOTURNO', 'TURNO_A', 'TURNO_B', 'TURNO_C'];
+
+/** Turno do livro de ocorrências a partir do turno do plantão (DIURNO/NOTURNO). */
+export function turnoDoLivro(turnoPlantao: string | null | undefined): PortTurno {
+  const t = (turnoPlantao || '').trim().toUpperCase() as PortTurno;
+  return TURNOS_DO_LIVRO.includes(t) ? t : 'DIURNO';
+}
+
+export type DestinoLancamento =
+  | { tipo: 'existente'; livroId: string }
+  | { tipo: 'novo'; livro: Partial<PortRelatorioPortaria> };
+
+/**
+ * Em que livro de ocorrências entra um lançamento novo: o livro é do PLANTÃO.
+ *
+ * - Há plantão em aberto na Passagem de Plantão: vai para o livro dele, ou
+ *   abre um com a data, o turno e o horário do plantão. Encerrado o plantão,
+ *   o próximo lançamento já cai no livro do plantão seguinte — antes o livro
+ *   era do dia, e a ronda da madrugada do noturno abria o livro em que todo o
+ *   diurno era lançado.
+ * - Nenhum plantão aberto: livro em andamento do dia que não pertence a
+ *   plantão nenhum (como era antes), ou um novo.
+ *
+ * `livros` são os candidatos já buscados: os do plantão ou os do dia.
+ */
+export function destinoDoLancamento(params: {
+  plantao: PortPassagemPlantao | null;
+  livros: PortRelatorioPortaria[];
+  hoje: string;
+  turnoAgora: PortTurno;
+  vigilante: string;
+  usuarioId: string;
+}): DestinoLancamento {
+  const { plantao, livros, hoje, turnoAgora, vigilante, usuarioId } = params;
+
+  if (plantao) {
+    const doPlantao = livros.find((l) => l.plantao_id === plantao.id && !l.excluido_em);
+    if (doPlantao) return { tipo: 'existente', livroId: doPlantao.id };
+    return {
+      tipo: 'novo',
+      livro: {
+        plantao_id: plantao.id,
+        data: plantao.data,
+        turno: turnoDoLivro(plantao.turno),
+        horario_inicio: plantao.horario_inicio,
+        horario_fim: plantao.horario_fim,
+        vigilante_principal: plantao.vigilante_portaria || vigilante,
+        vigilante_ronda01: plantao.vigilante_ronda01,
+        vigilante_ronda02: plantao.vigilante_ronda02,
+        // Autor do livro = quem abriu o plantão (é quem edita os lançamentos).
+        criado_por: plantao.criado_por || usuarioId,
+      },
+    };
+  }
+
+  const doDia = livros.find(
+    (l) => l.data === hoje && l.status === 'EM_ANDAMENTO' && !l.excluido_em && !l.plantao_id,
+  );
+  if (doDia) return { tipo: 'existente', livroId: doDia.id };
+  return {
+    tipo: 'novo',
+    livro: { data: hoje, turno: turnoAgora, vigilante_principal: vigilante, criado_por: usuarioId },
+  };
+}
 
 /**
  * Quem entrega o posto é a equipe do plantão anterior: a Portaria e o

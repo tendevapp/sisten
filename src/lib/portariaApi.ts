@@ -46,6 +46,7 @@ import type {
 } from '../types';
 import { gerarCodigoFormulario, proximoIndiceCodigo } from './codigosFormulario';
 import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
+import { destinoDoLancamento } from './passagemPlantao';
 
 export function formatarDataDDMMAA(dataISO?: string | null): string {
   if (!dataISO || !/^\d{4}-\d{2}-\d{2}$/.test(dataISO)) {
@@ -737,6 +738,7 @@ export async function criarRelatorio(dados: Partial<PortRelatorioPortaria>): Pro
         status: dados.status || 'EM_ANDAMENTO',
         observacoes_gerais: dados.observacoes_gerais || null,
         criado_por: dados.criado_por || null,
+        ...(dados.plantao_id ? { plantao_id: dados.plantao_id } : {}),
       })
       .select('*')
       .single(),
@@ -745,6 +747,51 @@ export async function criarRelatorio(dados: Partial<PortRelatorioPortaria>): Pro
     dataRelatorio,
   );
   return { ...data, ocorrencias: [] } as PortRelatorioPortaria;
+}
+
+/**
+ * Livro criado neste aparelho para cada plantão. Sem rede o livro novo vai
+ * para a fila e a busca seguinte ainda não o enxerga; sem isto o segundo
+ * lançamento offline abriria outro livro para o mesmo plantão.
+ */
+const livroCriadoPorPlantao = new Map<string, string>();
+
+/**
+ * Livro que recebe um lançamento novo: o do plantão em aberto na Passagem de
+ * Plantão (aberto na hora se ainda não existe) — regra em
+ * `destinoDoLancamento` (lib/passagemPlantao.ts).
+ */
+export async function livroParaNovoLancamento(dados: { vigilante: string; usuarioId: string }): Promise<string> {
+  const plantao = await ultimoPlantaoEmAberto();
+  const hoje = hojeISO();
+
+  let consulta = supabase
+    .from('port_relatorio_portaria')
+    .select('id, data, status, excluido_em, plantao_id')
+    .is('excluido_em', null)
+    .order('created_at', { ascending: true })
+    .limit(20);
+  consulta = plantao
+    ? consulta.eq('plantao_id', plantao.id)
+    : consulta.eq('data', hoje).eq('status', 'EM_ANDAMENTO').is('plantao_id', null);
+  const { data: livros, error } = await consulta;
+  if (error) throw new Error(error.message);
+
+  const destino = destinoDoLancamento({
+    plantao,
+    livros: (livros || []) as PortRelatorioPortaria[],
+    hoje,
+    turnoAgora: sugerirTurno(),
+    vigilante: dados.vigilante,
+    usuarioId: dados.usuarioId,
+  });
+  if (destino.tipo === 'existente') return destino.livroId;
+
+  const jaCriado = plantao ? livroCriadoPorPlantao.get(plantao.id) : undefined;
+  if (jaCriado) return jaCriado;
+  const novo = await criarRelatorio(destino.livro);
+  if (plantao) livroCriadoPorPlantao.set(plantao.id, novo.id);
+  return novo.id;
 }
 
 export async function atualizarRelatorio(id: string, dados: Partial<PortRelatorioPortaria>): Promise<PortRelatorioPortaria> {

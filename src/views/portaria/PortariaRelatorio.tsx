@@ -28,9 +28,10 @@ import type {
   Profile, PortRelatorioPortaria, PortRelatorioOcorrencia,
   PortRelatorioStatus, PortTurno, PortLocalSetor, PortSeveridade,
   PortTipoRegistroOcorrencia, PortPessoaVeiculoHistorico, RhPessoa,
-  PortStatusPermanencia, FacVeiculoLeve, PortAlcoolemiaFoto
+  PortStatusPermanencia, FacVeiculoLeve, PortAlcoolemiaFoto, PortPassagemPlantao
 } from '../../types';
 import * as api from '../../lib/portariaApi';
+import { horaCurta, trocarHorariosNaDescricao, validarHorariosOcorrencia } from '../../lib/portariaHorarioOcorrencia';
 import { ocorrenciaCombina, trechosDestacados } from '../../lib/portariaBuscaOcorrencias';
 import {
   aceitaEntregaMaterial, contarFotosOcorrencia, empresaSemFichaCega, fotosDaOcorrencia, validarEntregaMaterial,
@@ -326,23 +327,6 @@ const PORTARIA_OCORRENCIA_NOVO_TOUR_STEPS: TourStep[] = [
   },
 ];
 
-/**
- * Um novo lançamento pertence sempre ao livro em andamento da sua própria
- * data. O livro apenas selecionado na tela pode ser de outro dia e nunca deve
- * receber a ocorrência por esse motivo.
- */
-export function localizarRelatorioDoLancamento(
-  relatorios: PortRelatorioPortaria[],
-  data: string,
-): PortRelatorioPortaria | null {
-  return relatorios.find(
-    (relatorio) =>
-      relatorio.data === data &&
-      relatorio.status === 'EM_ANDAMENTO' &&
-      !relatorio.excluido_em,
-  ) || null;
-}
-
 export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const toast = useToast();
   const lightbox = useLightbox();
@@ -382,6 +366,16 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
   // Modais
   const [modalNovaOcorrencia, setModalNovaOcorrencia] = useState(false);
+  /** Plantão em aberto: dono do livro que recebe o lançamento novo (aviso no formulário). */
+  const [plantaoAberto, setPlantaoAberto] = useState<PortPassagemPlantao | null | undefined>(undefined);
+  useEffect(() => {
+    if (!modalNovaOcorrencia) return;
+    let ativo = true;
+    api.ultimoPlantaoEmAberto()
+      .then((p) => { if (ativo) setPlantaoAberto(p); })
+      .catch(() => { if (ativo) setPlantaoAberto(null); });
+    return () => { ativo = false; };
+  }, [modalNovaOcorrencia]);
 
   const tour = usePageTour('portaria-relatorio', PORTARIA_RELATORIO_TOUR_STEPS.length, !modalNovaOcorrencia);
   const tourOcorrencia = usePageTour('portaria-relatorio-ocorrencia', PORTARIA_OCORRENCIA_NOVO_TOUR_STEPS.length, modalNovaOcorrencia);
@@ -390,6 +384,11 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const [ocorrenciaParaExcluir, setOcorrenciaParaExcluir] = useState<PortRelatorioOcorrencia | null>(null);
   const [ocorrenciaEmEdicao, setOcorrenciaEmEdicao] = useState<PortRelatorioOcorrencia | null>(null);
   const [ocorrenciaParaSaida, setOcorrenciaParaSaida] = useState<PortRelatorioOcorrencia | null>(null);
+  /** Correção rápida do horário de entrada (e de saída, se já houver) de um lançamento. */
+  const [ocorrenciaHorario, setOcorrenciaHorario] = useState<PortRelatorioOcorrencia | null>(null);
+  const [formHorario, setFormHorario] = useState({ entrada: '', saida: '' });
+  const idHorarioEntrada = React.useId();
+  const idHorarioSaida = React.useId();
   const [salvando, setSalvando] = useState(false);
 
   // Filtros de Linha do Tempo
@@ -971,6 +970,53 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     }
   };
 
+  const abrirModalHorario = (oc: PortRelatorioOcorrencia) => {
+    setOcorrenciaHorario(oc);
+    setFormHorario({ entrada: horaCurta(oc.horario), saida: horaCurta(oc.hora_saida) });
+  };
+
+  const handleSalvarHorario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const oc = ocorrenciaHorario;
+    if (!oc) return;
+    const temSaida = !!oc.hora_saida;
+    const erro = validarHorariosOcorrencia(formHorario.entrada, formHorario.saida, temSaida);
+    if (erro) {
+      toast.error(erro);
+      return;
+    }
+    const entradaMudou = formHorario.entrada !== horaCurta(oc.horario);
+    const saidaMudou = temSaida && formHorario.saida !== horaCurta(oc.hora_saida);
+    if (!entradaMudou && !saidaMudou) {
+      setOcorrenciaHorario(null);
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      await api.atualizarOcorrencia(oc.id, {
+        horario: formHorario.entrada,
+        ...(saidaMudou ? { hora_saida: formHorario.saida } : {}),
+        descricao: trocarHorariosNaDescricao(oc.descricao, {
+          entrada: formHorario.entrada,
+          saida: saidaMudou ? formHorario.saida : null,
+        }),
+      });
+      toast.success(`Horário corrigido para ${formHorario.entrada}${saidaMudou ? ` (saída ${formHorario.saida})` : ''}.`);
+      setOcorrenciaHorario(null);
+      void carregarSemSaida();
+      if (relatorioAtivo) {
+        const relAtualizado = await api.obterRelatorio(relatorioAtivo.id);
+        if (relAtualizado) setRelatorioAtivo(relAtualizado);
+        carregarRelatorios(relatorioAtivo.id);
+      }
+    } catch (err: any) {
+      toast.error('Erro ao corrigir o horário: ' + (err.message || ''));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   const handleSalvarOcorrencia = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -1016,29 +1062,11 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         }
         relId = livroDaOcorrencia;
       } else {
-        const dataLancamento = api.hojeISO();
-        const turnoLancamento = api.sugerirTurno();
-        const relatoriosDoLancamento = await api.listarRelatorios({
-          status: 'EM_ANDAMENTO',
-          dataInicio: dataLancamento,
-          dataFim: dataLancamento,
+        // O livro é do plantão em aberto na Passagem de Plantão, não do dia.
+        relId = await api.livroParaNovoLancamento({
+          vigilante: formOcorrencia.vigilante,
+          usuarioId: user.id,
         });
-        const relatorioDoLancamento = localizarRelatorioDoLancamento(
-          relatoriosDoLancamento,
-          dataLancamento,
-        );
-
-        if (relatorioDoLancamento) {
-          relId = relatorioDoLancamento.id;
-        } else {
-          const novoRel = await api.criarRelatorio({
-            data: dataLancamento,
-            turno: turnoLancamento,
-            vigilante_principal: formOcorrencia.vigilante,
-            criado_por: user.id,
-          });
-          relId = novoRel.id;
-        }
       }
 
       // Entrada de colaborador não fica "no pátio" aguardando saída.
@@ -2062,6 +2090,17 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                               </button>
                             )}
 
+                            {/* Corrigir horário: de qualquer vigilante, como Registrar Saída. */}
+                            <button
+                              type="button"
+                              aria-label={`Editar horário do lançamento das ${String(oc.horario).slice(0, 5)}`}
+                              title="Editar horário de entrada"
+                              onClick={() => abrirModalHorario(oc)}
+                              className="p-1.5 text-slate-500 hover:text-purple-600 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/50 transition-all"
+                            >
+                              <Clock className="h-4 w-4" />
+                            </button>
+
                             {podeEditarAtivo && (
                               <div className="flex items-center gap-1">
                                 <button aria-label="Editar ou reabrir lançamento"
@@ -2139,7 +2178,11 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {ocorrenciaEmEdicao
                       ? (relatorioAtivo ? `Livro ${relatorioAtivo.numero_protocolo} · Turno ${relatorioAtivo.turno}` : 'Livro da ocorrência')
-                      : `Será lançado no livro de ${api.hojeISO().split('-').reverse().join('/')} · Turno ${api.sugerirTurno()}`}
+                      : plantaoAberto
+                      ? `Será lançado no livro do plantão ${plantaoAberto.data.split('-').reverse().join('/')} · Turno ${plantaoAberto.turno}${plantaoAberto.vigilante_portaria ? ` · ${plantaoAberto.vigilante_portaria}` : ''}`
+                      : plantaoAberto === null
+                      ? `Nenhum plantão aberto na Passagem de Plantão — vai para o livro de ${api.hojeISO().split('-').reverse().join('/')}`
+                      : 'Localizando o plantão em aberto…'}
                   </p>
                 </div>
               </div>
@@ -3191,6 +3234,84 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
               >
                 {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Confirmar Saída
+              </button>
+            </ModalFooter>
+          </form>
+        </Modal>
+      )}
+
+      {ocorrenciaHorario && (
+        <Modal onClose={() => setOcorrenciaHorario(null)} maxWidth="max-w-md">
+          <ModalHeader onClose={() => setOcorrenciaHorario(null)}>
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400">
+                <Clock className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-50">Editar horário do lançamento</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {ocorrenciaHorario.nome_pessoa || ocorrenciaHorario.empresa || ocorrenciaHorario.placa || 'Lançamento do livro'}
+                </p>
+              </div>
+            </div>
+          </ModalHeader>
+
+          <form onSubmit={handleSalvarHorario}>
+            <ModalBody className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 dark:border-slate-800 dark:bg-slate-950">
+                <p className="text-xs text-slate-600 dark:text-slate-300 break-words">{ocorrenciaHorario.descricao}</p>
+              </div>
+
+              <div className={`grid grid-cols-1 gap-3 ${ocorrenciaHorario.hora_saida ? 'sm:grid-cols-2' : ''}`}>
+                <div>
+                  <label htmlFor={idHorarioEntrada} className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Horário de entrada *
+                  </label>
+                  <input
+                    id={idHorarioEntrada}
+                    type="time"
+                    required
+                    value={formHorario.entrada}
+                    onChange={(e) => setFormHorario((f) => ({ ...f, entrada: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                {ocorrenciaHorario.hora_saida && (
+                  <div>
+                    <label htmlFor={idHorarioSaida} className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {ocorrenciaHorario.tipo_registro === 'SAIDA_COLABORADOR' ? 'Horário de retorno *' : 'Horário de saída *'}
+                    </label>
+                    <input
+                      id={idHorarioSaida}
+                      type="time"
+                      required
+                      value={formHorario.saida}
+                      onChange={(e) => setFormHorario((f) => ({ ...f, saida: e.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                O horário também é corrigido no texto da linha do livro e no PDF.
+              </p>
+            </ModalBody>
+
+            <ModalFooter>
+              <button
+                type="button"
+                onClick={() => setOcorrenciaHorario(null)}
+                className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={salvando}
+                className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-purple-500 disabled:opacity-50"
+              >
+                {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Salvar horário
               </button>
             </ModalFooter>
           </form>

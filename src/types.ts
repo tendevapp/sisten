@@ -2022,7 +2022,7 @@ export interface AseHoraExtraCompleta extends AseHoraExtraSolicitacao {
 // ---------- MÓDULO PORTARIA (FRM.SGP-0008/0011, 0009, 0020, 0010, 0013) ----------
 // =====================================================================
 
-export type PortTurno = 'MANHA' | 'TARDE' | 'NOITE' | 'TURNO_A' | 'TURNO_B' | 'TURNO_C';
+export type PortTurno = 'MANHA' | 'TARDE' | 'NOITE' | 'DIURNO' | 'NOTURNO' | 'TURNO_A' | 'TURNO_B' | 'TURNO_C';
 
 // 1. Controle de Equipamento e Ferramentas de Terceiros (FRM.SGP-0011)
 export type PortEquipamentoStatus = 'NO_PATIO' | 'DEVOLVIDO' | 'RETIDO' | 'CANCELADO';
@@ -2220,6 +2220,8 @@ export interface PortRelatorioPortaria {
   updated_at: string;
   excluido_em?: string | null;
   excluido_por?: string | null;
+  /** Plantão (Passagem de Plantão) dono do livro. Nulo nos livros antigos, que eram por dia. */
+  plantao_id?: string | null;
   ocorrencias?: PortRelatorioOcorrencia[];
 }
 
