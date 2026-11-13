@@ -44,7 +44,8 @@ import { buscarMateriais, type MaterialDisponivel, type PepAplicacao } from '../
 import { listarAplicacoesBalcao } from '../../lib/requisicaoBalcaoApi';
 import { normalizeCode } from '../../lib/almoxarifado';
 import {
-  MOTIVOS_SOL_EXTRA, lerNumero, normalizarPorMotivo, turnoDaHora, validarSolExtra,
+  MOTIVOS_SOL_EXTRA, completarDescricoesDoCadastro, itemDoCadastroPorCodigo, lerNumero, normalizarPorMotivo,
+  turnoDaHora, validarSolExtra,
   type DadosSolExtra, type FotoSolExtra, type MotivoSolExtra, type TipoSolExtra, type TurnoSolExtra,
 } from '../../lib/solicitacaoExtra';
 import {
@@ -221,8 +222,11 @@ export default function SolicitacaoExtraForm({
 
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
-    const itens = linhas
-      .filter(l => l.material.trim() || l.descricao.trim() || l.quantidade.trim())
+    // Código digitado ou colado sem clicar na sugestão: a descrição vem do cadastro.
+    const itens = completarDescricoesDoCadastro(
+      linhas.filter(l => l.material.trim() || l.descricao.trim() || l.quantidade.trim()),
+      catalogo,
+    )
       .map(l => ({
         material: l.material.trim().toUpperCase(),
         descricao: l.descricao.trim().toUpperCase(),
@@ -554,6 +558,13 @@ function LinhaMaterial({
 
   const fechar = () => setTimeout(() => setBusca(null), 150);
 
+  /** Saiu do código com ele inteiro e sem descrição: preenche pelo cadastro. */
+  const completarPeloCodigo = () => {
+    if (linha.descricao.trim()) return;
+    const m = itemDoCadastroPorCodigo(catalogo, linha.material);
+    if (m) onAlterar({ material: m.material, descricao: m.descricao, unidade: linha.unidade.trim() || m.unidade || 'UN' });
+  };
+
   const sugestoes = (campo: CampoBusca) =>
     busca?.campo === campo && resultados.length > 0 && (
       <ul className="absolute left-0 z-20 mt-1 max-h-72 w-[min(32rem,85vw)] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
@@ -584,7 +595,7 @@ function LinhaMaterial({
           disabled={disabled}
           onChange={e => digitar('material', e.target.value)}
           onKeyDown={teclas}
-          onBlur={fechar}
+          onBlur={() => { completarPeloCodigo(); fechar(); }}
           placeholder="Código SAP"
           aria-label={`Código SAP do item ${numero}`}
           className={`${campo} pl-8 font-mono`}

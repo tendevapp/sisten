@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  descreverMotivo, lerNumero, normalizarPorMotivo, podeAprovarRetirada, rotuloStatusSolExtra, turnoDaHora, validarSolExtra,
+  completarDescricoesDoCadastro, descreverMotivo, itemDoCadastroPorCodigo, lerNumero, normalizarPorMotivo, podeAprovarRetirada, rotuloStatusSolExtra, turnoDaHora, validarSolExtra,
   type DadosSolExtra,
 } from './solicitacaoExtra';
 import { SOL_EXTRA_COLUNAS, montarLinhasSolExtra } from './solicitacaoExtraPlanilha';
@@ -179,5 +179,29 @@ describe('retirada sem saldo', () => {
     expect(rotuloStatusSolExtra('PENDENTE', 'SEM_SALDO')).toBe('Aguardando baixa');
     expect(rotuloStatusSolExtra('REGULARIZADA', 'SEM_SALDO')).toBe('Baixada no balcão');
     expect(rotuloStatusSolExtra('REGULARIZADA')).toBe('Regularizada no SAP');
+  });
+});
+
+describe('completarDescricoesDoCadastro', () => {
+  const catalogo = [
+    { material: '1487908', descricao: 'BATERIA USM GO/GO+ LI-ION 3760MAH 7,4V', unidade: 'UN' },
+    { material: '01433206', descricao: 'CHAPA', unidade: 'KG' },
+  ];
+
+  it('preenche a descrição do código digitado sem escolher a sugestão (RSS-131126-118)', () => {
+    const [it] = completarDescricoesDoCadastro([{ material: '1487908', descricao: '', unidade: '' }], catalogo);
+    expect(it).toEqual({ material: '1487908', descricao: 'BATERIA USM GO/GO+ LI-ION 3760MAH 7,4V', unidade: 'UN' });
+  });
+
+  it('ignora zeros à esquerda e não troca descrição nem unidade já informadas', () => {
+    expect(completarDescricoesDoCadastro([{ material: '1433206', descricao: '', unidade: 'UN' }], catalogo)[0])
+      .toEqual({ material: '1433206', descricao: 'CHAPA', unidade: 'UN' });
+    const digitada = { material: '1487908', descricao: 'BATERIA DO ULTRASSOM', unidade: 'UN' };
+    expect(completarDescricoesDoCadastro([digitada], catalogo)[0]).toBe(digitada);
+  });
+
+  it('código fora do cadastro ou incompleto fica como está', () => {
+    expect(completarDescricoesDoCadastro([{ material: '148790', descricao: '', unidade: '' }], catalogo)[0].descricao).toBe('');
+    expect(itemDoCadastroPorCodigo(catalogo, '')).toBeUndefined();
   });
 });

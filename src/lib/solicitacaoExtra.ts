@@ -128,6 +128,40 @@ export interface DadosSolExtra {
   origem_id?: string | null;
 }
 
+/** Código SAP sem zeros à esquerda (mesma regra de `normalizeCode`, sem puxar o localDb). */
+const codigoComparavel = (c: string) => c.trim().toUpperCase().replace(/^0+(?=.)/, '');
+
+/**
+ * Item do Cadastro de Itens com exatamente este código, ou `undefined`.
+ * Digitar ou colar o código inteiro, sem clicar na sugestão, não passava
+ * por "escolher" e o item ficava sem descrição (RSS-131126-118).
+ */
+export function itemDoCadastroPorCodigo<T extends { material: string }>(catalogo: T[], codigo: string): T | undefined {
+  const alvo = codigoComparavel(codigo);
+  if (!alvo) return undefined;
+  return catalogo.find(m => codigoComparavel(m.material) === alvo);
+}
+
+/**
+ * Completa, pelo Cadastro de Itens, a descrição (e a unidade vazia) dos
+ * itens gravados sem ela. Descrição já digitada fica como está.
+ */
+export function completarDescricoesDoCadastro<I extends { material: string; descricao: string; unidade: string }>(
+  itens: I[],
+  catalogo: { material: string; descricao: string; unidade: string }[],
+): I[] {
+  return itens.map(it => {
+    if (it.descricao.trim()) return it;
+    const doCadastro = itemDoCadastroPorCodigo(catalogo, it.material);
+    if (!doCadastro?.descricao) return it;
+    return {
+      ...it,
+      descricao: doCadastro.descricao.trim().toUpperCase(),
+      unidade: it.unidade.trim() ? it.unidade : (doCadastro.unidade || 'UN'),
+    };
+  });
+}
+
 /** Número digitado com vírgula ou ponto; vazio vira null, inválido vira NaN. */
 export function lerNumero(texto: string): number | null {
   const t = texto.trim();
