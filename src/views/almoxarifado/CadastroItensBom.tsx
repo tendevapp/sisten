@@ -37,6 +37,9 @@ import { gerarPdfEtiquetasBom } from '../../lib/pdfExport/exportEtiquetasBomPdf'
 import { gerarPdfCatalogoBom } from '../../lib/pdfExport/exportCatalogoBomPdf';
 import { DEPOSITOS_PLANTA, identificarDeposito } from '../../lib/depositoNomenclatura';
 import { dataHojeLocal } from '../../lib/dataLocal';
+import {
+  FILTRO_ATUALIZACAO_VAZIO, ROTULO_PRESET_ATUALIZACAO, casaAtualizacao, type FiltroAtualizacao, type PresetAtualizacao,
+} from '../../lib/filtroDataAtualizacao';
 
 interface Props {
   user: Profile;
@@ -47,7 +50,7 @@ interface Props {
 
 type FiltroFoto = 'todos' | 'com_foto' | 'sem_foto';
 type FiltroLocal = 'todos' | 'com_local' | 'sem_local';
-type Ordem = 'padrao' | 'local_asc' | 'local_desc' | 'pn_asc' | 'pn_desc';
+type Ordem = 'padrao' | 'local_asc' | 'local_desc' | 'pn_asc' | 'pn_desc' | 'atualizacao_desc';
 
 const LOTE = 60;
 const CHAVE_COR = 'sisten_etiqueta_cor';
@@ -77,6 +80,10 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
   const [filtroFoto, setFiltroFoto] = useState<FiltroFoto>('todos');
   const [filtroLocal, setFiltroLocal] = useState<FiltroLocal>('todos');
   const [filtroDeposito, setFiltroDeposito] = useState('');
+  // Data de atualização = última alteração do cadastro da peça (foto, local, etiqueta).
+  const [filtroAtualizacao, setFiltroAtualizacao] = useState<FiltroAtualizacao>(FILTRO_ATUALIZACAO_VAZIO);
+  const idAtualDe = React.useId();
+  const idAtualAte = React.useId();
   const [ordem, setOrdem] = useState<Ordem>('padrao');
   const [visiveisQtd, setVisiveisQtd] = useState(LOTE);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
@@ -161,6 +168,7 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
       if (filtroFoto === 'sem_foto' && cad?.imagem_path) return false;
       if (filtroLocal === 'com_local' && !cad?.posicao_estoque) return false;
       if (filtroLocal === 'sem_local' && cad?.posicao_estoque) return false;
+      if (!casaAtualizacao(cad?.updated_at, filtroAtualizacao)) return false;
       if (tokens.length && !casarTokens(
         [i.partNumber, i.chave, i.descricao, i.descricaoEn, i.qingdao, i.codSap, cad?.posicao_estoque, dep?.nome, cad?.etiqueta_descricao, ...i.grupos],
         tokens,
@@ -173,6 +181,13 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
     return [...lista].sort((a, b) => {
       if (ordem === 'pn_asc') return cmp(a.partNumber, b.partNumber);
       if (ordem === 'pn_desc') return cmp(b.partNumber, a.partNumber);
+      if (ordem === 'atualizacao_desc') {
+        // Mais recente primeiro; sem cadastro no fim.
+        const ua = cadastros.get(a.chave)?.updated_at ?? '';
+        const ub = cadastros.get(b.chave)?.updated_at ?? '';
+        if (ua !== ub) return ub.localeCompare(ua);
+        return cmp(a.partNumber, b.partNumber);
+      }
       const la = local(a);
       const lb = local(b);
       if (!la && !lb) return cmp(a.partNumber, b.partNumber);
@@ -181,9 +196,9 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
       const r = ordem === 'local_asc' ? cmp(la, lb) : cmp(lb, la);
       return r || cmp(a.partNumber, b.partNumber);
     });
-  }, [itens, cadastros, buscaChips, filtroGrupo, filtroSecao, filtroFoto, filtroLocal, filtroDeposito, ordem]);
+  }, [itens, cadastros, buscaChips, filtroGrupo, filtroSecao, filtroFoto, filtroLocal, filtroDeposito, filtroAtualizacao, ordem]);
 
-  useEffect(() => { setVisiveisQtd(LOTE); }, [buscaChips, filtroGrupo, filtroSecao, filtroFoto, filtroLocal, filtroDeposito, ordem]);
+  useEffect(() => { setVisiveisQtd(LOTE); }, [buscaChips, filtroGrupo, filtroSecao, filtroFoto, filtroLocal, filtroDeposito, filtroAtualizacao, ordem]);
 
   const kpis = useMemo(() => {
     let comFoto = 0;
@@ -354,12 +369,45 @@ export default function CadastroItensBom({ user, onNavigate, pecaInicial }: Prop
             <option value="">Todos os depósitos</option>
             {depositos.map((d) => <option key={d.id} value={d.id}>{d.nome}</option>)}
           </select>
+          <select
+            value={filtroAtualizacao.preset}
+            onChange={(e) => setFiltroAtualizacao((f) => ({ ...f, preset: e.target.value as PresetAtualizacao }))}
+            className={selectCls}
+            aria-label="Data de atualização"
+          >
+            {(Object.keys(ROTULO_PRESET_ATUALIZACAO) as PresetAtualizacao[]).map((p) => (
+              <option key={p} value={p}>{ROTULO_PRESET_ATUALIZACAO[p]}</option>
+            ))}
+          </select>
+          {filtroAtualizacao.preset === 'periodo' && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor={idAtualDe} className="text-xs font-semibold" style={{ color: 'var(--ink-secondary)' }}>De</label>
+              <input
+                id={idAtualDe}
+                type="date"
+                value={filtroAtualizacao.de}
+                max={dataHojeLocal()}
+                onChange={(e) => setFiltroAtualizacao((f) => ({ ...f, de: e.target.value }))}
+                className={selectCls}
+              />
+              <label htmlFor={idAtualAte} className="text-xs font-semibold" style={{ color: 'var(--ink-secondary)' }}>Até</label>
+              <input
+                id={idAtualAte}
+                type="date"
+                value={filtroAtualizacao.ate}
+                max={dataHojeLocal()}
+                onChange={(e) => setFiltroAtualizacao((f) => ({ ...f, ate: e.target.value }))}
+                className={selectCls}
+              />
+            </div>
+          )}
           <select value={ordem} onChange={(e) => setOrdem(e.target.value as Ordem)} className={selectCls} aria-label="Ordenar">
             <option value="padrao">Ordem da BOM</option>
             <option value="local_asc">Localização A→Z</option>
             <option value="local_desc">Localização Z→A</option>
             <option value="pn_asc">Part number A→Z</option>
             <option value="pn_desc">Part number Z→A</option>
+            <option value="atualizacao_desc">Atualização mais recente</option>
           </select>
           <button
             type="button"
