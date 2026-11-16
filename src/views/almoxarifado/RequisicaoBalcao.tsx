@@ -63,6 +63,9 @@ import { confirmar } from '../../lib/confirmar';
 import LogAlteracoes from '../../components/almoxarifado/LogRequisicaoBalcao';
 import { canAccessPage } from '../../lib/pages';
 import FiltroPeriodoRequisicao from '../../components/almoxarifado/FiltroPeriodoRequisicao';
+import AvisoMb51Importacao from '../../components/almoxarifado/auditoriaRqb/AvisoMb51Importacao';
+import ConferenciaImportacao from '../../components/almoxarifado/auditoriaRqb/ConferenciaImportacao';
+import { documentosDaPlanilha, type AvisoMb51 } from '../../lib/requisicaoBalcaoAuditoria';
 import { etapaSapBalcao, itensSemDocParcial, type EtapaSapBalcao } from '../../lib/requisicaoBalcaoEtapa';
 import { formatarIntervalo } from '../../lib/logRequisicaoBalcao';
 import {
@@ -725,9 +728,21 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
 
       {importacao && (
         <ModalImportacaoSap
+          visivel={!detalhe}
           arquivo={importacao.arquivo}
           leitura={importacao.leitura}
           requisicoes={requisicoes}
+          podeImportarMb51={canAccessPage(user, 'almox_importar_planilhas')}
+          podeAbrirRelatorio={canAccessPage(user, 'almox_requisicao_balcao_relatorio')}
+          onAbrirRelatorio={() => { setImportacao(null); onNavigate('/almoxarifado/requisicao-balcao-relatorio?visao=documento'); }}
+          onAbrirRequisicao={async (id, codigo) => {
+            try {
+              const r = requisicoes.find((x) => x.id === id) ?? await buscarRequisicaoBalcaoPorCodigo(codigo);
+              if (r) setDetalhe(r); else toast.error(`${codigo} não encontrada (excluída?).`);
+            } catch (err: any) {
+              toast.error(err?.message || `Não foi possível abrir ${codigo}.`);
+            }
+          }}
           onClose={() => setImportacao(null)}
           onConfirmar={async (linhas, naoEnviadas) => {
             try {
@@ -751,10 +766,11 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
                 ? `Doc. SAP gravado em ${r.itens} item(ns) de ${r.requisicoes} requisição(ões). A importação ficou no log.`
                 : 'Nada gravado. A leitura da planilha ficou no log da importação.');
               if (r.nao_encontrados?.length) toast.error(`Não encontrados: ${r.nao_encontrados.join(', ')}`);
-              setImportacao(null);
               await recarregarRequisicoes();
+              return true;
             } catch (err: any) {
               toast.error(err?.message || 'Falha ao importar.');
+              return false;
             }
           }}
         />
@@ -2352,30 +2368,87 @@ const ROTULO_SITUACAO: Record<SituacaoImportacao, { texto: string; token: string
   nao_encontrado: { texto: 'Não encontrado', token: 'var(--status-critical)' },
 };
 
+type EtapaImportacao = 'mb51' | 'previa' | 'conferencia';
+
+const ROTULO_ETAPA: Record<EtapaImportacao, string> = {
+  mb51: '1. MB51 atualizada',
+  previa: '2. Prévia',
+  conferencia: '3. Conferência com a MB51',
+};
+
 /**
- * Prévia da importação: mostra o que cada linha faz antes de gravar. Só vão
- * para o banco as linhas "Novo" e "Substitui".
+ * Importação da planilha concluída em três etapas:
+ * 1. MB51 — última importação, até que data vai e quais documentos da planilha
+ *    ela ainda não tem; importar a MB51 ali mesmo. Seguir sem atualizar pede
+ *    confirmação.
+ * 2. Prévia — o que cada linha faz antes de gravar; só vão para o banco as
+ *    linhas "Novo" e "Substitui".
+ * 3. Conferência — depois de gravar, cada documento × material da planilha
+ *    contra a MB51, com o que falta para correção.
+ * `visivel` = false esconde a janela sem perder a etapa (enquanto o detalhe
+ * de uma requisição está aberto por cima).
  */
 function ModalImportacaoSap({
-  arquivo, leitura, requisicoes, onClose, onConfirmar,
+  visivel, arquivo, leitura, requisicoes, podeImportarMb51, podeAbrirRelatorio, onAbrirRelatorio, onAbrirRequisicao,
+  onClose, onConfirmar,
 }: {
+  visivel: boolean;
   arquivo: string;
   leitura: LeituraPlanilhaBalcao;
   requisicoes: ReqBalcaoRow[];
+  podeImportarMb51: boolean;
+  podeAbrirRelatorio: boolean;
+  onAbrirRelatorio: () => void;
+  onAbrirRequisicao: (requisicaoId: string, codigo: string) => void;
   onClose: () => void;
+  /** Devolve true quando gravou — aí segue para a conferência. */
   onConfirmar: (
     linhas: LeituraPlanilhaBalcao['linhas'],
     naoEnviadas: (LeituraPlanilhaBalcao['linhas'][number] & { situacao: SituacaoImportacao })[],
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 }) {
+  const [etapa, setEtapa] = useState<EtapaImportacao>('mb51');
+  const [aviso, setAviso] = useState<AvisoMb51 | null>(null);
   const [gravando, setGravando] = useState(false);
+  const docs = useMemo(() => documentosDaPlanilha(leitura.linhas), [leitura]);
   const classificadas = useMemo(() => classificarImportacao(leitura.linhas, requisicoes), [leitura, requisicoes]);
   const aGravar = classificadas.filter((l) => l.situacao === 'novo' || l.situacao === 'diferente');
   const naoEnviadas = classificadas.filter((l) => l.situacao !== 'novo' && l.situacao !== 'diferente');
   const conta = (s: SituacaoImportacao) => classificadas.filter((l) => l.situacao === s).length;
 
+  const seguirParaPrevia = async () => {
+    if (aviso?.desatualizada) {
+      const ok = await confirmar({
+        titulo: 'Seguir sem atualizar a MB51?',
+        mensagem: aviso.horasDesdeImportacao === null
+          ? 'Não foi possível confirmar quando a MB51 foi importada. Sem ela atualizada, os documentos desta planilha ficam sem conferência depois de gravar.'
+          : `${aviso.faltando.length} de ${aviso.docs.length} documento(s) desta planilha ainda não estão na MB51. Eles ficam sem conferência depois de gravar — importe a MB51 e confira depois no Relatório × MB51.`,
+        confirmarLabel: 'Seguir mesmo assim',
+        variante: 'perigo',
+      });
+      if (!ok) return;
+    }
+    setEtapa('previa');
+  };
+
+  const gravar = async () => {
+    setGravando(true);
+    try {
+      if (await onConfirmar(aGravar, naoEnviadas)) setEtapa('conferencia');
+    } finally {
+      setGravando(false);
+    }
+  };
+
+  if (!visivel) return null;
+
   return (
-    <Modal onClose={onClose} maxWidth="max-w-3xl" ariaLabel="Importar planilha concluída">
+    <Modal
+      onClose={onClose}
+      maxWidth={etapa === 'conferencia' ? 'max-w-6xl' : 'max-w-3xl'}
+      ariaLabel="Importar planilha concluída"
+      disableOutsideClose={gravando}
+    >
       <ModalHeader onClose={onClose}>
         <h2 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>Importar planilha concluída</h2>
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
@@ -2383,8 +2456,29 @@ function ModalImportacaoSap({
           {leitura.semDocSap > 0 && <> · {leitura.semDocSap} sem doc. SAP</>}
           {leitura.semCodigo > 0 && <> · {leitura.semCodigo} sem código RQB</>}
         </p>
+        <ol className="mt-1.5 flex flex-wrap gap-1" aria-label="Etapas da importação">
+          {(Object.keys(ROTULO_ETAPA) as EtapaImportacao[]).map((e) => (
+            <li
+              key={e}
+              aria-current={etapa === e ? 'step' : undefined}
+              className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={etapa === e
+                ? { background: 'var(--brand)', color: '#fff' }
+                : { background: 'color-mix(in srgb, var(--ink-muted) 12%, transparent)', color: 'var(--ink-secondary)' }}
+            >
+              {ROTULO_ETAPA[e]}
+            </li>
+          ))}
+        </ol>
       </ModalHeader>
       <ModalBody>
+        {etapa === 'mb51' && (
+          <AvisoMb51Importacao docs={docs} podeImportarMb51={podeImportarMb51} onAviso={setAviso} />
+        )}
+        {etapa === 'conferencia' && (
+          <ConferenciaImportacao docs={docs} podeImportarMb51={podeImportarMb51} onAbrirRequisicao={onAbrirRequisicao} />
+        )}
+        {etapa === 'previa' && <>
         <div className="mb-3 flex flex-wrap gap-2">
           {(Object.keys(ROTULO_SITUACAO) as SituacaoImportacao[]).map((s) => (
             <span
@@ -2426,19 +2520,49 @@ function ModalImportacaoSap({
             </table>
           </div>
         )}
+        </>}
       </ModalBody>
       <ModalFooter>
-        <div className="flex w-full justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border px-4 py-2 text-xs font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Cancelar</button>
-          <button
-            onClick={async () => { setGravando(true); try { await onConfirmar(aGravar, naoEnviadas); } finally { setGravando(false); } }}
-            disabled={gravando || leitura.totalLinhas === 0}
-            title={aGravar.length === 0 ? 'Nada a gravar — registra a leitura no log da importação' : undefined}
-            className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
-            style={{ background: 'var(--brand)' }}
-          >
-            {gravando && <Loader2 className="h-3.5 w-3.5 animate-spin" />} {aGravar.length > 0 ? `Gravar ${aGravar.length} item(ns)` : 'Só registrar no log'}
-          </button>
+        <div className="flex w-full flex-wrap justify-end gap-2">
+          {etapa === 'mb51' && (
+            <>
+              <button onClick={onClose} className="rounded-lg border px-4 py-2 text-xs font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Cancelar</button>
+              <button
+                onClick={() => void seguirParaPrevia()}
+                disabled={!aviso}
+                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+                style={{ background: aviso?.desatualizada ? 'var(--status-serious)' : 'var(--brand)' }}
+              >
+                {!aviso && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {aviso?.desatualizada ? 'Seguir sem atualizar a MB51' : 'MB51 atualizada — continuar'}
+              </button>
+            </>
+          )}
+          {etapa === 'previa' && (
+            <>
+              <button onClick={() => setEtapa('mb51')} disabled={gravando} className="mr-auto rounded-lg border px-4 py-2 text-xs font-bold disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Voltar</button>
+              <button onClick={onClose} disabled={gravando} className="rounded-lg border px-4 py-2 text-xs font-bold disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Cancelar</button>
+              <button
+                onClick={() => void gravar()}
+                disabled={gravando || leitura.totalLinhas === 0}
+                title={aGravar.length === 0 ? 'Nada a gravar — registra a leitura no log da importação' : undefined}
+                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+                style={{ background: 'var(--brand)' }}
+              >
+                {gravando && <Loader2 className="h-3.5 w-3.5 animate-spin" />} {aGravar.length > 0 ? `Gravar ${aGravar.length} item(ns)` : 'Só registrar no log'}
+              </button>
+            </>
+          )}
+          {etapa === 'conferencia' && (
+            <>
+              {podeAbrirRelatorio && (
+                <button onClick={onAbrirRelatorio} className="mr-auto rounded-lg border px-4 py-2 text-xs font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+                  Abrir Relatório × MB51
+                </button>
+              )}
+              <button onClick={onClose} className="rounded-lg px-4 py-2 text-xs font-bold text-white" style={{ background: 'var(--brand)' }}>Fechar</button>
+            </>
+          )}
         </div>
       </ModalFooter>
     </Modal>

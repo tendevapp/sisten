@@ -7,10 +7,11 @@
  * O que foi exportado vira lançamento no SAP no dia da exportação e tem de
  * aparecer na MB51 com essa data de lançamento; o que está "Não exportada"
  * ou "Aguardando confirmação" ainda não tem como estar lá. A conferência item
- * a item roda no banco (`alm_rqb_auditoria_mb51`, ver a migration
- * 20261111200000): primeiro pelo doc. SAP do item, depois pelo dia da
- * exportação vigente e pelos dias de exportações anteriores (log). Aqui ficam
- * rótulos, filtros e totais da tela.
+ * a item roda no banco (`alm_rqb_auditoria_mb51`, migrations 20261111200000 e
+ * 20261116140000): pelo doc. SAP do item — a quantidade do documento é
+ * dividida entre as RQBs que apontam para ele, e documento já na MB51 decide
+ * sozinho — e, sem documento na MB51, pelo dia da exportação vigente e pelos
+ * dias de exportações anteriores (log). Aqui ficam rótulos, filtros e totais.
  */
 
 const semAcento = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
@@ -63,6 +64,12 @@ export interface LinhaAuditoriaRqb {
   reexportada_sem_reabrir: boolean;
   /** Última data de lançamento importada da MB51. */
   mb51_ate: string | null;
+  /** O doc. SAP do item (ou da requisição) já está na MB51 — a conferência é só por ele. */
+  doc_no_mb51?: boolean;
+  /** Quanto o documento tem do material (todas as saídas, qualquer depósito). */
+  doc_qtd?: number | null;
+  /** Soma dos itens de RQB que apontam para o mesmo documento e material. */
+  doc_qtd_rqbs?: number | null;
 }
 
 export type ConferidoPor = 'documento' | 'dia_exportacao' | 'exportacao_anterior';
@@ -88,9 +95,9 @@ export const ROTULO_STATUS_MB51: Record<StatusMb51, string> = {
 };
 
 export const DICA_STATUS_MB51: Record<StatusMb51, string> = {
-  ok: 'A MB51 tem o lançamento no dia da exportação, no mesmo material e depósito.',
-  parcial: 'A MB51 do dia da exportação cobre só parte da quantidade.',
-  faltando: 'Exportada, mas sem lançamento na MB51 no dia da exportação — investigar.',
+  ok: 'A MB51 tem o lançamento: no doc. SAP do item ou, sem ele, no dia da exportação (mesmo material e depósito).',
+  parcial: 'O doc. SAP (ou o dia da exportação) cobre só parte da quantidade — a quantidade do documento é dividida entre as RQBs que apontam para ele, em ordem de código.',
+  faltando: 'Exportada, mas o material não está no doc. SAP informado (ou, sem doc., não há lançamento no dia) — investigar.',
   outra_data: 'Não está no dia da exportação, mas há lançamento sem requisição correspondente até 7 dias depois — conferir o documento.',
   mb51_pendente: 'A exportação é posterior à última data importada da MB51.',
 };
@@ -249,6 +256,120 @@ export function resumirPorMaterial(linhas: LinhaAuditoriaRqb[]): ResumoMaterial[
     .sort((a, b) => b.divergentes - a.divergentes || b.ultimaData.localeCompare(a.ultimaData) || a.material.localeCompare(b.material));
 }
 
+/* Por documento SAP ---------------------------------------------------------
+ *
+ * Uma linha por documento × material (RPC `alm_rqb_divergencias_doc`): o que as
+ * RQBs com aquele doc. pediram contra o que o documento tem na MB51. Pega o
+ * que a planilha concluída marcou "Concluído" sem o SAP ter lançado.
+ */
+
+export type SituacaoDocDiv = 'fora_do_doc' | 'parcial' | 'a_mais' | 'doc_nao_encontrado';
+/** Com `p_todas` a RPC devolve também o que bate e o documento que a MB51 ainda não trouxe. */
+export type SituacaoConferenciaDoc = SituacaoDocDiv | 'ok' | 'mb51_pendente';
+
+export const ROTULO_SITUACAO_DOC: Record<SituacaoConferenciaDoc, string> = {
+  fora_do_doc: 'Fora do documento',
+  parcial: 'Quantidade menor',
+  a_mais: 'Documento a mais',
+  doc_nao_encontrado: 'Doc. não encontrado',
+  ok: 'Confere',
+  mb51_pendente: 'Doc. ainda fora da MB51',
+};
+
+export const DICA_SITUACAO_DOC: Record<SituacaoConferenciaDoc, string> = {
+  fora_do_doc: 'O documento está na MB51, mas o material não está nele — a baixa não foi feita.',
+  parcial: 'O material está no documento com quantidade menor que a soma das RQBs.',
+  a_mais: 'O documento tem mais do que as RQBs pediram — outra baixa no mesmo documento.',
+  doc_nao_encontrado: 'Número anterior ao último documento importado e ausente da MB51 — digitado errado ou estornado.',
+  ok: 'O documento tem o material na quantidade das RQBs.',
+  mb51_pendente: 'O documento é mais novo que a última MB51 importada — importe a MB51 e confira de novo.',
+};
+
+/** Situações que são baixa faltando no SAP. */
+export const SITUACOES_FALTA: SituacaoDocDiv[] = ['fora_do_doc', 'parcial', 'doc_nao_encontrado'];
+
+export function ehFaltaDoc(s: SituacaoConferenciaDoc): boolean {
+  return (SITUACOES_FALTA as string[]).includes(s);
+}
+
+export interface RqbDaDivergencia {
+  requisicao_id: string;
+  item_id: string;
+  codigo: string;
+  quantidade: number;
+  data_criacao: string;
+  data_exportacao: string | null;
+}
+
+export interface LinhaDivergenciaDoc {
+  doc: string;
+  doc_data: string | null;
+  material: string;
+  descricao: string | null;
+  unidade: string | null;
+  tipo_movimento: string;
+  deposito: string | null;
+  situacao: SituacaoConferenciaDoc;
+  qtd_rqbs: number;
+  qtd_doc: number;
+  /** RQBs − documento; negativo quando o documento tem a mais. */
+  falta: number;
+  preco_medio: number | null;
+  /** Falta × preço médio da MB51 do material. */
+  valor_falta: number;
+  /** Como o documento lançou o material: "311 0001 (−), 311 0105 (+)". */
+  lancado_como: string | null;
+  /** Lançamentos do material sem RQB de 2 dias antes a 7 depois — podem ser a correção à mão. */
+  avulsos: string | null;
+  data_exportacao: string | null;
+  rqbs: RqbDaDivergencia[];
+  mb51_ate: string | null;
+}
+
+export type FiltroSituacaoDoc = SituacaoConferenciaDoc | 'faltas' | 'todas';
+
+export function filtrarDivergenciasDoc(
+  linhas: LinhaDivergenciaDoc[],
+  f: { busca: string; situacao: FiltroSituacaoDoc; semAvulso?: boolean },
+): LinhaDivergenciaDoc[] {
+  const termos = semAcento(f.busca.trim()).split(/\s+/).filter(Boolean);
+  return linhas.filter((l) => {
+    if (f.situacao === 'faltas' && !ehFaltaDoc(l.situacao)) return false;
+    if (f.situacao !== 'faltas' && f.situacao !== 'todas' && l.situacao !== f.situacao) return false;
+    if (f.semAvulso && l.avulsos) return false;
+    if (termos.length === 0) return true;
+    const alvo = semAcento([
+      l.doc, l.material, l.descricao, l.deposito, l.lancado_como, l.avulsos, ...l.rqbs.map((r) => r.codigo),
+    ].filter(Boolean).join(' '));
+    return termos.every((t) => alvo.includes(t));
+  });
+}
+
+export interface TotaisDivergenciaDoc {
+  pares: number;
+  linhasRqb: number;
+  valor: number;
+}
+
+/** Totais por situação e o geral das faltas (sem "a mais", que não é baixa faltando). */
+export function totalizarDivergenciasDoc(linhas: LinhaDivergenciaDoc[]): Record<SituacaoConferenciaDoc | 'faltas', TotaisDivergenciaDoc> {
+  const vazio = (): TotaisDivergenciaDoc => ({ pares: 0, linhasRqb: 0, valor: 0 });
+  const t: Record<SituacaoConferenciaDoc | 'faltas', TotaisDivergenciaDoc> = {
+    faltas: vazio(), fora_do_doc: vazio(), parcial: vazio(), a_mais: vazio(), doc_nao_encontrado: vazio(),
+    ok: vazio(), mb51_pendente: vazio(),
+  };
+  for (const l of linhas) {
+    const alvos: (SituacaoConferenciaDoc | 'faltas')[] = ehFaltaDoc(l.situacao) ? [l.situacao, 'faltas'] : [l.situacao];
+    for (const a of alvos) {
+      t[a].pares += 1;
+      t[a].linhasRqb += l.rqbs.length;
+      t[a].valor += Number(l.valor_falta) || 0;
+    }
+  }
+  for (const k of Object.keys(t) as (keyof typeof t)[]) t[k].valor = Math.round(t[k].valor * 100) / 100;
+  return t;
+}
+
 /** Material + depósito, a chave do item no inventário cíclico. */
 export interface ItemParaContar {
   material: string;
@@ -268,4 +389,83 @@ export function itensParaContar(linhas: Pick<LinhaAuditoriaRqb, 'material' | 'de
     vistos.set(chaveContagem(i), i);
   }
   return [...vistos.values()].sort((a, b) => a.material.localeCompare(b.material) || a.deposito.localeCompare(b.deposito));
+}
+
+/* Importação da planilha concluída × MB51 -------------------------------------
+ *
+ * A planilha volta com doc. e "Concluído" também em linha que o SAP não lançou,
+ * e só a MB51 mostra isso. Por isso a importação pede a MB51 atualizada antes e
+ * confere os documentos da planilha depois de gravar.
+ */
+
+/** Documentos SAP distintos da planilha (sem vazio). */
+export function documentosDaPlanilha(linhas: { docSap: string }[]): string[] {
+  return [...new Set(linhas.map((l) => l.docSap.trim()).filter(Boolean))].sort();
+}
+
+export interface UltimaImportacaoMb51 {
+  /** Quando a MB51 foi importada pela última vez (ops_importacoes). */
+  importadaEm: string | null;
+  por: string | null;
+  arquivo: string | null;
+  /** Última data de lançamento que a MB51 importada traz. */
+  lancamentosAte: string | null;
+}
+
+export interface AvisoMb51 {
+  docs: string[];
+  /** Documentos da planilha que a MB51 importada ainda não tem. */
+  faltando: string[];
+  /** Horas desde a última importação da MB51 (null = nunca importada). */
+  horasDesdeImportacao: number | null;
+  /** MB51 desatualizada para esta planilha: tem documento fora ou nunca foi importada. */
+  desatualizada: boolean;
+}
+
+export function avaliarMb51ParaPlanilha(
+  docsPlanilha: string[],
+  docsNaMb51: Iterable<string>,
+  ultima: Pick<UltimaImportacaoMb51, 'importadaEm'>,
+  agora: Date = new Date(),
+): AvisoMb51 {
+  const presentes = new Set(docsNaMb51);
+  const faltando = docsPlanilha.filter((d) => !presentes.has(d));
+  const t = ultima.importadaEm ? new Date(ultima.importadaEm).getTime() : NaN;
+  const horas = Number.isNaN(t) ? null : Math.max(0, Math.round(((agora.getTime() - t) / 36e5) * 10) / 10);
+  return { docs: docsPlanilha, faltando, horasDesdeImportacao: horas, desatualizada: horas === null || faltando.length > 0 };
+}
+
+export interface ResumoConferenciaImportacao {
+  pares: number;
+  ok: number;
+  /** Baixa faltando: fora do documento, quantidade menor, documento não encontrado. */
+  faltas: number;
+  aMais: number;
+  /** Documento mais novo que a MB51 importada — não dá para conferir ainda. */
+  pendentes: number;
+  valorFalta: number;
+  /** Requisições com alguma baixa faltando. */
+  requisicoesComFalta: { requisicao_id: string; codigo: string }[];
+}
+
+export function resumirConferenciaImportacao(linhas: LinhaDivergenciaDoc[]): ResumoConferenciaImportacao {
+  const r: ResumoConferenciaImportacao = {
+    pares: linhas.length, ok: 0, faltas: 0, aMais: 0, pendentes: 0, valorFalta: 0, requisicoesComFalta: [],
+  };
+  const reqs = new Map<string, string>();
+  for (const l of linhas) {
+    if (l.situacao === 'ok') r.ok += 1;
+    else if (l.situacao === 'a_mais') r.aMais += 1;
+    else if (l.situacao === 'mb51_pendente') r.pendentes += 1;
+    else if (ehFaltaDoc(l.situacao)) {
+      r.faltas += 1;
+      r.valorFalta += Number(l.valor_falta) || 0;
+      for (const q of l.rqbs) reqs.set(q.requisicao_id, q.codigo);
+    }
+  }
+  r.valorFalta = Math.round(r.valorFalta * 100) / 100;
+  r.requisicoesComFalta = [...reqs]
+    .map(([requisicao_id, codigo]) => ({ requisicao_id, codigo }))
+    .sort((a, b) => a.codigo.localeCompare(b.codigo));
+  return r;
 }

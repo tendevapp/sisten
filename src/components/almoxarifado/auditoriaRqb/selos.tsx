@@ -71,6 +71,16 @@ export function DetalheMb51({ l }: { l: LinhaAuditoriaRqb }) {
         )}
       </div>
       {l.mb51_docs && <div className="font-mono" style={{ color: 'var(--ink-muted)' }}>doc {l.mb51_docs}</div>}
+      {l.doc_no_mb51 && l.doc_qtd_rqbs != null && (l.doc_qtd ?? 0) < l.doc_qtd_rqbs && (
+        <div
+          style={{ color: 'var(--status-critical)' }}
+          title="A quantidade do documento é dividida entre as RQBs que apontam para ele, em ordem de código."
+        >
+          {(l.doc_qtd ?? 0) > 0
+            ? <>O documento tem {formatQtd(l.doc_qtd ?? 0)} deste material para {formatQtd(l.doc_qtd_rqbs)} nas RQBs.</>
+            : <>O documento está na MB51 sem este material.</>}
+        </div>
+      )}
       {l.outra_data && <div style={{ color: 'var(--status-serious)' }}>Depois: {l.outra_data}</div>}
       {l.mb51_antes && ehDivergente(l) && (
         <div style={{ color: 'var(--ink-muted)' }} title="Lançamento sem requisição correspondente antes da exportação — costuma ser baixa direta do mesmo material.">

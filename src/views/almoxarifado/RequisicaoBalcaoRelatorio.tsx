@@ -11,6 +11,8 @@
  * exportação ou pelo dia de uma exportação anterior. "Não exportada" e
  * "Aguardando confirmação" ainda não têm como estar na MB51.
  *
+ * - "Por documento SAP": documento × material em que as RQBs não batem com o
+ *   documento na MB51 — linha marcada "Concluído" que o SAP não lançou.
  * - Clique na linha: janela com a requisição inteira e o log.
  * - "Agrupado por item": um bloco por material, com totais.
  * - Seleção (material + depósito): abre um Inventário Cíclico para confirmar a
@@ -33,6 +35,7 @@ import { paraISOLocal } from '../../lib/dataLocal';
 import { canAccessForm } from '../../lib/pages';
 import FiltroPeriodoRequisicao from '../../components/almoxarifado/FiltroPeriodoRequisicao';
 import DetalheAuditoriaModal from '../../components/almoxarifado/auditoriaRqb/DetalheAuditoriaModal';
+import DivergenciasDocumento from '../../components/almoxarifado/auditoriaRqb/DivergenciasDocumento';
 import LogGeralModal from '../../components/almoxarifado/auditoriaRqb/LogGeralModal';
 import { DetalheMb51, SeloStatus } from '../../components/almoxarifado/auditoriaRqb/selos';
 import {
@@ -60,6 +63,14 @@ const ROTULO_CONFERENCIA: Record<FiltroConferencia, string> = {
   mb51_pendente: 'MB51 não importada',
   reexportadas: 'Reexportada sem reabrir',
   sem_exportar: 'Sem exportar',
+};
+
+type Visao = 'itens' | 'agrupado' | 'documento';
+
+const ROTULO_VISAO: Record<Visao, string> = {
+  itens: 'Por requisição',
+  agrupado: 'Agrupado por item',
+  documento: 'Por documento SAP',
 };
 
 const PAGINA = 300;
@@ -96,7 +107,12 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
   const [busca, setBusca] = useState('');
   const [status, setStatus] = useState<StatusRqb | 'todos'>('todos');
   const [conferencia, setConferencia] = useState<FiltroConferencia>('todas');
-  const [visao, setVisao] = useState<'itens' | 'agrupado'>('itens');
+  // `?visao=documento` — a conferência da importação da planilha abre direto na lista por documento.
+  const [visao, setVisao] = useState<Visao>(() => {
+    const v = new URLSearchParams(window.location.hash.split('?')[1] || '').get('visao');
+    return v === 'documento' || v === 'agrupado' ? v : 'itens';
+  });
+  const [versao, setVersao] = useState(0);
   const [material, setMaterial] = useState<string | null>(null);
   const [limite, setLimite] = useState(PAGINA);
   const [limiteGrupos, setLimiteGrupos] = useState(GRUPOS_POR_PAGINA);
@@ -269,7 +285,8 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
           </button>
           <h1 className="text-lg font-extrabold" style={{ color: 'var(--ink-primary)' }}>Requisição no Balcão × MB51</h1>
           <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
-            Tudo que foi exportado tem de estar na MB51: pelo doc. SAP do item ou, sem ele, no dia da exportação (mesmo material e
+            Tudo que foi exportado tem de estar na MB51. Com doc. SAP já importado, a conferência é só pelo documento: a quantidade
+            do material nele é dividida entre as RQBs que apontam para ele. Sem documento, vale o dia da exportação (mesmo material e
             depósito; saída 221/201/241, transferência 311).{mb51Ate && <> MB51 importada até <strong>{formatDateBR(mb51Ate)}</strong>.</>}
             {' '}Clique na linha para ver a requisição e o log.
           </p>
@@ -278,18 +295,20 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
           <button type="button" onClick={() => setLogAberto(true)} className={`inline-flex items-center gap-1.5 ${botaoSecundario}`} style={estiloSecundario}>
             <History className="h-3.5 w-3.5" /> Log
           </button>
-          <button type="button" onClick={() => void carregar()} className={`inline-flex items-center gap-1.5 ${botaoSecundario}`} style={estiloSecundario}>
+          <button type="button" onClick={() => { void carregar(); setVersao((v) => v + 1); }} className={`inline-flex items-center gap-1.5 ${botaoSecundario}`} style={estiloSecundario}>
             <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'animate-spin' : ''}`} /> Atualizar
           </button>
-          <button
-            type="button"
-            onClick={exportarXlsx}
-            disabled={filtradas.length === 0}
-            className={`inline-flex items-center gap-1.5 disabled:opacity-40 ${botaoSecundario}`}
-            style={estiloSecundario}
-          >
-            <Download className="h-3.5 w-3.5" /> Excel
-          </button>
+          {visao !== 'documento' && (
+            <button
+              type="button"
+              onClick={exportarXlsx}
+              disabled={filtradas.length === 0}
+              className={`inline-flex items-center gap-1.5 disabled:opacity-40 ${botaoSecundario}`}
+              style={estiloSecundario}
+            >
+              <Download className="h-3.5 w-3.5" /> Excel
+            </button>
+          )}
         </div>
       </div>
 
@@ -327,7 +346,7 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
       </div>
 
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Conferência com a MB51">
-        {(Object.keys(ROTULO_CONFERENCIA) as FiltroConferencia[]).map((f) => {
+        {visao !== 'documento' && (Object.keys(ROTULO_CONFERENCIA) as FiltroConferencia[]).map((f) => {
           const ativo = conferencia === f;
           const alerta = (f === 'divergentes' || f === 'reexportadas') && contagemConferencia[f] > 0;
           const cor = f === 'reexportadas' ? 'var(--status-serious)' : 'var(--status-critical)';
@@ -347,7 +366,7 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
           );
         })}
         <div className="ml-auto inline-flex rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)' }}>
-          {(['itens', 'agrupado'] as const).map((v) => (
+          {(Object.keys(ROTULO_VISAO) as Visao[]).map((v) => (
             <button
               key={v}
               type="button"
@@ -356,13 +375,13 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
               className="rounded-md px-2.5 py-1 text-[11px] font-bold"
               style={visao === v ? { background: 'var(--brand)', color: '#fff' } : { color: 'var(--ink-secondary)' }}
             >
-              {v === 'itens' ? 'Por requisição' : 'Agrupado por item'}
+              {ROTULO_VISAO[v]}
             </button>
           ))}
         </div>
       </div>
 
-      {podeInventario && (
+      {podeInventario && visao !== 'documento' && (
         <div
           className="sticky top-2 z-10 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2"
           style={{ borderColor: selecao.size > 0 ? 'var(--brand)' : 'var(--hairline)', background: 'var(--surface-raised)' }}
@@ -414,7 +433,16 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
         />
       )}
 
-      {carregando && linhas.length === 0 ? (
+      {visao === 'documento' ? (
+        <DivergenciasDocumento
+          periodo={periodo}
+          busca={busca}
+          versao={versao}
+          onAbrirRequisicao={(id) => setDetalhe(id)}
+          podeAbrir={(id) => requisicoesCarregadas.has(id)}
+          onMaterial={(m) => setMaterial(m)}
+        />
+      ) : carregando && linhas.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-12 text-xs" style={{ color: 'var(--ink-muted)' }}>
           <Loader2 className="h-4 w-4 animate-spin" /> Conferindo com a MB51…
         </div>

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  contarAuditoria, dentroDoPeriodo, filtrarAuditoria, resumirPorMaterial, type LinhaAuditoriaRqb,
+  avaliarMb51ParaPlanilha, contarAuditoria, dentroDoPeriodo, documentosDaPlanilha, filtrarAuditoria, filtrarDivergenciasDoc,
+  resumirConferenciaImportacao, resumirPorMaterial, totalizarDivergenciasDoc,
+  type LinhaAuditoriaRqb, type LinhaDivergenciaDoc,
 } from './requisicaoBalcaoAuditoria';
 
 const linha = (p: Partial<LinhaAuditoriaRqb>): LinhaAuditoriaRqb => ({
@@ -47,5 +49,76 @@ describe('auditoria RQB × MB51', () => {
     expect(calca).toMatchObject({ requisicoes: 2, qtdTotal: 3, qtdExportada: 3, qtdNaMb51: 2, divergentes: 1 });
     const blusao = r.find((m) => m.material === '1291809')!;
     expect(blusao).toMatchObject({ qtdTotal: 2, qtdExportada: 1, qtdNaMb51: 0, qtdSemExportar: 1 });
+  });
+});
+
+const div = (p: Partial<LinhaDivergenciaDoc>): LinhaDivergenciaDoc => ({
+  doc: '4904102226', doc_data: '2026-10-30', material: '1047385', descricao: 'ARAME SOLDA ER 70 S6 1,2MM', unidade: 'KG',
+  tipo_movimento: 'transferencia', deposito: '0001', situacao: 'fora_do_doc', qtd_rqbs: 300, qtd_doc: 0, falta: 300,
+  preco_medio: 8.52, valor_falta: 2555.87, lancado_como: null, avulsos: null, data_exportacao: '2026-10-30',
+  rqbs: [
+    { requisicao_id: 'r1', item_id: 'i1', codigo: 'RQB-301026-38', quantidade: 150, data_criacao: '2026-10-30', data_exportacao: '2026-10-30' },
+    { requisicao_id: 'r2', item_id: 'i2', codigo: 'RQB-301026-48', quantidade: 150, data_criacao: '2026-10-30', data_exportacao: '2026-10-30' },
+  ],
+  mb51_ate: '2026-11-12', ...p,
+});
+
+describe('conferência por documento SAP', () => {
+  const linhas = [
+    div({}),
+    div({
+      doc: '4904075762', material: '1355907', descricao: 'LUVA SEG NBR', situacao: 'parcial', qtd_rqbs: 15, qtd_doc: 13, falta: 2,
+      valor_falta: 33.05, avulsos: '4904077626 221 05/10 (1)', rqbs: [],
+    }),
+    div({ doc: '4904110434', material: '1355907', situacao: 'a_mais', qtd_rqbs: 1, qtd_doc: 8, falta: -7, valor_falta: 0, rqbs: [] }),
+  ];
+
+  it('soma as faltas sem contar o documento a mais', () => {
+    const t = totalizarDivergenciasDoc(linhas);
+    expect(t.faltas).toEqual({ pares: 2, linhasRqb: 2, valor: 2588.92 });
+    expect(t.fora_do_doc.pares).toBe(1);
+    expect(t.a_mais).toEqual({ pares: 1, linhasRqb: 0, valor: 0 });
+  });
+
+  it('filtra por situação, avulso e busca pelo código da RQB ou documento', () => {
+    expect(filtrarDivergenciasDoc(linhas, { busca: '', situacao: 'faltas' })).toHaveLength(2);
+    expect(filtrarDivergenciasDoc(linhas, { busca: '', situacao: 'faltas', semAvulso: true }).map((l) => l.doc)).toEqual(['4904102226']);
+    expect(filtrarDivergenciasDoc(linhas, { busca: 'rqb-301026-48', situacao: 'todas' })).toHaveLength(1);
+    expect(filtrarDivergenciasDoc(linhas, { busca: '4904110434', situacao: 'todas' })[0].situacao).toBe('a_mais');
+  });
+});
+
+describe('importação da planilha × MB51', () => {
+  it('lista os documentos distintos da planilha', () => {
+    expect(documentosDaPlanilha([{ docSap: '4904102226' }, { docSap: ' 4904102226 ' }, { docSap: '' }, { docSap: '4904093793' }]))
+      .toEqual(['4904093793', '4904102226']);
+  });
+
+  it('marca a MB51 desatualizada quando falta documento da planilha ou nunca foi importada', () => {
+    const agora = new Date('2026-11-16T12:00:00Z');
+    const a = avaliarMb51ParaPlanilha(['4904102226', '4904114654'], ['4904102226'], { importadaEm: '2026-11-12T16:37:14Z' }, agora);
+    expect(a).toMatchObject({ faltando: ['4904114654'], desatualizada: true });
+    expect(a.horasDesdeImportacao).toBeCloseTo(91.4, 1);
+    expect(avaliarMb51ParaPlanilha(['4904102226'], ['4904102226'], { importadaEm: '2026-11-16T11:00:00Z' }, agora))
+      .toMatchObject({ faltando: [], desatualizada: false, horasDesdeImportacao: 1 });
+    expect(avaliarMb51ParaPlanilha([], [], { importadaEm: null }, agora)).toMatchObject({ desatualizada: true, horasDesdeImportacao: null });
+  });
+
+  it('resume a conferência: ok, faltas com valor e requisições, pendentes', () => {
+    const r = resumirConferenciaImportacao([
+      div({}),
+      div({ doc: '4904102226', material: '1371231', situacao: 'ok', falta: 0, valor_falta: 0, rqbs: [] }),
+      div({ doc: '4904114654', material: '1355907', situacao: 'mb51_pendente', valor_falta: 0, rqbs: [] }),
+      div({ doc: '4904110434', situacao: 'a_mais', falta: -7, valor_falta: 0, rqbs: [] }),
+    ]);
+    expect(r).toMatchObject({ pares: 4, ok: 1, faltas: 1, aMais: 1, pendentes: 1, valorFalta: 2555.87 });
+    expect(r.requisicoesComFalta.map((q) => q.codigo)).toEqual(['RQB-301026-38', 'RQB-301026-48']);
+  });
+
+  it('totaliza com as situações da conferência sem quebrar', () => {
+    const t = totalizarDivergenciasDoc([div({ situacao: 'ok', valor_falta: 0 }), div({ situacao: 'mb51_pendente', valor_falta: 0 })]);
+    expect(t.ok.pares).toBe(1);
+    expect(t.mb51_pendente.pares).toBe(1);
+    expect(t.faltas.pares).toBe(0);
   });
 });
