@@ -2066,6 +2066,9 @@ export interface PortRegistroTransporte {
   hora_chegada: string;
   hora_saida: string | null;
   motorista: string;
+  /** Documento do motorista (opcional): CNH ou CPF. */
+  motorista_doc_tipo?: 'CNH' | 'CPF' | null;
+  motorista_documento?: string | null;
   /** Rota do transporte na portaria: R1, R2, R3. */
   rota: string | null;
   ocupacao: string | null;

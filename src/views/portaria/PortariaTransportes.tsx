@@ -32,6 +32,9 @@ import NavegadorRegistros, { ListaRegistrosSheet, rotuloDiaCompleto } from '../.
 import AvisoRascunho from '../../components/ui/AvisoRascunho';
 import { useRascunhoFormulario } from '../../hooks/useRascunhoFormulario';
 import { algumTextoPreenchido, chaveRascunho } from '../../lib/rascunhoFormulario';
+import {
+  TIPOS_DOC_MOTORISTA, documentoParaTeste, erroDocMotorista, formatarDocMotorista, type TipoDocMotorista,
+} from '../../lib/documentoMotorista';
 
 interface Props {
   user: Profile;
@@ -51,6 +54,8 @@ const formTransporteVazio = () => ({
   hora_chegada: api.horaAgora(),
   hora_saida: '',
   motorista: '',
+  motorista_doc_tipo: 'CNH' as TipoDocMotorista,
+  motorista_documento: '',
   rota: '',
   ocupacao: '',
   observacoes: '',
@@ -67,6 +72,8 @@ export function prepararFormEdicaoTransporte(item: PortRegistroTransporte) {
     hora_chegada: item.hora_chegada,
     hora_saida: item.hora_saida || '',
     motorista: item.motorista,
+    motorista_doc_tipo: (item.motorista_doc_tipo || 'CNH') as TipoDocMotorista,
+    motorista_documento: item.motorista_documento || '',
     rota: (item.rota || '').toUpperCase(),
     ocupacao: item.ocupacao || '',
     observacoes: item.observacoes || '',
@@ -222,6 +229,10 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const [formNovo, setFormNovo] = useState(() => ({ ...formTransporteVazio(), vigilante: user.name }));
   // "Fará teste de bafômetro?" do motorista — só no lançamento novo.
   const [faraBafometro, setFaraBafometro] = useState(false);
+  // Documento do motorista (CNH ou CPF): erro só depois de sair do campo.
+  const idDocMotorista = React.useId();
+  const [docMotoristaTocado, setDocMotoristaTocado] = useState(false);
+  const erroDocumento = erroDocMotorista(formNovo.motorista_doc_tipo, formNovo.motorista_documento);
   // Enquanto false, os dropdowns de sugestão ficam fechados — evita reabri-los
   // logo após um preenchimento. Volta a true assim que o usuário digita.
   const [sugestoesAtivas, setSugestoesAtivas] = useState(true);
@@ -244,6 +255,9 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       placa: (r.placa || '').toUpperCase(),
       empresa: (r.empresa || '').toUpperCase(),
       motorista: (r.motorista || '').toUpperCase(),
+      // O documento acompanha o motorista do registro escolhido.
+      motorista_doc_tipo: (r.motorista_doc_tipo || f.motorista_doc_tipo) as TipoDocMotorista,
+      motorista_documento: r.motorista_documento || '',
       rota: rota || f.rota,
       ocupacao: (r.ocupacao || '').toUpperCase(),
     }));
@@ -282,6 +296,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
     setItemEditando(null);
     setFormNovo({ ...formTransporteVazio(), vigilante: user.name });
     setFaraBafometro(false);
+    setDocMotoristaTocado(false);
     setSugestoesAtivas(true);
     setRotaModoOutro(false);
   };
@@ -324,10 +339,21 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       toast.error('Preencha os campos obrigatórios: Placa, Empresa e Motorista.');
       return;
     }
+    if (erroDocumento) {
+      setDocMotoristaTocado(true);
+      toast.error(erroDocumento);
+      return;
+    }
 
     setSalvando(true);
     try {
-      const dadosFormulario = { ...formNovo, hora_saida: formNovo.hora_saida || null };
+      const documento = formNovo.motorista_documento.trim();
+      const dadosFormulario = {
+        ...formNovo,
+        hora_saida: formNovo.hora_saida || null,
+        motorista_documento: documento || null,
+        motorista_doc_tipo: documento ? formNovo.motorista_doc_tipo : null,
+      };
       if (itemEditando) {
         await api.atualizarTransporte(itemEditando.id, dadosFormulario);
         toast.success('Chegada de transporte atualizada!');
@@ -338,8 +364,17 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
         });
         toast.success('Chegada de transporte registrada!');
         if (faraBafometro) {
-          const teste = await api.cadastrarBafometroNaEntrada({ nome: formNovo.motorista, empresa: formNovo.empresa }, { data: formNovo.data, horario: formNovo.hora_chegada, origem: 'Chegada de Transporte', criadoPor: user });
-          if (teste) toast.success(`${teste.nome} entrou no Teste de Alcoolemia (pendente).`);
+          // O teste já sai com os dados do motorista: no livro só falta registrar o resultado.
+          const teste = await api.cadastrarBafometroNaEntrada(
+            {
+              nome: formNovo.motorista,
+              empresa: formNovo.empresa,
+              documento: documentoParaTeste(formNovo.motorista_doc_tipo, documento),
+              cargo_funcao: 'MOTORISTA',
+            },
+            { data: formNovo.data, horario: formNovo.hora_chegada, turno: formNovo.turno, origem: 'Chegada de Transporte', criadoPor: user },
+          );
+          if (teste) toast.success(`${teste.nome} entrou no Teste de Alcoolemia — lá só falta registrar o resultado.`);
           else toast.error('A pessoa não entrou no Teste de Alcoolemia. Cadastre pela tela do teste.');
         }
       }
@@ -443,6 +478,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
             item.placa.toLowerCase().includes(t) ||
             item.empresa.toLowerCase().includes(t) ||
             item.motorista.toLowerCase().includes(t) ||
+            (item.motorista_documento || '').toLowerCase().includes(t) ||
             (item.rota && item.rota.toLowerCase().includes(t))
         )
       );
@@ -466,6 +502,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
           item.placa.toLowerCase().includes(tb) ||
           item.empresa.toLowerCase().includes(tb) ||
           item.motorista.toLowerCase().includes(tb) ||
+          (item.motorista_documento || '').toLowerCase().includes(tb) ||
           item.veiculo.toLowerCase().includes(tb) ||
           (item.rota && item.rota.toLowerCase().includes(tb)) ||
           item.vigilante.toLowerCase().includes(tb);
@@ -867,6 +904,11 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                                 </span>
                                 <span className="text-xs text-slate-600 dark:text-slate-300">
                                   · Condutor: <strong>{item.motorista}</strong>
+                                  {item.motorista_documento && (
+                                    <span className="ml-1 tabular-nums text-slate-500">
+                                      ({item.motorista_doc_tipo || 'Doc.'} {item.motorista_documento})
+                                    </span>
+                                  )}
                                 </span>
                               </div>
 
@@ -1069,6 +1111,64 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                   <SugestoesChegadaTransporte termo={formNovo.motorista} ativo={sugestoesAtivas} aoSelecionar={preencherDeRegistro} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div>
+                  <label htmlFor={idDocMotorista} className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Documento do Motorista <span className="font-normal text-slate-500">(opcional)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <div
+                      role="radiogroup"
+                      aria-label="Tipo do documento do motorista"
+                      className="inline-flex shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-950"
+                    >
+                      {TIPOS_DOC_MOTORISTA.map((tipo) => {
+                        const ativo = formNovo.motorista_doc_tipo === tipo;
+                        return (
+                          <button
+                            key={tipo}
+                            type="button"
+                            role="radio"
+                            aria-checked={ativo}
+                            onClick={() => editarCampo({
+                              motorista_doc_tipo: tipo,
+                              motorista_documento: formatarDocMotorista(tipo, formNovo.motorista_documento),
+                            })}
+                            className={`min-w-[3.25rem] rounded-lg px-3 text-sm font-bold transition-colors ${
+                              ativo
+                                ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-800 dark:text-blue-300'
+                                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                            }`}
+                          >
+                            {tipo}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <input
+                      id={idDocMotorista}
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      placeholder={formNovo.motorista_doc_tipo === 'CPF' ? '000.000.000-00' : 'Nº do registro (11 números)'}
+                      value={formNovo.motorista_documento}
+                      onChange={(e) => editarCampo({ motorista_documento: formatarDocMotorista(formNovo.motorista_doc_tipo, e.target.value) })}
+                      onBlur={() => setDocMotoristaTocado(true)}
+                      aria-invalid={docMotoristaTocado && !!erroDocumento}
+                      aria-describedby={docMotoristaTocado && erroDocumento ? `${idDocMotorista}-erro` : undefined}
+                      className={`min-w-0 flex-1 rounded-xl border bg-slate-50 px-3.5 py-2.5 sm:py-2 font-mono text-base sm:text-sm text-slate-900 focus:bg-white focus:outline-none dark:bg-slate-950 dark:text-slate-100 ${
+                        docMotoristaTocado && erroDocumento
+                          ? 'border-rose-400 focus:border-rose-500 dark:border-rose-700'
+                          : 'border-slate-200 focus:border-blue-500 dark:border-slate-700'
+                      }`}
+                    />
+                  </div>
+                  {docMotoristaTocado && erroDocumento && (
+                    <p id={`${idDocMotorista}-erro`} className="mt-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">{erroDocumento}</p>
+                  )}
                 </div>
               </div>
 

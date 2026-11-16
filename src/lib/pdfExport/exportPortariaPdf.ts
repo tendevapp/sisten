@@ -127,7 +127,7 @@ export async function gerarTransportesPdf(
     `${t.hora_chegada} às ${t.hora_saida || 'No Pátio'}`,
     `[${t.veiculo}] ${t.placa}`,
     t.empresa,
-    `${t.motorista}${t.ocupacao ? ` (${t.ocupacao})` : ''}`,
+    `${t.motorista}${t.motorista_documento ? `\n${t.motorista_doc_tipo || 'Doc.'} ${t.motorista_documento}` : ''}${t.ocupacao ? ` (${t.ocupacao})` : ''}`,
     t.vigilante,
   ]);
 

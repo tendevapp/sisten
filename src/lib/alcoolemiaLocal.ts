@@ -81,7 +81,14 @@ const ehTen = (empresa?: string | null) => /^TEN\b/i.test((empresa || '').trim()
  */
 export function montarTesteBafometroPortaria(
   pessoa: PessoaParaBafometro,
-  contexto: { data: string; horario?: string | null; origem: string; criadoPor: { id: string; name: string } },
+  contexto: {
+    data: string;
+    horario?: string | null;
+    /** Turno do formulário de origem; sem ele, o cadastro sugere pelo relógio. */
+    turno?: PortAlcoolemiaTeste['turno'] | null;
+    origem: string;
+    criadoPor: { id: string; name: string };
+  },
 ): Partial<PortAlcoolemiaTeste> {
   const vinculo: PortAlcoolemiaVinculo =
     pessoa.pessoa_id || (pessoa.matricula || '').trim() || ehTen(pessoa.empresa) ? 'TEN' : 'PJ';
@@ -89,6 +96,7 @@ export function montarTesteBafometroPortaria(
   return {
     data: contexto.data,
     ...(contexto.horario ? { horario: contexto.horario.slice(0, 5) } : {}),
+    ...(contexto.turno ? { turno: contexto.turno } : {}),
     tipo_vinculo: vinculo,
     pessoa_id: pessoa.pessoa_id || null,
     matricula: vinculo === 'TEN' ? (pessoa.matricula || '').trim() || null : null,

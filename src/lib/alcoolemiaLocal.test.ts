@@ -45,4 +45,12 @@ describe('montarTesteBafometroPortaria', () => {
     expect(t).toMatchObject({ tipo_vinculo: 'PJ', empresa: 'BAHIA SUL', documento: '123.456.789-00', matricula: null });
     expect(t.observacoes).toBe('CADASTRADO NA PORTARIA — RELATÓRIO DE OCORRÊNCIAS');
   });
+
+  it('motorista da Chegada de Transporte leva documento, função e turno do formulário', () => {
+    const t = montarTesteBafometroPortaria(
+      { nome: 'carlos souza', documento: 'CNH 01234567890', empresa: 'Transportes São Geraldo', cargo_funcao: 'Motorista' },
+      { ...contexto, turno: 'TARDE', origem: 'Chegada de Transporte' },
+    );
+    expect(t).toMatchObject({ tipo_vinculo: 'PJ', documento: 'CNH 01234567890', cargo_funcao: 'MOTORISTA', turno: 'TARDE', resultado: 'PENDENTE' });
+  });
 });
