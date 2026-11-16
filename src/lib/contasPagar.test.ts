@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   agruparPorFaixa, agruparPorFornecedor, diasAte, estaCompensada, faixaVencimento, hojeISO, ordenarFornecedores,
-  passaAtalho, resumirAberto, rotuloRelativo, saldoAberto, somarDias, type PartidaPagar,
+  passaAtalho, resumirAberto, resumirSelecao, rotuloRelativo, saldoAberto, somarDias, type PartidaPagar,
 } from './contasPagar';
 
 const HOJE = '2026-11-06';
@@ -92,6 +92,14 @@ describe('resumo e fornecedores fecham entre si', () => {
   it('resumo separa vencido, 7 dias e depois', () => {
     const r = resumirAberto(linhas, HOJE);
     expect(r).toMatchObject({ total: 3300, vencido: 1000, prox7: 300, depois: 2000, pago: 900, qtdAbertas: 4, qtdVencidas: 1, qtdPagas: 1 });
+  });
+
+  it('card do celular: o atalho "7 dias" e "Vencidos" resumem só as partidas deles', () => {
+    const sete = resumirSelecao(linhas.filter(l => passaAtalho(l, '7d', HOJE)));
+    expect(sete).toEqual({ valor: resumirAberto(linhas, HOJE).prox7, qtd: 2, fornecedores: 1 });
+    const vencidos = resumirSelecao(linhas.filter(l => passaAtalho(l, 'vencidos', HOJE)));
+    expect(vencidos).toEqual({ valor: 1000, qtd: 1, fornecedores: 1 });
+    expect(resumirSelecao([])).toEqual({ valor: 0, qtd: 0, fornecedores: 0 });
   });
 
   it('a soma dos fornecedores é o total do resumo', () => {

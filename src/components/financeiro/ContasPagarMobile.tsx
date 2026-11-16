@@ -19,7 +19,7 @@ import { TableCardRow, TableCards } from '../ui/DataTable';
 import { formatBRL, formatBRLCompacto } from '../../lib/format';
 import {
   ROTULO_ATALHO, ROTULO_FAIXA, agruparPorFaixa, estaCompensada, estaVencida, nomeFornecedor, rotuloRelativo, saldoAberto,
-  type AtalhoSituacao, type GrupoFornecedor, type PartidaPagar, type ResumoAberto,
+  type AtalhoSituacao, type GrupoFornecedor, type PartidaPagar, type ResumoAberto, type ResumoSelecao,
 } from '../../lib/contasPagar';
 
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -31,13 +31,21 @@ const plural = (n: number, s: string, p = `${s}s`) => `${n} ${n === 1 ? s : p}`;
 /* Resumo                                                                 */
 /* --------------------------------------------------------------------- */
 
+/** Título do número grande quando um atalho de vencimento está ativo. */
+const TITULO_SELECAO: Partial<Record<AtalhoSituacao, string>> = {
+  vencidos: 'Vencido',
+  '7d': 'Vence nos próximos 7 dias',
+};
+
 export function ResumoAbertoMobile({
-  resumo, qtdFornecedores, ativo, onAtalho,
+  resumo, qtdFornecedores, ativo, onAtalho, selecao,
 }: {
   resumo: ResumoAberto;
   qtdFornecedores: number;
   ativo: AtalhoSituacao | null;
   onAtalho: (a: AtalhoSituacao) => void;
+  /** Partidas do atalho ativo: com "Vencidos" ou "7 dias", o número grande passa a ser o delas. */
+  selecao?: ResumoSelecao | null;
 }) {
   const partes = [
     { chave: 'vencidos' as const, rotulo: 'Vencido', valor: resumo.vencido, cor: 'bg-red-600 dark:bg-red-500', texto: VERMELHO },
@@ -45,16 +53,44 @@ export function ResumoAbertoMobile({
     { chave: null, rotulo: 'Depois', valor: resumo.depois, cor: 'bg-slate-300 dark:bg-slate-600', texto: '' },
   ];
   const base = partes.reduce((s, p) => s + Math.max(0, p.valor), 0);
+  const tituloSelecao = ativo ? TITULO_SELECAO[ativo] : undefined;
+  const mostraSelecao = !!(tituloSelecao && selecao);
+  // Com um atalho de vencimento ativo, a barra realça a fatia dele.
+  const fatiaApagada = (chave: AtalhoSituacao | null) => mostraSelecao && chave !== ativo;
   return (
     <section className="lg:hidden rounded-2xl border p-4" style={{ background: 'var(--surface-card)', borderColor: 'var(--hairline)' }}>
-      <p className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>Em aberto</p>
-      <p className="mt-0.5 text-[26px] font-black leading-tight tabular" style={{ color: 'var(--ink-primary)' }}>{formatBRL(resumo.total)}</p>
-      <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
-        {plural(resumo.qtdAbertas, 'partida')} · {plural(qtdFornecedores, 'fornecedor', 'fornecedores')}
-      </p>
+      {mostraSelecao ? (
+        <>
+          <p className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>{tituloSelecao}</p>
+          <p
+            className={`mt-0.5 text-[26px] font-black leading-tight tabular ${ativo === 'vencidos' ? VERMELHO : ''}`}
+            style={ativo === 'vencidos' ? undefined : { color: 'var(--ink-primary)' }}
+          >
+            {formatBRL(selecao!.valor)}
+          </p>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
+            {plural(selecao!.qtd, 'partida')} · {plural(selecao!.fornecedores, 'fornecedor', 'fornecedores')}
+            {' · '}de {formatBRLCompacto(resumo.total)} em aberto
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>Em aberto</p>
+          <p className="mt-0.5 text-[26px] font-black leading-tight tabular" style={{ color: 'var(--ink-primary)' }}>{formatBRL(resumo.total)}</p>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
+            {plural(resumo.qtdAbertas, 'partida')} · {plural(qtdFornecedores, 'fornecedor', 'fornecedores')}
+          </p>
+        </>
+      )}
       {base > 0 && (
         <div className="mt-3 flex h-2 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
-          {partes.map(p => p.valor > 0 && <div key={p.rotulo} className={p.cor} style={{ width: `${(p.valor / base) * 100}%` }} />)}
+          {partes.map(p => p.valor > 0 && (
+            <div
+              key={p.rotulo}
+              className={`${p.cor} transition-opacity ${fatiaApagada(p.chave) ? 'opacity-30' : ''}`}
+              style={{ width: `${(p.valor / base) * 100}%` }}
+            />
+          ))}
         </div>
       )}
       <div className="mt-3 grid grid-cols-3 gap-2">

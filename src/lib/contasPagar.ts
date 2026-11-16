@@ -199,6 +199,23 @@ export function resumirAberto(linhas: PartidaPagar[], hoje: string): ResumoAbert
   return r;
 }
 
+/** Resumo das partidas que o atalho do celular está mostrando (o número grande do card). */
+export interface ResumoSelecao {
+  valor: number;
+  qtd: number;
+  fornecedores: number;
+}
+
+export function resumirSelecao(linhas: PartidaPagar[]): ResumoSelecao {
+  let valor = 0;
+  const fornecedores = new Set<string>();
+  for (const l of linhas) {
+    valor += saldoAberto(l);
+    fornecedores.add(nomeFornecedor(l));
+  }
+  return { valor, qtd: linhas.length, fornecedores: fornecedores.size };
+}
+
 /* --------------------------------------------------------------------- */
 /* Agrupamento por fornecedor                                             */
 /* --------------------------------------------------------------------- */

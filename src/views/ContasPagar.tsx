@@ -26,7 +26,7 @@ import { canAccessPage } from '../lib/pages';
 import { formatBRL, formatDateBR } from '../lib/format';
 import {
   agruparPorFornecedor, estaCompensada, estaVencida, hojeISO, nomeFornecedor, ordenarFornecedores, passaAtalho,
-  resumirAberto, rotuloTipoDoc, venceEm7Dias,
+  resumirAberto, resumirSelecao, rotuloTipoDoc, venceEm7Dias,
   type AtalhoSituacao, type GrupoFornecedor, type OrdemFornecedores, type PartidaPagar,
 } from '../lib/contasPagar';
 import PlanilhaSapUploadButton from '../components/almoxarifado/PlanilhaSapUploadButton';
@@ -289,6 +289,11 @@ export default function ContasPagar({ user }: ContasPagarProps) {
 
   /** Totais sobre os filtros da tela, sem a situação: os atalhos estreitam a lista, não os números do topo. */
   const resumo = useMemo(() => resumirAberto(base, hoje), [base, hoje]);
+  /** Celular: com "Vencidos" ou "7 dias" ativo, o número grande do card é o das partidas da lista. */
+  const resumoSelecao = useMemo(
+    () => (atalhoAtivo === 'vencidos' || atalhoAtivo === '7d' ? resumirSelecao(filtered) : null),
+    [atalhoAtivo, filtered],
+  );
   const qtdFornecedoresAbertos = useMemo(
     () => new Set(base.filter(l => !estaCompensada(l)).map(l => nomeFornecedor(l))).size,
     [base],
@@ -575,7 +580,7 @@ export default function ContasPagar({ user }: ContasPagarProps) {
             />
           </div>
 
-          <ResumoAbertoMobile resumo={resumo} qtdFornecedores={qtdFornecedoresAbertos} ativo={atalhoAtivo} onAtalho={escolherAtalho} />
+          <ResumoAbertoMobile resumo={resumo} qtdFornecedores={qtdFornecedoresAbertos} ativo={atalhoAtivo} onAtalho={escolherAtalho} selecao={resumoSelecao} />
         </>
       )}
 
