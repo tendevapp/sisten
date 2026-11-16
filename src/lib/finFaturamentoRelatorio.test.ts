@@ -379,6 +379,31 @@ describe('faturadosPorMes', () => {
   });
 });
 
+describe('expedidos no gráfico de ritmo', () => {
+  it('mês: expedido conta no mês da expedição, mesmo faturado em outro', () => {
+    const pontos = faturadosPorMes([
+      linha({ data_faturado: '2026-09-25', data_expedido: '2026-10-02' }),
+      linha({ data_faturado: '2026-10-05', data_expedido: '2026-10-09' }),
+      linha({ data_faturado: '2026-10-20' }),
+      linha({ data_expedido: '2026-11-03' }),
+    ], '2026-11');
+    expect(pontos.map((p) => [p.mes, p.faturados, p.expedidos])).toEqual([
+      ['2026-09', 1, 0],
+      ['2026-10', 2, 2],
+      ['2026-11', 0, 1],
+    ]);
+  });
+
+  it('semana: expedido conta na semana ISO da data de expedição', () => {
+    const pontos = faturadosPorSemana([
+      linha({ data_faturado: '2026-08-31', semana_faturamento: 36, data_expedido: '2026-09-08' }),
+      linha({ data_faturado: '2026-08-31', semana_faturamento: 36 }),
+    ], 37);
+    expect(pontos.map((p) => [p.semana, p.faturados, p.expedidos])).toEqual([[36, 2, 0], [37, 0, 1]]);
+    expect(pontos[1].tramos).toEqual([]);
+  });
+});
+
 describe('faturadosPorTramo', () => {
   it('devolve sempre os cinco tramos, mesmo zerados', () => {
     const pontos = faturadosPorTramo([

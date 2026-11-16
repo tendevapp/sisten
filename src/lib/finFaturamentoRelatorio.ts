@@ -270,9 +270,11 @@ export interface PontoSemana {
   semana: number;
   rotulo: string;
   faturados: number;
+  /** Tramos expedidos na semana (pela data de expedição) — barra verde ao lado. */
+  expedidos: number;
   comRestricao: number;
   ehAtual: boolean;
-  /** Os tramos da semana, do menor para o maior seq. */
+  /** Os tramos faturados da semana, do menor para o maior seq. */
   tramos: TramoNaSemana[];
 }
 
@@ -307,6 +309,16 @@ export function faturadosPorSemana(
     else porSemana.set(semana, [item]);
   }
 
+  // Expedição conta na semana da data de expedição (não há semana digitada para ela).
+  const expedidosPorSemana = new Map<number, number>();
+  for (const l of linhas) {
+    if (!l.data_expedido) continue;
+    const semana = semanaISO(l.data_expedido);
+    if (semana == null) continue;
+    expedidosPorSemana.set(semana, (expedidosPorSemana.get(semana) ?? 0) + 1);
+    if (!porSemana.has(semana)) porSemana.set(semana, []);
+  }
+
   return [...porSemana.entries()]
     .sort((a, b) => a[0] - b[0])
     .slice(-limite)
@@ -314,6 +326,7 @@ export function faturadosPorSemana(
       semana,
       rotulo: `S${semana}`,
       faturados: tramos.length,
+      expedidos: expedidosPorSemana.get(semana) ?? 0,
       comRestricao: tramos.filter((t) => t.restricao).length,
       ehAtual: semana === semanaAtual,
       tramos: tramos.slice().sort((a, b) => (a.serie ?? 0) - (b.serie ?? 0)),
@@ -333,6 +346,8 @@ export interface PontoMes {
   mes: string; // YYYY-MM
   rotulo: string;
   faturados: number;
+  /** Tramos expedidos no mês (pela data de expedição) — barra verde ao lado. */
+  expedidos: number;
   ehAtual: boolean;
 }
 
@@ -347,21 +362,28 @@ export function faturadosPorMes(
   mesAtual?: string | null,
   limite = 12,
 ): PontoMes[] {
-  const contagem = new Map<string, number>();
+  // Faturado conta no mês da NF; expedido, no mês da expedição.
+  const contagem = new Map<string, { faturados: number; expedidos: number }>();
+  const somar = (data: string | null | undefined, campo: 'faturados' | 'expedidos') => {
+    const mes = (data ?? '').slice(0, 7);
+    if (mes.length !== 7) return;
+    const atual = contagem.get(mes) ?? { faturados: 0, expedidos: 0 };
+    atual[campo] += 1;
+    contagem.set(mes, atual);
+  };
   for (const l of linhas) {
-    if (!l.data_faturado) continue;
-    const mes = l.data_faturado.slice(0, 7);
-    if (mes.length !== 7) continue;
-    contagem.set(mes, (contagem.get(mes) ?? 0) + 1);
+    somar(l.data_faturado, 'faturados');
+    somar(l.data_expedido, 'expedidos');
   }
 
   return [...contagem.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .slice(-limite)
-    .map(([mes, faturados]) => ({
+    .map(([mes, c]) => ({
       mes,
       rotulo: rotuloMes(mes),
-      faturados,
+      faturados: c.faturados,
+      expedidos: c.expedidos,
       ehAtual: mes === mesAtual,
     }));
 }

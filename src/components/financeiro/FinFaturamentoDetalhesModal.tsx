@@ -87,8 +87,8 @@ export default function FinFaturamentoDetalhesModal({
         };
       case 'periodo_ritmo':
         return {
-          titulo: `Tramos faturados · ${detalhe.rotulo}`,
-          subtitulo: `${detalhe.linhasDoPeriodo.length} tramo(s) com faturamento em ${detalhe.rotulo}`,
+          titulo: `Tramos faturados e expedidos · ${detalhe.rotulo}`,
+          subtitulo: `${detalhe.linhasDoPeriodo.length} tramo(s) faturados ou expedidos em ${detalhe.rotulo}`,
           linhasTabela: detalhe.linhasDoPeriodo,
         };
       case 'tramo_tipo':

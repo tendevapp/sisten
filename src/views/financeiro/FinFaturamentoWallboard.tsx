@@ -397,7 +397,7 @@ export default function FinFaturamentoWallboard({
   // Um único formato para o gráfico de ritmo, mês ou semana: os dois pontos
   // já compartilham {rotulo, faturados, ehAtual}.
   const pontosRitmo = visaoTemporal === 'mes' ? meses : semanas;
-  const maxRitmo = Math.max(1, ...pontosRitmo.map((p) => p.faturados));
+  const maxRitmo = Math.max(1, ...pontosRitmo.map((p) => Math.max(p.faturados, p.expedidos)));
   const tramos = useMemo(() => faturadosPorTramo(linhas), [linhas]);
   // Cinco, não seis: com seis a linha fica com 25px de altura para 22px de
   // texto numa TV 1080p, e o painel perde o respiro.
@@ -815,17 +815,18 @@ export default function FinFaturamentoWallboard({
         {/* Coluna direita */}
         <div className="grid min-h-0" style={{ gridTemplateRows: '1.6fr 0.95fr 1.15fr', gap: u(1.6) }}>
           {/*
-            Ritmo de faturamento: só o total por mês (padrão) ou por semana.
-            O detalhe por tramo (seq, restrição) já está na matriz — aqui a
-            pergunta é "quanto saiu", não "o quê".
+            Ritmo de faturamento: só o total por mês (padrão) ou por semana,
+            com duas barras por período — faturados (data da NF) e expedidos
+            (data da expedição, em verde). O detalhe por tramo (seq,
+            restrição) já está na matriz — aqui a pergunta é "quanto saiu".
           */}
           <Painel
-            titulo={`Tramos faturados por ${visaoTemporal === 'mes' ? 'mês' : 'semana'}`}
+            titulo={`Tramos faturados e expedidos por ${visaoTemporal === 'mes' ? 'mês' : 'semana'}`}
             acao={<AlternadorVisao visao={visaoTemporal} onMudar={setVisaoTemporal} />}
           >
             <div className="flex min-h-0 flex-1 items-end" style={{ gap: u(1) }}>
               {pontosRitmo.length === 0 && (
-                <p style={{ fontSize: u(1.5), color: 'var(--ink-muted)' }}>Nenhum tramo faturado ainda.</p>
+                <p style={{ fontSize: u(1.5), color: 'var(--ink-muted)' }}>Nenhum tramo faturado ou expedido ainda.</p>
               )}
               {pontosRitmo.map((p) => (
                 <div
@@ -837,7 +838,8 @@ export default function FinFaturamentoWallboard({
                         tipo: 'periodo_ritmo',
                         visao: 'mes',
                         rotulo: p.rotulo,
-                        linhasDoPeriodo: linhas.filter((l) => (l.data_faturado ?? '').slice(0, 7) === pMes.mes),
+                        linhasDoPeriodo: linhas.filter((l) =>
+                          (l.data_faturado ?? '').slice(0, 7) === pMes.mes || (l.data_expedido ?? '').slice(0, 7) === pMes.mes),
                       });
                     } else {
                       const pSem = p as PontoSemana;
@@ -845,47 +847,54 @@ export default function FinFaturamentoWallboard({
                         tipo: 'periodo_ritmo',
                         visao: 'semana',
                         rotulo: p.rotulo,
-                        linhasDoPeriodo: linhas.filter((l) => semanaDaLinha(l) === pSem.semana),
+                        linhasDoPeriodo: linhas.filter((l) =>
+                          (l.data_faturado && semanaDaLinha(l) === pSem.semana)
+                          || (l.data_expedido && semanaISO(l.data_expedido) === pSem.semana)),
                       });
                     }
                   }}
                   role="button"
                   tabIndex={0}
-                  title={`Clique para ver os tramos faturados em ${p.rotulo}`}
+                  title={`${p.rotulo}: ${p.faturados} faturado(s) e ${p.expedidos} expedido(s) — clique para ver os tramos`}
                   className="group flex h-full min-w-0 flex-1 flex-col items-center cursor-pointer transition-transform hover:scale-[1.03]"
                 >
                   <div
                     className="relative flex min-h-0 w-full flex-1 items-end justify-center"
-                    style={{ paddingTop: u(2.6) }}
+                    style={{ paddingTop: u(2.6), gap: u(0.4) }}
                   >
-                    <div
-                      className="relative flex w-full flex-col items-center justify-end"
-                      style={{
-                        height: `${Math.max(4, Math.round((p.faturados / maxRitmo) * 100))}%`,
-                      }}
-                    >
-                      <span
-                        className="tabular absolute font-bold group-hover:text-emerald-500 transition-colors"
+                    {([
+                      { chave: 'faturados', valor: p.faturados, cor: FATURADO_CSS },
+                      { chave: 'expedidos', valor: p.expedidos, cor: EXPEDIDO_CSS },
+                    ] as const).map((b) => (
+                      <div
+                        key={b.chave}
+                        className="relative flex min-w-0 flex-1 flex-col items-center justify-end"
                         style={{
-                          bottom: '100%',
-                          marginBottom: u(0.4),
-                          fontSize: u(1.6),
-                          color: 'var(--ink-primary)',
+                          height: b.valor > 0 ? `${Math.max(4, Math.round((b.valor / maxRitmo) * 100))}%` : '0%',
                         }}
                       >
-                        {p.faturados}
-                      </span>
-                      <div
-                        className="w-full h-full group-hover:brightness-125 transition-all"
-                        style={{
-                          borderRadius: `${u(0.4)} ${u(0.4)} 0 0`,
-                          background: FATURADO_CSS,
-                          border: p.ehAtual ? `${u(0.25)} solid var(--ink-primary)` : 'none',
-                          borderBottom: 'none',
-                          minHeight: u(0.5),
-                        }}
-                      />
-                    </div>
+                        <span
+                          className="tabular absolute font-bold transition-colors"
+                          style={{
+                            bottom: '100%',
+                            marginBottom: u(0.4),
+                            fontSize: u(1.6),
+                            color: b.chave === 'expedidos' ? EXPEDIDO_CSS : 'var(--ink-primary)',
+                          }}
+                        >
+                          {b.valor}
+                        </span>
+                        <div
+                          className="w-full h-full group-hover:brightness-125 transition-all"
+                          style={{
+                            borderRadius: `${u(0.4)} ${u(0.4)} 0 0`,
+                            background: b.cor,
+                            border: p.ehAtual ? `${u(0.25)} solid var(--ink-primary)` : 'none',
+                            borderBottom: 'none',
+                          }}
+                        />
+                      </div>
+                    ))}
                   </div>
                   <span
                     className="shrink-0 text-center font-bold group-hover:text-emerald-500 transition-colors"
@@ -899,6 +908,10 @@ export default function FinFaturamentoWallboard({
                   </span>
                 </div>
               ))}
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center" style={{ gap: u(1.8) }}>
+              <ItemLegendaCor cor={FATURADO_CSS} texto="Faturados (data da NF)" />
+              <ItemLegendaCor cor={EXPEDIDO_CSS} texto="Expedidos (data da expedição)" />
             </div>
           </Painel>
 
