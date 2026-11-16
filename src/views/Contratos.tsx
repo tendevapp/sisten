@@ -2,31 +2,42 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Página Contratos: duas subpáginas — Demandas (quadro Kanban dos chamados
- * jurídicos) e Contratos (acompanhamento dos contratos ME3N e suas vigências).
+ * Página Contratos: Demandas (quadro Kanban dos chamados jurídicos),
+ * Contratos (acompanhamento dos contratos ME3N e suas vigências) e Auditoria
+ * (contrato × pedidos × FBL1N — só com a permissão `sup_contratos_auditoria`).
  */
 
-import React, { useEffect, useState } from 'react';
-import { FileText, KanbanSquare } from 'lucide-react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { FileText, KanbanSquare, ShieldCheck } from 'lucide-react';
 import { Profile } from '../types';
 import TabDemandas from '../components/contratos/TabDemandas';
 import TabContratosLista from '../components/contratos/TabContratosLista';
+import { TableSkeleton } from '../components/ui/DataTable';
+import { canAccessPage } from '../lib/pages';
+
+const TabAuditoria = lazy(() => import('../components/contratos/TabAuditoria'));
+
+type AbaContratos = 'demandas' | 'contratos' | 'auditoria';
 
 interface ContratosProps {
   user: Profile;
   onNavigate: (path: string) => void;
-  abaInicial?: 'demandas' | 'contratos';
+  abaInicial?: AbaContratos;
 }
 
-const ABAS = [
+const TODAS_ABAS = [
   { id: 'demandas' as const, label: 'Demandas', icon: KanbanSquare },
   { id: 'contratos' as const, label: 'Contratos', icon: FileText },
+  { id: 'auditoria' as const, label: 'Auditoria', icon: ShieldCheck },
 ];
 
 export default function Contratos({ user, abaInicial = 'demandas' }: ContratosProps) {
-  const [aba, setAba] = useState<'demandas' | 'contratos'>(abaInicial);
+  const podeAuditar = canAccessPage(user, 'sup_contratos_auditoria');
+  const abas = useMemo(() => TODAS_ABAS.filter(a => a.id !== 'auditoria' || podeAuditar), [podeAuditar]);
+  const inicial: AbaContratos = abaInicial === 'auditoria' && !podeAuditar ? 'demandas' : abaInicial;
+  const [aba, setAba] = useState<AbaContratos>(inicial);
 
-  useEffect(() => { setAba(abaInicial); }, [abaInicial]);
+  useEffect(() => { setAba(inicial); }, [inicial]);
 
   return (
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
@@ -36,11 +47,11 @@ export default function Contratos({ user, abaInicial = 'demandas' }: ContratosPr
           Contratos
         </h2>
         <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
-          Demandas jurídicas em andamento e o acompanhamento dos contratos de fornecimento.
+          Demandas jurídicas em andamento, o acompanhamento dos contratos de fornecimento e a auditoria de valores lançados e pagos.
         </p>
 
         <div className="flex items-center gap-1 mt-4">
-          {ABAS.map(a => {
+          {abas.map(a => {
             const Icon = a.icon;
             const active = aba === a.id;
             return (
@@ -64,6 +75,11 @@ export default function Contratos({ user, abaInicial = 'demandas' }: ContratosPr
       <div key={aba} className="reveal">
         {aba === 'demandas' && <TabDemandas user={user} />}
         {aba === 'contratos' && <TabContratosLista />}
+        {aba === 'auditoria' && podeAuditar && (
+          <Suspense fallback={<TableSkeleton columns={10} />}>
+            <TabAuditoria />
+          </Suspense>
+        )}
       </div>
     </div>
   );

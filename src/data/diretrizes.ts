@@ -1716,6 +1716,34 @@ export const DIRETRIZES: DiretrizesDominio[] = [
         ]
       },
       {
+        id: 'contratos-auditoria',
+        nome: 'Contratos — sub-página Auditoria (contrato × pedidos × FBL1N)',
+        arquivo: 'src/components/contratos/TabAuditoria.tsx, src/components/contratos/ContratoAuditoriaModal.tsx, src/lib/contratosAuditoria.ts, src/lib/contratosAuditoriaApi.ts',
+        secoes: [
+          {
+            titulo: 'Visão geral',
+            itens: ['Relatório por contrato: valor global (ME3N), pedidos de call-off, lançado/pago/em aberto no Financeiro (FBL1N), saldo, consumo e ocorrências de auditoria, com exportação em Excel (Resumo, Ocorrências, Lançamentos, Alterações). Aba visível só com a permissão `sup_contratos_auditoria` (nasce só admin).']
+          },
+          {
+            titulo: 'Regras de negócio',
+            itens: [
+              'A FBL1N vem sem pedido: o vínculo é contrato → pedidos (ZL0132.contrato; ME2L.contrato_basico quando falta na ZL0132) → MIRO (ZL0170.numero_pedido) → documento contábil (ZL0170.numero_doc_contabil = FBL1N.numero_documento).',
+              'A ZL0170 multiplica cada MIRO pelas MIGOs do pedido: ela é só ponte; valor lançado/pago vem da FBL1N deduplicada. Valor da MIRO só é estimado quando não há partida na FBL1N.',
+              'Partida do fornecedor sem MIRO é atribuída ao contrato só se o fornecedor tiver um contrato ("a conferir"); com mais de um, fica em "sem contrato definido". KZ/ZP/AB (pagamento/compensação) não contam como lançado.',
+              'Estorno de MIRO (MR8M) compensado sem pagamento é marcado `anulada` em `vw_contratos_aud_fbl1n` e fica fora das somas e da checagem de NF repetida.',
+              'Ocorrências: lançado acima do valor global (crítico só se a parte via MIRO já estoura), pedidos acima do contrato, consumo ≥80%, lançamento fora da vigência, mesma NF em documentos diferentes (RE/KR/FI), partida vencida ou bloqueada, pago com atraso, fornecedor divergente, MIRO sem FBL1N, MIRO paga × FBL1N aberta, lançado sem pedido, faturado acima da parcela, fatura mensal que subiu sem parcela que acuse, saldo que não cobre até o fim da vigência, pedido sem valor, alterações de valor/vigência, vigente há 60 dias sem lançamento. Cada tipo pertence a uma categoria (Valor e saldo, Faturamento, Pagamento, Vínculo com o SAP, Cadastro e histórico), com orientação do que conferir.',
+              'Contrato mensal (modalidade com "mens"/"N meses"): faturado somado por mês de competência (data da NF) e comparado à parcela do cadastro. Crítico quando o valor acima vem nos últimos 2+ meses seguidos ou o excedente soma uma parcela; 2–3 parcelas exatas no 1º mês ou depois de mês vazio são acúmulo, não excedente. Por demanda/medição, a parcela é teto por documento (alerta).',
+              'Projeção: ritmo = mediana dos últimos 3 meses faturados × meses até o fim (o mês final conta se a vigência vai até o dia 20), contra o saldo da vigência (lançado fora dela não consome). Não projeta sem fatura há mais de 2 meses. Crítico quando falta ao menos um mês de ritmo.',
+              'Alterações: gatilhos em `sap_me3n_contrato` (upsert da importação ME3N) e `contratos_detalhes` gravam campo, de, para e autor em `sup_contratos_alteracoes`. Histórico a partir de 16/11/2026.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`vw_contratos_aud_pedidos`, `vw_contratos_aud_fbl1n`, `vw_contratos_aud_partidas`, `vw_contratos_aud_partidas_sem_pedido`, `vw_contratos_aud_cobertura`, `sup_contratos_alteracoes` (migration `20261116120000_contratos_auditoria.sql`).']
+          }
+        ]
+      },
+      {
         id: 'frete-estimator',
         nome: 'Estimador & Calculadora de Frete',
         arquivo: 'src/views/FreteEstimator.tsx',

@@ -788,6 +788,16 @@ export const FEATURE_FLAGS: PageDef[] = [
     label: 'Almoxarifado: Contingências do estoque (verificações, correção e justificativa)',
     defaultRoles: ['admin'],
   },
+  // Contratos › Auditoria: contrato × pedidos × FBL1N (lançado, pago, saldo,
+  // estouro, NF repetida, log de alterações). Mostra dado financeiro de todos
+  // os fornecedores com contrato, então nasce só admin (regra 4); Suprimentos
+  // e Financeiro recebem pela Gestão de Acessos.
+  {
+    id: 'sup_contratos_auditoria',
+    group: 'SUPRIMENTOS',
+    label: 'Contratos: aba Auditoria (lançado e pago na FBL1N, saldo, alterações de valor)',
+    defaultRoles: ['admin'],
+  },
   // Relatório do RID (indicadores por setor e período, para apresentação).
   // Nasce só para admin (regra 4); o SSMA recebe pela Gestão de Acessos.
   {
