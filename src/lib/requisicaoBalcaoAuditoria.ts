@@ -469,3 +469,73 @@ export function resumirConferenciaImportacao(linhas: LinhaDivergenciaDoc[]): Res
     .sort((a, b) => a.codigo.localeCompare(b.codigo));
   return r;
 }
+
+/* ------------------------------------------------------------------ */
+/* Exportadas sem doc. SAP × MB51                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Requisição exportada que a planilha concluída não devolveu com doc. SAP:
+ * a MB51 tem a baixa? Sem doc. para casar, a conferência é a do relatório —
+ * material + depósito + tipo no dia da exportação (com a quantidade do dia
+ * dividida entre as RQBs) e sobra até 7 dias depois. É indício forte, não
+ * prova: outro lançamento do mesmo material no dia também casa.
+ */
+export type SituacaoSemSap = 'na_mb51' | 'em_parte' | 'nao_encontrada' | 'mb51_pendente';
+
+export const ROTULO_SITUACAO_SEM_SAP: Record<SituacaoSemSap, string> = {
+  na_mb51: 'Na MB51',
+  em_parte: 'Em parte / outra data',
+  nao_encontrada: 'Não encontradas',
+  mb51_pendente: 'MB51 não importada',
+};
+
+export const DICA_SITUACAO_SEM_SAP: Record<SituacaoSemSap, string> = {
+  na_mb51: 'Todos os itens têm lançamento na MB51 no dia da exportação (mesmo material, depósito e tipo). Falta só gravar o doc. SAP na requisição.',
+  em_parte: 'Parte dos itens está na MB51, ou o lançamento caiu em outro dia (até 7 dias depois) — conferir o documento antes de gravar.',
+  nao_encontrada: 'Nenhum item tem lançamento na MB51 no dia da exportação — a baixa provavelmente não foi feita no SAP.',
+  mb51_pendente: 'A exportação é mais nova que a última MB51 importada — importe a MB51 para conferir.',
+};
+
+export interface ConferenciaSemSap {
+  situacao: SituacaoSemSap;
+  /** Itens sem doc. SAP conferidos. */
+  itens: number;
+  /** Itens com o lançamento inteiro no dia da exportação. */
+  encontrados: number;
+  /** Documentos da MB51 que casaram (dia da exportação ou dias seguintes). */
+  docs: string[];
+}
+
+const DOC_SAP_RE = /\b\d{10}\b/g;
+
+/** Por requisição, a situação dos itens que ainda não têm doc. SAP. */
+export function conferirExportadasSemSap(linhas: LinhaAuditoriaRqb[]): Map<string, ConferenciaSemSap> {
+  const porReq = new Map<string, LinhaAuditoriaRqb[]>();
+  for (const l of linhas) {
+    if (!l.exportacao_id || (l.item_doc_sap || '').trim() || (l.doc_sap || '').trim()) continue;
+    const lista = porReq.get(l.requisicao_id);
+    if (lista) lista.push(l);
+    else porReq.set(l.requisicao_id, [l]);
+  }
+  const out = new Map<string, ConferenciaSemSap>();
+  for (const [id, itens] of porReq) {
+    let encontrados = 0;
+    let algum = 0;
+    let pendentes = 0;
+    const docs = new Set<string>();
+    for (const l of itens) {
+      if (l.mb51_status === 'ok') encontrados += 1;
+      if (l.mb51_status === 'ok' || l.mb51_status === 'parcial' || l.mb51_status === 'outra_data') algum += 1;
+      if (l.mb51_status === 'mb51_pendente' || l.mb51_status == null) pendentes += 1;
+      for (const d of `${l.mb51_docs ?? ''} ${l.outra_data ?? ''}`.match(DOC_SAP_RE) ?? []) docs.add(d);
+    }
+    const situacao: SituacaoSemSap =
+      pendentes === itens.length ? 'mb51_pendente'
+        : encontrados === itens.length ? 'na_mb51'
+          : algum > 0 ? 'em_parte'
+            : 'nao_encontrada';
+    out.set(id, { situacao, itens: itens.length, encontrados, docs: [...docs].sort() });
+  }
+  return out;
+}

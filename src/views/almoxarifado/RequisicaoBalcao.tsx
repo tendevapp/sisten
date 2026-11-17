@@ -69,8 +69,10 @@ import { documentosDaPlanilha, type AvisoMb51 } from '../../lib/requisicaoBalcao
 import { etapaSapBalcao, itensSemDocParcial, type EtapaSapBalcao } from '../../lib/requisicaoBalcaoEtapa';
 import { formatarIntervalo } from '../../lib/logRequisicaoBalcao';
 import {
-  PERIODO_VAZIO, dataLocalDeTimestamp, dentroDoPeriodo, type FiltroPeriodo,
+  DICA_SITUACAO_SEM_SAP, PERIODO_VAZIO, ROTULO_SITUACAO_SEM_SAP, conferirExportadasSemSap, dataLocalDeTimestamp, dentroDoPeriodo,
+  type ConferenciaSemSap, type FiltroPeriodo, type SituacaoSemSap,
 } from '../../lib/requisicaoBalcaoAuditoria';
+import { auditarRequisicoesMb51 } from '../../lib/requisicaoBalcaoAuditoriaApi';
 
 interface Props {
   user: Profile;
@@ -153,6 +155,10 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const [filtroExportacao, setFiltroExportacao] = useState<FiltroExportacao>('nao_exportadas');
   // Período pela criação da requisição ou pela exportação (= data de lançamento na MB51).
   const [periodo, setPeriodo] = useState<FiltroPeriodo>(PERIODO_VAZIO);
+  // "Exportadas · sem SAP": a MB51 tem a baixa? (conferência pelo dia da exportação)
+  const [filtroSemSap, setFiltroSemSap] = useState<SituacaoSemSap | 'todas'>('todas');
+  const [confSemSap, setConfSemSap] = useState<{ mapa: Map<string, ConferenciaSemSap>; ate: string | null } | null>(null);
+  const [erroConfSemSap, setErroConfSemSap] = useState('');
   const [exportacoes, setExportacoes] = useState<ReqBalcaoExportacao[]>([]);
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [exportando, setExportando] = useState(false);
@@ -212,11 +218,38 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     [requisicoes, periodo, dataExportacaoPorLote],
   );
 
+  /**
+   * Na aba "Exportadas · sem SAP", confere na MB51 (mesma regra do Relatório × MB51:
+   * material + depósito + tipo no dia da exportação, sobra até 7 dias depois).
+   * Só roda com a aba aberta e de novo quando a lista recarrega.
+   */
+  useEffect(() => {
+    if (filtroExportacao !== 'exportadas') return;
+    let desde = '';
+    for (const r of requisicoes) {
+      if (etapaSapBalcao(r) !== 'exportada' || !r.exportacao_id) continue;
+      const d = dataExportacaoPorLote.get(r.exportacao_id);
+      if (d && (!desde || d < desde)) desde = d;
+    }
+    if (!desde) { setConfSemSap({ mapa: new Map(), ate: null }); return; }
+    let cancelado = false;
+    setErroConfSemSap('');
+    auditarRequisicoesMb51({ base: 'exportacao', de: desde, ate: '' })
+      .then((linhas) => {
+        if (cancelado) return;
+        setConfSemSap({ mapa: conferirExportadasSemSap(linhas), ate: linhas.find((l) => l.mb51_ate)?.mb51_ate ?? null });
+      })
+      .catch((e: any) => { if (!cancelado) setErroConfSemSap(e?.message || 'Não foi possível conferir com a MB51.'); });
+    return () => { cancelado = true; };
+  }, [filtroExportacao, requisicoes, dataExportacaoPorLote]);
+
   const filtradas = useMemo(() => {
     const t = semAcento(busca.trim());
     return noPeriodo.filter((r) => {
       const etapa = ETAPA_DO_FILTRO[filtroExportacao];
       if (etapa && etapaSapBalcao(r) !== etapa) return false;
+      if (filtroExportacao === 'exportadas' && filtroSemSap !== 'todas' && confSemSap
+        && confSemSap.mapa.get(r.id)?.situacao !== filtroSemSap) return false;
       if (!t) return true;
       const alvo = semAcento([
         r.codigo, r.colaborador_nome, r.colaborador_registro, r.aplicacao_pep, r.aplicacao, r.doc_sap, r.deposito_origem,
@@ -224,7 +257,19 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
       ].filter(Boolean).join(' '));
       return t.split(/\s+/).every((p) => alvo.includes(p));
     });
-  }, [noPeriodo, busca, filtroExportacao]);
+  }, [noPeriodo, busca, filtroExportacao, filtroSemSap, confSemSap]);
+
+  /** Contagem por situação na MB51 das exportadas sem SAP do período. */
+  const contagemSemSap = useMemo(() => {
+    const c: Record<SituacaoSemSap, number> = { na_mb51: 0, em_parte: 0, nao_encontrada: 0, mb51_pendente: 0 };
+    if (!confSemSap) return c;
+    for (const r of noPeriodo) {
+      if (etapaSapBalcao(r) !== 'exportada') continue;
+      const s = confSemSap.mapa.get(r.id)?.situacao;
+      if (s) c[s] += 1;
+    }
+    return c;
+  }, [noPeriodo, confSemSap]);
 
   const porDia = useMemo(() => {
     const grupos = new Map<string, ReqBalcaoRow[]>();
@@ -641,6 +686,49 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
         </div>
       )}
 
+      {filtroExportacao === 'exportadas' && qtdExportadasSemSap > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Situação na MB51">
+          <span className="text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>Na MB51:</span>
+          {!confSemSap && !erroConfSemSap ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              <Loader2 className="h-3 w-3 animate-spin" /> Conferindo com a MB51…
+            </span>
+          ) : erroConfSemSap ? (
+            <span className="text-[11px]" style={{ color: 'var(--status-critical)' }}>{erroConfSemSap}</span>
+          ) : (
+            <>
+              {(['todas', 'na_mb51', 'em_parte', 'nao_encontrada', 'mb51_pendente'] as const).map((f) => {
+                const qtd = f === 'todas' ? qtdExportadasSemSap : contagemSemSap[f];
+                if (f === 'mb51_pendente' && qtd === 0) return null;
+                const ativo = filtroSemSap === f;
+                const cor = f === 'na_mb51' ? 'var(--status-good)' : f === 'nao_encontrada' ? 'var(--status-critical)' : f === 'em_parte' ? 'var(--status-serious)' : 'var(--ink-secondary)';
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setFiltroSemSap(f)}
+                    aria-pressed={ativo}
+                    title={f === 'todas' ? undefined : DICA_SITUACAO_SEM_SAP[f]}
+                    className="rounded-full border px-2.5 py-1 text-[11px] font-bold"
+                    style={ativo
+                      ? { borderColor: cor, background: `color-mix(in srgb, ${cor} 14%, transparent)`, color: cor }
+                      : { borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                  >
+                    {f === 'todas' ? 'Todas' : ROTULO_SITUACAO_SEM_SAP[f]} ({qtd})
+                  </button>
+                );
+              })}
+              <span className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+                Conferido por material, depósito e dia da exportação{confSemSap?.ate ? ` · MB51 até ${confSemSap.ate.split('-').reverse().join('/')}` : ''}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+      {filtroExportacao === 'exportadas' && filtroSemSap !== 'todas' && confSemSap && (
+        <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>{DICA_SITUACAO_SEM_SAP[filtroSemSap]}</p>
+      )}
+
       {loading && requisicoes.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-12 text-xs" style={{ color: 'var(--ink-muted)' }}>
           <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
@@ -673,6 +761,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
                     key={r.id}
                     r={r}
                     exportadaEm={r.exportacao_id ? exportadaEmPorLote.get(r.exportacao_id) ?? null : null}
+                    conferenciaMb51={confSemSap?.mapa.get(r.id) ?? null}
                     selecionada={selecionadas.has(r.id)}
                     podeEditar={podeEditarFormulario(user, r) || !!r.pendente_confirmacao}
                     onSelecionar={(v) => alternarSelecao([r.id], v)}
@@ -865,6 +954,25 @@ function ChipAguardandoSap({ exportadaEm }: { exportadaEm: string | null }) {
   );
 }
 
+/** Exportada sem doc. SAP: o lançamento está na MB51? Mostra os documentos que casaram. */
+function ChipConferenciaMb51({ c }: { c: ConferenciaSemSap }) {
+  const token = c.situacao === 'na_mb51' ? 'var(--status-good)'
+    : c.situacao === 'nao_encontrada' ? 'var(--status-critical)'
+      : c.situacao === 'em_parte' ? 'var(--status-serious)' : 'var(--ink-secondary)';
+  const docs = c.docs.length ? ` · doc. ${c.docs.slice(0, 2).join(', ')}${c.docs.length > 2 ? ` +${c.docs.length - 2}` : ''}` : '';
+  const parte = c.situacao === 'em_parte' ? ` · ${c.encontrados}/${c.itens} itens` : '';
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+      style={{ background: `color-mix(in srgb, ${token} 14%, transparent)`, color: token }}
+      title={`${DICA_SITUACAO_SEM_SAP[c.situacao]}${c.docs.length ? `\nDocumentos: ${c.docs.join(', ')}` : ''}`}
+    >
+      {c.situacao === 'na_mb51' ? <Check className="h-3 w-3" /> : <Search className="h-3 w-3" />}
+      {ROTULO_SITUACAO_SEM_SAP[c.situacao]}{parte}{docs}
+    </span>
+  );
+}
+
 function ChipExportada() {
   return (
     <span
@@ -890,10 +998,12 @@ function ChipPendenteConfirmacao({ origemRef }: { origemRef?: string | null }) {
 }
 
 function CartaoRequisicao({
-  r, exportadaEm, selecionada, podeEditar, onSelecionar, onAbrir, onEditar, onExcluir,
+  r, exportadaEm, conferenciaMb51, selecionada, podeEditar, onSelecionar, onAbrir, onEditar, onExcluir,
 }: {
   r: ReqBalcaoRow;
   exportadaEm: string | null;
+  /** Exportada sem doc. SAP: o que a MB51 tem (só na aba "Exportadas · sem SAP"). */
+  conferenciaMb51?: ConferenciaSemSap | null;
   selecionada: boolean;
   podeEditar: boolean;
   onSelecionar: (v: boolean) => void;
@@ -934,6 +1044,7 @@ function CartaoRequisicao({
             <>
               <ChipAguardandoSap exportadaEm={exportadaEm} />
               {itensSemDocParcial(r) > 0 && <ChipDocSap doc={r.doc_sap} semDocParcial={itensSemDocParcial(r)} />}
+              {conferenciaMb51 && <ChipConferenciaMb51 c={conferenciaMb51} />}
             </>
           ) : (
             <>
