@@ -47,7 +47,7 @@ import {
   type ReqBalcaoAlteracao, type ReqBalcaoExportacao, type ReqBalcaoRow,
 } from '../../lib/requisicaoBalcaoApi';
 import {
-  classificarImportacao, exportarPlanilhaBalcao, lerPlanilhaBalcaoConcluida,
+  classificarImportacao, exportarPlanilhaBalcao, lerArquivoBalcaoConcluido,
   type LeituraPlanilhaBalcao, type SituacaoImportacao,
 } from '../../lib/requisicaoBalcaoPlanilha';
 import { listarRhPessoas, listarRhTurnos } from '../../lib/rhApi';
@@ -63,9 +63,8 @@ import { confirmar } from '../../lib/confirmar';
 import LogAlteracoes from '../../components/almoxarifado/LogRequisicaoBalcao';
 import { canAccessPage } from '../../lib/pages';
 import FiltroPeriodoRequisicao from '../../components/almoxarifado/FiltroPeriodoRequisicao';
-import AvisoMb51Importacao from '../../components/almoxarifado/auditoriaRqb/AvisoMb51Importacao';
 import ConferenciaImportacao from '../../components/almoxarifado/auditoriaRqb/ConferenciaImportacao';
-import { documentosDaPlanilha, type AvisoMb51 } from '../../lib/requisicaoBalcaoAuditoria';
+import { documentosDaPlanilha } from '../../lib/requisicaoBalcaoAuditoria';
 import { etapaSapBalcao, itensSemDocParcial, type EtapaSapBalcao } from '../../lib/requisicaoBalcaoEtapa';
 import { formatarIntervalo } from '../../lib/logRequisicaoBalcao';
 import {
@@ -404,9 +403,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const lerArquivoImportacao = async (file: File) => {
     try {
       const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const matriz = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: '' });
-      setImportacao({ arquivo: file.name, leitura: lerPlanilhaBalcaoConcluida(matriz) });
+      setImportacao({ arquivo: file.name, leitura: lerArquivoBalcaoConcluido(wb) });
     } catch (err: any) {
       toast.error(err?.message || 'Não foi possível ler a planilha.');
     } finally {
@@ -848,6 +845,10 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
                   nao_enviadas: [
                     ...naoEnviadas.map((l) => ({ codigo: l.codigo, material: l.material, doc_sap: l.docSap, status: l.status, situacao: l.situacao })),
                     ...leitura.linhasSemDoc.map((l) => ({ ...l, doc_sap: '', status: '', situacao: 'sem_doc' })),
+                    ...leitura.linhasBloqueadas.map((l) => ({
+                      codigo: l.codigo, material: l.material, doc_sap: l.docSap, status: l.status,
+                      situacao: [l.motivo, l.conferenciaSap?.mensagem].filter(Boolean).join(' '),
+                    })),
                   ],
                 },
               );
@@ -2479,22 +2480,33 @@ const ROTULO_SITUACAO: Record<SituacaoImportacao, { texto: string; token: string
   nao_encontrado: { texto: 'Não encontrado', token: 'var(--status-critical)' },
 };
 
-type EtapaImportacao = 'mb51' | 'previa' | 'conferencia';
+type EtapaImportacao = 'previa' | 'conferencia';
 
 const ROTULO_ETAPA: Record<EtapaImportacao, string> = {
-  mb51: '1. MB51 atualizada',
-  previa: '2. Prévia',
-  conferencia: '3. Conferência com a MB51',
+  previa: '1. Prévia',
+  conferencia: '2. Conferência com a MB51',
 };
 
+function ConferenciaMb03Planilha({ dados }: { dados: NonNullable<LeituraPlanilhaBalcao['linhas'][number]['conferenciaSap']> }) {
+  return (
+    <details className="max-w-sm text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+      <summary className="cursor-pointer font-bold">{dados.resultado || 'Pendente'}</summary>
+      <div className="mt-1 space-y-1">
+        <p>Pronto? {dados.pronto || '—'} · Ano {dados.ano || '—'}</p>
+        <p>Conferido em {dados.conferidoEm || '—'} · Tempo {dados.tempoSegundos || '—'} s</p>
+        {dados.mensagem && <p className="whitespace-normal break-words">{dados.mensagem}</p>}
+      </div>
+    </details>
+  );
+}
+
 /**
- * Importação da planilha concluída em três etapas:
- * 1. MB51 — última importação, até que data vai e quais documentos da planilha
- *    ela ainda não tem; importar a MB51 ali mesmo. Seguir sem atualizar pede
- *    confirmação.
- * 2. Prévia — o que cada linha faz antes de gravar; só vão para o banco as
- *    linhas "Novo" e "Substitui".
- * 3. Conferência — depois de gravar, cada documento × material da planilha
+ * Importação da planilha concluída em duas etapas (a MB51 não precisa estar
+ * atualizada antes — o que ela ainda não tem aparece como "sem MB51" na
+ * conferência, que pode ser refeita depois):
+ * 1. Prévia — o que cada linha faz antes de gravar; só vão para o banco as
+ *    linhas "Novo" e "Substitui". Baixas SAP exige CONFIRMADO na MB03.
+ * 2. Conferência — depois de gravar, cada documento × material da planilha
  *    contra a MB51, com o que falta para correção.
  * `visivel` = false esconde a janela sem perder a etapa (enquanto o detalhe
  * de uma requisição está aberto por cima).
@@ -2518,29 +2530,13 @@ function ModalImportacaoSap({
     naoEnviadas: (LeituraPlanilhaBalcao['linhas'][number] & { situacao: SituacaoImportacao })[],
   ) => Promise<boolean>;
 }) {
-  const [etapa, setEtapa] = useState<EtapaImportacao>('mb51');
-  const [aviso, setAviso] = useState<AvisoMb51 | null>(null);
+  const [etapa, setEtapa] = useState<EtapaImportacao>('previa');
   const [gravando, setGravando] = useState(false);
   const docs = useMemo(() => documentosDaPlanilha(leitura.linhas), [leitura]);
   const classificadas = useMemo(() => classificarImportacao(leitura.linhas, requisicoes), [leitura, requisicoes]);
   const aGravar = classificadas.filter((l) => l.situacao === 'novo' || l.situacao === 'diferente');
   const naoEnviadas = classificadas.filter((l) => l.situacao !== 'novo' && l.situacao !== 'diferente');
   const conta = (s: SituacaoImportacao) => classificadas.filter((l) => l.situacao === s).length;
-
-  const seguirParaPrevia = async () => {
-    if (aviso?.desatualizada) {
-      const ok = await confirmar({
-        titulo: 'Seguir sem atualizar a MB51?',
-        mensagem: aviso.horasDesdeImportacao === null
-          ? 'Não foi possível confirmar quando a MB51 foi importada. Sem ela atualizada, os documentos desta planilha ficam sem conferência depois de gravar.'
-          : `${aviso.faltando.length} de ${aviso.docs.length} documento(s) desta planilha ainda não estão na MB51. Eles ficam sem conferência depois de gravar — importe a MB51 e confira depois no Relatório × MB51.`,
-        confirmarLabel: 'Seguir mesmo assim',
-        variante: 'perigo',
-      });
-      if (!ok) return;
-    }
-    setEtapa('previa');
-  };
 
   const gravar = async () => {
     setGravando(true);
@@ -2556,7 +2552,7 @@ function ModalImportacaoSap({
   return (
     <Modal
       onClose={onClose}
-      maxWidth={etapa === 'conferencia' ? 'max-w-6xl' : 'max-w-3xl'}
+      maxWidth={etapa === 'conferencia' ? 'max-w-6xl' : leitura.exigeConferenciaSap ? 'max-w-5xl' : 'max-w-3xl'}
       ariaLabel="Importar planilha concluída"
       disableOutsideClose={gravando}
     >
@@ -2583,13 +2579,28 @@ function ModalImportacaoSap({
         </ol>
       </ModalHeader>
       <ModalBody>
-        {etapa === 'mb51' && (
-          <AvisoMb51Importacao docs={docs} podeImportarMb51={podeImportarMb51} onAviso={setAviso} />
-        )}
         {etapa === 'conferencia' && (
           <ConferenciaImportacao docs={docs} podeImportarMb51={podeImportarMb51} onAbrirRequisicao={onAbrirRequisicao} />
         )}
         {etapa === 'previa' && <>
+        {leitura.exigeConferenciaSap && (
+          <p className="mb-3 text-xs" style={{ color: 'var(--ink-secondary)' }}>
+            Conferência MB03 lida da planilha Baixas SAP. Só entram na gravação as linhas com documento SAP e Conferência SAP igual a CONFIRMADO.
+          </p>
+        )}
+        {leitura.linhasBloqueadas.length > 0 && (
+          <div className="mb-3 rounded-lg border p-3" style={{ borderColor: 'var(--status-serious)', color: 'var(--ink-primary)' }}>
+            <p className="text-xs font-bold">{leitura.linhasBloqueadas.length} linha(s) bloqueada(s) na conferência MB03</p>
+            <ul className="mt-2 space-y-2 text-xs">
+              {leitura.linhasBloqueadas.map((l, k) => (
+                <li key={k}>
+                  <p><span className="font-mono">{l.codigo} · {l.material} · SAP {l.docSap || '—'}</span> · {l.motivo}</p>
+                  {l.conferenciaSap && <ConferenciaMb03Planilha dados={l.conferenciaSap} />}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div className="mb-3 flex flex-wrap gap-2">
           {(Object.keys(ROTULO_SITUACAO) as SituacaoImportacao[]).map((s) => (
             <span
@@ -2611,6 +2622,7 @@ function ModalImportacaoSap({
                   <th className="px-3 py-2 text-left font-bold">Requisição</th>
                   <th className="px-3 py-2 text-left font-bold">Material</th>
                   <th className="px-3 py-2 text-left font-bold">Doc. SAP</th>
+                  {leitura.exigeConferenciaSap && <th className="px-3 py-2 text-left font-bold">Conferência MB03</th>}
                   <th className="px-3 py-2 text-left font-bold">Situação</th>
                 </tr>
               </thead>
@@ -2624,6 +2636,9 @@ function ModalImportacaoSap({
                       {l.docSap || '—'}
                       {l.status && <span className="block font-sans text-[10px]" style={{ color: 'var(--ink-muted)' }}>{l.status}</span>}
                     </td>
+                    {leitura.exigeConferenciaSap && (
+                      <td className="px-3 py-2">{l.conferenciaSap && <ConferenciaMb03Planilha dados={l.conferenciaSap} />}</td>
+                    )}
                     <td className="px-3 py-2 font-bold" style={{ color: ROTULO_SITUACAO[l.situacao].token }}>{ROTULO_SITUACAO[l.situacao].texto}</td>
                   </tr>
                 ))}
@@ -2635,23 +2650,8 @@ function ModalImportacaoSap({
       </ModalBody>
       <ModalFooter>
         <div className="flex w-full flex-wrap justify-end gap-2">
-          {etapa === 'mb51' && (
-            <>
-              <button onClick={onClose} className="rounded-lg border px-4 py-2 text-xs font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Cancelar</button>
-              <button
-                onClick={() => void seguirParaPrevia()}
-                disabled={!aviso}
-                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
-                style={{ background: aviso?.desatualizada ? 'var(--status-serious)' : 'var(--brand)' }}
-              >
-                {!aviso && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {aviso?.desatualizada ? 'Seguir sem atualizar a MB51' : 'MB51 atualizada — continuar'}
-              </button>
-            </>
-          )}
           {etapa === 'previa' && (
             <>
-              <button onClick={() => setEtapa('mb51')} disabled={gravando} className="mr-auto rounded-lg border px-4 py-2 text-xs font-bold disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Voltar</button>
               <button onClick={onClose} disabled={gravando} className="rounded-lg border px-4 py-2 text-xs font-bold disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Cancelar</button>
               <button
                 onClick={() => void gravar()}

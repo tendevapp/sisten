@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  avaliarMb51ParaPlanilha, conferirExportadasSemSap, contarAuditoria, dentroDoPeriodo, documentosDaPlanilha, filtrarAuditoria, filtrarDivergenciasDoc,
+  conferirExportadasSemSap, contarAuditoria, dentroDoPeriodo, documentosDaPlanilha, filtrarAuditoria, filtrarDivergenciasDoc,
   resumirConferenciaImportacao, resumirPorMaterial, totalizarDivergenciasDoc,
   type LinhaAuditoriaRqb, type LinhaDivergenciaDoc,
 } from './requisicaoBalcaoAuditoria';
@@ -92,16 +92,6 @@ describe('importação da planilha × MB51', () => {
   it('lista os documentos distintos da planilha', () => {
     expect(documentosDaPlanilha([{ docSap: '4904102226' }, { docSap: ' 4904102226 ' }, { docSap: '' }, { docSap: '4904093793' }]))
       .toEqual(['4904093793', '4904102226']);
-  });
-
-  it('marca a MB51 desatualizada quando falta documento da planilha ou nunca foi importada', () => {
-    const agora = new Date('2026-11-16T12:00:00Z');
-    const a = avaliarMb51ParaPlanilha(['4904102226', '4904114654'], ['4904102226'], { importadaEm: '2026-11-12T16:37:14Z' }, agora);
-    expect(a).toMatchObject({ faltando: ['4904114654'], desatualizada: true });
-    expect(a.horasDesdeImportacao).toBeCloseTo(91.4, 1);
-    expect(avaliarMb51ParaPlanilha(['4904102226'], ['4904102226'], { importadaEm: '2026-11-16T11:00:00Z' }, agora))
-      .toMatchObject({ faltando: [], desatualizada: false, horasDesdeImportacao: 1 });
-    expect(avaliarMb51ParaPlanilha([], [], { importadaEm: null }, agora)).toMatchObject({ desatualizada: true, horasDesdeImportacao: null });
   });
 
   it('resume a conferência: ok, faltas com valor e requisições, pendentes', () => {

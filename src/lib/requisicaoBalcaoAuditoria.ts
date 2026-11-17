@@ -403,38 +403,6 @@ export function documentosDaPlanilha(linhas: { docSap: string }[]): string[] {
   return [...new Set(linhas.map((l) => l.docSap.trim()).filter(Boolean))].sort();
 }
 
-export interface UltimaImportacaoMb51 {
-  /** Quando a MB51 foi importada pela última vez (ops_importacoes). */
-  importadaEm: string | null;
-  por: string | null;
-  arquivo: string | null;
-  /** Última data de lançamento que a MB51 importada traz. */
-  lancamentosAte: string | null;
-}
-
-export interface AvisoMb51 {
-  docs: string[];
-  /** Documentos da planilha que a MB51 importada ainda não tem. */
-  faltando: string[];
-  /** Horas desde a última importação da MB51 (null = nunca importada). */
-  horasDesdeImportacao: number | null;
-  /** MB51 desatualizada para esta planilha: tem documento fora ou nunca foi importada. */
-  desatualizada: boolean;
-}
-
-export function avaliarMb51ParaPlanilha(
-  docsPlanilha: string[],
-  docsNaMb51: Iterable<string>,
-  ultima: Pick<UltimaImportacaoMb51, 'importadaEm'>,
-  agora: Date = new Date(),
-): AvisoMb51 {
-  const presentes = new Set(docsNaMb51);
-  const faltando = docsPlanilha.filter((d) => !presentes.has(d));
-  const t = ultima.importadaEm ? new Date(ultima.importadaEm).getTime() : NaN;
-  const horas = Number.isNaN(t) ? null : Math.max(0, Math.round(((agora.getTime() - t) / 36e5) * 10) / 10);
-  return { docs: docsPlanilha, faltando, horasDesdeImportacao: horas, desatualizada: horas === null || faltando.length > 0 };
-}
-
 export interface ResumoConferenciaImportacao {
   pares: number;
   ok: number;

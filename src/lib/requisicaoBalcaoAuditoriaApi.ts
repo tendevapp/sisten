@@ -9,7 +9,7 @@
 import { supabase } from '../db/supabaseClient';
 import { buscarTudo } from './buscarTudo';
 import type {
-  BasePeriodo, ItemParaContar, LinhaAuditoriaRqb, LinhaDivergenciaDoc, RqbDaDivergencia, UltimaImportacaoMb51,
+  BasePeriodo, ItemParaContar, LinhaAuditoriaRqb, LinhaDivergenciaDoc, RqbDaDivergencia,
 } from './requisicaoBalcaoAuditoria';
 import { criarInventario, definirReservaInventario } from './inventarioCiclicoApi';
 import { dataHojeLocal } from './dataLocal';
@@ -71,47 +71,6 @@ export async function listarDivergenciasDoc(
     valor_falta: Number(l.valor_falta) || 0,
     rqbs: ((l.rqbs ?? []) as RqbDaDivergencia[]).map((r) => ({ ...r, quantidade: Number(r.quantidade) })),
   }));
-}
-
-/** Última importação da MB51 (log em ops_importacoes) e até que data ela traz lançamentos. */
-export async function ultimaImportacaoMb51(): Promise<UltimaImportacaoMb51> {
-  const [log, mov] = await Promise.all([
-    (supabase.from as any)('ops_importacoes')
-      .select('created_at, user_name, filename')
-      .eq('type', 'MB51')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    (supabase.from as any)('sap_mb51_mov')
-      .select('data_lancamento')
-      .order('data_lancamento', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
-  if (log.error) throw new Error(log.error.message);
-  if (mov.error) throw new Error(mov.error.message);
-  return {
-    importadaEm: log.data?.created_at ?? null,
-    por: log.data?.user_name ?? null,
-    arquivo: log.data?.filename ?? null,
-    lancamentosAte: mov.data?.data_lancamento ?? null,
-  };
-}
-
-/** Quais destes documentos já estão na MB51 importada. */
-export async function documentosNaMb51(docs: string[]): Promise<Set<string>> {
-  const presentes = new Set<string>();
-  for (let i = 0; i < docs.length; i += 100) {
-    const lote = docs.slice(i, i + 100);
-    const linhas = await buscarTudo<{ doc_material: string }>((de, ate) =>
-      (supabase.from as any)('sap_mb51_mov')
-        .select('doc_material')
-        .in('doc_material', lote)
-        .order('id', { ascending: true })
-        .range(de, ate));
-    for (const l of linhas) presentes.add(String(l.doc_material));
-  }
-  return presentes;
 }
 
 export interface MovimentoMb51 {

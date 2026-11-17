@@ -14,11 +14,13 @@ import { formatBRL } from '../../../lib/format';
 import { localDb } from '../../../db/localDb';
 import PlanilhaSapUploadButton from '../PlanilhaSapUploadButton';
 import { ListaDivergenciasDoc } from './DivergenciasDocumento';
-import { ESTILO_BOTAO_MB51 } from './AvisoMb51Importacao';
 import {
   resumirConferenciaImportacao, type LinhaDivergenciaDoc,
 } from '../../../lib/requisicaoBalcaoAuditoria';
 import { listarDivergenciasDoc } from '../../../lib/requisicaoBalcaoAuditoriaApi';
+
+const ESTILO_BOTAO_MB51 =
+  'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer disabled:opacity-50 bg-[var(--brand)] hover:opacity-90';
 
 interface Props {
   docs: string[];
