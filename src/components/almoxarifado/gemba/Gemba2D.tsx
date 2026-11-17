@@ -210,6 +210,16 @@ function PlantaBaixa({
                     {e.trilha[0].toUpperCase()}
                   </text>
                 )}
+                {/* Anexo: o nome da rua acima da linha das costas (uma vez por linha, na face oeste). */}
+                {!rua && e.face === 'oeste' && (
+                  <text
+                    x={e.inicio[0]} y={Math.min(e.inicio[1], e.fim[1]) - 3}
+                    textAnchor="middle"
+                    fontSize={5.5} fontWeight={800} fill={cores.rotulo.tinta} pointerEvents="none"
+                  >
+                    {(e.trilha[1] ?? '').split(' · ')[0].toUpperCase()}
+                  </text>
+                )}
               </g>
             );
           })}

@@ -51,7 +51,7 @@ describe('gembaCarga - montarCargas', () => {
   });
 
   it('apartamento do anexo e zonas com nome', () => {
-    expect(cargas.find(c => c.codigo === '3')).toMatchObject({ estanteId: 'anexo_1', andar: 2, apartamento: 18 });
+    expect(cargas.find(c => c.codigo === '3')).toMatchObject({ estanteId: 'anexo_r12', andar: 2, apartamento: 18 });
     expect(porZona.apoio_manutencao).toBe(1);
   });
 
@@ -69,7 +69,7 @@ describe('gembaCarga - montarCargas', () => {
 
 describe('gembaCarga - pecasDaEstante', () => {
   const rua04 = ESTANTES.find(e => e.id === 'rua_04')!;
-  const anexo1 = ESTANTES.find(e => e.id === 'anexo_1')!;
+  const anexo1 = ESTANTES.find(e => e.id === 'anexo_r12')!;
 
   it('cada tipo gera peças dentro do andar, com palete no porta-pallet', () => {
     const { indice } = acharBloco('0004', 2)!;
@@ -92,9 +92,9 @@ describe('gembaCarga - pecasDaEstante', () => {
   });
 
   it('anexo desenha todos os bins e pinta só os ocupados', () => {
-    const pecas = pecasDaEstante(anexo1, [{ estanteId: 'anexo_1', indiceVao: 0, andar: 2, apartamento: 18, tipo: 'miudeza', codigo: '3' }]);
+    const pecas = pecasDaEstante(anexo1, [{ estanteId: 'anexo_r12', indiceVao: 0, andar: 2, apartamento: 18, tipo: 'miudeza', codigo: '3' }]);
     const bins = pecas.filter(p => p.forma === 'bin');
-    expect(bins).toHaveLength(8 * 2 * 30);
+    expect(bins).toHaveLength(4 * 2 * 30);
     expect(bins.filter(b => b.cor !== COR_BIN_VAZIO)).toHaveLength(1);
   });
 });

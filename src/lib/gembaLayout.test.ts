@@ -97,11 +97,35 @@ describe('gembaLayout - numeração confirmada no galpão', () => {
     expect(b12.indice).toBe(quantidadeVaos(b12.estante) - 1);
   });
 
-  it('Blocos 13 a 44 do 0004 caem no Anexo, 8 por estante', () => {
+  it('Anexo: Rua 12 só frente (13–16); Ruas 11, 10 e 09 com frente e fundo; 17 a 20 não existem', () => {
+    const esperado = (b: number) =>
+      b <= 16 ? 'anexo_r12'
+        : b <= 24 ? 'anexo_r11_frente' : b <= 28 ? 'anexo_r11_fundo'
+          : b <= 32 ? 'anexo_r10_frente' : b <= 36 ? 'anexo_r10_fundo'
+            : b <= 40 ? 'anexo_r09_frente' : 'anexo_r09_fundo';
     for (let b = 13; b <= 44; b++) {
-      const achado = acharBloco('0004', b)!;
-      expect(achado.estante.id).toBe(`anexo_${Math.floor((b - 13) / 8) + 1}`);
+      if (b >= 17 && b <= 20) {
+        expect(acharBloco('0004', b), `bloco ${b}`).toBeNull();
+        continue;
+      }
+      expect(acharBloco('0004', b)!.estante.id, `bloco ${b}`).toBe(esperado(b));
     }
+  });
+
+  it('frente e fundo da mesma rua dividem as costas, olham para lados opostos e numeram de norte para sul', () => {
+    for (const rua of ['11', '10', '09']) {
+      const frente = ESTANTES.find(e => e.id === `anexo_r${rua}_frente`)!;
+      const fundo = ESTANTES.find(e => e.id === `anexo_r${rua}_fundo`)!;
+      expect(frente.inicio).toEqual(fundo.inicio);
+      expect([frente.face, fundo.face]).toEqual(['oeste', 'leste']);
+      expect(frente.blocos).toHaveLength(4);
+      expect(fundo.blocos).toHaveLength(4);
+      // 1º bloco de cada face na ponta norte (y menor), lado a lado: 21 com 25, 24 com 28.
+      expect(caixaDoVao(frente, 0).centro[2]).toBeLessThan(caixaDoVao(frente, 3).centro[2]);
+      expect(caixaDoVao(frente, 0).centro[2]).toBeCloseTo(caixaDoVao(fundo, 0).centro[2]);
+      expect(caixaDoVao(frente, 0).centro[0]).toBeLessThan(caixaDoVao(fundo, 0).centro[0]);
+    }
+    expect(ESTANTES.find(e => e.id === 'anexo_r12')).toMatchObject({ face: 'oeste', blocos: [13, 14, 15, 16] });
   });
 });
 
@@ -115,9 +139,9 @@ describe('gembaLayout - localizar', () => {
     }
   });
 
-  it('104.130218 → Anexo, Estante 1, Bloco 13, Andar 02, Apto 18, dentro do andar 02', () => {
+  it('104.130218 → Anexo, Rua 12, Bloco 13, Andar 02, Apto 18, dentro do andar 02', () => {
     const loc = localizar(interpretarPosicao('104.130218')!)!;
-    expect(loc.trilha).toEqual(['Anexo 0004', 'Estante 1', 'Bloco 13', 'Andar 02', 'Apto 18']);
+    expect(loc.trilha).toEqual(['Anexo 0004', 'Rua 12', 'Bloco 13', 'Andar 02', 'Apto 18']);
     const { estante, indice } = acharBloco('0004', 13)!;
     expect(contem(caixaDoAndar(estante, indice, 2)!, loc.caixas[0])).toBe(true);
     expect(loc.caixas[0].tamanho[1]).toBeLessThan(caixaDoAndar(estante, indice, 2)!.tamanho[1]);
@@ -143,15 +167,20 @@ describe('gembaLayout - localizar', () => {
     expect(localizar(interpretarPosicao('DEPVIRTUAL')!)).toBeNull();
   });
 
-  it('no anexo a câmera fica no corredor, sem passar para trás da estante vizinha', () => {
+  it('no anexo a câmera fica no corredor da face, sem passar para trás da rua vizinha', () => {
+    const linhas = [...new Set(ESTANTES.filter(e => e.apartamentos).map(e => e.inicio[0]))].sort((a, b) => a - b);
     for (let b = 13; b <= 44; b++) {
+      if (b >= 17 && b <= 20) continue;
       const loc = localizar(interpretarPosicao(`104.${String(b).padStart(2, '0')}0201`)!)!;
       const { estante } = acharBloco('0004', b)!;
-      const n = Number(estante.id.slice(-1));
-      const vizinha = ESTANTES.find(e => e.id === `anexo_${n - 1}`);
-      // Face oeste: a câmera fica a oeste do alvo, mas a leste das costas da estante vizinha.
-      expect(loc.vista.camera[0], `bloco ${b}`).toBeLessThan(loc.vista.alvo[0]);
-      if (vizinha) expect(loc.vista.camera[0], `bloco ${b}`).toBeGreaterThan(vizinha.inicio[0] * METROS_POR_PX);
+      const i = linhas.indexOf(estante.inicio[0]);
+      if (estante.face === 'oeste') {
+        expect(loc.vista.camera[0], `bloco ${b}`).toBeLessThan(loc.vista.alvo[0]);
+        if (i > 0) expect(loc.vista.camera[0], `bloco ${b}`).toBeGreaterThan(linhas[i - 1] * METROS_POR_PX);
+      } else {
+        expect(loc.vista.camera[0], `bloco ${b}`).toBeGreaterThan(loc.vista.alvo[0]);
+        if (i < linhas.length - 1) expect(loc.vista.camera[0], `bloco ${b}`).toBeLessThan(linhas[i + 1] * METROS_POR_PX);
+      }
     }
   });
 
@@ -221,7 +250,8 @@ describe('gembaLayout - vista 2D', () => {
 
 describe('gembaLayout - descreverPosicao', () => {
   it('descreve a posição como a trilha do Gemba', () => {
-    expect(descreverPosicao('104.230209')).toBe('Anexo 0004 › Estante 2 › Bloco 23 › Andar 02 › Apto 09');
+    expect(descreverPosicao('104.230209')).toBe('Anexo 0004 › Rua 11 · Frente › Bloco 23 › Andar 02 › Apto 09');
+    expect(descreverPosicao('104.270209')).toBe('Anexo 0004 › Rua 11 · Fundo › Bloco 27 › Andar 02 › Apto 09');
     expect(descreverPosicao('101.040100')).toBe('Depósito 0001 › Bloco 04 › Andar 01');
     expect(descreverPosicao('102.ANEXO')).toBe('Material Apoio Manutenção');
   });

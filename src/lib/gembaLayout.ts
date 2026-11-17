@@ -8,11 +8,12 @@
  *
  * O que foi confirmado no galpão: Bloco 01 na ponta da Entrada (direita) e a
  * numeração cresce rumo ao Pórtico; Depósito 0001 com 14 blocos e Ruas 02 a 05
- * com 12 cada; Anexo 0004 = blocos 13 a 44 do depósito 0004; andar 00 = chão do
- * bloco; 102.ANEXO no Material de Apoio Manutenção.
+ * com 12 cada; Anexo 0004 = Rua 12 (13–16, só frente) e Ruas 11, 10 e 09 com
+ * frente e fundo (21–44), conforme `ANEXO_RUAS`; andar 00 = chão do bloco;
+ * 102.ANEXO no Material de Apoio Manutenção.
  * Os blocos de cada estante preenchem a linha desenhada na planta (a largura do
- * vão sai do comprimento ÷ quantidade). O resto (alturas, ordem das estantes do
- * anexo, grade de 30 apartamentos) é valor padrão a CALIBRAR andando no galpão —
+ * vão sai do comprimento ÷ quantidade). O resto (alturas, grade de 30
+ * apartamentos do anexo) é valor padrão a CALIBRAR andando no galpão —
  * todos os números ficam aqui.
  *
  * Eixos do mundo 3D: x = x da planta, z = y da planta (para baixo = sul), y = altura.
@@ -92,9 +93,36 @@ const RUA_X_PORTICO = 155;
 const COSTAS_05_04 = 320;
 const COSTAS_03_02 = 476;
 
-const ANEXO_COSTAS_X = [893, 918, 943, 968];
 const ANEXO_Y_INICIO = 532;
 const ANEXO_Y_FIM = 598;
+
+/**
+ * Anexo 0004 conforme o desenho do galpão (17/11/2026), de oeste para leste:
+ * Rua 12 só com frente (blocos 13–16); Ruas 11, 10 e 09 com frente (oeste) e
+ * fundo (leste) nas mesmas costas, 4 blocos por face, numerados da ponta norte
+ * para a sul. Não existem blocos 17 a 20.
+ */
+const ANEXO_RUAS: { rua: string; x: number; frente: [number, number]; fundo?: [number, number] }[] = [
+  { rua: '12', x: 893, frente: [13, 16] },
+  { rua: '11', x: 918, frente: [21, 24], fundo: [25, 28] },
+  { rua: '10', x: 943, frente: [29, 32], fundo: [33, 36] },
+  { rua: '09', x: 968, frente: [37, 40], fundo: [41, 44] },
+];
+
+function estanteDoAnexo(rua: string, x: number, lado: 'frente' | 'fundo' | null, blocos: [number, number]): EstanteGemba {
+  return {
+    id: lado ? `anexo_r${rua}_${lado}` : `anexo_r${rua}`,
+    deposito: '0004',
+    // O último nome é a placa da estante no 3D: "Rua 11 · Frente".
+    trilha: ['Anexo 0004', lado ? `Rua ${rua} · ${lado === 'frente' ? 'Frente' : 'Fundo'}` : `Rua ${rua}`],
+    face: lado === 'fundo' ? 'leste' : 'oeste',
+    ...blocosNaLinha([x, ANEXO_Y_INICIO], [x, ANEXO_Y_FIM], intervalo(blocos[0], blocos[1])),
+    profundidadeM: 0.6,
+    alturaChaoM: 0.15,
+    alturasAndarM: [0.5, 0.45, 0.45],
+    apartamentos: { andares: [2, 3], colunas: 10, linhas: 3 },
+  };
+}
 
 export const ESTANTES: EstanteGemba[] = [
   {
@@ -123,18 +151,10 @@ export const ESTANTES: EstanteGemba[] = [
     ...blocosNaLinha([808, 652], [118, 652], intervalo(1, 14)),
     ...PORTA_PALETE, alturasAndarM: tresAndares,
   },
-  // Anexo: blocos 13 a 44 do 0004, 8 por estante (ordem das estantes a calibrar).
-  ...ANEXO_COSTAS_X.map((x, i): EstanteGemba => ({
-    id: `anexo_${i + 1}`,
-    deposito: '0004',
-    trilha: ['Anexo 0004', `Estante ${i + 1}`],
-    face: 'oeste',
-    ...blocosNaLinha([x, ANEXO_Y_INICIO], [x, ANEXO_Y_FIM], intervalo(13 + i * 8, 20 + i * 8)),
-    profundidadeM: 0.6,
-    alturaChaoM: 0.15,
-    alturasAndarM: [0.5, 0.45, 0.45],
-    apartamentos: { andares: [2, 3], colunas: 10, linhas: 3 },
-  })),
+  // Anexo: blocos 13–16 e 21–44 do 0004 (ver ANEXO_RUAS).
+  ...ANEXO_RUAS.flatMap(({ rua, x, frente, fundo }) => fundo
+    ? [estanteDoAnexo(rua, x, 'frente', frente), estanteDoAnexo(rua, x, 'fundo', fundo)]
+    : [estanteDoAnexo(rua, x, null, frente)]),
 ];
 
 export const ZONAS: ZonaGemba[] = [
@@ -515,7 +535,7 @@ export function vistasRapidas(): VistaRapida[] {
       },
     });
   }
-  // Anexo: de sul para norte, olhando dentro dos corredores entre as 4 estantes.
+  // Anexo: de sul para norte, olhando dentro dos corredores entre as ruas 12 a 09.
   const anexo = uniaoDeCaixas(ESTANTES.filter(e => e.apartamentos).map(caixaDaEstante));
   const [ax, , az] = anexo.centro;
   lista.push({
