@@ -1446,7 +1446,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const buildSuppliersData = useCallback(async (force = false) => {
     // Registros da Central nos dois caminhos (cache de 5 min e carga completa). "Concluída" = X na
     // ME5A: RM encerrada no SAP, nada mais a comprar — sai como os eliminados (que getEnriched já tira).
-    // Idem para o item cujo pedido foi eliminado no SAP (ZL0132/ME2L com L) sem outro PO ativo.
+    // Idem para o item que não veio na última ME5A. Pedido eliminado no SAP não tira: volta a "Sem PO".
     const registrosDaCentral = () => localDb.getEnrichedSAPRequisicoes().filter(r => !foraDaCentralDeCompras(r));
 
     // Se temos dados em cache recentes (menos de 5 min) e NÃO é refresh forçado,

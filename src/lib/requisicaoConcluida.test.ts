@@ -1,20 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { foraDaCentralDeCompras, itemComPedidoEliminado, itemConcluidoNaMe5a } from './requisicaoConcluida';
+import { foraDaCentralDeCompras, itemConcluidoNaMe5a, itemForaDaUltimaMe5a } from './requisicaoConcluida';
 
-describe('itemComPedidoEliminado', () => {
-  it('só a marca da view (true) conta', () => {
-    expect(itemComPedidoEliminado({ po_eliminado: true })).toBe(true);
-    expect(itemComPedidoEliminado({ po_eliminado: false })).toBe(false);
-    expect(itemComPedidoEliminado({ po_eliminado: null })).toBe(false);
-    expect(itemComPedidoEliminado({})).toBe(false);
+describe('itemForaDaUltimaMe5a', () => {
+  it('só false explícito tira o item (cache antigo sem o campo fica)', () => {
+    expect(itemForaDaUltimaMe5a({ presente_ultima_carga: false })).toBe(true);
+    expect(itemForaDaUltimaMe5a({ presente_ultima_carga: true })).toBe(false);
+    expect(itemForaDaUltimaMe5a({ presente_ultima_carga: null })).toBe(false);
+    expect(itemForaDaUltimaMe5a({})).toBe(false);
   });
 });
 
 describe('foraDaCentralDeCompras', () => {
-  it('sai quando concluída ou com pedido eliminado', () => {
+  it('sai quando concluída ou fora da última ME5A', () => {
     expect(foraDaCentralDeCompras({ concluida: 'X' })).toBe(true);
-    expect(foraDaCentralDeCompras({ po_eliminado: true })).toBe(true);
-    expect(foraDaCentralDeCompras({ concluida: null, po_eliminado: false })).toBe(false);
+    expect(foraDaCentralDeCompras({ presente_ultima_carga: false })).toBe(true);
+    expect(foraDaCentralDeCompras({ concluida: null, presente_ultima_carga: true })).toBe(false);
+  });
+  it('pedido eliminado não tira o item da Central (volta a Sem PO)', () => {
+    expect(foraDaCentralDeCompras({ presente_ultima_carga: true, po_eliminado: true } as any)).toBe(false);
   });
 });
 

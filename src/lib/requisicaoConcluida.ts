@@ -16,19 +16,19 @@ export function itemConcluidoNaMe5a(r: { concluida?: string | null }): boolean {
 }
 
 /**
- * Pedido eliminado no SAP (lixeira, `L`) e nenhum outro PO ativo no item.
- * Quem decide é a view (`vw_sap_requisicoes_enriquecidas.po_eliminado`): o PO
- * que a ME5A aponta está com `eflag_e = L` na ZL0132 ou `L` na ME2L.
+ * Item que não veio na última carga da ME5A (`presente_ultima_carga = false`):
+ * a RM saiu do SAP e sai da Central. A trava de `cargaMe5a.ts` impede que uma
+ * ME5A filtrada derrube RMs abertas por engano.
  *
- * Caso de 17/11: a RM continuava aberta na ME5A apontando para o pedido
- * eliminado e aparecia na Central como "Sem PO". Se o comprador refizer o
- * pedido, o PO novo é ativo e o item volta com ele.
+ * Pedido eliminado no SAP NÃO tira o item: enquanto a RM estiver na ME5A ele
+ * volta a "Sem PO" (decisão de 17/11). A view só marca `po_eliminado` para
+ * consulta.
  */
-export function itemComPedidoEliminado(r: { po_eliminado?: boolean | null }): boolean {
-  return r.po_eliminado === true;
+export function itemForaDaUltimaMe5a(r: { presente_ultima_carga?: boolean | null }): boolean {
+  return r.presente_ultima_carga === false;
 }
 
-/** Itens que a Central de Compras não lista: RM concluída na ME5A ou com o pedido eliminado. */
-export function foraDaCentralDeCompras(r: { concluida?: string | null; po_eliminado?: boolean | null }): boolean {
-  return itemConcluidoNaMe5a(r) || itemComPedidoEliminado(r);
+/** Itens que a Central de Compras não lista: RM concluída na ME5A ou ausente da última carga. */
+export function foraDaCentralDeCompras(r: { concluida?: string | null; presente_ultima_carga?: boolean | null }): boolean {
+  return itemConcluidoNaMe5a(r) || itemForaDaUltimaMe5a(r);
 }

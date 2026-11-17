@@ -449,7 +449,7 @@ export interface SAPRequisicao {
 export interface EnrichedSAPRecord extends SAPRequisicao {
   /** 'X' quando a ZL0132 marca CRF (remessa final) em todas as linhas ativas do PO — tira o item de "sem MIGO". */
   crf_po?: string | null;
-  /** Pedido eliminado no SAP (ZL0132 `eflag_e = L` / ME2L `L`) e nenhum PO ativo no item — sai da Central de Compras. */
+  /** Pedido eliminado no SAP (ZL0132 `eflag_e = L` / ME2L `L`) e nenhum PO ativo no item. Só informativo: o item segue na Central como "Sem PO". */
   po_eliminado?: boolean | null;
   documento_compra?: string;
   item_pedido?: string;
