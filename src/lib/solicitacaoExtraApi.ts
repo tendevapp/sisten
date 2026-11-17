@@ -114,6 +114,32 @@ export async function listarCatalogoParaSolicitacao(): Promise<MaterialDisponive
   }
 }
 
+/**
+ * Segunda fonte da descrição, para o código que não está no Cadastro de Itens
+ * do almox (item sem saldo que ainda não foi cadastrado): o catálogo de
+ * materiais do SAP (`materials`, ZL0169/0162). Busca pelo código exato (chave
+ * primária, sem varrer a tabela); zeros à esquerda não contam. `null` quando o
+ * SAP também não conhece o código ou a consulta falha (sem rede).
+ */
+export async function buscarMaterialSapPorCodigo(codigo: string): Promise<MaterialDisponivel | null> {
+  const alvo = codigo.trim().toUpperCase().replace(/^0+(?=.)/, '');
+  if (!alvo) return null;
+  try {
+    const { data, error } = await (supabase.from as any)('materials')
+      .select('material_code, description, unit')
+      .eq('material_code', alvo)
+      .limit(1);
+    if (error) throw new Error(error.message);
+    const m = (data || [])[0] as { material_code: string; description: string | null; unit: string | null } | undefined;
+    const descricao = (m?.description || '').trim();
+    if (!m || !descricao) return null;
+    return { material: m.material_code.trim(), descricao, unidade: (m.unit || 'UN').trim(), saldo: 0 };
+  } catch (err) {
+    console.warn(`Catálogo SAP indisponível para o código ${alvo}:`, err);
+    return null;
+  }
+}
+
 /** Registro gravado antes da coluna `tipo` (ou cópia offline antiga) é de Projeto. */
 const comTipo = (rows: unknown[]): SolExtra[] =>
   (rows as SolExtra[]).map(r => ({ ...r, tipo: r.tipo ?? 'PROJETO', fotos: Array.isArray(r.fotos) ? r.fotos : [] }));

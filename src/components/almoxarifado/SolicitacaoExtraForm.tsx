@@ -49,7 +49,7 @@ import {
   type DadosSolExtra, type FotoSolExtra, type MotivoSolExtra, type TipoSolExtra, type TurnoSolExtra,
 } from '../../lib/solicitacaoExtra';
 import {
-  atualizarSolicitacaoExtra, criarSolicitacaoExtra, listarCatalogoParaSolicitacao, subirFotoSolExtra, type SolExtra,
+  atualizarSolicitacaoExtra, buscarMaterialSapPorCodigo, criarSolicitacaoExtra, listarCatalogoParaSolicitacao, subirFotoSolExtra, type SolExtra,
 } from '../../lib/solicitacaoExtraApi';
 
 interface Props {
@@ -201,14 +201,36 @@ export default function SolicitacaoExtraForm({
       quantidade: '',
     };
     setLinhas(lista => (vazia ? lista.map(l => (l.chave === vazia.chave ? preenchida : l)) : [...lista, preenchida]));
-    if (doCadastro) toast.success(`Item ${preenchida.material} incluído — informe a quantidade.`);
-    else toast.warning(`Item ${preenchida.material} não está no Cadastro de Itens — preencha a descrição.`);
+    if (doCadastro) {
+      toast.success(`Item ${preenchida.material} incluído — informe a quantidade.`);
+      return;
+    }
+    void completarDoSap(preenchida.chave, preenchida.material).then(achou => {
+      if (achou) toast.success(`Item ${preenchida.material} incluído com a descrição do SAP — informe a quantidade.`);
+      else toast.warning(`Item ${preenchida.material} não está no Cadastro de Itens nem no SAP — preencha a descrição.`);
+    });
     // Roda por leitura (itemQr.n), com o cadastro já carregado.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemQr, catalogoPronto]);
 
   const alterarLinha = (chave: string, patch: Partial<LinhaItem>) =>
     setLinhas(lista => lista.map(l => (l.chave === chave ? { ...l, ...patch } : l)));
+
+  /**
+   * Código fora do Cadastro de Itens: busca a descrição no catálogo SAP. A
+   * resposta só entra se a linha ainda tem o mesmo código e segue sem
+   * descrição — o usuário pode ter digitado enquanto a consulta voltava.
+   */
+  const completarDoSap = async (chave: string, codigo: string): Promise<boolean> => {
+    const m = await buscarMaterialSapPorCodigo(codigo);
+    if (!m) return false;
+    setLinhas(lista => lista.map(l => (
+      l.chave === chave && normalizeCode(l.material) === normalizeCode(codigo) && !l.descricao.trim()
+        ? { ...l, material: m.material, descricao: m.descricao, unidade: l.unidade.trim() || m.unidade || 'UN' }
+        : l
+    )));
+    return true;
+  };
 
   const limpar = () => {
     setLinhas([linhaVazia()]);
@@ -222,11 +244,20 @@ export default function SolicitacaoExtraForm({
 
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Código digitado ou colado sem clicar na sugestão: a descrição vem do cadastro.
-    const itens = completarDescricoesDoCadastro(
+    // Código digitado ou colado sem clicar na sugestão: a descrição vem do
+    // Cadastro de Itens e, se o código não estiver lá, do catálogo SAP.
+    const preenchidas = completarDescricoesDoCadastro(
       linhas.filter(l => l.material.trim() || l.descricao.trim() || l.quantidade.trim()),
       catalogo,
-    )
+    );
+    const doSap = await Promise.all(preenchidas.map(l => (
+      l.material.trim() && !l.descricao.trim() ? buscarMaterialSapPorCodigo(l.material) : Promise.resolve(null)
+    )));
+    const itens = preenchidas
+      .map((l, i) => {
+        const m = doSap[i];
+        return m ? { ...l, material: m.material, descricao: m.descricao, unidade: l.unidade.trim() || m.unidade || 'UN' } : l;
+      })
       .map(l => ({
         material: l.material.trim().toUpperCase(),
         descricao: l.descricao.trim().toUpperCase(),
@@ -400,6 +431,7 @@ export default function SolicitacaoExtraForm({
               podeRemover={linhas.length > 1}
               onAlterar={patch => alterarLinha(l.chave, patch)}
               onRemover={() => setLinhas(lista => lista.filter(x => x.chave !== l.chave))}
+              onSemCadastro={codigo => { void completarDoSap(l.chave, codigo); }}
             />
           ))}
         </div>
@@ -519,7 +551,7 @@ type CampoBusca = 'material' | 'descricao';
  * e escolher preenche código, descrição e unidade.
  */
 function LinhaMaterial({
-  numero, linha, catalogo, disabled, podeRemover, onAlterar, onRemover,
+  numero, linha, catalogo, disabled, podeRemover, onAlterar, onRemover, onSemCadastro,
 }: {
   numero: number;
   linha: LinhaItem;
@@ -528,6 +560,8 @@ function LinhaMaterial({
   podeRemover: boolean;
   onAlterar: (patch: Partial<LinhaItem>) => void;
   onRemover: () => void;
+  /** Código completo que não está no Cadastro de Itens (busca no SAP). */
+  onSemCadastro: (codigo: string) => void;
 }) {
   const [busca, setBusca] = useState<{ campo: CampoBusca; termo: string } | null>(null);
   const [ativo, setAtivo] = useState(0);
@@ -558,11 +592,15 @@ function LinhaMaterial({
 
   const fechar = () => setTimeout(() => setBusca(null), 150);
 
-  /** Saiu do código com ele inteiro e sem descrição: preenche pelo cadastro. */
+  /**
+   * Saiu do código com ele inteiro e sem descrição: preenche pelo Cadastro de
+   * Itens; fora dele, pede ao formulário a busca no catálogo SAP.
+   */
   const completarPeloCodigo = () => {
-    if (linha.descricao.trim()) return;
+    if (linha.descricao.trim() || !linha.material.trim()) return;
     const m = itemDoCadastroPorCodigo(catalogo, linha.material);
     if (m) onAlterar({ material: m.material, descricao: m.descricao, unidade: linha.unidade.trim() || m.unidade || 'UN' });
+    else onSemCadastro(linha.material);
   };
 
   const sugestoes = (campo: CampoBusca) =>
