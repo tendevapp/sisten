@@ -22,7 +22,7 @@
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, ArrowLeftRight, BarChart3, Check, CheckSquare, ChevronDown, Download, FileCheck2, FolderPlus, History, Layers, Loader2, LogOut, Plus,
+  AlertTriangle, ArrowLeft, ArrowLeftRight, BarChart3, Check, CheckSquare, ChevronDown, Download, FileCheck2, FolderPlus, History, Layers, ListChecks, Loader2, LogOut, Plus,
   QrCode, RefreshCw, RotateCcw, Search, Square, Trash2, Upload, X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -64,6 +64,8 @@ import LogAlteracoes from '../../components/almoxarifado/LogRequisicaoBalcao';
 import { canAccessPage } from '../../lib/pages';
 import FiltroPeriodoRequisicao from '../../components/almoxarifado/FiltroPeriodoRequisicao';
 import ConferenciaImportacao from '../../components/almoxarifado/auditoriaRqb/ConferenciaImportacao';
+import ConferenciaImportacoesModal from '../../components/almoxarifado/auditoriaRqb/ConferenciaImportacoesModal';
+import ProgressoGravacao, { type FaseGravacao } from '../../components/almoxarifado/auditoriaRqb/ProgressoGravacao';
 import { documentosDaPlanilha } from '../../lib/requisicaoBalcaoAuditoria';
 import { etapaSapBalcao, itensSemDocParcial, type EtapaSapBalcao } from '../../lib/requisicaoBalcaoEtapa';
 import { formatarIntervalo } from '../../lib/logRequisicaoBalcao';
@@ -162,6 +164,8 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [importacao, setImportacao] = useState<{ arquivo: string; leitura: LeituraPlanilhaBalcao } | null>(null);
+  /** Conferência das últimas importações com a MB51, fora do fluxo de importação. */
+  const [conferirImportacoes, setConferirImportacoes] = useState(false);
   const arquivoImportRef = useRef<HTMLInputElement>(null);
 
   const recarregarRequisicoes = useCallback(async () => {
@@ -550,6 +554,14 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
             <Upload className="h-3.5 w-3.5" /> Importar planilha concluída
           </button>
           <button
+            onClick={() => setConferirImportacoes(true)}
+            title="Conferir de novo, com a MB51 atual, as últimas importações da planilha concluída"
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold cursor-pointer"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+          >
+            <ListChecks className="h-3.5 w-3.5" /> Conferir × MB51
+          </button>
+          <button
             onClick={() => setForm({})}
             disabled={loading}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white shadow-sm hover:opacity-90 active:scale-95 disabled:opacity-50"
@@ -830,9 +842,10 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
             }
           }}
           onClose={() => setImportacao(null)}
-          onConfirmar={async (linhas, naoEnviadas) => {
+          onConfirmar={async (linhas, naoEnviadas, onFase) => {
             try {
               const { leitura } = importacao;
+              onFase('gravando');
               const r = await importarSapBalcao(
                 linhas.map((l) => ({ codigo: l.codigo, material: l.material, doc_sap: l.docSap, status: l.status })),
                 importacao.arquivo,
@@ -856,6 +869,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
                 ? `Doc. SAP gravado em ${r.itens} item(ns) de ${r.requisicoes} requisição(ões). A importação ficou no log.`
                 : 'Nada gravado. A leitura da planilha ficou no log da importação.');
               if (r.nao_encontrados?.length) toast.error(`Não encontrados: ${r.nao_encontrados.join(', ')}`);
+              onFase('atualizando');
               await recarregarRequisicoes();
               return true;
             } catch (err: any) {
@@ -863,6 +877,24 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
               return false;
             }
           }}
+        />
+      )}
+
+      {conferirImportacoes && (
+        <ConferenciaImportacoesModal
+          visivel={!detalhe}
+          podeImportarMb51={canAccessPage(user, 'almox_importar_planilhas')}
+          podeAbrirRelatorio={canAccessPage(user, 'almox_requisicao_balcao_relatorio')}
+          onAbrirRelatorio={() => { setConferirImportacoes(false); onNavigate('/almoxarifado/requisicao-balcao-relatorio?visao=documento'); }}
+          onAbrirRequisicao={async (id, codigo) => {
+            try {
+              const r = requisicoes.find((x) => x.id === id) ?? await buscarRequisicaoBalcaoPorCodigo(codigo);
+              if (r) setDetalhe(r); else toast.error(`${codigo} não encontrada (excluída?).`);
+            } catch (err: any) {
+              toast.error(err?.message || `Não foi possível abrir ${codigo}.`);
+            }
+          }}
+          onClose={() => setConferirImportacoes(false)}
         />
       )}
 
@@ -2524,14 +2556,25 @@ function ModalImportacaoSap({
   onAbrirRelatorio: () => void;
   onAbrirRequisicao: (requisicaoId: string, codigo: string) => void;
   onClose: () => void;
-  /** Devolve true quando gravou — aí segue para a conferência. */
+  /** Devolve true quando gravou — aí segue para a conferência. `onFase` move a barra de progresso. */
   onConfirmar: (
     linhas: LeituraPlanilhaBalcao['linhas'],
     naoEnviadas: (LeituraPlanilhaBalcao['linhas'][number] & { situacao: SituacaoImportacao })[],
+    onFase: (fase: FaseGravacao) => void,
   ) => Promise<boolean>;
 }) {
   const [etapa, setEtapa] = useState<EtapaImportacao>('previa');
   const [gravando, setGravando] = useState(false);
+  const [fase, setFase] = useState<FaseGravacao | null>(null);
+
+  // Gravando: fechar a aba/recarregar pede confirmação (interromperia a importação).
+  useEffect(() => {
+    if (!gravando) return;
+    const aviso = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', aviso);
+    return () => window.removeEventListener('beforeunload', aviso);
+  }, [gravando]);
+  const fechar = () => { if (!gravando) onClose(); };
   const docs = useMemo(() => documentosDaPlanilha(leitura.linhas), [leitura]);
   const classificadas = useMemo(() => classificarImportacao(leitura.linhas, requisicoes), [leitura, requisicoes]);
   const aGravar = classificadas.filter((l) => l.situacao === 'novo' || l.situacao === 'diferente');
@@ -2540,10 +2583,16 @@ function ModalImportacaoSap({
 
   const gravar = async () => {
     setGravando(true);
+    setFase('preparando');
     try {
-      if (await onConfirmar(aGravar, naoEnviadas)) setEtapa('conferencia');
+      if (await onConfirmar(aGravar, naoEnviadas, setFase)) {
+        setFase('concluido');
+        await new Promise((ok) => setTimeout(ok, 600));
+        setEtapa('conferencia');
+      }
     } finally {
       setGravando(false);
+      setFase(null);
     }
   };
 
@@ -2551,12 +2600,12 @@ function ModalImportacaoSap({
 
   return (
     <Modal
-      onClose={onClose}
+      onClose={fechar}
       maxWidth={etapa === 'conferencia' ? 'max-w-6xl' : leitura.exigeConferenciaSap ? 'max-w-5xl' : 'max-w-3xl'}
       ariaLabel="Importar planilha concluída"
       disableOutsideClose={gravando}
     >
-      <ModalHeader onClose={onClose}>
+      <ModalHeader onClose={gravando ? undefined : fechar}>
         <h2 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>Importar planilha concluída</h2>
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           {arquivo} · doc. SAP lido da coluna “{leitura.colunaSap}” · {leitura.totalLinhas} linha(s)
@@ -2582,7 +2631,8 @@ function ModalImportacaoSap({
         {etapa === 'conferencia' && (
           <ConferenciaImportacao docs={docs} podeImportarMb51={podeImportarMb51} onAbrirRequisicao={onAbrirRequisicao} />
         )}
-        {etapa === 'previa' && <>
+        {etapa === 'previa' && fase && <ProgressoGravacao fase={fase} linhas={aGravar.length + naoEnviadas.length} />}
+        {etapa === 'previa' && !fase && <>
         {leitura.exigeConferenciaSap && (
           <p className="mb-3 text-xs" style={{ color: 'var(--ink-secondary)' }}>
             Conferência MB03 lida da planilha Baixas SAP. Só entram na gravação as linhas com documento SAP e Conferência SAP igual a CONFIRMADO.
@@ -2671,6 +2721,9 @@ function ModalImportacaoSap({
                   Abrir Relatório × MB51
                 </button>
               )}
+              <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                Pode fechar: confira de novo depois em <strong>Conferir × MB51</strong>.
+              </span>
               <button onClick={onClose} className="rounded-lg px-4 py-2 text-xs font-bold text-white" style={{ background: 'var(--brand)' }}>Fechar</button>
             </>
           )}

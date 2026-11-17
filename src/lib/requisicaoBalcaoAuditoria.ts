@@ -507,3 +507,27 @@ export function conferirExportadasSemSap(linhas: LinhaAuditoriaRqb[]): Map<strin
   }
   return out;
 }
+
+/* ------------------------------------------------------------------ */
+/* Reabrir a conferência de uma importação já feita                     */
+/* ------------------------------------------------------------------ */
+
+const DOC_DEZ_DIGITOS = /^\d{10}$/;
+
+/**
+ * Documentos SAP de uma importação da planilha concluída, para conferir de novo
+ * com a MB51: os gravados/iguais (`docs`) mais os das linhas que ficaram fora da
+ * gravação (já gravadas antes, bloqueadas na MB03) — todas estão no `detalhe`.
+ */
+export function documentosDaImportacao(imp: {
+  docs?: string[] | null;
+  detalhe?: { doc_sap?: string | null }[] | null;
+}): string[] {
+  const docs = new Set<string>();
+  for (const d of imp.docs ?? []) if (DOC_DEZ_DIGITOS.test(String(d).trim())) docs.add(String(d).trim());
+  for (const l of imp.detalhe ?? []) {
+    const d = String(l.doc_sap ?? '').trim();
+    if (DOC_DEZ_DIGITOS.test(d)) docs.add(d);
+  }
+  return [...docs].sort();
+}

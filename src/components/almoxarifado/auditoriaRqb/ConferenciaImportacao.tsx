@@ -50,6 +50,14 @@ export default function ConferenciaImportacao({ docs, podeImportarMb51, onAbrirR
 
   const r = linhas ? resumirConferenciaImportacao(linhas) : null;
 
+  if (docs.length === 0) {
+    return (
+      <p className="rounded-xl border border-dashed p-6 text-center text-xs" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+        Nenhum documento SAP para conferir com a MB51.
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-3">
       {linhas === null ? (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  conferirExportadasSemSap, contarAuditoria, dentroDoPeriodo, documentosDaPlanilha, filtrarAuditoria, filtrarDivergenciasDoc,
+  conferirExportadasSemSap, documentosDaImportacao, contarAuditoria, dentroDoPeriodo, documentosDaPlanilha, filtrarAuditoria, filtrarDivergenciasDoc,
   resumirConferenciaImportacao, resumirPorMaterial, totalizarDivergenciasDoc,
   type LinhaAuditoriaRqb, type LinhaDivergenciaDoc,
 } from './requisicaoBalcaoAuditoria';
@@ -139,5 +139,15 @@ describe('exportadas sem doc. SAP × MB51', () => {
     ]);
     expect(m.get('a')).toMatchObject({ situacao: 'nao_encontrada', itens: 1 });
     expect(m.has('n')).toBe(false);
+  });
+});
+
+describe('documentos de uma importação', () => {
+  it('junta os gravados com os das linhas fora da gravação, só 10 dígitos, sem repetir', () => {
+    expect(documentosDaImportacao({
+      docs: ['4904116967', '4904117015'],
+      detalhe: [{ doc_sap: '4904117015' }, { doc_sap: ' 4904117016 ' }, { doc_sap: '' }, { doc_sap: 'Concluído' }, { doc_sap: null }],
+    })).toEqual(['4904116967', '4904117015', '4904117016']);
+    expect(documentosDaImportacao({ docs: null, detalhe: null })).toEqual([]);
   });
 });
