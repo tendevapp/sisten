@@ -58,7 +58,7 @@ import { MercadoLivreCompraModal, MercadoLivreLinkModal } from '../components/su
 import PainelComprasMl, { EditarItensCompraMlModal } from '../components/suprimentos/PainelComprasMl';
 import { BotaoOcorrenciasMl, OcorrenciasMlModal } from '../components/suprimentos/OcorrenciasMl';
 import { ocorrenciasPorRiMl, recompraPendenteMl, type OcorrenciaMl } from '../lib/ocorrenciasMl';
-import { itemConcluidoNaMe5a } from '../lib/requisicaoConcluida';
+import { foraDaCentralDeCompras } from '../lib/requisicaoConcluida';
 import {
   FILTRO_ML_SEM_COMPRA, FILTRO_ML_TODOS, itemEntraEmSemPo, itemFoiComprado, observacaoComCompraMl, passaFiltroCompraMl,
   resumirComprasMl, rotuloCompraMl, statusAposCompraMl, tituloTagMercadoLivrePo, type FiltroCompraMl, type ItemMercadoLivre,
@@ -1446,7 +1446,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const buildSuppliersData = useCallback(async (force = false) => {
     // Registros da Central nos dois caminhos (cache de 5 min e carga completa). "Concluída" = X na
     // ME5A: RM encerrada no SAP, nada mais a comprar — sai como os eliminados (que getEnriched já tira).
-    const registrosDaCentral = () => localDb.getEnrichedSAPRequisicoes().filter(r => !itemConcluidoNaMe5a(r));
+    // Idem para o item cujo pedido foi eliminado no SAP (ZL0132/ME2L com L) sem outro PO ativo.
+    const registrosDaCentral = () => localDb.getEnrichedSAPRequisicoes().filter(r => !foraDaCentralDeCompras(r));
 
     // Se temos dados em cache recentes (menos de 5 min) e NÃO é refresh forçado,
     // sincroniza apenas os inputs e registros da memória local de forma instantânea (sem rede)

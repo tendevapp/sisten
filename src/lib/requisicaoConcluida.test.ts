@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { itemConcluidoNaMe5a } from './requisicaoConcluida';
+import { foraDaCentralDeCompras, itemComPedidoEliminado, itemConcluidoNaMe5a } from './requisicaoConcluida';
+
+describe('itemComPedidoEliminado', () => {
+  it('só a marca da view (true) conta', () => {
+    expect(itemComPedidoEliminado({ po_eliminado: true })).toBe(true);
+    expect(itemComPedidoEliminado({ po_eliminado: false })).toBe(false);
+    expect(itemComPedidoEliminado({ po_eliminado: null })).toBe(false);
+    expect(itemComPedidoEliminado({})).toBe(false);
+  });
+});
+
+describe('foraDaCentralDeCompras', () => {
+  it('sai quando concluída ou com pedido eliminado', () => {
+    expect(foraDaCentralDeCompras({ concluida: 'X' })).toBe(true);
+    expect(foraDaCentralDeCompras({ po_eliminado: true })).toBe(true);
+    expect(foraDaCentralDeCompras({ concluida: null, po_eliminado: false })).toBe(false);
+  });
+});
 
 describe('itemConcluidoNaMe5a', () => {
   it('X (com espaço ou minúsculo) é concluído', () => {
