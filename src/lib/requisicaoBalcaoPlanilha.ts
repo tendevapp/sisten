@@ -104,9 +104,9 @@ export function nomeArquivoBalcao(agora = new Date()): string {
 
 /* Volta da planilha concluída ---------------------------------------------
  *
- * Quem processa no SAP devolve a mesma planilha com o nº do documento numa
- * coluna nova no fim ("SAP"). A linha volta para o item pelo código RQB — o
- * começo da Observacao — mais o material.
+ * Baixas_SAP.xlsm devolve a aba BAIXAS com o cabeçalho na linha 4 e a
+ * conferência da MB03 nas colunas O:T. A linha volta para o item pelo
+ * código RQB na Observacao mais o material. O formato legado segue aceito.
  */
 
 /** Uma linha lida da planilha concluída, já com o código da requisição. */
@@ -115,6 +115,14 @@ export interface LinhaImportadaBalcao {
   material: string;
   docSap: string;
   status: string;
+  conferenciaSap?: {
+    pronto: string;
+    ano: string;
+    resultado: string;
+    conferidoEm: string;
+    tempoSegundos: string;
+    mensagem: string;
+  };
 }
 
 export interface LeituraPlanilhaBalcao {
@@ -124,10 +132,12 @@ export interface LeituraPlanilhaBalcao {
   totalLinhas: number;
   /** Linhas sem código RQB na Observacao — de outra planilha ou apagado. */
   semCodigo: number;
-  /** Linhas com código mas sem doc. SAP nem status — ainda não processadas. */
+  /** Linhas com código sem doc. SAP (no legado, também precisam estar sem status). */
   semDocSap: number;
   /** Quais são essas linhas — vão para o log da importação. */
   linhasSemDoc: { codigo: string; material: string }[];
+  exigeConferenciaSap: boolean;
+  linhasBloqueadas: (LinhaImportadaBalcao & { motivo: string })[];
 }
 
 const chave = (s: unknown) =>
@@ -139,21 +149,48 @@ function texto(v: unknown): string {
   return String(v ?? '').trim();
 }
 
+/** Data/hora local do Excel, sem conversão de fuso horário. */
+function textoDataExcel(v: unknown): string {
+  if (typeof v !== 'number') return texto(v);
+  return XLSX.SSF.format('dd/mm/yyyy hh:mm:ss', v);
+}
+
+/** PAINEL e LISTAS são auxiliares. A aba BAIXAS exige a conferência da MB03. */
+export function lerArquivoBalcaoConcluido(wb: XLSX.WorkBook): LeituraPlanilhaBalcao {
+  const abaBaixas = wb.SheetNames.find((nome) => chave(nome) === 'baixas');
+  const ws = wb.Sheets[abaBaixas ?? wb.SheetNames[0]];
+  if (!ws) throw new Error('Planilha fora do formato: nenhuma aba de dados encontrada.');
+  const matriz = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: '' });
+  return lerPlanilhaBalcaoConcluida(matriz, Boolean(abaBaixas));
+}
+
 /**
- * Lê a planilha em forma de matriz (`sheet_to_json(ws, { header: 1 })`).
- * O doc. SAP vem da coluna "SAP"; sem ela, da última coluna com cabeçalho —
- * é onde quem processa acrescenta o número.
+ * Localiza o cabeçalho por Material + Observacao. No novo formato, SAP é
+ * obrigatório e só entram linhas CONFIRMADO na MB03 com documento preenchido.
+ * O fallback para a última coluna fica restrito às planilhas legadas.
  */
-export function lerPlanilhaBalcaoConcluida(matriz: unknown[][]): LeituraPlanilhaBalcao {
-  const [cabecalho = [], ...corpo] = matriz;
+export function lerPlanilhaBalcaoConcluida(matriz: unknown[][], exigirConferenciaSap = false): LeituraPlanilhaBalcao {
+  const inicio = matriz.findIndex((row) => row.some((c) => chave(c) === 'material') && row.some((c) => chave(c) === 'observacao'));
+  const cabecalho = matriz[inicio] ?? [];
+  const corpo = matriz.slice(inicio + 1);
   const nomes = cabecalho.map((c) => String(c ?? '').trim());
   const idx = (nome: string) => nomes.findIndex((n) => chave(n) === chave(nome));
 
   const iObs = idx('Observacao');
   const iMat = idx('Material');
   const iStatus = idx('Status_Processamento');
+  const iPronto = idx('Pronto?');
+  const iAno = idx('Ano');
+  const iConferencia = idx('Conferência SAP');
+  const iConferidoEm = idx('Conferido em');
+  const iTempo = idx('Tempo conf. (s)');
+  const iMensagem = idx('Mensagem do SAP');
+  const exigeConferenciaSap = exigirConferenciaSap || [iPronto, iAno, iConferencia, iConferidoEm, iTempo, iMensagem].some((i) => i >= 0);
+  if (exigeConferenciaSap && iConferencia < 0) {
+    throw new Error('Planilha fora do formato Baixas SAP: falta a coluna Conferência SAP da MB03.');
+  }
   let iSap = idx('SAP');
-  if (iSap < 0) {
+  if (iSap < 0 && !exigeConferenciaSap) {
     for (let i = nomes.length - 1; i >= 0; i--) if (nomes[i]) { iSap = i; break; }
   }
   if (iObs < 0 || iMat < 0 || iSap < 0 || iSap === iObs) {
@@ -165,6 +202,7 @@ export function lerPlanilhaBalcaoConcluida(matriz: unknown[][]): LeituraPlanilha
   let semDocSap = 0;
   let totalLinhas = 0;
   const linhasSemDoc: { codigo: string; material: string }[] = [];
+  const linhasBloqueadas: LeituraPlanilhaBalcao['linhasBloqueadas'] = [];
   for (const row of corpo) {
     if (!row || row.every((c) => texto(c) === '')) continue;
     totalLinhas++;
@@ -172,10 +210,24 @@ export function lerPlanilhaBalcaoConcluida(matriz: unknown[][]): LeituraPlanilha
     if (!codigo) { semCodigo++; continue; }
     const docSap = texto(row[iSap]);
     const status = iStatus >= 0 ? texto(row[iStatus]) : '';
+    const linha: LinhaImportadaBalcao = { codigo, material: texto(row[iMat]), docSap, status };
+    if (exigeConferenciaSap) {
+      linha.conferenciaSap = {
+        pronto: texto(row[iPronto]), ano: texto(row[iAno]), resultado: texto(row[iConferencia]),
+        conferidoEm: textoDataExcel(row[iConferidoEm]), tempoSegundos: texto(row[iTempo]), mensagem: texto(row[iMensagem]),
+      };
+      if (!docSap || chave(linha.conferenciaSap.resultado) !== 'confirmado') {
+        if (!docSap) semDocSap++;
+        const motivo = !docSap ? 'Sem documento SAP para importar.'
+          : `Conferência MB03 ${linha.conferenciaSap.resultado || 'pendente'}.`;
+        linhasBloqueadas.push({ ...linha, motivo });
+        continue;
+      }
+    }
     if (!docSap && !status) { semDocSap++; linhasSemDoc.push({ codigo, material: texto(row[iMat]) }); continue; }
-    linhas.push({ codigo, material: texto(row[iMat]), docSap, status });
+    linhas.push(linha);
   }
-  return { linhas, colunaSap: nomes[iSap], totalLinhas, semCodigo, semDocSap, linhasSemDoc };
+  return { linhas, colunaSap: nomes[iSap], totalLinhas, semCodigo, semDocSap, linhasSemDoc, exigeConferenciaSap, linhasBloqueadas };
 }
 
 export type SituacaoImportacao = 'novo' | 'igual' | 'diferente' | 'nao_encontrado';

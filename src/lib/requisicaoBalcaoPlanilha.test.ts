@@ -1,7 +1,90 @@
 import { describe, expect, it } from 'vitest';
+import * as XLSX from 'xlsx';
 import {
-  BALCAO_COLUNAS, classificarImportacao, lerPlanilhaBalcaoConcluida, montarLinhasBalcao, nomeArquivoBalcao,
+  BALCAO_COLUNAS, classificarImportacao, lerArquivoBalcaoConcluido, lerPlanilhaBalcaoConcluida, montarLinhasBalcao, nomeArquivoBalcao,
 } from './requisicaoBalcaoPlanilha';
+
+describe('Baixas_SAP.xlsm', () => {
+  const cabecalho = [...BALCAO_COLUNAS, 'Pronto?', 'Ano', 'Conferência SAP', 'Conferido em', 'Tempo\nconf. (s)', 'Mensagem do SAP'];
+  // Linha real do arquivo fornecido, com cabeçalho na linha 4 da aba BAIXAS.
+  const linha = ['Transferência', '1322870', 'FILME STRETCH PVC INC 500X100M', 2,
+    '0002', 'EPIs + Consumíveis', '0105', 'Transferência Produção', '', '', 'TEN2',
+    'Concluído', 'RQB-171126-35', '4904116967', 'OK', '2026', 'CONFIRMADO',
+    46343.499502314815, 1,
+    'MB03: documento 4904116967/2026 encontrado (consulta 1); 1 de 1 material(is) da planilha vistos nele'];
+  const matriz = [ ['BAIXAS · cole a exportação'], ['Instruções'], ['EXPORTAÇÃO DO SISTEMA'], cabecalho, linha, [], Array(20).fill('') ];
+
+  it('seleciona BAIXAS depois do PAINEL e lê o cabeçalho na linha 4 após salvar como XLSM', () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['PAINEL']]), 'PAINEL');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(matriz), 'BAIXAS');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Sim / Não']]), 'LISTAS');
+    const leitura = lerArquivoBalcaoConcluido(XLSX.read(XLSX.write(wb, { type: 'buffer', bookType: 'xlsm' })));
+    expect(leitura).toMatchObject({ totalLinhas: 1, colunaSap: 'SAP', exigeConferenciaSap: true, linhasBloqueadas: [] });
+    expect(leitura.linhas[0]).toMatchObject({
+      codigo: 'RQB-171126-35', material: '1322870', docSap: '4904116967', status: 'Concluído',
+      conferenciaSap: { pronto: 'OK', ano: '2026', resultado: 'CONFIRMADO',
+        conferidoEm: '17/11/2026 11:59:17', tempoSegundos: '1', mensagem: linha[19] },
+    });
+  });
+
+  it.each(['', 'PENDENTE', 'NÃO ENCONTRADO', 'ERRO', 'NÃO CONFIRMADO'])('bloqueia %s mesmo com SAP e Concluído preenchidos', (resultado) => {
+    const row = [...linha];
+    row[16] = resultado;
+    const leitura = lerPlanilhaBalcaoConcluida([cabecalho, row]);
+    expect(leitura.linhas).toEqual([]);
+    expect(leitura.linhasBloqueadas).toHaveLength(1);
+    expect(leitura.linhasBloqueadas[0]).toMatchObject({ codigo: 'RQB-171126-35', docSap: '4904116967' });
+    expect(leitura.linhasBloqueadas[0].motivo).toMatch(/MB03/);
+  });
+
+  it('bloqueia confirmação sem documento SAP', () => {
+    const row = [...linha];
+    row[13] = '';
+    const leitura = lerPlanilhaBalcaoConcluida([cabecalho, row]);
+    expect(leitura.linhas).toEqual([]);
+    expect(leitura.linhasBloqueadas[0].motivo).toMatch(/documento SAP/);
+    expect(leitura.semDocSap).toBe(1);
+    expect(leitura.linhasSemDoc).toEqual([]); // Bloqueio registrado uma única vez no log.
+  });
+
+  it('separa confirmadas, bloqueadas e sem código em um mesmo lote', () => {
+    const pendente = [...linha];
+    pendente[16] = 'PENDENTE';
+    const semCodigo = [...linha];
+    semCodigo[12] = 'Sem requisição';
+    const leitura = lerPlanilhaBalcaoConcluida([cabecalho, linha, pendente, semCodigo, [], Array(20).fill('')]);
+    expect(leitura).toMatchObject({ totalLinhas: 3, semCodigo: 1 });
+    expect(leitura.linhas).toHaveLength(1);
+    expect(leitura.linhasBloqueadas).toHaveLength(1);
+  });
+
+  it('não interpreta Mensagem do SAP como documento quando a coluna SAP falta', () => {
+    const cab = [...cabecalho];
+    cab[13] = '';
+    expect(() => lerPlanilhaBalcaoConcluida([cab, linha])).toThrow(/SAP/);
+  });
+
+  it('exige Conferência SAP na aba BAIXAS mesmo se as colunas de conferência forem removidas', () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[...BALCAO_COLUNAS], linha.slice(0, 14)]), 'BAIXAS');
+    expect(() => lerArquivoBalcaoConcluido(wb)).toThrow(/Conferência SAP/);
+  });
+
+  it('mapeia por cabeçalho mesmo com colunas reordenadas e espaços ou acentos diferentes', () => {
+    const ordem = [19, 16, 1, 13, 12, 11, 15, 17, 18, 14];
+    const cab = ordem.map((i) => cabecalho[i].normalize('NFD').replace(/\p{M}/gu, '').toUpperCase());
+    const row = ordem.map((i) => linha[i]);
+    row[1] = ' confirmado ';
+    expect(lerPlanilhaBalcaoConcluida([cab, row]).linhas[0]).toMatchObject({ codigo: 'RQB-171126-35', docSap: '4904116967' });
+  });
+
+  it('mantém a leitura do arquivo legado pela primeira aba', () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[...BALCAO_COLUNAS], linha.slice(0, 14)]), 'Movimentacoes_SAP');
+    expect(lerArquivoBalcaoConcluido(wb).linhas[0]).toEqual({ codigo: 'RQB-171126-35', material: '1322870', docSap: '4904116967', status: 'Concluído' });
+  });
+});
 
 describe('lerPlanilhaBalcaoConcluida', () => {
   // Formato real devolvido: as colunas exportadas + "SAP" no fim.
