@@ -17,10 +17,10 @@
  * O resultado sai em planilha e em PDF.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, BarChart3, Camera, Check, ClipboardList, CloudOff, Download, Eye, FileText,
-  Image as ImageIcon, Loader2, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Trash2, Upload, X,
+  AlertTriangle, ArrowLeft, BarChart3, Camera, Check, ChevronRight, ClipboardList, CloudOff, Download, Eye, FileText,
+  Image as ImageIcon, ListOrdered, Loader2, Map as IconeMapa, MapPin, Plus, RefreshCw, RotateCcw, Route, Search, ShieldCheck, Trash2, Upload, X,
 } from 'lucide-react';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
@@ -65,6 +65,12 @@ import { contextoAuditoriaInventario, type PendenciaSapContagem } from '../../li
 import { useReservasInventario } from '../../lib/useReservasInventario';
 import { gravarPreferenciasInventario, lerPreferenciasInventario, prepararContagemDoMaterial } from '../../lib/inventarioAtalho';
 import { confirmar } from '../../lib/confirmar';
+import { chavePosicao, grupoDoRoteiro, indexarPosicoes, ordenarPorRoteiro } from '../../lib/inventarioRoteiro';
+import { separarPosicoes } from '../../lib/gembaEndereco';
+import { descreverPosicao } from '../../lib/gembaLayout';
+
+// Gemba 2D numa janela por cima da lista/contagem — só baixa quando alguém abre o mapa.
+const GembaLocalizacaoModal = lazy(() => import('../../components/almoxarifado/gemba/GembaLocalizacaoModal'));
 
 /** Itens com contagem guardada no aparelho (sem rede) — ainda sem resultado do servidor. */
 function useItensContadosNaFila(): Set<string> {
@@ -168,6 +174,8 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
   // Item lido no QR do cabeçalho e a contagem que a vista do inventário deve abrir.
   const [itemQr, setItemQr] = useState<{ codigo: string; n: number } | null>(null);
   const [abrirContagem, setAbrirContagem] = useState<{ itemId: string; n: number } | null>(null);
+  /** Posição de estoque (ZL0024) por material × depósito: localização e roteiro da contagem. */
+  const posicoesZl = useMemo(() => indexarPosicoes(estoque), [estoque]);
 
   const recarregarInventarios = useCallback(async () => {
     try {
@@ -321,6 +329,8 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
         <VistaInventario
           user={user}
           inv={aberto}
+          posicoes={posicoesZl}
+          onNavigate={onNavigate}
           abrirContagem={abrirContagem}
           onVoltar={() => { setAbertoId(null); setAbrirContagem(null); }}
           onRecarregar={recarregarInventarios}
@@ -985,12 +995,25 @@ const ROTULO_FILTRO: Record<FiltroItens, string> = {
   conferido: 'Conferidos',
   divergente: 'Divergentes',
 };
+/** No celular os filtros quebram linha: rótulo curto. */
+const ROTULO_FILTRO_CURTO: Partial<Record<FiltroItens, string>> = { aguardando_decisao: 'Aguardando' };
+/** Ordem do filtro no celular: o que se usa durante a contagem primeiro. */
+const ORDEM_FILTRO: FiltroItens[] = ['abertos', 'pendente', 'aguardando_decisao', 'divergente', 'conferido', 'todos'];
+
+type OrdemItens = 'roteiro' | 'lista';
+const CHAVE_ORDEM = 'sisten_inv_ordem_itens';
+function lerOrdem(): OrdemItens {
+  try { return localStorage.getItem(CHAVE_ORDEM) === 'lista' ? 'lista' : 'roteiro'; } catch { return 'roteiro'; }
+}
 
 function VistaInventario({
-  user, inv, abrirContagem, onVoltar, onRecarregar, onAdicionar, onExcluido,
+  user, inv, posicoes, onNavigate, abrirContagem, onVoltar, onRecarregar, onAdicionar, onExcluido,
 }: {
   user: Profile;
   inv: InventarioRow;
+  /** Posições da ZL0024 por `chavePosicao(material, depósito)`. */
+  posicoes: Map<string, string[]>;
+  onNavigate?: (path: string) => void;
   /** Item a contar assim que a vista abre (leitura de QR); `n` distingue leituras do mesmo item. */
   abrirContagem?: { itemId: string; n: number } | null;
   onVoltar: () => void;
@@ -1004,6 +1027,14 @@ function VistaInventario({
   const [contandoId, setContandoId] = useState<string | null>(abrirContagem?.itemId ?? null);
   const [exportando, setExportando] = useState<'xlsx' | 'pdf' | null>(null);
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
+  const [ordem, setOrdemEstado] = useState<OrdemItens>(lerOrdem);
+  const setOrdem = (o: OrdemItens) => {
+    setOrdemEstado(o);
+    try { localStorage.setItem(CHAVE_ORDEM, o); } catch { /* só não lembra */ }
+  };
+  const [obsAberta, setObsAberta] = useState(false);
+  const [mapa, setMapa] = useState<{ item: ItemInventario; posicoes: string[]; sobreModal: boolean } | null>(null);
+  const podeGemba = canAccessPage(user, 'almox_gemba');
   const r = resumirInventario(inv.itens);
   const dono = podeEditarFormulario(user, inv);
   const algumContado = inv.itens.some((i) => i.contagens.length > 0);
@@ -1043,6 +1074,19 @@ function VistaInventario({
     });
   };
 
+  /** Posição do item: ZL0024 do depósito; sem ela, a do cadastro do catálogo. */
+  const posicoesDe = useCallback((i: ItemInventario): string[] => {
+    const daZl = posicoes.get(chavePosicao(i.material, i.deposito));
+    if (daZl?.length) return daZl;
+    return separarPosicoes(mapaFotos.get(i.material)?.posicao_estoque);
+  }, [posicoes, mapaFotos]);
+
+  /** Ordem de trabalho: pela posição (roteiro no galpão) ou a da ficha. */
+  const ordenados = useMemo(
+    () => (ordem === 'roteiro' ? ordenarPorRoteiro(inv.itens, posicoesDe) : inv.itens),
+    [inv.itens, ordem, posicoesDe],
+  );
+
   const contagemFiltro = useMemo(() => {
     const c: Record<FiltroItens, number> = { todos: r.total, abertos: r.pendentes + r.aguardando, pendente: r.pendentes, aguardando_decisao: r.aguardando, conferido: r.conferidos, divergente: r.divergentes };
     return c;
@@ -1050,13 +1094,13 @@ function VistaInventario({
 
   const itens = useMemo(() => {
     const tokens = extrairPalavrasChave(busca);
-    return inv.itens.filter((i) => {
+    return ordenados.filter((i) => {
       if (filtro === 'abertos' && itemEncerrado(i)) return false;
       if (filtro !== 'todos' && filtro !== 'abertos' && i.status !== filtro) return false;
-      if (tokens.length > 0 && !casarTokens([i.material, i.descricao], tokens)) return false;
+      if (tokens.length > 0 && !casarTokens([i.material, i.descricao, ...posicoesDe(i)], tokens)) return false;
       return true;
     });
-  }, [inv.itens, filtro, busca]);
+  }, [ordenados, filtro, busca, posicoesDe]);
 
   useEffect(() => {
     if (abrirContagem) setContandoId(abrirContagem.itemId);
@@ -1067,9 +1111,19 @@ function VistaInventario({
   // Depois de encerrar um item, "Próximo" leva ao seguinte em aberto na ordem da ficha
   // (pulando os que já têm contagem guardada no aparelho).
   const proximoAberto = (depoisDe: string) => {
-    const lista = inv.itens;
+    const lista = ordenados;
     const idx = lista.findIndex((i) => i.id === depoisDe);
     return [...lista.slice(idx + 1), ...lista.slice(0, idx)].find((i) => !itemEncerrado(i) && i.id !== depoisDe && !naFila.has(i.id)) ?? null;
+  };
+
+  /** Primeiro item em aberto do roteiro — a barra "Contar próximo" do celular. */
+  const proximoParaContar = inv.status === 'aberto'
+    ? ordenados.find((i) => !itemEncerrado(i) && !naFila.has(i.id)) ?? null
+    : null;
+
+  const abrirItem = (item: ItemInventario) => {
+    if (naFila.has(item.id)) { toast.info('Este item já tem contagem guardada neste aparelho. O resultado aparece quando sincronizar.'); return; }
+    setContandoId(item.id);
   };
 
   const exportar = async (tipo: 'xlsx' | 'pdf') => {
@@ -1112,7 +1166,7 @@ function VistaInventario({
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 px-4 py-6">
+    <div className={`mx-auto max-w-5xl space-y-4 px-4 pt-4 sm:py-6 ${proximoParaContar ? 'pb-28 sm:pb-6' : 'pb-6'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <button
@@ -1135,58 +1189,120 @@ function VistaInventario({
             {inv.conferente_nome && <> · conferente {inv.conferente_nome}</>}
             {inv.criterio && <> · {inv.criterio}</>}
           </p>
-          {inv.observacao && <p className="text-xs mt-0.5" style={{ color: 'var(--ink-secondary)' }}>{inv.observacao}</p>}
+          {inv.observacao && (
+            <div className="mt-0.5">
+              <p className={`text-xs ${obsAberta ? '' : 'line-clamp-2 sm:line-clamp-none'}`} style={{ color: 'var(--ink-secondary)' }}>{inv.observacao}</p>
+              {inv.observacao.length > 90 && (
+                <button
+                  type="button"
+                  onClick={() => setObsAberta((v) => !v)}
+                  aria-expanded={obsAberta}
+                  className="min-h-8 text-[11px] font-bold sm:hidden"
+                  style={{ color: 'var(--brand)' }}
+                >
+                  {obsAberta ? 'Ver menos' : 'Ver mais'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => void exportar('xlsx')} disabled={!!exportando} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <button onClick={() => void exportar('xlsx')} disabled={!!exportando} className={`${btnSec} min-h-10 sm:min-h-0`} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
             {exportando === 'xlsx' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Planilha
           </button>
-          <button onClick={() => void exportar('pdf')} disabled={!!exportando} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
-            <FileText className="h-3.5 w-3.5" /> Visualizar PDF
+          <button onClick={() => void exportar('pdf')} disabled={!!exportando} className={`${btnSec} min-h-10 sm:min-h-0`} style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+            <FileText className="h-3.5 w-3.5" /> <span className="sm:hidden">PDF</span><span className="hidden sm:inline">Visualizar PDF</span>
           </button>
           {dono && inv.status === 'aberto' && (
-            <button onClick={onAdicionar} className={btnSec} style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}>
+            <button onClick={onAdicionar} className={`${btnSec} min-h-10 sm:min-h-0`} style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}>
               <Plus className="h-3.5 w-3.5" /> Itens
             </button>
           )}
           {podeExcluir && (
             <button
               onClick={() => void excluir()}
-              className={btnSec}
+              className={`${btnSec} ml-auto min-h-10 min-w-10 justify-center sm:ml-0 sm:min-h-0 sm:min-w-0`}
               style={{ borderColor: 'var(--hairline)', color: 'var(--status-critical)' }}
+              aria-label={algumContado ? 'Excluir inventário (permissão de administrador)' : 'Excluir inventário'}
               title={algumContado ? 'Excluir inventário (permissão de administrador)' : 'Excluir inventário'}
             >
-              <Trash2 className="h-3.5 w-3.5" /> Excluir
+              <Trash2 className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Excluir</span>
             </button>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* Celular: um cartão de progresso; os números filtram a lista. */}
+      <ProgressoMobile inv={inv} filtro={filtro} onFiltrar={setFiltro} />
+
+      <div className="hidden grid-cols-2 gap-3 sm:grid sm:grid-cols-4">
         <Indicador rotulo="A contar" valor={r.pendentes} />
         <Indicador rotulo="Aguardando decisão" valor={r.aguardando} destaque={r.aguardando > 0} />
         <Indicador rotulo="Divergentes" valor={r.divergentes} critico={r.divergentes > 0} />
         <Indicador rotulo="Acuracidade" valor={r.acuracidade == null ? '—' : `${r.acuracidade.toFixed(0)}%`} />
       </div>
-      <BarraProgresso inv={inv} />
+      <div className="hidden sm:block"><BarraProgresso inv={inv} /></div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex min-w-0 overflow-x-auto no-scrollbar rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)' }}>
-          {(Object.keys(ROTULO_FILTRO) as FiltroItens[]).map((f) => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setFiltro(f)}
-              className="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-bold"
-              style={filtro === f ? { background: 'var(--brand)', color: 'white' } : { color: 'var(--ink-secondary)' }}
-            >
-              {ROTULO_FILTRO[f]} ({contagemFiltro[f]})
-            </button>
-          ))}
+        {/* Celular: chips que quebram linha (nada some para o lado); zerados só aparecem no computador. */}
+        <div
+          className="flex w-full flex-wrap gap-1.5 sm:w-auto sm:min-w-0 sm:flex-nowrap sm:gap-0 sm:overflow-x-auto sm:no-scrollbar sm:rounded-lg sm:border sm:p-0.5"
+          style={{ borderColor: 'var(--hairline)' }}
+          role="group"
+          aria-label="Filtrar itens"
+        >
+          {ORDEM_FILTRO.map((f) => {
+            const ativo = filtro === f;
+            const oculto = !ativo && contagemFiltro[f] === 0 && f !== 'todos' && f !== 'abertos';
+            return (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFiltro(f)}
+                aria-pressed={ativo}
+                className={`${oculto ? 'hidden sm:inline-flex' : 'inline-flex'} min-h-9 shrink-0 items-center rounded-full border px-3 text-xs font-bold sm:min-h-0 sm:rounded-md sm:border-0 sm:px-2.5 sm:py-1 sm:text-[11px]`}
+                style={ativo
+                  ? { background: 'var(--brand)', borderColor: 'var(--brand)', color: 'white' }
+                  : { borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+              >
+                <span className="sm:hidden">{ROTULO_FILTRO_CURTO[f] ?? ROTULO_FILTRO[f]}</span>
+                <span className="hidden sm:inline">{ROTULO_FILTRO[f]}</span>
+                <span className="ml-1 tabular-nums opacity-80">{contagemFiltro[f]}</span>
+              </button>
+            );
+          })}
         </div>
         <div className="relative min-w-0 flex-1 basis-48">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar item por palavras-chave (material ou descrição)..." className={`${inputCls} pl-8 text-xs`} />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} aria-hidden="true" />
+          <input
+            type="search"
+            enterKeyHint="search"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar material, descrição ou posição"
+            aria-label="Buscar item"
+            className={`${inputCls} min-h-10 pl-8 text-sm sm:min-h-0 sm:text-xs`}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>
+          {itens.length} {itens.length === 1 ? 'item' : 'itens'}{ordem === 'roteiro' ? ' · na ordem do galpão' : ' · na ordem da ficha'}
+        </span>
+        <div className="inline-flex rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)' }} role="group" aria-label="Ordem dos itens">
+          {([['roteiro', 'Por localização', Route], ['lista', 'Ordem da ficha', ListOrdered]] as const).map(([o, rotulo, Icone]) => (
+            <button
+              key={o}
+              type="button"
+              onClick={() => setOrdem(o)}
+              aria-pressed={ordem === o}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-bold sm:min-h-0 sm:py-1"
+              style={ordem === o ? { background: 'var(--brand)', color: 'white' } : { color: 'var(--ink-secondary)' }}
+            >
+              <Icone className="h-3.5 w-3.5" aria-hidden="true" /> {rotulo}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1196,22 +1312,33 @@ function VistaInventario({
         </div>
       ) : (
         <div className="space-y-2">
-          {itens.map((item) => (
-            <LinhaItem
-              key={item.id}
-              item={item}
-              numero={inv.itens.indexOf(item) + 1}
-              fotoItem={mapaFotos.get(item.material)}
-              podeRemover={dono && item.contagens.length === 0 && !naFila.has(item.id)}
-              contadoNaFila={naFila.has(item.id)}
-              onAbrir={() => {
-                if (naFila.has(item.id)) { toast.info('Este item já tem contagem guardada neste aparelho. O resultado aparece quando sincronizar.'); return; }
-                setContandoId(item.id);
-              }}
-              onVerZoom={(url, titulo, codigo) => setImagemZoom({ url, titulo, codigo })}
-              onRemover={() => void remover(item)}
-            />
-          ))}
+          {itens.map((item, idx) => {
+            const pos = posicoesDe(item);
+            // No roteiro, um cabeçalho a cada estante/área nova do galpão.
+            const grupo = ordem === 'roteiro' ? grupoDoRoteiro(pos[0]) : null;
+            const grupoAnterior = ordem === 'roteiro' && idx > 0 ? grupoDoRoteiro(posicoesDe(itens[idx - 1])[0]) : null;
+            return (
+              <React.Fragment key={item.id}>
+                {grupo && grupo !== grupoAnterior && (
+                  <h3 className="flex items-center gap-1.5 pt-2 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: 'var(--ink-muted)' }}>
+                    <MapPin className="h-3.5 w-3.5" aria-hidden="true" /> {grupo}
+                  </h3>
+                )}
+                <LinhaItem
+                  item={item}
+                  numero={inv.itens.indexOf(item) + 1}
+                  fotoItem={mapaFotos.get(item.material)}
+                  posicoes={pos}
+                  podeRemover={dono && item.contagens.length === 0 && !naFila.has(item.id)}
+                  contadoNaFila={naFila.has(item.id)}
+                  onAbrir={() => abrirItem(item)}
+                  onVerZoom={(url, titulo, codigo) => setImagemZoom({ url, titulo, codigo })}
+                  onVerMapa={() => setMapa({ item, posicoes: pos, sobreModal: false })}
+                  onRemover={() => void remover(item)}
+                />
+              </React.Fragment>
+            );
+          })}
         </div>
       )}
 
@@ -1223,6 +1350,8 @@ function VistaInventario({
           inventarioId={inv.id}
           numero={inv.itens.indexOf(contando) + 1}
           fotoItem={mapaFotos.get(contando.material)}
+          posicoes={posicoesDe(contando)}
+          onVerMapa={() => setMapa({ item: contando, posicoes: posicoesDe(contando), sobreModal: true })}
           onFotoSalva={(salvo) => handleFotoSalva(contando.material, salvo)}
           onVerZoom={(url, titulo, codigo) => setImagemZoom({ url, titulo, codigo })}
           onRecarregar={onRecarregar}
@@ -1230,6 +1359,47 @@ function VistaInventario({
           temProximo={proximoAberto(contando.id) != null}
           onClose={() => setContandoId(null)}
         />
+      )}
+
+      {mapa && (
+        <Suspense fallback={null}>
+          <GembaLocalizacaoModal
+            material={mapa.item.material}
+            descricao={mapa.item.descricao}
+            posicoes={mapa.posicoes}
+            zIndexClassName={mapa.sobreModal ? 'z-[120]' : undefined}
+            onClose={() => setMapa(null)}
+            onAbrirGemba={podeGemba && onNavigate
+              ? () => onNavigate(`/almoxarifado/gemba?item=${encodeURIComponent(mapa.item.material)}`)
+              : undefined}
+          />
+        </Suspense>
+      )}
+
+      {/* Celular: o próximo item do roteiro sempre à mão. */}
+      {proximoParaContar && !contando && (
+        <div
+          className="fixed inset-x-0 bottom-0 z-40 border-t px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(15,23,42,0.08)] sm:hidden"
+          style={{ background: 'var(--surface-card)', borderColor: 'var(--hairline)' }}
+        >
+          <button
+            type="button"
+            onClick={() => abrirItem(proximoParaContar)}
+            className="flex min-h-12 w-full items-center gap-3 rounded-xl px-4 py-2 text-left text-white transition-transform active:scale-[0.98]"
+            style={{ background: 'var(--brand)' }}
+          >
+            <ClipboardList className="h-5 w-5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-extrabold">
+                Contar próximo <span className="font-semibold opacity-90">· {r.pendentes + r.aguardando} em aberto</span>
+              </span>
+              <span className="block truncate text-[11px] opacity-90">
+                {posicoesDe(proximoParaContar)[0] ? `${posicoesDe(proximoParaContar)[0]} · ` : ''}{proximoParaContar.descricao}
+              </span>
+            </span>
+            <ChevronRight className="h-5 w-5 shrink-0" aria-hidden="true" />
+          </button>
+        </div>
       )}
 
       {lightbox.elemento}
@@ -1244,94 +1414,173 @@ function VistaInventario({
   );
 }
 
+/** Celular: progresso do inventário num cartão só; os números filtram a lista. */
+function ProgressoMobile({ inv, filtro, onFiltrar }: { inv: InventarioRow; filtro: FiltroItens; onFiltrar: (f: FiltroItens) => void }) {
+  const r = resumirInventario(inv.itens);
+  const encerrados = r.conferidos + r.divergentes;
+  const numeros: { f: FiltroItens | null; rotulo: string; valor: string; cor?: string }[] = [
+    { f: 'pendente', rotulo: 'A contar', valor: String(r.pendentes) },
+    { f: 'aguardando_decisao', rotulo: 'Aguardando', valor: String(r.aguardando), cor: r.aguardando > 0 ? 'var(--status-serious)' : undefined },
+    { f: 'divergente', rotulo: 'Divergentes', valor: String(r.divergentes), cor: r.divergentes > 0 ? 'var(--status-critical)' : undefined },
+    { f: null, rotulo: 'Acuracidade', valor: r.acuracidade == null ? '—' : `${r.acuracidade.toFixed(0)}%` },
+  ];
+  return (
+    <section className="rounded-xl border p-3 sm:hidden" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }} aria-label="Progresso do inventário">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-bold" style={{ color: 'var(--ink-secondary)' }}>Progresso</span>
+        <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--ink-primary)' }}>{encerrados} de {r.total} encerrados</span>
+      </div>
+      <div className="mt-2"><BarraProgresso inv={inv} /></div>
+      <div className="mt-2.5 grid grid-cols-4 gap-1">
+        {numeros.map((n) => {
+          const conteudo = (
+            <>
+              <span className="block text-base font-extrabold tabular-nums leading-tight" style={{ color: n.cor ?? 'var(--ink-primary)' }}>{n.valor}</span>
+              <span className="block text-[10px] font-semibold leading-tight" style={{ color: 'var(--ink-muted)' }}>{n.rotulo}</span>
+            </>
+          );
+          return n.f ? (
+            <button
+              key={n.rotulo}
+              type="button"
+              onClick={() => onFiltrar(n.f!)}
+              aria-pressed={filtro === n.f}
+              className="min-h-11 rounded-lg px-1 py-1 text-center transition-colors"
+              style={filtro === n.f ? { background: 'color-mix(in srgb, var(--brand) 12%, transparent)' } : undefined}
+            >
+              {conteudo}
+            </button>
+          ) : (
+            <div key={n.rotulo} className="min-h-11 px-1 py-1 text-center">{conteudo}</div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function LinhaItem({
-  item, numero, fotoItem, podeRemover, contadoNaFila, onAbrir, onVerZoom, onRemover,
+  item, numero, fotoItem, posicoes, podeRemover, contadoNaFila, onAbrir, onVerZoom, onVerMapa, onRemover,
 }: {
   item: ItemInventario;
   numero: number;
   fotoItem?: CatalogoItem;
+  /** Posições de estoque do item (ZL0024 do depósito ou cadastro). */
+  posicoes: string[];
   podeRemover: boolean;
   contadoNaFila?: boolean;
   onAbrir: () => void;
   onVerZoom?: (url: string, titulo: string, codigo: string) => void;
+  onVerMapa: () => void;
   onRemover: () => void;
 }) {
   const encerrado = itemEncerrado(item);
   const token = TOKEN_STATUS[item.status];
+  const posicao = posicoes[0] ?? null;
+  const lugar = posicao ? descreverPosicao(posicao) : null;
   return (
     <div
-      className="flex items-stretch gap-2 rounded-xl border transition-all hover:border-slate-400 dark:hover:border-slate-600"
+      className="overflow-hidden rounded-xl border transition-all hover:border-slate-400 dark:hover:border-slate-600"
       style={{ borderColor: item.status === 'pendente' ? 'var(--hairline)' : `color-mix(in srgb, ${token} 45%, var(--hairline))`, background: 'var(--surface-raised)' }}
     >
-      <div className="flex items-center pl-3 py-2 shrink-0">
-        {fotoItem?.url_imagem ? (
+      <div className="flex items-stretch gap-1">
+        <div className="flex shrink-0 items-start py-2.5 pl-2.5">
+          {fotoItem?.url_imagem ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onVerZoom?.(fotoItem.url_imagem!, item.descricao, item.material);
+              }}
+              className="relative group h-14 w-14 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 cursor-pointer shadow-2xs hover:scale-105 transition"
+              aria-label={`Ver foto de ${item.descricao || item.material}`}
+            >
+              <img src={fotoItem.url_imagem} alt="" className="h-full w-full object-cover" loading="lazy" />
+              <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
+                <Eye className="h-3.5 w-3.5" />
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onAbrir}
+              className="h-14 w-14 rounded-lg border border-dashed border-amber-300 dark:border-amber-800/80 bg-amber-50/50 dark:bg-amber-950/20 flex flex-col items-center justify-center text-amber-700 dark:text-amber-400 hover:bg-amber-100/60 dark:hover:bg-amber-900/40 transition cursor-pointer"
+              aria-label={`Sem foto: abrir contagem de ${item.descricao || item.material} para cadastrar a foto`}
+            >
+              <Camera className="h-4 w-4" />
+              <span className="text-[10px] font-bold mt-0.5 leading-none">+foto</span>
+            </button>
+          )}
+        </div>
+
+        <button type="button" onClick={onAbrir} className="min-w-0 flex-1 px-2 py-2.5 text-left cursor-pointer">
+          <span className="flex items-start gap-1.5">
+            <span className="shrink-0 text-[11px] font-extrabold tabular-nums leading-5" style={{ color: 'var(--ink-muted)' }}>{numero}.</span>
+            <span className="min-w-0 flex-1 line-clamp-2 text-[13px] font-bold leading-5 sm:text-xs" style={{ color: 'var(--ink-primary)' }}>{item.descricao || '—'}</span>
+          </span>
+          <span className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            <span className="font-mono font-semibold">{item.material}</span>
+            <span>{formatDeposito(item.deposito)}</span>
+            {item.classe && <span>Classe {item.classe}</span>}
+          </span>
+          <span className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+            {contadoNaFila
+              ? <Chip token="var(--status-serious)"><CloudOff className="h-3 w-3" /> Contagem no aparelho</Chip>
+              : <ChipStatusItem status={item.status} />}
+            {fotoItem?.url_imagem && fotoItem.codigo_registro?.startsWith('EPI-') && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                <ShieldCheck className="h-2.5 w-2.5" /> EPI
+              </span>
+            )}
+            {item.contagens.map((c) => (
+              <span key={c.id} className="font-semibold" style={{ color: c.divergente ? 'var(--status-critical)' : 'var(--status-good)' }}>
+                {c.numero}ª: {encerrado ? `${formatQtd(c.quantidade)} ${item.unidade || ''}` : 'enviada'}
+              </span>
+            ))}
+            {encerrado && item.saldo_sistema != null && (
+              <span className="font-bold" style={{ color: 'var(--ink-secondary)' }}>
+                ZL0024: {formatQtd(item.saldo_sistema)}
+                {item.diferenca ? ` (${item.diferenca > 0 ? '+' : ''}${formatQtd(item.diferenca)})` : ''}
+              </span>
+            )}
+          </span>
+        </button>
+        {podeRemover && (
           <button
+            aria-label={`Tirar ${item.material} da lista`}
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onVerZoom?.(fotoItem.url_imagem!, item.descricao, item.material);
-            }}
-            className="relative group h-12 w-12 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 cursor-pointer shadow-2xs hover:scale-105 transition"
-            title="Ver foto do material cadastrada no catálogo"
+            onClick={onRemover}
+            title="Tirar da lista"
+            className="flex w-11 shrink-0 items-start justify-center pt-3 cursor-pointer hover:text-rose-600 transition"
+            style={{ color: 'var(--ink-muted)' }}
           >
-            <img src={fotoItem.url_imagem} alt="" className="h-full w-full object-cover" />
-            <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
-              <Eye className="h-3.5 w-3.5" />
-            </span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onAbrir}
-            className="h-12 w-12 rounded-lg border border-dashed border-amber-300 dark:border-amber-800/80 bg-amber-50/50 dark:bg-amber-950/20 flex flex-col items-center justify-center text-amber-700 dark:text-amber-400 hover:bg-amber-100/60 dark:hover:bg-amber-900/40 transition cursor-pointer"
-            title="Sem foto no catálogo — clique para abrir contagem e cadastrar foto"
-          >
-            <Camera className="h-4 w-4" />
-            <span className="text-[10px] font-bold mt-0.5 leading-none">+foto</span>
+            <Trash2 className="h-4 w-4" />
           </button>
         )}
       </div>
 
-      <button type="button" onClick={onAbrir} className="min-w-0 flex-1 px-2.5 py-2.5 text-left cursor-pointer">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-extrabold tabular-nums" style={{ color: 'var(--ink-muted)' }}>{numero}.</span>
-          <span className="min-w-0 flex-1 truncate text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{item.descricao || '—'}</span>
-          {fotoItem?.url_imagem && (
-            fotoItem.codigo_registro?.startsWith('EPI-') ? (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                <ShieldCheck className="h-2.5 w-2.5" /> EPI
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                <Check className="h-2.5 w-2.5" /> Foto
-              </span>
-            )
-          )}
-          {contadoNaFila
-            ? <Chip token="var(--status-serious)"><CloudOff className="h-3 w-3" /> Contagem no aparelho</Chip>
-            : <ChipStatusItem status={item.status} />}
-        </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          <span className="font-mono font-semibold">{item.material}</span>
-          <span>{formatDeposito(item.deposito)}</span>
-          {item.classe && <span>Classe {item.classe}</span>}
-          {item.contagens.map((c) => (
-            <span key={c.id} className="font-semibold" style={{ color: c.divergente ? 'var(--status-critical)' : 'var(--status-good)' }}>
-              {c.numero}ª: {encerrado ? `${formatQtd(c.quantidade)} ${item.unidade || ''}` : 'enviada'}
-            </span>
-          ))}
-          {encerrado && item.saldo_sistema != null && (
-            <span className="font-bold" style={{ color: 'var(--ink-secondary)' }}>
-              ZL0024: {formatQtd(item.saldo_sistema)}
-              {item.diferenca ? ` (${item.diferenca > 0 ? '+' : ''}${formatQtd(item.diferenca)})` : ''}
-            </span>
-          )}
-        </div>
-      </button>
-      {podeRemover && (
-        <button aria-label="Tirar da lista" type="button" onClick={onRemover} title="Tirar da lista" className="shrink-0 px-3 cursor-pointer hover:text-rose-600 transition" style={{ color: 'var(--ink-muted)' }}>
-          <Trash2 className="h-4 w-4" />
+      {/* Localização: toca para ver no Gemba 2D onde o item fica. */}
+      {posicao ? (
+        <button
+          type="button"
+          onClick={onVerMapa}
+          aria-label={`Ver a posição ${posicao} no mapa do almoxarifado`}
+          className="flex min-h-10 w-full items-center gap-2 border-t px-3 py-1.5 text-left transition-colors hover:bg-[var(--surface-sunken)]"
+          style={{ borderColor: 'var(--hairline)' }}
+        >
+          <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--status-critical)' }} aria-hidden="true" />
+          <span className="shrink-0 font-mono text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
+            {posicao}{posicoes.length > 1 && <span className="font-sans font-semibold" style={{ color: 'var(--ink-muted)' }}> +{posicoes.length - 1}</span>}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>{lugar ?? ''}</span>
+          <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold" style={{ color: 'var(--brand)' }}>
+            <IconeMapa className="h-3.5 w-3.5" aria-hidden="true" /> Mapa
+          </span>
         </button>
+      ) : (
+        <p className="flex min-h-8 items-center gap-2 border-t px-3 text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+          <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> Sem posição na ZL0024
+        </p>
       )}
     </div>
   );
@@ -1376,13 +1625,17 @@ function AvisoGestaoDivergencia({ importadaEm, pendencias }: { importadaEm: stri
 }
 
 export function ModalContagem({
-  user, item, inventarioId, numero, fotoItem, onFotoSalva, onVerZoom, onRecarregar, onProximo, temProximo, onClose,
+  user, item, inventarioId, numero, fotoItem, posicoes, onVerMapa, onFotoSalva, onVerZoom, onRecarregar, onProximo, temProximo, onClose,
 }: {
   user: Profile;
   item: ItemInventario;
   inventarioId: string;
   numero: number;
   fotoItem?: CatalogoItem;
+  /** Posições de estoque do item, para achar no galpão. */
+  posicoes?: string[];
+  /** Abre o Gemba 2D com a posição. */
+  onVerMapa?: () => void;
   onFotoSalva?: (itemCatalogo: CatalogoItem) => void;
   onVerZoom?: (url: string, titulo: string, codigo: string) => void;
   onRecarregar: () => Promise<void>;
@@ -1496,6 +1749,27 @@ export function ModalContagem({
           Item {numero} · <span className="font-mono">{item.material}</span> · {formatDeposito(item.deposito)}
         </p>
         <h2 className="text-sm font-extrabold" style={{ color: 'var(--ink-primary)' }}>{item.descricao || '—'}</h2>
+        {posicoes && posicoes.length > 0 && (
+          onVerMapa ? (
+            <button
+              type="button"
+              onClick={onVerMapa}
+              aria-label={`Ver a posição ${posicoes[0]} no mapa do almoxarifado`}
+              className="mt-1 inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-lg border px-2 text-[11px] font-bold"
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+            >
+              <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--status-critical)' }} aria-hidden="true" />
+              <span className="font-mono" style={{ color: 'var(--ink-primary)' }}>{posicoes.join(', ')}</span>
+              <span className="inline-flex shrink-0 items-center gap-1" style={{ color: 'var(--brand)' }}>
+                · <IconeMapa className="h-3.5 w-3.5" aria-hidden="true" /> Mapa
+              </span>
+            </button>
+          ) : (
+            <p className="mt-1 flex items-center gap-1.5 text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>
+              <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> <span className="font-mono">{posicoes.join(', ')}</span>
+            </p>
+          )
+        )}
       </ModalHeader>
       <ModalBody className="space-y-4">
         {/* Card de Foto de Cadastro do Material */}
