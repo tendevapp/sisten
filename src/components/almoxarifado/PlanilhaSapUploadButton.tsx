@@ -53,7 +53,9 @@ function lerPlanilha(file: File): Promise<any[][]> {
           );
         } else {
           const data = new Uint8Array(ev.target?.result as ArrayBuffer);
-          const workbook = XLSX.read(data, { type: 'array' });
+          // Só a 1ª aba, em modo denso e sem o texto formatado de cada célula: a
+          // MB51 do ano passa de 70 mil linhas e a leitura completa travava a tela.
+          const workbook = XLSX.read(data, { type: 'array', dense: true, sheets: 0, cellText: false, cellHTML: false });
           if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
           resolve(XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' }));
@@ -164,6 +166,12 @@ export default function PlanilhaSapUploadButton({
                     <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-2.5">
                       <dt className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Atualizados</dt>
                       <dd className="text-slate-800 dark:text-slate-100 font-black text-base tabular-nums">{log.records_updated.toLocaleString('pt-BR')}</dd>
+                    </div>
+                  )}
+                  {(log.records_unchanged ?? 0) > 0 && (
+                    <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-2.5">
+                      <dt className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Já gravados (pulados)</dt>
+                      <dd className="text-slate-800 dark:text-slate-100 font-black text-base tabular-nums">{(log.records_unchanged ?? 0).toLocaleString('pt-BR')}</dd>
                     </div>
                   )}
                   {log.records_eliminated > 0 && (

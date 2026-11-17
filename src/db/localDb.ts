@@ -32,7 +32,8 @@ import { generateSAPSeedData } from '../data/sapData';
 import { supabase } from './supabaseClient';
 import { emailDeLogin, ehEmailInterno, usuarioLoginValido } from '../lib/loginSemEmail';
 import { FBL1N_COLUMNS, mapFbl1nRow } from '../lib/fbl1n';
-import { MB51_COLUMNS, mapMb51Row, parseMb51Number } from '../lib/mb51';
+import { MB51_COLUMNS, mapMb51Row, parseMb51Number, periodoMb51, separarNovasMb51 } from '../lib/mb51';
+import { enviarEmLotesParalelos } from '../lib/lotesParalelos';
 import { ZL0170_COLUMNS, mapZl0170Row } from '../lib/zl0170Miro';
 import { ZF0076_COLUMNS, mapZf0076Row } from '../lib/zf0076NfPo';
 import { ZL0136_COLUMNS, mapZl0136Row } from '../lib/zl0136Nf';
@@ -8036,6 +8037,7 @@ class LocalDatabase {
     try {
       let recordsInserted = 0;
       let recordsUpdated = 0;
+      let recordsUnchanged = 0;
       let recordsEliminated = 0;
 
       if (mode === 'replace') {
@@ -8061,30 +8063,39 @@ class LocalDatabase {
           onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
         }
       } else {
-        // Modo Upsert / Apenas novos: onConflict na chave_unica sem estourar limite de URL
-        onProgress?.(15);
+        // Só novos. Movimento da MB51 não muda depois de lançado (estorno é outro
+        // documento): pergunta ao banco, numa resposta só, quais chaves do período
+        // da planilha já existem e manda só o resto — antes regravava tudo
+        // (22.127 linhas lidas para 14 novas). ignoreDuplicates (ON CONFLICT DO
+        // NOTHING) cobre quem importar ao mesmo tempo, sem regravar.
+        onProgress?.(12);
+        let novas = dbRows;
+        const periodo = periodoMb51(dbRows);
+        if (periodo) {
+          const { data: chaves, error: erroChaves } = await (supabase.rpc as any)('mb51_chaves_no_periodo', { p_de: periodo.de, p_ate: periodo.ate });
+          if (erroChaves) {
+            console.warn('[MB51] Sem a lista de chaves gravadas; enviando tudo (sem regravar):', erroChaves);
+          } else {
+            const separadas = separarNovasMb51(dbRows, new Set<string>((chaves as string[]) ?? []));
+            novas = separadas.novas;
+            recordsUnchanged = separadas.jaGravadas;
+          }
+        }
+        onProgress?.(25);
 
-        const { count: countBefore } = await supabase
-          .from('sap_mb51_mov')
-          .select('id', { count: 'exact', head: true });
-
-        const totalBatches = Math.ceil(dbRows.length / 500) || 1;
-        for (let i = 0; i < dbRows.length; i += 500) {
-          const batch = dbRows.slice(i, i + 500);
+        await enviarEmLotesParalelos(novas, async (lote) => {
           const { error } = await supabase
             .from('sap_mb51_mov')
-            .upsert(batch, { onConflict: 'chave_unica' });
+            .upsert(lote, { onConflict: 'chave_unica', ignoreDuplicates: true });
           if (error) throw error;
-          const batchIndex = Math.floor(i / 500) + 1;
-          onProgress?.(15 + Math.round((batchIndex / totalBatches) * 75));
-        }
-
-        const { count: countAfter } = await supabase
-          .from('sap_mb51_mov')
-          .select('id', { count: 'exact', head: true });
-
-        recordsInserted = Math.max(0, (countAfter || 0) - (countBefore || 0));
-        recordsUpdated = Math.max(0, dbRows.length - recordsInserted);
+        }, {
+          tamanho: 1000,
+          paralelo: 3,
+          onAvanco: (enviados, total) => onProgress?.(25 + Math.round((enviados / Math.max(total, 1)) * 65)),
+        });
+        recordsInserted = novas.length;
+        // Sem a lista de chaves, quem já existia foi ignorado no banco e não dá para separar.
+        if (!periodo || recordsUnchanged === 0) recordsUnchanged = dbRows.length - novas.length;
       }
 
       const logId = 'il_' + Math.random().toString(36).substr(2, 9);
@@ -8096,7 +8107,7 @@ class LocalDatabase {
         records_read: dataRows.length,
         records_inserted: recordsInserted,
         records_updated: recordsUpdated,
-        records_unchanged: 0,
+        records_unchanged: recordsUnchanged,
         records_eliminated: recordsEliminated,
         columns_missing: missingColumns,
         columns_new: newColumns,
@@ -8113,14 +8124,17 @@ class LocalDatabase {
       logs.unshift(logObj);
       this.setStorageItem(this.importLogsKey, logs);
 
-      await this.bumpDatasetVersion('mb51_mov_estoque', dbRows.length);
-      this.refreshControleEstoque();
+      // Sem linha nova nada mudou: não faz os aparelhos ressincronizarem nem refaz o Controle de Estoque.
+      if (mode === 'replace' || recordsInserted > 0) {
+        await this.bumpDatasetVersion('mb51_mov_estoque', dbRows.length);
+        this.refreshControleEstoque();
+      }
 
       this.logActivity(
         user?.id || 'sistema',
         'Suprimentos',
         'Importar MB51',
-        `Importou Movimentações de Estoque MB51 (${filename}) [Modo: ${mode === 'replace' ? 'Substituição Total' : 'Upsert/Novos'}]. Lidos: ${dataRows.length}, novos: ${recordsInserted}, atualizados: ${recordsUpdated}, eliminados: ${recordsEliminated}.`
+        `Importou Movimentações de Estoque MB51 (${filename}) [Modo: ${mode === 'replace' ? 'Substituição Total' : 'Só novos'}]. Lidos: ${dataRows.length}, novos: ${recordsInserted}, já gravados: ${recordsUnchanged}, eliminados: ${recordsEliminated}.`
       );
 
       onProgress?.(100);

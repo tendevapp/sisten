@@ -3391,7 +3391,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               });
                             } else {
                               const data = new Uint8Array(ev.target?.result as ArrayBuffer);
-                              const workbook = XLSX.read(data, { type: 'array' });
+                              // MB51: só a 1ª aba, densa e sem texto formatado (leitura bem mais rápida).
+                              const workbook = XLSX.read(data, { type: 'array', dense: true, sheets: 0, cellText: false, cellHTML: false });
                               if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
                               const sheetName = workbook.SheetNames[0];
                               const worksheet = workbook.Sheets[sheetName];

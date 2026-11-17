@@ -176,3 +176,26 @@ export function mapMb51Row(
   return { record, camposExtras };
 }
 
+
+/** Menor e maior data de lançamento das linhas (ISO), ou null sem nenhuma data. */
+export function periodoMb51(linhas: { data_lancamento?: string | null }[]): { de: string; ate: string } | null {
+  let de: string | null = null;
+  let ate: string | null = null;
+  for (const l of linhas) {
+    const d = l.data_lancamento;
+    if (!d) continue;
+    if (de === null || d < de) de = d;
+    if (ate === null || d > ate) ate = d;
+  }
+  return de && ate ? { de, ate } : null;
+}
+
+/**
+ * Só as linhas que ainda não estão gravadas (pela `chave_unica`). Movimento da
+ * MB51 não muda depois de lançado — estorno é outro documento —, então regravar
+ * o que já existe só gasta tempo e banco.
+ */
+export function separarNovasMb51<T extends { chave_unica: string }>(linhas: T[], existentes: Set<string>): { novas: T[]; jaGravadas: number } {
+  const novas = linhas.filter((l) => !existentes.has(l.chave_unica));
+  return { novas, jaGravadas: linhas.length - novas.length };
+}
