@@ -371,3 +371,33 @@ describe('localizarMaterialParaSaida (QR da etiqueta)', () => {
     expect(localizarMaterialParaSaida(idx(), '0000000')).toBeNull();
   });
 });
+
+import { chaveMaterial, episRecusados, origemLiberaEpi } from './requisicaoBalcao';
+
+describe('EPI só pela Ficha de EPI', () => {
+  const epis = new Set(['1356010', '1280971']);
+
+  it('normaliza o código como o banco', () => {
+    expect(chaveMaterial(' 0001356010 ')).toBe('1356010');
+    expect(chaveMaterial(null)).toBe('');
+  });
+
+  it('recusa EPI do Book, com ou sem zeros à esquerda, sem repetir', () => {
+    expect(episRecusados(['001356010', '1356010', '9999999'], epis)).toEqual(['001356010']);
+  });
+
+  it('deixa o EPI que já estava gravado (requisição antiga)', () => {
+    expect(episRecusados(['1356010', '1280971'], epis, ['01356010'])).toEqual(['1280971']);
+  });
+
+  it('sem a lista do Book não trava (o banco ainda confere)', () => {
+    expect(episRecusados(['1356010'], new Set())).toEqual([]);
+  });
+
+  it('só ficha e retirada sem saldo liberam EPI', () => {
+    expect(origemLiberaEpi('ficha_epi')).toBe(true);
+    expect(origemLiberaEpi('sol_extra_sem_saldo')).toBe(true);
+    expect(origemLiberaEpi(null)).toBe(false);
+    expect(origemLiberaEpi('outra')).toBe(false);
+  });
+});

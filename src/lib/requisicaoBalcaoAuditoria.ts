@@ -403,6 +403,15 @@ export function documentosDaPlanilha(linhas: { docSap: string }[]): string[] {
   return [...new Set(linhas.map((l) => l.docSap.trim()).filter(Boolean))].sort();
 }
 
+/**
+ * Linhas da planilha com documento SAP. A conferência conta documento ×
+ * material: linhas de RQBs diferentes com o mesmo material no mesmo documento
+ * viram um par só (o SAP junta), por isso a contagem pode ser menor.
+ */
+export function linhasComDocumento(linhas: { doc_sap?: string | null; docSap?: string | null }[]): number {
+  return linhas.filter((l) => DOC_DEZ_DIGITOS.test(String(l.doc_sap ?? l.docSap ?? '').trim())).length;
+}
+
 export interface ResumoConferenciaImportacao {
   pares: number;
   ok: number;

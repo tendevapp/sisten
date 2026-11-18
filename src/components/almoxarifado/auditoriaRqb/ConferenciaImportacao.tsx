@@ -25,10 +25,12 @@ const ESTILO_BOTAO_MB51 =
 interface Props {
   docs: string[];
   podeImportarMb51: boolean;
+  /** Linhas da planilha com documento SAP — mostradas junto dos pares documento × material. */
+  linhasPlanilha?: number;
   onAbrirRequisicao: (requisicaoId: string, codigo: string) => void;
 }
 
-export default function ConferenciaImportacao({ docs, podeImportarMb51, onAbrirRequisicao }: Props) {
+export default function ConferenciaImportacao({ docs, podeImportarMb51, linhasPlanilha, onAbrirRequisicao }: Props) {
   const [linhas, setLinhas] = useState<LinhaDivergenciaDoc[] | null>(null);
   const [erro, setErro] = useState('');
   const [versao, setVersao] = useState(0);
@@ -93,6 +95,9 @@ export default function ConferenciaImportacao({ docs, podeImportarMb51, onAbrirR
           )}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+              {linhasPlanilha != null && linhasPlanilha !== r.pares
+                ? <span title="Linhas de requisições diferentes com o mesmo material no mesmo documento SAP viram um par só: o SAP junta a baixa.">{linhasPlanilha} linhas da planilha = </span>
+                : null}
               {r.pares} documento × material · {r.ok} confere · {r.faltas} faltando · {r.pendentes} sem MB51
             </span>
             <button

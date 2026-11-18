@@ -590,7 +590,17 @@ export interface LinhaConsumo {
   motivo: MotivoMed;
   fora_da_matriz: boolean;
   data_devolucao: string | null;
+  /** Saiu por extraordinária (Retirada sem Saldo aberta pela ficha): sem saldo no depósito de EPI na entrega. */
+  extraordinaria?: boolean;
 }
+
+/** Forma de saída do item, valor do filtro "Saída" da análise de consumo. */
+export type SaidaConsumo = 'normal' | 'extraordinaria';
+export const ROTULO_SAIDA_CONSUMO: Record<SaidaConsumo, string> = {
+  normal: 'Saldo no estoque',
+  extraordinaria: 'Extraordinária (sem saldo)',
+};
+export const saidaDaLinha = (l: Pick<LinhaConsumo, 'extraordinaria'>): SaidaConsumo => (l.extraordinaria ? 'extraordinaria' : 'normal');
 
 /** Um material SAP dentro de um EPI (o grupo agrupa tamanhos/variações). */
 export interface MaterialSapConsumo {
@@ -665,6 +675,8 @@ export interface AnaliseConsumo {
     unidadesPerda: number;
     percentualPerda: number;
     unidadesForaDaMatriz: number;
+    /** Unidades que saíram por extraordinária (sem saldo na entrega). */
+    unidadesExtraordinarias: number;
     duracaoMedianaGeral: number | null;
   };
   porEpi: ConsumoPorEpi[];
@@ -863,6 +875,7 @@ export function analisarConsumo(linhas: LinhaConsumo[], historicoCompleto: Linha
       unidadesPerda,
       percentualPerda: unidades ? unidadesPerda / unidades : 0,
       unidadesForaDaMatriz: linhas.filter(l => l.fora_da_matriz).reduce((soma, l) => soma + Number(l.quantidade), 0),
+      unidadesExtraordinarias: linhas.filter(l => l.extraordinaria).reduce((soma, l) => soma + Number(l.quantidade), 0),
       duracaoMedianaGeral: mediana(intervalosPeriodo.map(i => i.dias)),
     },
     porEpi,
@@ -902,14 +915,16 @@ export interface FiltrosConsumo {
   motivos: Set<string>;
   /** Meses de entrega ('AAAA-MM'), escolhidos clicando no gráfico de consumo por mês. */
   meses: Set<string>;
+  /** Forma de saída (`SaidaConsumo`): pelo saldo do estoque ou por extraordinária. */
+  saidas: Set<string>;
   /** Palavras-chave (chips, todas precisam bater): colaborador, registro, função, EPI, código ou descrição SAP. */
   palavras: string[];
 }
 
-export type DimensaoFiltroConsumo = 'funcoes' | 'setores' | 'epis' | 'pessoas' | 'motivos' | 'meses';
+export type DimensaoFiltroConsumo = 'funcoes' | 'setores' | 'epis' | 'pessoas' | 'motivos' | 'meses' | 'saidas';
 
 export function filtrosConsumoVazios(inicio: string | null = null): FiltrosConsumo {
-  return { inicio, funcoes: new Set(), setores: new Set(), epis: new Set(), pessoas: new Set(), motivos: new Set(), meses: new Set(), palavras: [] };
+  return { inicio, funcoes: new Set(), setores: new Set(), epis: new Set(), pessoas: new Set(), motivos: new Set(), meses: new Set(), saidas: new Set(), palavras: [] };
 }
 
 /**
@@ -927,6 +942,7 @@ export function filtrarConsumo(linhas: LinhaConsumo[], f: FiltrosConsumo, ignora
     if (ignorar !== 'pessoas' && f.pessoas.size && !f.pessoas.has(l.pessoa_id)) return false;
     if (ignorar !== 'motivos' && f.motivos.size && !f.motivos.has(String(l.motivo))) return false;
     if (ignorar !== 'meses' && f.meses.size && !f.meses.has(l.data_entrega.slice(0, 7))) return false;
+    if (ignorar !== 'saidas' && f.saidas?.size && !f.saidas.has(saidaDaLinha(l))) return false;
     if (f.palavras.length && !casarTokens([l.nome, l.registro, l.funcao_nome, l.grupo_epi, l.categoria, l.codigo_sap, l.descricao_sap], f.palavras)) return false;
     return true;
   });
@@ -942,7 +958,7 @@ export function alternarNoConjunto(conjunto: Set<string>, valor: string): Set<st
 /** Quantos filtros estão fora do estado inicial (para o botão "Limpar"). */
 export function filtrosConsumoAtivos(f: FiltrosConsumo, inicioPadrao: string | null): number {
   return f.funcoes.size + f.setores.size + f.epis.size + f.pessoas.size + f.motivos.size + f.meses.size
-    + f.palavras.length + (f.inicio !== inicioPadrao ? 1 : 0);
+    + (f.saidas?.size ?? 0) + f.palavras.length + (f.inicio !== inicioPadrao ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------

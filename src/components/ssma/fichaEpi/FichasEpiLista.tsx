@@ -13,7 +13,7 @@ import { useToast } from '../../ui/Toast';
 import type { Profile } from '../../../types';
 import FichaEpiDetalheModal from './FichaEpiDetalheModal';
 import { formatarDataBR, formatarQuantidade } from '../../../lib/fichaEpi';
-import { listarFichas, mensagemErroFichaEpi, type SsmaFichaEpi } from '../../../lib/ssmaFichaEpiApi';
+import { listarExtraordinariasDasFichas, listarFichas, mensagemErroFichaEpi, type SsmaFichaEpi } from '../../../lib/ssmaFichaEpiApi';
 
 interface Props {
   user: Profile;
@@ -66,9 +66,23 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
   const [carregando, setCarregando] = useState(true);
   const [aberta, setAberta] = useState<{ ficha: SsmaFichaEpi; completa: boolean } | null>(null);
   const [soPendentesAssinatura, setSoPendentesAssinatura] = useState(false);
+  // Fichas com item que saiu por extraordinária (sem saldo na entrega): só filtro, a ficha não mostra.
+  const [comExtraordinaria, setComExtraordinaria] = useState<Set<string>>(new Set());
+  const [soExtraordinarias, setSoExtraordinarias] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    listarExtraordinariasDasFichas()
+      .then(m => { if (vivo) setComExtraordinaria(new Set(m.keys())); })
+      .catch(erro => console.warn('Extraordinárias das fichas indisponíveis:', erro));
+    return () => { vivo = false; };
+  }, []);
 
   const pendentesAssinatura = fichas.filter(f => f.assinatura_pendente && f.status === 'ATIVA');
-  const listadas = soPendentesAssinatura ? pendentesAssinatura : fichas;
+  const extraordinarias = fichas.filter(f => comExtraordinaria.has(f.id));
+  const listadas = fichas
+    .filter(f => !soPendentesAssinatura || (f.assinatura_pendente && f.status === 'ATIVA'))
+    .filter(f => !soExtraordinarias || comExtraordinaria.has(f.id));
 
   const carregar = async (termo: string) => {
     setCarregando(true);
@@ -93,6 +107,22 @@ export default function FichasEpiLista({ user, buscaInicial = '' }: Props) {
         <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por colaborador, matrícula, código da ficha ou função" className="w-full bg-transparent py-2.5 text-sm outline-none" />
         {carregando && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
       </label>
+
+      {(extraordinarias.length > 0 || soExtraordinarias) && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSoExtraordinarias(v => !v)}
+            aria-pressed={soExtraordinarias}
+            title="Fichas em que algum EPI estava sem saldo no depósito na entrega e saiu pela Retirada sem Saldo"
+            className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold ${soExtraordinarias
+              ? 'border-amber-500 bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200'
+              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'}`}
+          >
+            {soExtraordinarias ? 'Mostrar todas' : `Só com saída extraordinária (${extraordinarias.length})`}
+          </button>
+        </div>
+      )}
 
       {pendentesAssinatura.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">

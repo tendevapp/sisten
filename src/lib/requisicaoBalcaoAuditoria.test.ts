@@ -151,3 +151,12 @@ describe('documentos de uma importação', () => {
     expect(documentosDaImportacao({ docs: null, detalhe: null })).toEqual([]);
   });
 });
+
+import { linhasComDocumento } from './requisicaoBalcaoAuditoria';
+
+describe('linhasComDocumento', () => {
+  it('conta as linhas com doc SAP de 10 dígitos, do log (doc_sap) ou da planilha (docSap)', () => {
+    expect(linhasComDocumento([{ doc_sap: '4904118288' }, { doc_sap: '4904118288' }, { doc_sap: null }, { doc_sap: 'x' }])).toBe(2);
+    expect(linhasComDocumento([{ docSap: ' 4904118295 ' }, { docSap: '' }])).toBe(1);
+  });
+});

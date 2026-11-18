@@ -108,6 +108,34 @@ export function originalBalcaoDisponivel(lote: ReqBalcaoExportacao, agora = Date
   return !!lote.original_path && agora - Date.parse(lote.created_at) < 30 * 24 * 60 * 60 * 1000;
 }
 
+const CHAVE_CACHE_EPIS = 'sisten.alm.codigosEpiBook';
+
+/**
+ * Códigos SAP ativos no Book de EPIs (já normalizados por `alm_chave_material`)
+ * — a tela recusa EPI em requisição manual antes de gravar. Sem rede, usa a
+ * última lista guardada no aparelho; sem nenhuma, devolve vazio e quem
+ * confere é o banco.
+ */
+export async function carregarCodigosEpiBook(): Promise<Set<string>> {
+  try {
+    const { data, error } = await (supabase as any).rpc('alm_codigos_epi_book');
+    if (error) throw error;
+    const codigos = ((data || []) as (string | { alm_codigos_epi_book: string })[])
+      .map((c) => (typeof c === 'string' ? c : c.alm_codigos_epi_book))
+      .filter(Boolean);
+    try { localStorage.setItem(CHAVE_CACHE_EPIS, JSON.stringify(codigos)); } catch { /* sem armazenamento */ }
+    return new Set(codigos);
+  } catch (erro) {
+    console.warn('Lista de EPIs do Book indisponível; usando a guardada.', erro);
+    try {
+      const salvo = localStorage.getItem(CHAVE_CACHE_EPIS);
+      return new Set(salvo ? (JSON.parse(salvo) as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  }
+}
+
 /** Lista fixa de centros de custo (PEP) do balcão, na ordem da folha. */
 export async function listarAplicacoesBalcao(): Promise<PepAplicacao[]> {
   const { data, error } = await (supabase.from as any)('alm_balcao_aplicacoes')

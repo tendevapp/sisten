@@ -11,6 +11,7 @@ import { supabase } from '../db/supabaseClient';
 import { gerarCodigoFormulario, proximoIndiceCodigo } from './codigosFormulario';
 import { buscarTudo } from './buscarTudo';
 import type { ItemFichaPayload, ItemHistorico, LinhaConsumo, MotivoMed } from './fichaEpi';
+import { extraordinariasPorFicha, itemSaiuExtraordinario, type ExtraordinariaDaFicha, type RssDeFicha } from './fichaEpiBaixas';
 
 export const PREFIXO_FICHA_EPI = 'EPI';
 
@@ -283,5 +284,35 @@ export async function listarConsumoEpi(): Promise<LinhaConsumo[]> {
     if (error) break; // sem a tabela do SAP a análise segue com a descrição da ficha
     for (const m of data || []) if (m.description) descricoesSap.set(String(m.material_code).trim(), String(m.description).trim());
   }
-  return linhas.map(l => ({ ...l, descricao_sap: descricoesSap.get(l.codigo_sap?.trim() ?? '') ?? l.descricao_sap }));
+  // Item que saiu por extraordinária (sem saldo na entrega). Sem a leitura, tudo conta como normal.
+  const extras = await listarExtraordinariasDasFichas().catch(erro => {
+    console.warn('Extraordinárias das fichas indisponíveis:', erro);
+    return new Map<string, ExtraordinariaDaFicha>();
+  });
+  return linhas.map(l => ({
+    ...l,
+    descricao_sap: descricoesSap.get(l.codigo_sap?.trim() ?? '') ?? l.descricao_sap,
+    extraordinaria: itemSaiuExtraordinario(extras, l.ficha_id, l.codigo_sap),
+  }));
+}
+
+/**
+ * Fichas que tiveram item saindo por extraordinária (Retirada sem Saldo aberta
+ * pela ficha), por id da ficha. RSS antiga sem `origem_id` casa pelo código.
+ */
+export async function listarExtraordinariasDasFichas(): Promise<Map<string, ExtraordinariaDaFicha>> {
+  const rss = await buscarTudo<RssDeFicha>((de, ate) => (supabase.from as any)('alm_solicitacao_extra')
+    .select('codigo, origem_id, origem_ref, itens')
+    .eq('origem', 'ficha_epi')
+    .is('excluido_em', null)
+    .order('codigo')
+    .range(de, ate));
+  const semId = [...new Set(rss.filter(r => !r.origem_id && r.origem_ref).map(r => r.origem_ref as string))];
+  const idPorCodigo = new Map<string, string>();
+  for (let i = 0; i < semId.length; i += 100) {
+    const { data, error } = await fichas().select('id, codigo').in('codigo', semId.slice(i, i + 100));
+    if (error) throw error;
+    for (const f of (data || []) as { id: string; codigo: string }[]) idPorCodigo.set(f.codigo, f.id);
+  }
+  return extraordinariasPorFicha(rss, idPorCodigo);
 }

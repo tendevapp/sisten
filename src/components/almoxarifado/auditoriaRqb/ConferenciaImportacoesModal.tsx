@@ -14,7 +14,7 @@ import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../ui/Modal';
 import ConferenciaImportacao from './ConferenciaImportacao';
 import { formatDateTimeBR } from '../../../lib/format';
 import { dataHojeLocal, dataLocalMaisDias } from '../../../lib/dataLocal';
-import { dataLocalDeTimestamp, documentosDaImportacao } from '../../../lib/requisicaoBalcaoAuditoria';
+import { dataLocalDeTimestamp, documentosDaImportacao, linhasComDocumento } from '../../../lib/requisicaoBalcaoAuditoria';
 import { listarImportacoesBalcao, type ImportacaoBalcao } from '../../../lib/requisicaoBalcaoApi';
 
 interface Props {
@@ -63,6 +63,11 @@ export default function ConferenciaImportacoesModal({
     if (escolha === TODAS) return [...new Set(recentes.flatMap((i) => i.docsConferir))].sort();
     return importacoes.find((i) => i.id === escolha)?.docsConferir ?? [];
   }, [importacoes, escolha, recentes]);
+  const linhasPlanilha = useMemo(() => {
+    if (!importacoes) return undefined;
+    const alvo = escolha === TODAS ? recentes : importacoes.filter((i) => i.id === escolha);
+    return alvo.reduce((s, i) => s + linhasComDocumento(i.detalhe ?? []), 0);
+  }, [importacoes, escolha, recentes]);
   const docsTodas = useMemo(() => new Set(recentes.flatMap((i) => i.docsConferir)).size, [recentes]);
 
   if (!visivel) return null;
@@ -110,6 +115,7 @@ export default function ConferenciaImportacoesModal({
             <ConferenciaImportacao
               key={escolha}
               docs={docs}
+              linhasPlanilha={linhasPlanilha}
               podeImportarMb51={podeImportarMb51}
               onAbrirRequisicao={onAbrirRequisicao}
             />

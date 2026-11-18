@@ -20,6 +20,7 @@ import {
   FileText,
   HardHat,
   Loader2,
+  PackageMinus,
   PackageX,
   ShieldQuestion,
   Timer,
@@ -49,6 +50,9 @@ import {
   hojeISO,
   materiaisSapPorGrupo,
   MOTIVOS_MED,
+  ROTULO_SAIDA_CONSUMO,
+  saidaDaLinha,
+  type SaidaConsumo,
   SEM_SETOR,
   type DimensaoFiltroConsumo,
   type FiltrosConsumo,
@@ -186,6 +190,7 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
       epis: unir(new Map(dimensao('epis').map(l => [chaveGrupo(l.categoria, l.grupo_epi), rotuloEpi(l)])), filtros.epis, id => rotulos.epis.get(id) ?? id),
       pessoas: unir(new Map(dimensao('pessoas').map(l => [l.pessoa_id, `${l.nome} · ${l.registro}`])), filtros.pessoas, id => rotulos.pessoas.get(id) ?? id),
       motivos: unir(new Map(dimensao('motivos').map(l => [String(l.motivo), `${l.motivo}. ${MOTIVOS_MED[l.motivo]}`])), filtros.motivos, id => id),
+      saidas: unir(new Map(dimensao('saidas').map(l => [saidaDaLinha(l), ROTULO_SAIDA_CONSUMO[saidaDaLinha(l)]])), filtros.saidas, id => ROTULO_SAIDA_CONSUMO[id as SaidaConsumo] ?? id),
     };
   }, [todas, filtros]);
   const rotuloDe = (lista: [string, string][]) => { const m = new Map(lista); return (id: string) => m.get(id) ?? id; };
@@ -256,6 +261,7 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
           <MultiSelectFilter label="Função" allLabel="Todas" icon={Briefcase} options={opcoes.funcoes.map(([id]) => id)} renderOption={rotuloDe(opcoes.funcoes)} selected={filtros.funcoes} onChange={funcoes => alterar({ funcoes })} searchable className="min-w-[170px]" panelClassName="w-80" />
           <MultiSelectFilter label="Setor" allLabel="Todos" icon={Building2} options={opcoes.setores.map(([id]) => id)} renderOption={rotuloDe(opcoes.setores)} selected={filtros.setores} onChange={setores => alterar({ setores })} className="min-w-[160px]" panelClassName="w-72" />
           <MultiSelectFilter label="Motivo" allLabel="Todos" icon={PackageX} options={opcoes.motivos.map(([id]) => id)} renderOption={rotuloDe(opcoes.motivos)} selected={filtros.motivos} onChange={motivos => alterar({ motivos })} searchable={false} className="min-w-[160px]" panelClassName="w-80" />
+          <MultiSelectFilter label="Saída" allLabel="Todas" icon={PackageMinus} options={opcoes.saidas.map(([id]) => id)} renderOption={rotuloDe(opcoes.saidas)} selected={filtros.saidas} onChange={saidas => alterar({ saidas })} searchable={false} className="min-w-[150px]" panelClassName="w-72" />
           {filtrosAtivos > 0 && (
             <button type="button" onClick={limpar} className="ml-auto inline-flex items-center gap-1 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-[#0056c6] dark:hover:bg-slate-800">
               <X className="h-3.5 w-3.5" />Limpar filtros ({filtrosAtivos})
@@ -285,12 +291,22 @@ export default function AnaliseConsumoEpi({ onLancarFicha }: Props) {
       )}
 
       {/* Indicadores */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
         <KpiCard label="Unidades entregues" value={resumo.unidades} format={formatarQuantidade} icon={Boxes} emphasize detail={`${resumo.tiposEpi} tipos de EPI`} />
         <KpiCard label="Colaboradores atendidos" value={resumo.colaboradores} format={formatarQuantidade} icon={Users} accent="#0891b2" share={pessoas.length ? Math.min(1, resumo.colaboradores / pessoas.length) : undefined} detail={pessoas.length ? `de ${pessoas.length} ativos` : undefined} />
         <KpiCard label="Fichas assinadas" value={resumo.fichas} format={formatarQuantidade} icon={FileText} accent="#7c3aed" />
         <KpiCard label="Perda / dano injustificado" value={resumo.percentualPerda} format={fmtPct} icon={PackageX} accent="var(--status-serious)" share={resumo.percentualPerda} detail={`${formatarQuantidade(resumo.unidadesPerda)} un. com motivo 3`} />
         <KpiCard label="Duração mediana" display={fmtDias(resumo.duracaoMedianaGeral)} icon={Timer} accent="var(--status-good)" detail="entre reposições do mesmo EPI" />
+        <KpiCard
+          label="Saída extraordinária"
+          value={resumo.unidadesExtraordinarias}
+          format={formatarQuantidade}
+          icon={PackageMinus}
+          accent="var(--status-serious)"
+          share={resumo.unidades ? resumo.unidadesExtraordinarias / resumo.unidades : 0}
+          detail="un. sem saldo na entrega (Retirada sem Saldo)"
+          onClick={() => alterar({ saidas: alternarNoConjunto(filtros.saidas, 'extraordinaria') })}
+        />
         <KpiCard label="Fora da matriz" value={resumo.unidadesForaDaMatriz} format={formatarQuantidade} icon={ShieldQuestion} accent="var(--status-warning)" share={resumo.unidades ? resumo.unidadesForaDaMatriz / resumo.unidades : 0} detail="un. não previstas para a função" />
       </div>
 

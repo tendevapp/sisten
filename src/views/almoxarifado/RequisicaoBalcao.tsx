@@ -38,13 +38,14 @@ import {
   alertaDaLinha, alertasRequisicao, achatarGruposPep, agruparLinhasPorDeposito, agruparLinhasPorDestino, agruparLinhasPorPep, buscarMateriaisEmDepositos, chaveDeposito, localizarMaterialParaSaida, semDepositosSemSaida, somenteComSaldo,
   criarGrupoPep, definirDepositoDoGrupo, definirDestinoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
   removerItemDoGrupo, atualizarQtdItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao,
+  MENSAGEM_EPI_PELA_FICHA, episRecusados, origemLiberaEpi,
   type GrupoPepBalcao, type LinhaBalcao, type MaterialDisponivel, type MaterialNoDeposito, type PepAplicacao, type TipoMovimentoBalcao,
 } from '../../lib/requisicaoBalcao';
 import {
   buscarEstoqueBalcao, buscarRequisicaoBalcaoPorCodigo, excluirRequisicaoBalcao, importarSapBalcao, informarDocSap, listarAlteracoesBalcao, listarAplicacoesBalcao,
   listarExportacoesBalcao, listarRequisicoesBalcao, reabrirExportacaoBalcao, registrarExportacaoBalcao,
   buscarOriginalExportacaoBalcao, originalBalcaoDisponivel,
-  salvarRequisicaoBalcao,
+  salvarRequisicaoBalcao, carregarCodigosEpiBook,
   type ReqBalcaoAlteracao, type ReqBalcaoExportacao, type ReqBalcaoRow,
 } from '../../lib/requisicaoBalcaoApi';
 import {
@@ -67,7 +68,7 @@ import FiltroPeriodoRequisicao from '../../components/almoxarifado/FiltroPeriodo
 import ConferenciaImportacao from '../../components/almoxarifado/auditoriaRqb/ConferenciaImportacao';
 import ConferenciaImportacoesModal from '../../components/almoxarifado/auditoriaRqb/ConferenciaImportacoesModal';
 import ProgressoGravacao, { type FaseGravacao } from '../../components/almoxarifado/auditoriaRqb/ProgressoGravacao';
-import { documentosDaPlanilha } from '../../lib/requisicaoBalcaoAuditoria';
+import { documentosDaPlanilha, linhasComDocumento } from '../../lib/requisicaoBalcaoAuditoria';
 import { etapaSapBalcao, itensSemDocParcial, type EtapaSapBalcao } from '../../lib/requisicaoBalcaoEtapa';
 import { formatarIntervalo } from '../../lib/logRequisicaoBalcao';
 import {
@@ -1225,6 +1226,16 @@ function ModalRequisicao({
   );
   const [observacao, setObservacao] = useState(registro?.observacao ?? '');
 
+  // EPI só sai pela Ficha de EPI: saída manual recusa EPI do Book (o banco confere igual).
+  const [codigosEpi, setCodigosEpi] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let vivo = true;
+    carregarCodigosEpiBook().then((c) => { if (vivo) setCodigosEpi(c); });
+    return () => { vivo = false; };
+  }, []);
+  const travaEpi = !origemLiberaEpi(registro?.origem);
+  const materiaisJaGravados = useMemo(() => (registro?.itens ?? []).map((i) => i.material), [registro]);
+
   const depositosAtivos = useMemo(
     () => ordenarDepositos(Object.keys(DEPOSITO_DESCRICAO).filter((d) => !isDepositoInativo(d))),
     [],
@@ -1376,6 +1387,10 @@ function ModalRequisicao({
   };
 
   const adicionarItemNoGrupo = (grupoId: string, item: MaterialNoDeposito, qtd: number) => {
+    if (tipo === 'saida' && travaEpi && episRecusados([item.material], codigosEpi, materiaisJaGravados).length > 0) {
+      toast.error(`${item.material} é EPI do Book. ${MENSAGEM_EPI_PELA_FICHA}`);
+      return;
+    }
     if (tipo === 'transferencia') {
       setGruposTransferencia((gs) => adicionarItemAoGrupo(gs, grupoId, item, qtd, 'transferencia'));
     } else {
@@ -1414,6 +1429,11 @@ function ModalRequisicao({
     ),
     ...(gruposSemPep.length > 0 ? [`${gruposSemPep.length} grupo(s) com itens sem PEP selecionado.`] : []),
     ...(gruposSemDestino.length > 0 ? [`${gruposSemDestino.length} grupo(s) sem depósito de destino definido.`] : []),
+    ...(() => {
+      if (tipo !== 'saida' || !travaEpi) return [];
+      const epis = episRecusados(todasLinhas.map((l) => l.material), codigosEpi, materiaisJaGravados);
+      return epis.length > 0 ? [`EPI do Book na saída (${epis.join(', ')}). ${MENSAGEM_EPI_PELA_FICHA}`] : [];
+    })(),
   ];
 
   const alertas = alertasRequisicao(todasLinhas);
@@ -2665,7 +2685,7 @@ function ModalImportacaoSap({
       </ModalHeader>
       <ModalBody>
         {etapa === 'conferencia' && (
-          <ConferenciaImportacao docs={docs} podeImportarMb51={podeImportarMb51} onAbrirRequisicao={onAbrirRequisicao} />
+          <ConferenciaImportacao docs={docs} linhasPlanilha={linhasComDocumento(leitura.linhas)} podeImportarMb51={podeImportarMb51} onAbrirRequisicao={onAbrirRequisicao} />
         )}
         {etapa === 'previa' && fase && <ProgressoGravacao fase={fase} linhas={aGravar.length + naoEnviadas.length} />}
         {etapa === 'previa' && !fase && <>

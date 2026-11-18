@@ -719,3 +719,43 @@ export function agruparLinhasPorDeposito(
     itens: mapa.get(chave) ?? [],
   }));
 }
+
+// ---------------------------------------------------------------------------
+// EPI só sai pela Ficha de EPI
+// ---------------------------------------------------------------------------
+// A entrega de EPI é a ficha assinada (FRM.SEG-0008), que gera a requisição
+// sozinha. Requisição manual com EPI do Book é recusada aqui e no banco
+// (`alm_req_balcao_conferir_epi`); transferência entre depósitos continua livre.
+
+/** Mesma chave do banco (`alm_chave_material`): sem espaços, maiúsculo, sem zeros à esquerda. */
+export function chaveMaterial(codigo: string | null | undefined): string {
+  return (codigo || '').trim().toUpperCase().replace(/^0+/, '');
+}
+
+export const MENSAGEM_EPI_PELA_FICHA =
+  'EPI sai pela Ficha de EPI (SSMA ou Almoxarifado › Ficha de EPI): ela gera a requisição sozinha e, sem saldo, a retirada extraordinária.';
+
+/** Requisição que veio da ficha (ou da retirada sem saldo que ela abriu) — o banco confere a origem. */
+export function origemLiberaEpi(origem: string | null | undefined): boolean {
+  return origem === ORIGEM_FICHA_EPI || origem === ORIGEM_RETIRADA_SEM_SALDO;
+}
+
+/**
+ * EPIs do Book entre os itens de uma saída manual que ainda não estavam
+ * gravados (`jaGravados`) — requisição antiga com EPI continua editável.
+ * Devolve os códigos recusados, sem repetição.
+ */
+export function episRecusados(
+  materiais: (string | null | undefined)[],
+  codigosEpi: ReadonlySet<string>,
+  jaGravados: (string | null | undefined)[] = [],
+): string[] {
+  if (codigosEpi.size === 0) return [];
+  const antes = new Set(jaGravados.map(chaveMaterial));
+  const recusados = new Map<string, string>();
+  for (const m of materiais) {
+    const k = chaveMaterial(m);
+    if (k && codigosEpi.has(k) && !antes.has(k) && !recusados.has(k)) recusados.set(k, (m || '').trim());
+  }
+  return [...recusados.values()];
+}
