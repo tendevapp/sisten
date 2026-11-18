@@ -293,10 +293,32 @@ export interface PoAguardandoNf {
   chegouSemMigo: boolean;
 }
 
+/** PO já entregue (NF lançada, MIGO feita) — o saldo dele já entrou. */
+export interface PoEntregue {
+  /** `pedido/item`. */
+  pedido: string;
+  fornecedor: string | null;
+  /** Última entrada do pedido (MB51 101) ou a data da MIGO da ZL0132. */
+  entradaEm: string | null;
+  quantidade: number;
+}
+
+/** Último movimento do material no SAP quando é saída (consumo, baixa direta). */
+export interface SaidaSap {
+  data: string | null;
+  tipo: string | null;
+  descricao: string | null;
+  quantidade: number;
+}
+
 export interface PendenciaNfMaterial {
   pedidos: PoAguardandoNf[];
   /** RMs abertas do material que ainda não viraram pedido. */
   rmsSemPedido: string[];
+  /** POs já entregues, mais recentes primeiro — a NF entrou, mas o saldo não está lá. */
+  entregues?: PoEntregue[];
+  /** Último movimento, se foi saída — ex.: baixa direta no SAP depois da MIGO. */
+  ultimaSaida?: SaidaSap | null;
 }
 
 /**
@@ -304,7 +326,9 @@ export interface PendenciaNfMaterial {
  * — e as RMs sem pedido, da situação do material (`alm_situacao_material`).
  * Os que chegaram fisicamente sem MIGO vêm primeiro; depois por previsão.
  */
-export function pendenciaNfDoMaterial(s: Pick<SituacaoMaterial, 'pedidos' | 'rms' | 'chegadas'> | null): PendenciaNfMaterial {
+export function pendenciaNfDoMaterial(
+  s: (Pick<SituacaoMaterial, 'pedidos' | 'rms' | 'chegadas'> & Partial<Pick<SituacaoMaterial, 'ultimo_movimento'>>) | null,
+): PendenciaNfMaterial {
   if (!s) return { pedidos: [], rmsSemPedido: [] };
   const chegaramSemMigo = new Set(
     (s.chegadas ?? []).filter(c => !c.migo_em && c.pedido).map(c => String(c.pedido).trim()),
@@ -326,7 +350,23 @@ export function pendenciaNfDoMaterial(s: Pick<SituacaoMaterial, 'pedidos' | 'rms
     .filter(r => r.situacao === 'sem_pedido')
     .map(r => documentoComItem(r.requisicao, r.item))
     .filter(Boolean))];
-  return { pedidos, rmsSemPedido };
+  const entregues = (s.pedidos ?? [])
+    .filter(p => !(Number(p.quantidade_pendente) > 0) && Number(p.quantidade_fornecida ?? p.recebido_mb51 ?? 0) > 0)
+    .map(p => {
+      const datas = [p.ultima_entrada, p.data_migo].filter((d): d is string => !!d).map(d => d.slice(0, 10)).sort();
+      return {
+        pedido: documentoComItem(p.pedido, p.item),
+        fornecedor: p.fornecedor?.trim() || null,
+        entradaEm: datas.length ? datas[datas.length - 1] : null,
+        quantidade: Number(p.quantidade_fornecida ?? p.recebido_mb51 ?? 0) || 0,
+      };
+    })
+    .sort((a, b) => (b.entradaEm ?? '').localeCompare(a.entradaEm ?? ''));
+  const um = s.ultimo_movimento;
+  const ultimaSaida = um && Number(um.quantidade) < 0
+    ? { data: um.data ? um.data.slice(0, 10) : null, tipo: um.tipo, descricao: um.descricao, quantidade: Math.abs(Number(um.quantidade)) }
+    : null;
+  return { pedidos, rmsSemPedido, entregues, ultimaSaida };
 }
 
 /** Texto curto para a célula: "4500123456/10 (prev. 12/11) · chegou s/ MIGO; ..." */
@@ -342,6 +382,13 @@ export function textoPendenciaNf(p: PendenciaNfMaterial | undefined): string {
       .join('; ');
   }
   if (p.rmsSemPedido.length) return `Sem PO — RM ${p.rmsSemPedido.join(', ')}`;
+  const entregue = p.entregues?.[0];
+  if (entregue) {
+    return [
+      `PO ${entregue.pedido} já entregue${entregue.entradaEm ? ` (MIGO ${ddmm(entregue.entradaEm)})` : ''}`,
+      p.ultimaSaida && `saída SAP ${p.ultimaSaida.tipo ?? ''}${p.ultimaSaida.data ? ` em ${ddmm(p.ultimaSaida.data)}` : ''}`.replace(/\s+/g, ' '),
+    ].filter(Boolean).join(' · ');
+  }
   return 'Sem PO aberto';
 }
 

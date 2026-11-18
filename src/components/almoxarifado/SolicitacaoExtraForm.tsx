@@ -30,7 +30,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Save, Search, Trash2 } from 'lucide-react';
+import { AlertTriangle, Loader2, Plus, Save, Search, Trash2 } from 'lucide-react';
 import type { Profile, RhPessoa, Sector } from '../../types';
 import { useToast } from '../ui/Toast';
 import SeletorColaborador, { type ColaboradorEscolhido } from './SeletorColaborador';
@@ -40,9 +40,15 @@ import type { PreparedAttachment } from '../../lib/imageCompression';
 import { CampoAssinaturaRetirante, SeletorFotosSolExtra } from './FotosSolicitacaoExtra';
 import { hojeISO } from '../../lib/fichaEpi';
 import { horaAgora } from '../../lib/portariaApi';
-import { buscarMateriais, type MaterialDisponivel, type PepAplicacao } from '../../lib/requisicaoBalcao';
-import { listarAplicacoesBalcao } from '../../lib/requisicaoBalcaoApi';
+import {
+  MENSAGEM_EPI_PELA_FICHA, ORIGEM_FICHA_EPI, episRecusados, type MaterialDisponivel, type PepAplicacao,
+} from '../../lib/requisicaoBalcao';
+import { carregarCodigosEpiBook, listarAplicacoesBalcao } from '../../lib/requisicaoBalcaoApi';
 import { normalizeCode } from '../../lib/almoxarifado';
+import {
+  MENSAGEM_SEM_RM, buscarComRmAberta, materiaisSemRmAberta, rotuloRmAberta, type RmAbertaMaterial,
+} from '../../lib/rmAberta';
+import { carregarRmAbertas } from '../../lib/rmAbertaApi';
 import {
   MOTIVOS_SOL_EXTRA, completarDescricoesDoCadastro, itemDoCadastroPorCodigo, lerNumero, normalizarPorMotivo,
   turnoDaHora, validarSolExtra,
@@ -242,6 +248,28 @@ export default function SolicitacaoExtraForm({
     setData(hojeISO()); setHora(h); setTurno(turnoDaHora(h));
   };
 
+  const [codigosEpi, setCodigosEpi] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let vivo = true;
+    carregarCodigosEpiBook().then(c => { if (vivo) setCodigosEpi(c); });
+    return () => { vivo = false; };
+  }, []);
+
+  // Só sai material com RM aberta (o banco confere igual). A retirada aberta
+  // pela Ficha de EPI fica de fora; item que o registro já tinha também.
+  const [rmAbertas, setRmAbertas] = useState<Map<string, RmAbertaMaterial> | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    carregarRmAbertas().then(m => { if (vivo) setRmAbertas(m); });
+    return () => { vivo = false; };
+  }, []);
+  const exigeRm = registro?.origem !== ORIGEM_FICHA_EPI;
+  const gravados = useMemo(() => new Set((registro?.itens ?? []).map(i => normalizeCode(i.material))), [registro]);
+  const linhaSemRm = (material: string) => {
+    const k = normalizeCode(material);
+    return exigeRm && !!rmAbertas && !!k && !gravados.has(k) && !rmAbertas.has(k);
+  };
+
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
     // Código digitado ou colado sem clicar na sugestão: a descrição vem do
@@ -294,6 +322,21 @@ export default function SolicitacaoExtraForm({
     if (erros.length) {
       toast.warning(erros.join(' '));
       return;
+    }
+    // EPI só sai pela Ficha de EPI — ela abre a retirada sem saldo sozinha (o banco confere igual).
+    if (registro?.origem !== ORIGEM_FICHA_EPI) {
+      const epis = episRecusados(itens.map(i => i.material), codigosEpi, (registro?.itens ?? []).map(i => i.material));
+      if (epis.length) {
+        toast.error(`EPI do Book (${epis.join(', ')}) não se retira por aqui. ${MENSAGEM_EPI_PELA_FICHA}`);
+        return;
+      }
+    }
+    if (exigeRm && rmAbertas) {
+      const semRm = materiaisSemRmAberta(itens.map(i => i.material), rmAbertas, (registro?.itens ?? []).map(i => i.material));
+      if (semRm.length) {
+        toast.error(`Sem RM aberta: ${semRm.join(', ')}. ${MENSAGEM_SEM_RM}`);
+        return;
+      }
     }
 
     setSalvando(true);
@@ -417,7 +460,8 @@ export default function SolicitacaoExtraForm({
             Materiais <span className="text-red-500">*</span>
           </h3>
           <span className="text-[11px] text-slate-500">
-            {semSaldo ? 'Material sem saldo na ZL0024 — a baixa sai no balcão quando a NF for lançada' : 'Material sem saldo na ZL0024 — a baixa é regularizada no SAP depois'}
+            {exigeRm ? 'Só material com RM aberta (sendo comprado) · ' : 'Material sem saldo na ZL0024 · '}
+            {semSaldo ? 'a baixa sai no balcão quando a NF for lançada' : 'a baixa é regularizada no SAP depois'}
           </span>
         </div>
         <div className="space-y-3">
@@ -427,6 +471,8 @@ export default function SolicitacaoExtraForm({
               numero={i + 1}
               linha={l}
               catalogo={catalogo}
+              rmAbertas={exigeRm ? rmAbertas : null}
+              semRm={linhaSemRm(l.material)}
               disabled={salvando}
               podeRemover={linhas.length > 1}
               onAlterar={patch => alterarLinha(l.chave, patch)}
@@ -551,11 +597,15 @@ type CampoBusca = 'material' | 'descricao';
  * e escolher preenche código, descrição e unidade.
  */
 function LinhaMaterial({
-  numero, linha, catalogo, disabled, podeRemover, onAlterar, onRemover, onSemCadastro,
+  numero, linha, catalogo, rmAbertas, semRm, disabled, podeRemover, onAlterar, onRemover, onSemCadastro,
 }: {
   numero: number;
   linha: LinhaItem;
   catalogo: MaterialDisponivel[];
+  /** RMs abertas por material; nulo = não exige (ficha de EPI) ou lista indisponível. */
+  rmAbertas: Map<string, RmAbertaMaterial> | null;
+  /** O código da linha não tem RM aberta — não pode ser enviado. */
+  semRm: boolean;
   disabled: boolean;
   podeRemover: boolean;
   onAlterar: (patch: Partial<LinhaItem>) => void;
@@ -567,9 +617,11 @@ function LinhaMaterial({
   const [ativo, setAtivo] = useState(0);
 
   const resultados = useMemo(
-    () => (busca && busca.termo.trim().length >= 2 ? buscarMateriais(catalogo, busca.termo, 12) : []),
-    [catalogo, busca],
+    () => (busca && busca.termo.trim().length >= 2 ? buscarComRmAberta(catalogo, rmAbertas, busca.termo, 12) : []),
+    [catalogo, rmAbertas, busca],
   );
+  /** Sem RM aberta não se escolhe (a lista vem com as que têm RM primeiro). */
+  const escolhivel = (r: { rm: RmAbertaMaterial | null }) => !rmAbertas || !!r.rm;
 
   const escolher = (m: MaterialDisponivel) => {
     onAlterar({ material: m.material, descricao: m.descricao, unidade: m.unidade || 'UN' });
@@ -586,7 +638,7 @@ function LinhaMaterial({
     if (!busca || resultados.length === 0) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); setAtivo(a => Math.min(a + 1, resultados.length - 1)); }
     if (e.key === 'ArrowUp') { e.preventDefault(); setAtivo(a => Math.max(a - 1, 0)); }
-    if (e.key === 'Enter') { e.preventDefault(); escolher(resultados[ativo]); }
+    if (e.key === 'Enter') { e.preventDefault(); if (escolhivel(resultados[ativo])) escolher(resultados[ativo].item); }
     if (e.key === 'Escape') setBusca(null);
   };
 
@@ -606,20 +658,38 @@ function LinhaMaterial({
   const sugestoes = (campo: CampoBusca) =>
     busca?.campo === campo && resultados.length > 0 && (
       <ul className="absolute left-0 z-20 mt-1 max-h-72 w-[min(32rem,85vw)] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-        {resultados.map((m, i) => (
-          <li key={m.material}>
-            <button
-              type="button"
-              onMouseDown={e => e.preventDefault()}
-              onClick={() => escolher(m)}
-              className={`block w-full px-3 py-2 text-left text-xs hover:bg-blue-50 dark:hover:bg-slate-800 ${i === ativo ? 'bg-blue-50 dark:bg-slate-800' : ''}`}
-            >
-              <span className="font-mono font-bold text-slate-900 dark:text-slate-50">{m.material}</span>
-              <span className="text-slate-600 dark:text-slate-300"> · {m.descricao}</span>
-              <span className="block text-[10px] text-slate-500">{m.unidade}</span>
-            </button>
-          </li>
-        ))}
+        {resultados.map((r, i) => {
+          const m = r.item;
+          const pode = escolhivel(r);
+          return (
+            <li key={m.material}>
+              <button
+                type="button"
+                disabled={!pode}
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => escolher(m)}
+                className={`block w-full px-3 py-2 text-left text-xs ${
+                  pode ? `hover:bg-blue-50 dark:hover:bg-slate-800 ${i === ativo ? 'bg-blue-50 dark:bg-slate-800' : ''}` : 'cursor-not-allowed opacity-60'
+                }`}
+              >
+                <span className="font-mono font-bold text-slate-900 dark:text-slate-50">{m.material}</span>
+                <span className="text-slate-600 dark:text-slate-300"> · {m.descricao}</span>
+                <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
+                  {m.unidade}
+                  {rmAbertas && (r.rm ? (
+                    <span className="rounded-full bg-emerald-100 px-1.5 py-px font-semibold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                      {rotuloRmAberta(r.rm)}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-slate-100 px-1.5 py-px font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      Sem RM aberta — não pode
+                    </span>
+                  ))}
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     );
 
@@ -685,6 +755,12 @@ function LinhaMaterial({
         />
         {sugestoes('descricao')}
       </div>
+      {semRm && (
+        <p className="col-span-2 col-start-2 flex items-start gap-1 text-[11px] font-semibold text-rose-700 dark:text-rose-400 sm:col-span-4">
+          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+          {linha.material.trim()} não tem RM aberta. {MENSAGEM_SEM_RM}
+        </p>
+      )}
     </div>
   );
 }

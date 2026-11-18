@@ -22,7 +22,7 @@ import { indexarEstoquePorDeposito } from '../../lib/requisicaoBalcao';
 import { buscarEstoqueBalcao } from '../../lib/requisicaoBalcaoApi';
 import { listarSolicitacoesExtraPendentes } from '../../lib/solicitacaoExtraApi';
 import {
-  PRONTIDAO_SALDO_ROTULO, dataImportacaoEstoque, prontidaoRegularizacao,
+  PRONTIDAO_SALDO_ROTULO, coberturaItensPendentes, dataImportacaoEstoque, prontidaoRegularizacao,
   type ProntidaoSaldo, type SaldoParaRegularizar,
 } from '../../lib/retiradaSemSaldoBaixa';
 
@@ -34,14 +34,18 @@ export type FiltroProntidao = ProntidaoSaldo | 'todas';
  * leu. O saldo é repartido entre TODAS as pendentes, de qualquer tipo, não só
  * as da lista em tela.
  */
-export function useProntidaoSaldo(versao: number): {
+export interface ProntidaoSaldoEstado {
   porId: Map<string, SaldoParaRegularizar> | null;
+  /** Item a item (mesma ordem de `itens`): o saldo de hoje já cobre? */
+  cobertura: Map<string, boolean[]> | null;
   importadoEm: string | null;
   carregando: boolean;
   erro: boolean;
-} {
-  const [estado, setEstado] = useState<{ porId: Map<string, SaldoParaRegularizar> | null; importadoEm: string | null; carregando: boolean; erro: boolean }>(
-    { porId: null, importadoEm: null, carregando: true, erro: false },
+}
+
+export function useProntidaoSaldo(versao: number): ProntidaoSaldoEstado {
+  const [estado, setEstado] = useState<ProntidaoSaldoEstado>(
+    { porId: null, cobertura: null, importadoEm: null, carregando: true, erro: false },
   );
   useEffect(() => {
     if (versao === 0) return;
@@ -50,8 +54,10 @@ export function useProntidaoSaldo(versao: number): {
     Promise.all([buscarEstoqueBalcao(true), listarSolicitacoesExtraPendentes()])
       .then(([estoque, pendentes]) => {
         if (!vivo) return;
+        const indice = indexarEstoquePorDeposito(estoque, true);
         setEstado({
-          porId: prontidaoRegularizacao(pendentes, indexarEstoquePorDeposito(estoque, true)),
+          porId: prontidaoRegularizacao(pendentes, indice),
+          cobertura: coberturaItensPendentes(pendentes, indice),
           importadoEm: dataImportacaoEstoque(estoque),
           carregando: false,
           erro: false,

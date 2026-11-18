@@ -21,7 +21,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertOctagon, ArrowRight, CheckCircle2, ListTodo, PackageCheck, PackageOpen, ReceiptText, RefreshCw, XCircle } from 'lucide-react';
+import { AlertOctagon, ArrowRight, CheckCircle2, LayoutGrid, ListTodo, PackageCheck, PackageOpen, ReceiptText, RefreshCw, Truck, XCircle } from 'lucide-react';
 import type { Profile } from '../types';
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
@@ -43,6 +43,7 @@ import {
   FiltroSaldo, LegendaZl0024, SaldoChip, contarProntidao, useProntidaoSaldo, type FiltroProntidao,
 } from '../components/almoxarifado/SaldoRegularizacao';
 import type { SaldoParaRegularizar } from '../lib/retiradaSemSaldoBaixa';
+import RetiradasPorPo from '../components/almoxarifado/RetiradasPorPo';
 
 interface Props {
   user: Profile;
@@ -50,6 +51,14 @@ interface Props {
 }
 
 type Aba = 'retiradas' | 'processamento' | 'contingencias';
+
+/** Visão do bloco de baixa: um cartão por retirada ou agrupado pelo PO que falta a NF. */
+type VisaoBaixa = 'retirada' | 'po';
+const CHAVE_VISAO_BAIXA = 'sisten.pendencias.visaoBaixa';
+
+function visaoBaixaGuardada(): VisaoBaixa {
+  try { return localStorage.getItem(CHAVE_VISAO_BAIXA) === 'po' ? 'po' : 'retirada'; } catch { return 'retirada'; }
+}
 
 const ehAprovadorDeSetor = (user: Profile) => user.roles.includes('admin') || (user.aprovador_setores?.length ?? 0) > 0;
 
@@ -166,6 +175,11 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
   const [versaoSaldo, setVersaoSaldo] = useState(0);
   const saldo = useProntidaoSaldo(ehAlmox ? versaoSaldo : 0);
   const [filtroSaldo, setFiltroSaldo] = useState<FiltroProntidao>('todas');
+  const [visao, setVisao] = useState<VisaoBaixa>(visaoBaixaGuardada);
+  const trocarVisao = (v: VisaoBaixa) => {
+    setVisao(v);
+    try { localStorage.setItem(CHAVE_VISAO_BAIXA, v); } catch { /* sem storage: vale só nesta tela */ }
+  };
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -223,11 +237,20 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
           descricao="Quando a NF for lançada e o item tiver saldo na ZL0024, dê baixa: a Requisição no Balcão sai preenchida e a retirada deixa a lista."
           total={aguardandoBaixa.length}
           filtro={
-            <div className="space-y-1">
-              <FiltroSaldo valor={filtroSaldo} onChange={setFiltroSaldo} contagem={contagemSaldo} />
+            <div className="space-y-2">
+              <VisaoBaixaSeletor valor={visao} onChange={trocarVisao} />
+              {visao === 'retirada' && <FiltroSaldo valor={filtroSaldo} onChange={setFiltroSaldo} contagem={contagemSaldo} />}
               <LegendaZl0024 importadoEm={saldo.importadoEm} carregando={saldo.carregando} erro={saldo.erro} />
             </div>
           }
+          corpo={visao === 'po' ? (
+            <RetiradasPorPo
+              registros={aguardandoBaixa}
+              cobertura={saldo.cobertura}
+              saldoLido={!saldo.carregando}
+              onAbrir={setAberto}
+            />
+          ) : undefined}
         >
           {baixaVisivel.length === 0 && (
             <li className="rounded-xl border border-dashed border-slate-300 px-3 py-6 text-center text-xs text-slate-500 dark:border-slate-700 lg:col-span-2">
@@ -346,8 +369,29 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
   );
 }
 
+function VisaoBaixaSeletor({ valor, onChange }: { valor: VisaoBaixa; onChange: (v: VisaoBaixa) => void }) {
+  const opcoes: [VisaoBaixa, string, typeof Truck][] = [['retirada', 'Por retirada', LayoutGrid], ['po', 'Por PO (falta NF)', Truck]];
+  return (
+    <div className="inline-flex rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800" role="group" aria-label="Visão das retiradas">
+      {opcoes.map(([id, rotulo, Icone]) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={valor === id}
+          onClick={() => onChange(id)}
+          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-bold transition ${
+            valor === id ? 'bg-white text-blue-700 shadow-2xs dark:bg-slate-700 dark:text-blue-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+          }`}
+        >
+          <Icone className="h-3.5 w-3.5" /> {rotulo}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Bloco({
-  icone: Icone, titulo, descricao, total, acao, filtro, children,
+  icone: Icone, titulo, descricao, total, acao, filtro, corpo, children,
 }: {
   icone: typeof ListTodo;
   titulo: string;
@@ -356,6 +400,8 @@ function Bloco({
   acao?: ReactNode;
   /** Entre o cabeçalho e a lista. */
   filtro?: ReactNode;
+  /** No lugar da grade de cartões (outra visão da mesma lista). */
+  corpo?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -373,7 +419,7 @@ function Bloco({
         {acao}
       </header>
       {filtro}
-      <ul className="grid gap-2 lg:grid-cols-2">{children}</ul>
+      {corpo ?? <ul className="grid gap-2 lg:grid-cols-2">{children}</ul>}
     </section>
   );
 }
