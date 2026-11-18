@@ -20,6 +20,7 @@ import { buscarTudo } from './buscarTudo';
 /** As tabelas ainda não estão em `database.types.ts` — mesmo atalho de `almoxarifadoRmApi`. */
 const dbReq = () => (supabase.from as any)('alm_req_balcao');
 const dbExportacoes = () => (supabase.from as any)('alm_req_balcao_exportacoes');
+const bucketOriginaisBalcao = () => supabase.storage.from('alm-rqb-exportacoes');
 
 /**
  * Puxa a posição de estoque da ZL0024 diretamente do Supabase (`sap_zl0024_stk`),
@@ -100,6 +101,11 @@ export interface ReqBalcaoExportacao {
   total_itens: number;
   codigos: string[];
   created_at: string;
+  original_path?: string | null;
+}
+
+export function originalBalcaoDisponivel(lote: ReqBalcaoExportacao, agora = Date.now()): boolean {
+  return !!lote.original_path && agora - Date.parse(lote.created_at) < 30 * 24 * 60 * 60 * 1000;
 }
 
 /** Lista fixa de centros de custo (PEP) do balcão, na ordem da folha. */
@@ -122,14 +128,36 @@ export async function listarExportacoesBalcao(limite = 100): Promise<ReqBalcaoEx
   return (data || []) as ReqBalcaoExportacao[];
 }
 
-/** Registra o lote e vincula as requisições — chamar depois de gerar o arquivo. */
-export async function registrarExportacaoBalcao(ids: string[], arquivo: string, por: string): Promise<void> {
-  const { error } = await supabase.rpc('alm_req_balcao_registrar_exportacao' as any, {
+/** Arquiva os bytes baixados e registra o lote com seu arquivo original. */
+export async function registrarExportacaoBalcao(
+  ids: string[], planilha: { arquivo: string; blob: Blob; linhas: number }, por: string,
+): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Sessão expirada. Entre novamente.');
+  const path = `${session.user.id}/${crypto.randomUUID()}.xlsx`;
+  const { error: erroUpload } = await bucketOriginaisBalcao().upload(path, planilha.blob, {
+    contentType: planilha.blob.type,
+    upsert: false,
+  });
+  if (erroUpload) throw new Error(`Não foi possível guardar o XLSX original. ${erroUpload.message}`);
+
+  const { error } = await supabase.rpc('alm_rqb_registrar_exportacao_original' as any, {
     p_ids: ids,
-    p_arquivo: arquivo,
+    p_arquivo: planilha.arquivo,
     p_por: por,
+    p_original_path: path,
+    p_total_itens: planilha.linhas,
   } as any);
   if (error) throw new Error(error.message);
+}
+
+export async function buscarOriginalExportacaoBalcao(lote: ReqBalcaoExportacao): Promise<Blob> {
+  if (!lote.original_path || !originalBalcaoDisponivel(lote)) {
+    throw new Error('O arquivo original deste lote não está disponível.');
+  }
+  const { data, error } = await bucketOriginaisBalcao().download(lote.original_path);
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 /** Devolve requisições à fila "Não exportadas". */

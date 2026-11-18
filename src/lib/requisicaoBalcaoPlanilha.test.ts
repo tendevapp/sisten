@@ -1,8 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import {
-  BALCAO_COLUNAS, classificarImportacao, lerArquivoBalcaoConcluido, lerPlanilhaBalcaoConcluida, montarLinhasBalcao, nomeArquivoBalcao,
+  BALCAO_COLUNAS, classificarImportacao, gerarPlanilhaBalcao, lerArquivoBalcaoConcluido, lerPlanilhaBalcaoConcluida, montarLinhasBalcao, nomeArquivoBalcao,
 } from './requisicaoBalcaoPlanilha';
+
+it('preserva no XLSX arquivado a quantidade anterior a uma edição da requisição', async () => {
+  const requisicao = {
+    codigo: 'RQB-171126-08',
+    tipo_movimento: 'transferencia' as const,
+    deposito_origem: '0002',
+    deposito_destino: '0105',
+    aplicacao_pep: null,
+    aplicacao: '',
+    observacao: 'Lote original',
+    itens: [{ material: '1322870', descricao: 'FILME STRETCH', quantidade: 2 }],
+  };
+  const original = gerarPlanilhaBalcao([requisicao]);
+  requisicao.itens[0].quantidade = 7;
+  requisicao.observacao = 'Editada';
+  const editada = gerarPlanilhaBalcao([requisicao]);
+  const lerLinha = async (blob: Blob) => {
+    const wb = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
+    return XLSX.utils.sheet_to_json(wb.Sheets.Movimentacoes_SAP)[0];
+  };
+  expect(original.linhas).toBe(1);
+  expect(await lerLinha(original.blob)).toMatchObject({ Quantidade: 2, Observacao: 'RQB-171126-08 - Lote original' });
+  expect(await lerLinha(editada.blob)).toMatchObject({ Quantidade: 7, Observacao: 'RQB-171126-08 - Editada' });
+});
 
 describe('Baixas_SAP.xlsm', () => {
   const cabecalho = [...BALCAO_COLUNAS, 'Pronto?', 'Ano', 'Conferência SAP', 'Conferido em', 'Tempo\nconf. (s)', 'Mensagem do SAP'];

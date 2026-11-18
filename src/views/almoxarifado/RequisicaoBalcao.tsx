@@ -43,11 +43,12 @@ import {
 import {
   buscarEstoqueBalcao, buscarRequisicaoBalcaoPorCodigo, excluirRequisicaoBalcao, importarSapBalcao, informarDocSap, listarAlteracoesBalcao, listarAplicacoesBalcao,
   listarExportacoesBalcao, listarRequisicoesBalcao, reabrirExportacaoBalcao, registrarExportacaoBalcao,
+  buscarOriginalExportacaoBalcao, originalBalcaoDisponivel,
   salvarRequisicaoBalcao,
   type ReqBalcaoAlteracao, type ReqBalcaoExportacao, type ReqBalcaoRow,
 } from '../../lib/requisicaoBalcaoApi';
 import {
-  classificarImportacao, exportarPlanilhaBalcao, lerArquivoBalcaoConcluido,
+  baixarPlanilhaBalcao, classificarImportacao, gerarPlanilhaBalcao, lerArquivoBalcaoConcluido,
   type LeituraPlanilhaBalcao, type SituacaoImportacao,
 } from '../../lib/requisicaoBalcaoPlanilha';
 import { listarRhPessoas, listarRhTurnos } from '../../lib/rhApi';
@@ -392,13 +393,14 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
 
     setExportando(true);
     try {
-      const { arquivo, linhas } = exportarPlanilhaBalcao(sel);
-      await registrarExportacaoBalcao(sel.map((r) => r.id), arquivo, user.name);
-      toast.success(`${arquivo}: ${sel.length} requisição(ões), ${linhas} linha(s).`);
+      const planilha = gerarPlanilhaBalcao(sel);
+      await registrarExportacaoBalcao(sel.map((r) => r.id), planilha, user.name);
+      baixarPlanilhaBalcao(planilha.blob, planilha.arquivo);
+      toast.success(`${planilha.arquivo}: ${sel.length} requisição(ões), ${planilha.linhas} linha(s).`);
       setSelecionadas(new Set());
       await recarregarRequisicoes();
     } catch (err: any) {
-      toast.error(err?.message || 'A planilha foi gerada, mas o registro da exportação falhou.');
+      toast.error(err?.message || 'Não foi possível exportar a planilha.');
     } finally {
       setExportando(false);
     }
@@ -2244,6 +2246,20 @@ function HistoricoExportacoes({
   requisicoes: ReqBalcaoRow[];
   onReabrir: (lote: ReqBalcaoExportacao, ids: string[]) => void;
 }) {
+  const toast = useToast();
+  const [baixando, setBaixando] = useState<string | null>(null);
+
+  async function baixarOriginal(lote: ReqBalcaoExportacao) {
+    setBaixando(lote.id);
+    try {
+      baixarPlanilhaBalcao(await buscarOriginalExportacaoBalcao(lote), lote.arquivo);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível baixar o arquivo original.');
+    } finally {
+      setBaixando(null);
+    }
+  }
+
   if (exportacoes.length === 0) return null;
   return (
     <section className="rounded-xl border" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
@@ -2268,15 +2284,35 @@ function HistoricoExportacoes({
                   </div>
                   <div className="truncate text-[10px] font-mono" style={{ color: 'var(--ink-muted)' }}>{lote.codigos.join(', ')}</div>
                 </div>
-                {vigentes.length > 0 && (
-                  <button
-                    onClick={() => onReabrir(lote, vigentes)}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold hover:underline"
-                    style={{ color: 'var(--brand)' }}
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" /> Reabrir
-                  </button>
-                )}
+                <div className="flex flex-wrap items-center gap-3">
+                  {originalBalcaoDisponivel(lote) ? (
+                    <button
+                      type="button"
+                      onClick={() => void baixarOriginal(lote)}
+                      disabled={baixando !== null}
+                      aria-label={`Baixar original ${lote.arquivo}`}
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold hover:underline disabled:opacity-50"
+                      style={{ color: 'var(--brand)' }}
+                    >
+                      {baixando === lote.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                      Baixar original
+                    </button>
+                  ) : (
+                    <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                      {lote.original_path ? 'Prazo de download encerrado' : 'Original não arquivado'}
+                    </span>
+                  )}
+                  {vigentes.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onReabrir(lote, vigentes)}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold hover:underline"
+                      style={{ color: 'var(--brand)' }}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" /> Reabrir
+                    </button>
+                  )}
+                </div>
               </li>
             );
           })}

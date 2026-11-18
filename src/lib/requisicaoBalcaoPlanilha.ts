@@ -257,8 +257,10 @@ export function classificarImportacao(
   });
 }
 
-/** Gera e baixa o XLSX. Devolve o nome do arquivo, que vai para o log. */
-export function exportarPlanilhaBalcao(requisicoes: RequisicaoParaPlanilha[]): { arquivo: string; linhas: number } {
+const MIME_PLANILHA = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Gera os mesmos bytes para arquivamento e para o primeiro download. */
+export function gerarPlanilhaBalcao(requisicoes: RequisicaoParaPlanilha[]): { arquivo: string; linhas: number; blob: Blob } {
   const linhas = montarLinhasBalcao(requisicoes);
   // `header` explícito: garante a ordem das colunas mesmo com célula vazia.
   const ws = XLSX.utils.json_to_sheet(linhas, { header: [...BALCAO_COLUNAS] });
@@ -271,7 +273,15 @@ export function exportarPlanilhaBalcao(requisicoes: RequisicaoParaPlanilha[]): {
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Movimentacoes_SAP');
-  const arquivo = nomeArquivoBalcao();
-  XLSX.writeFile(wb, arquivo);
-  return { arquivo, linhas: linhas.length };
+  const bytes: ArrayBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return { arquivo: nomeArquivoBalcao(), linhas: linhas.length, blob: new Blob([bytes], { type: MIME_PLANILHA }) };
+}
+
+export function baixarPlanilhaBalcao(blob: Blob, arquivo: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = arquivo;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
