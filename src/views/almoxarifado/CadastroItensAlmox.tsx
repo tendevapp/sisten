@@ -1491,10 +1491,12 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         </div>
       )}
 
-      {/* Busca e filtros: no celular, uma linha (busca + Filtros) e pílulas que deslizam */}
+      {/* Busca e filtros: a busca tem a linha inteira até telas largas (xl) — dividindo
+          linha com as pílulas, ela encolhia até sobrar só a lupa no tablet. Pílulas e
+          Cards/Tabela vêm na linha de baixo; filtros secundários atrás de "Filtros" até lg. */}
       <div className="rounded-xl border p-2.5 sm:p-4 space-y-2.5 sm:space-y-3" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
-        <div className="flex flex-col md:flex-row md:items-center gap-2.5 sm:gap-3">
-          <div className="flex min-w-0 flex-1 items-start gap-2">
+        <div className="flex flex-col xl:flex-row xl:items-center gap-2.5 sm:gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-2 xl:min-w-[22rem]">
             <SearchKeywordsChips
               chips={buscaChips}
               onChangeChips={setBuscaChips}
@@ -1508,7 +1510,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               type="button"
               onClick={() => setFiltrosAbertos(v => !v)}
               aria-expanded={filtrosAbertos}
-              className="md:hidden relative inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-bold cursor-pointer"
+              className="lg:hidden relative inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-bold cursor-pointer"
               style={{
                 borderColor: filtrosAbertos || filtrosSecundariosAtivos > 0 ? 'var(--brand)' : 'var(--hairline)',
                 color: 'var(--ink-primary)',
@@ -1523,8 +1525,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
             </button>
           </div>
 
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           {/* Filtros rápidos do catálogo */}
-          <div className="flex min-w-0 items-center gap-1 overflow-x-auto no-scrollbar rounded-lg border p-1" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+          <div className="flex min-w-0 flex-1 xl:flex-none items-center gap-1 overflow-x-auto no-scrollbar rounded-lg border p-1" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
             {([
               { valor: 'todos', rotulo: 'Todos', n: itens.length, ativo: 'bg-amber-600', icone: null },
               { valor: 'com_foto', rotulo: 'Com foto', n: kpis.comFoto, ativo: 'bg-emerald-600', icone: Check },
@@ -1547,7 +1550,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           </div>
 
           {/* Alternância Cards vs Tabela — no celular, só cartões */}
-          <div className="hidden sm:flex items-center gap-1 rounded-lg border p-1" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+          <div className="hidden sm:flex shrink-0 items-center gap-1 rounded-lg border p-1" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
             <button
               type="button"
               onClick={() => setModoVis('cards')}
@@ -1567,10 +1570,11 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               Tabela
             </button>
           </div>
+          </div>
         </div>
 
-        {/* Linha secundária de filtros: recolhida no celular até tocar em "Filtros" */}
-        <div className={`${filtrosAbertos ? 'grid' : 'hidden'} md:grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5 sm:gap-3 pt-2 border-t`} style={{ borderColor: 'var(--hairline)' }}>
+        {/* Linha secundária de filtros: recolhida no celular e no tablet até tocar em "Filtros" */}
+        <div className={`${filtrosAbertos ? 'grid' : 'hidden'} lg:grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5 sm:gap-3 pt-2 border-t`} style={{ borderColor: 'var(--hairline)' }}>
           <div>
             <label className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
               Subcategoria (Nível 2)

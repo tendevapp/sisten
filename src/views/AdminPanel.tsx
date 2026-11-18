@@ -5122,6 +5122,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         return (
           <PageAccessModal
             user={target}
+            usuarios={profiles}
             onClose={() => setPageAccessProfileId(null)}
             onChanged={loadData}
           />

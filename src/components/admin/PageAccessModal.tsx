@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { RotateCcw, ShieldCheck, ChevronDown, ChevronRight, CheckSquare, Square } from 'lucide-react';
+import React, { useId, useMemo, useState } from 'react';
+import { RotateCcw, ShieldCheck, ChevronDown, ChevronRight, CheckSquare, Square, Copy } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { Profile } from '../../types';
 import {
@@ -19,18 +19,85 @@ import {
 } from '../../lib/pages';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
+import { confirmar } from '../../lib/confirmar';
+import { espelharPageAccess, itensNaoEspelhados, resumoEspelhamento } from '../../lib/espelharAcessos';
 
 interface PageAccessModalProps {
   user: Profile;
   onClose: () => void;
   /** Chamado após qualquer alteração, para o AdminPanel atualizar a lista de perfis. */
   onChanged: () => void;
+  /** Usuários de onde dá para espelhar os módulos de acesso. */
+  usuarios?: Profile[];
 }
 
-export default function PageAccessModal({ user, onClose, onChanged }: PageAccessModalProps) {
+export default function PageAccessModal({ user, onClose, onChanged, usuarios = [] }: PageAccessModalProps) {
   const toast = useToast();
   const [pageAccess, setPageAccess] = useState<Record<string, boolean>>(user.page_access || {});
   const isAdmin = user.roles.includes('admin');
+  const idBuscaEspelho = useId();
+  const idOrigemEspelho = useId();
+  const [buscaEspelho, setBuscaEspelho] = useState('');
+  const [origemEspelhoId, setOrigemEspelhoId] = useState('');
+  const [espelhando, setEspelhando] = useState(false);
+
+  const candidatosEspelho = useMemo(() => {
+    const termo = buscaEspelho.trim().toLowerCase();
+    return usuarios
+      .filter(u => u.id !== user.id && u.status !== 'inativo')
+      .filter(u => !termo || u.name.toLowerCase().includes(termo) || (u.email || '').toLowerCase().includes(termo))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [usuarios, user.id, buscaEspelho]);
+
+  const handleEspelhar = async () => {
+    const origem = usuarios.find(u => u.id === origemEspelhoId);
+    if (!origem) return;
+    // Parte do estado atual da tela, que pode ter mudanças ainda não refletidas em `user`.
+    const destino = { ...user, page_access: pageAccess };
+    const novo = espelharPageAccess(origem, destino);
+    const { ganha, perde } = resumoEspelhamento(origem, destino);
+    const fora = itensNaoEspelhados(origem, { ...destino, page_access: novo });
+
+    const ok = await confirmar({
+      titulo: `Espelhar acessos de ${origem.name}?`,
+      mensagem: (
+        <div className="space-y-2">
+          <p>
+            {user.name} passa a ter os mesmos módulos de acesso de {origem.name}. As liberações
+            manuais atuais de {user.name} são substituídas.
+          </p>
+          <p className="font-semibold">
+            {ganha === 0 && perde === 0
+              ? 'Nenhum módulo muda.'
+              : `Ganha ${ganha} ${ganha === 1 ? 'item' : 'itens'} · perde ${perde} ${perde === 1 ? 'item' : 'itens'}.`}
+          </p>
+          {fora.length > 0 && (
+            <p className="text-amber-700 dark:text-amber-400">
+              {fora.length === 1 ? 'Este item não é espelhado, porque é restrito' : `Estes ${fora.length} itens não são espelhados, porque são restritos`} a
+              pessoa ou setor: {fora.join(', ')}.
+            </p>
+          )}
+        </div>
+      ),
+      confirmarLabel: 'Espelhar',
+    });
+    if (!ok) return;
+
+    setEspelhando(true);
+    try {
+      await localDb.replacePageAccess(user.id, novo, origem.name);
+      setPageAccess(novo);
+      onChanged();
+      setOrigemEspelhoId('');
+      setBuscaEspelho('');
+      toast.success(`Acessos de ${origem.name} espelhados para ${user.name}.`);
+    } catch (e) {
+      console.error('Falha ao espelhar módulos de acesso:', e);
+      toast.error('Não foi possível espelhar. Tente novamente.');
+    } finally {
+      setEspelhando(false);
+    }
+  };
   // Filtra o grupo de subpermissões para exibi-lo aninhado diretamente sob o item "Formulários"
   const groups = getPageGroups().filter(g => g.group !== 'SUBPERMISSÕES DE FORMULÁRIOS');
 
@@ -234,6 +301,56 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
           </div>
         ) : (
           <div className="space-y-5">
+            {usuarios.length > 0 && (
+              <div className="rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-950/20 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Copy className="h-3.5 w-3.5 text-blue-700 dark:text-blue-300 shrink-0" />
+                  <h4 className="text-[11px] font-black text-blue-800 dark:text-blue-300 tracking-wider uppercase">
+                    Espelhar de outro usuário
+                  </h4>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Copia os módulos, formulários e subpermissões de outra pessoa para {user.name}.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <label htmlFor={idBuscaEspelho} className="sr-only">Buscar usuário de origem</label>
+                  <input
+                    id={idBuscaEspelho}
+                    type="search"
+                    value={buscaEspelho}
+                    onChange={e => setBuscaEspelho(e.target.value)}
+                    placeholder="Buscar nome ou e-mail"
+                    className="sm:w-40 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100"
+                  />
+                  <label htmlFor={idOrigemEspelho} className="sr-only">Usuário de origem</label>
+                  <select
+                    id={idOrigemEspelho}
+                    value={origemEspelhoId}
+                    onChange={e => setOrigemEspelhoId(e.target.value)}
+                    className="flex-1 min-w-0 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100"
+                  >
+                    <option value="">
+                      {candidatosEspelho.length === 0 ? 'Nenhum usuário encontrado' : `Escolha o usuário (${candidatosEspelho.length})`}
+                    </option>
+                    {candidatosEspelho.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}{u.roles.includes('admin') ? ' (admin)' : ''}{u.email ? ` · ${u.email}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleEspelhar}
+                    disabled={!origemEspelhoId || espelhando}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-700 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 text-xs font-bold text-white"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    {espelhando ? 'Espelhando…' : 'Espelhar'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {groups.map(g => {
               const editablePages = g.pages.filter(p => !p.alwaysAdmin);
 

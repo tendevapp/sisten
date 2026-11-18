@@ -101,7 +101,13 @@ export default function SugestoesChegadaTransporte({ termo, aoSelecionar, ativo 
                 )}
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-400">
-                {r.motorista} · {r.veiculo} · últ. lançamento {r.data.split('-').reverse().join('/')}
+                {r.motorista}
+                {r.motorista_documento && (
+                  <span className="ml-1 font-mono font-semibold text-blue-700 dark:text-blue-300">
+                    ({r.motorista_doc_tipo || 'Doc.'} {r.motorista_documento})
+                  </span>
+                )}
+                {` · ${r.veiculo} · últ. lançamento ${r.data.split('-').reverse().join('/')}`}
               </span>
             </button>
           </li>

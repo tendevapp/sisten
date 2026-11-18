@@ -47,6 +47,13 @@ import type {
 import { gerarCodigoFormulario, proximoIndiceCodigo } from './codigosFormulario';
 import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
 import { destinoDoLancamento } from './passagemPlantao';
+import {
+  consolidarMotoristasPortaria,
+  enriquecerDocsTransportesAnteriores,
+  type MotoristaSalvoPortaria,
+  type RegistroAlcoolemiaMotoristaRow,
+  type RegistroTransporteMotoristaRow,
+} from './motoristasPortaria';
 
 export function formatarDataDDMMAA(dataISO?: string | null): string {
   if (!dataISO || !/^\d{4}-\d{2}-\d{2}$/.test(dataISO)) {
@@ -299,6 +306,8 @@ export async function criarTransporte(dados: Partial<PortRegistroTransporte>): P
         hora_chegada: dados.hora_chegada || horaAgora(),
         hora_saida: dados.hora_saida || null,
         motorista: dados.motorista || '',
+        motorista_doc_tipo: dados.motorista_documento ? (dados.motorista_doc_tipo || null) : null,
+        motorista_documento: dados.motorista_documento?.trim() || null,
         rota: dados.rota || null,
         ocupacao: dados.ocupacao || null,
         observacoes: dados.observacoes || null,
@@ -345,16 +354,47 @@ export async function buscarTransportesAnteriores(termo: string, limite = 8): Pr
 
   if (error) throw new Error(error.message);
 
+  const todos = (data || []) as PortRegistroTransporte[];
   const vistos = new Set<string>();
   const unicos: PortRegistroTransporte[] = [];
-  for (const r of (data || []) as PortRegistroTransporte[]) {
+  for (const r of todos) {
     const chave = `${r.placa}|${r.empresa}|${r.motorista}`.toUpperCase();
     if (vistos.has(chave)) continue;
     vistos.add(chave);
     unicos.push(r);
     if (unicos.length >= limite) break;
   }
-  return unicos;
+  return enriquecerDocsTransportesAnteriores(todos, unicos);
+}
+
+/**
+ * Consolida motoristas/terceiros e seus documentos (CNH/CPF) a partir dos
+ * lancamentos ja salvos em Chegada de Transportes e Teste de Alcoolemia (PJ).
+ */
+export async function buscarMotoristasPortaria(limite = 300): Promise<MotoristaSalvoPortaria[]> {
+  const [respTransp, respAlc] = await Promise.all([
+    (supabase as any)
+      .from('port_registro_transportes')
+      .select('motorista, motorista_doc_tipo, motorista_documento, empresa, data, created_at')
+      .is('excluido_em', null)
+      .order('created_at', { ascending: false })
+      .limit(limite),
+    supabase
+      .from('port_alcoolemia_testes')
+      .select('nome, documento, empresa, cargo_funcao, setor_area, data, created_at')
+      .eq('tipo_vinculo', 'PJ')
+      .is('excluido_em', null)
+      .order('created_at', { ascending: false })
+      .limit(limite),
+  ]);
+
+  if (respTransp.error) throw new Error(respTransp.error.message);
+  if (respAlc.error) throw new Error(respAlc.error.message);
+
+  return consolidarMotoristasPortaria(
+    (respTransp.data || []) as RegistroTransporteMotoristaRow[],
+    (respAlc.data || []) as RegistroAlcoolemiaMotoristaRow[],
+  );
 }
 
 /**

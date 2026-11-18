@@ -22,7 +22,12 @@ import type { PdfGerado } from '../../lib/pdfExport/core';
 import { exportTransportesPdf, gerarTransportesPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import SugestoesChegadaTransporte from '../../components/portaria/SugestoesChegadaTransporte';
+import SugestoesMotoristaPortaria from '../../components/portaria/SugestoesMotoristaPortaria';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
+import {
+  encontrarMotoristaPorNome,
+  type MotoristaSalvoPortaria,
+} from '../../lib/motoristasPortaria';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { MostrarExcluidosToggle, BadgeExcluido, RestaurarButton, classeLinhaExcluida } from '../../components/ui/ExcluidosControls';
@@ -219,9 +224,17 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   // Histórico de valores já digitados em "Ocupação" — vira opção de
   // preenchimento (datalist) em vez do vigilante redigitar o mesmo motivo.
   const [historicoOcupacao, setHistoricoOcupacao] = useState<string[]>([]);
+  const [motoristasSalvos, setMotoristasSalvos] = useState<MotoristaSalvoPortaria[]>([]);
+  const [motoristaSugestoesAbertas, setMotoristaSugestoesAbertas] = useState(false);
+
+  const carregarMotoristasSalvos = useCallback(() => {
+    api.buscarMotoristasPortaria().then(setMotoristasSalvos).catch(() => {});
+  }, []);
+
   useEffect(() => {
     api.buscarHistoricoCampoPortaria('port_registro_transportes', 'ocupacao').then(setHistoricoOcupacao).catch(() => {});
-  }, []);
+    carregarMotoristasSalvos();
+  }, [carregarMotoristasSalvos]);
 
   const tour = usePageTour('portaria-transportes', PORTARIA_TRANSPORTES_TOUR_STEPS.length, !modalNovoAberto);
   const tourNovo = usePageTour('portaria-transportes-novo', PORTARIA_TRANSPORTES_NOVO_TOUR_STEPS.length, modalNovoAberto);
@@ -247,25 +260,51 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   // Preenche o formulário a partir de uma chegada já lançada (autocomplete).
   const preencherDeRegistro = (r: PortRegistroTransporte) => {
     setSugestoesAtivas(false);
+    setMotoristaSugestoesAbertas(false);
+    setDocMotoristaTocado(false);
     const rota = (r.rota || '').toUpperCase();
     setRotaModoOutro(rota !== '' && !ROTAS.includes(rota as (typeof ROTAS)[number]));
-    setFormNovo((f) => ({
-      ...f,
-      veiculo: r.veiculo || f.veiculo,
-      placa: (r.placa || '').toUpperCase(),
-      empresa: (r.empresa || '').toUpperCase(),
-      motorista: (r.motorista || '').toUpperCase(),
-      // O documento acompanha o motorista do registro escolhido.
-      motorista_doc_tipo: (r.motorista_doc_tipo || f.motorista_doc_tipo) as TipoDocMotorista,
-      motorista_documento: r.motorista_documento || '',
-      rota: rota || f.rota,
-      ocupacao: (r.ocupacao || '').toUpperCase(),
-    }));
+    const motoristaSalvo = !r.motorista_documento
+      ? encontrarMotoristaPorNome(motoristasSalvos, r.motorista || '')
+      : undefined;
+    setFormNovo((f) => {
+      const docTipo = (r.motorista_doc_tipo || motoristaSalvo?.docTipo || f.motorista_doc_tipo) as TipoDocMotorista;
+      const docBruto = r.motorista_documento || motoristaSalvo?.docNumero || '';
+      return {
+        ...f,
+        veiculo: r.veiculo || f.veiculo,
+        placa: (r.placa || '').toUpperCase(),
+        empresa: (r.empresa || '').toUpperCase(),
+        motorista: (r.motorista || '').toUpperCase(),
+        // O documento acompanha o motorista do registro escolhido.
+        motorista_doc_tipo: docTipo,
+        motorista_documento: docBruto ? formatarDocMotorista(docTipo, docBruto) : '',
+        rota: rota || f.rota,
+        ocupacao: (r.ocupacao || '').toUpperCase(),
+      };
+    });
+  };
+
+  // Selecao direta de motorista salvo preenche apenas nome e documento (CNH/CPF),
+  // preservando placa, veiculo e empresa caso o condutor tenha mudado.
+  const selecionarMotoristaSalvo = (m: MotoristaSalvoPortaria) => {
+    setMotoristaSugestoesAbertas(false);
+    setDocMotoristaTocado(false);
+    setFormNovo((f) => {
+      const docTipo = m.docTipo || f.motorista_doc_tipo;
+      return {
+        ...f,
+        motorista: m.nome,
+        motorista_doc_tipo: docTipo,
+        motorista_documento: m.docNumero ? formatarDocMotorista(docTipo, m.docNumero) : '',
+      };
+    });
   };
 
   // Abre o modal já preenchido com o registro, para edição.
   const abrirEdicao = (item: PortRegistroTransporte) => {
     setSugestoesAtivas(false);
+    setMotoristaSugestoesAbertas(false);
     const rota = (item.rota || '').toUpperCase();
     setRotaModoOutro(rota !== '' && !ROTAS.includes(rota as (typeof ROTAS)[number]));
     setFormNovo(prepararFormEdicaoTransporte(item));
@@ -298,6 +337,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
     setFaraBafometro(false);
     setDocMotoristaTocado(false);
     setSugestoesAtivas(true);
+    setMotoristaSugestoesAbertas(false);
     setRotaModoOutro(false);
   };
 
@@ -381,6 +421,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       rascunho.concluir();
       fecharModal();
       carregarDados();
+      carregarMotoristasSalvos();
     } catch (e) {
       toast.error(`Falha ao salvar: ${(e as Error).message}`);
     } finally {
@@ -1104,13 +1145,29 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                   <input
                     type="text"
                     required
+                    autoComplete="off"
                     autoCapitalize="characters"
                     placeholder="Nome completo do motorista"
                     value={formNovo.motorista}
-                    onChange={(e) => editarCampo({ motorista: e.target.value.toUpperCase() })}
+                    onFocus={() => setMotoristaSugestoesAbertas(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape' || e.key === 'Tab') {
+                        setMotoristaSugestoesAbertas(false);
+                      }
+                    }}
+                    onChange={(e) => {
+                      setMotoristaSugestoesAbertas(true);
+                      editarCampo({ motorista: e.target.value.toUpperCase() });
+                    }}
                     className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
-                  <SugestoesChegadaTransporte termo={formNovo.motorista} ativo={sugestoesAtivas} aoSelecionar={preencherDeRegistro} />
+                  <SugestoesMotoristaPortaria
+                    termo={formNovo.motorista}
+                    motoristas={motoristasSalvos}
+                    aberto={motoristaSugestoesAbertas}
+                    onFechar={() => setMotoristaSugestoesAbertas(false)}
+                    aoSelecionar={selecionarMotoristaSalvo}
+                  />
                 </div>
               </div>
 

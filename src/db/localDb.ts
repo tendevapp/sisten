@@ -1586,6 +1586,36 @@ class LocalDatabase {
     if (error) throw error;
   }
 
+  // Substitui o page_access inteiro do usuário de uma vez (um único UPDATE),
+  // usado ao espelhar os módulos de acesso de outro usuário.
+  public async replacePageAccess(userId: string, pageAccess: Record<string, boolean>, origemNome: string): Promise<void> {
+    const users = this.getStorageItem<Profile[]>(this.profilesKey, []);
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return;
+
+    users[idx].page_access = { ...pageAccess };
+    this.setStorageItem(this.profilesKey, users);
+
+    const actingUser = this.getCurrentUser();
+    this.logActivity(
+      actingUser?.id || 'admin',
+      'Administração',
+      'Editar Módulos de Acesso',
+      `Módulos de acesso de ${users[idx].name} espelhados de ${origemNome}.`
+    );
+
+    if (actingUser && actingUser.id === userId) {
+      this.setStorageItem(this.currentUserKey, users[idx]);
+    }
+
+    if (!supabase) throw new Error('Sem conexão com o servidor.');
+    const { error } = await supabase
+      .from('core_perfis')
+      .update({ page_access: pageAccess })
+      .eq('id', userId);
+    if (error) throw error;
+  }
+
   /**
    * Atualiza os overrides de módulos de acesso para múltiplos usuários simultaneamente.
    * `updates` contém as páginas e seus respectivos estados (`true`, `false`, ou `null` para restaurar padrão).

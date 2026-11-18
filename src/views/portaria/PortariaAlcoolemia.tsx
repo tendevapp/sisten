@@ -35,6 +35,8 @@ import {
   EtilometroDoLocal, LogAlteracoesAlcoolemia, SeloAssinatura, SeloExcluido, SeloLocalAfericao, SeloQuemAferiu, SeloResultado, type FiltroResultado,
 } from '../../components/ssma/AlcoolemiaPainel';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
+import SugestoesMotoristaPortaria from '../../components/portaria/SugestoesMotoristaPortaria';
+import type { MotoristaSalvoPortaria } from '../../lib/motoristasPortaria';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import AvisoRascunho from '../../components/ui/AvisoRascunho';
 import { useRascunhoFormulario } from '../../hooks/useRascunhoFormulario';
@@ -292,13 +294,21 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   // Valores já digitados antes, por campo — vira opção de preenchimento
   // rápido (datalist) em vez de redigitar o mesmo texto toda hora.
   const [historico, setHistorico] = useState<Record<string, string[]>>({});
+  const [motoristasSalvos, setMotoristasSalvos] = useState<MotoristaSalvoPortaria[]>([]);
+  const [motoristaSugestoesAbertas, setMotoristaSugestoesAbertas] = useState(false);
+
+  const carregarMotoristasSalvos = useCallback(() => {
+    api.buscarMotoristasPortaria().then(setMotoristasSalvos).catch(() => {});
+  }, []);
+
   useEffect(() => {
     const tabela = 'port_alcoolemia_testes';
-    const campos = ['nome', 'empresa', 'documento', 'cargo_funcao', 'setor_area', 'etilometro_codigo', 'testemunha', 'observacoes'];
+    const campos = ['empresa', 'documento', 'cargo_funcao', 'setor_area', 'etilometro_codigo', 'testemunha', 'observacoes'];
     Promise.all(campos.map((c) => api.buscarHistoricoCampoPortaria(tabela, c).then((v) => [c, v] as const)))
       .then((pares) => setHistorico(Object.fromEntries(pares)))
       .catch(() => {});
-  }, []);
+    carregarMotoristasSalvos();
+  }, [carregarMotoristasSalvos]);
 
   // Carregar RH Pessoas uma vez
   useEffect(() => {
@@ -418,7 +428,20 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setFormFotosMantidas([]);
     setFormFotosNovas([]);
     setFormAssinatura(null);
+    setMotoristaSugestoesAbertas(false);
     setModalAberto(true);
+  };
+
+  const selecionarMotoristaSalvo = (m: MotoristaSalvoPortaria) => {
+    setMotoristaSugestoesAbertas(false);
+    setFormNome(m.nome);
+    setFormDocumento(m.docCompleto || '');
+    if (!formEmpresa.trim() && m.empresa) setFormEmpresa(m.empresa);
+    if (!formCargo.trim()) {
+      const cargoSugerido = m.cargo || (m.origem === 'TRANSPORTE' ? 'MOTORISTA' : '');
+      if (cargoSugerido) setFormCargo(cargoSugerido);
+    }
+    if (!formSetor.trim() && m.setor) setFormSetor(m.setor);
   };
 
   const abrirModalEdicao = (teste: PortAlcoolemiaTeste) => {
@@ -445,6 +468,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     setFormFotosMantidas(teste.fotos || []);
     setFormFotosNovas([]);
     setFormAssinatura(assinaturaDoTeste(teste));
+    setMotoristaSugestoesAbertas(false);
     setModalAberto(true);
   };
 
@@ -571,6 +595,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
       rascunhoTeste.concluir();
 
       await carregarTestes();
+      if (tipoVinculo === 'PJ') carregarMotoristasSalvos();
 
       if (adicionarOutro) {
         setEditandoTeste(null);
@@ -633,6 +658,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
       await api.restaurarTesteAlcoolemia(teste.id);
       toast.success(`${teste.codigo_formulario} voltou para o livro.`);
       await carregarTestes();
+      if (teste.tipo_vinculo === 'PJ') carregarMotoristasSalvos();
     } catch (err: any) {
       toast.error('Não foi possível restaurar: ' + (err?.message || err));
     }
@@ -647,6 +673,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
       toast.success(`${testeParaExcluir.codigo_formulario} excluído. Fica no filtro Excluídos.`);
       setTesteParaExcluir(null);
       await carregarTestes();
+      if (testeParaExcluir.tipo_vinculo === 'PJ') carregarMotoristasSalvos();
     } catch (err: any) {
       console.error('Erro ao excluir teste:', err);
       toast.error('Erro ao excluir registro.');
@@ -1148,22 +1175,35 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
             {/* Seção Terceiro / PJ (digitação manual) */}
             {tipoVinculo === 'PJ' && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2">
+                <div className="relative sm:col-span-2">
                   <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">
                     Nome Completo do Terceiro / Prestador *
                   </label>
                   <input
                     type="text"
                     required
-                    list="lista-alc-nome"
+                    autoComplete="off"
                     placeholder="Ex: Carlos Eduardo de Oliveira"
                     value={formNome}
-                    onChange={(e) => setFormNome(e.target.value)}
+                    onFocus={() => setMotoristaSugestoesAbertas(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape' || e.key === 'Tab') {
+                        setMotoristaSugestoesAbertas(false);
+                      }
+                    }}
+                    onChange={(e) => {
+                      setMotoristaSugestoesAbertas(true);
+                      setFormNome(e.target.value);
+                    }}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                   />
-                  <datalist id="lista-alc-nome">
-                    {(historico.nome || []).map((v) => <option key={v} value={v} />)}
-                  </datalist>
+                  <SugestoesMotoristaPortaria
+                    termo={formNome}
+                    motoristas={motoristasSalvos}
+                    aberto={motoristaSugestoesAbertas}
+                    onFechar={() => setMotoristaSugestoesAbertas(false)}
+                    aoSelecionar={selecionarMotoristaSalvo}
+                  />
                 </div>
 
                 <div>
