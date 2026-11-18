@@ -42,6 +42,8 @@ import {
   CheckCheck,
   FileText,
   Pencil,
+  Paperclip,
+  Tag,
 } from 'lucide-react';
 import type { Profile, SupPendenciaAcaoLog, SupPendenciaProcessamentoNF } from '../types';
 import { formatBRL, formatDateTimeBR } from '../lib/format';
@@ -61,14 +63,21 @@ import {
   montarAssuntoEmailConclusao,
   montarCorpoEmailConclusao,
   type ItemConcluidoEmail,
+  STATUS_COMPRADOR,
+  ROTULO_SEM_STATUS_COMPRADOR,
+  rotuloStatusComprador,
+  type StatusComprador,
 } from '../lib/supPendenciasProcessamento';
 import {
   listarPendenciasAgrupadas,
   concluirPendencia,
   concluirPendenciasEmLote,
   reabrirPendencia,
+  definirStatusComprador,
+  contarEvidenciasPorPendencia,
   type GrupoPendencia,
 } from '../lib/supPendenciasApi';
+import EvidenciasPendenciaModal from '../components/suprimentos/EvidenciasPendenciaModal';
 import PendenciasProcessamentoAnalise from './PendenciasProcessamentoAnalise';
 import PendenciasSubnav from '../components/suprimentos/PendenciasSubnav';
 
@@ -183,6 +192,7 @@ function obterHistoricoLinha(
 function visualAcao(tipo: SupPendenciaAcaoLog['tipo']) {
   if (tipo === 'concluido') return { rotulo: 'Baixado', cor: 'var(--status-good)', Icone: CheckCircle2 };
   if (tipo === 'editado') return { rotulo: 'Editado', cor: 'var(--brand)', Icone: Pencil };
+  if (tipo === 'status') return { rotulo: 'Status', cor: 'var(--series-7)', Icone: Tag };
   return { rotulo: 'Reaberto', cor: 'var(--status-serious)', Icone: RotateCcw };
 }
 
@@ -346,6 +356,145 @@ function LogAcoesPendencia({
   );
 }
 
+/** Opções do filtro "Status comprador", na ordem da lista + as notas sem status. */
+const OPCOES_STATUS_COMPRADOR = [...STATUS_COMPRADOR.map(s => s.rotulo), ROTULO_SEM_STATUS_COMPRADOR];
+
+/** Cor do status do comprador (cinza quando a nota ainda não tem status). */
+function corStatusComprador(status?: string | null): string {
+  return STATUS_COMPRADOR.find(s => s.valor === status)?.cor || 'var(--ink-muted)';
+}
+
+/**
+ * Status do comprador de uma nota: grava ao escolher; "Outro" abre a caixa de
+ * descrição e só grava com ela preenchida. Nota já baixada mostra só o selo.
+ */
+function StatusCompradorControle({
+  linha,
+  somenteLeitura,
+  onSalvo,
+}: {
+  linha: SupPendenciaProcessamentoNF;
+  somenteLeitura: boolean;
+  onSalvo: (linha: SupPendenciaProcessamentoNF) => void;
+}) {
+  const toast = useToast();
+  const [salvando, setSalvando] = useState(false);
+  const [editandoOutro, setEditandoOutro] = useState(false);
+  const [descricao, setDescricao] = useState(linha.status_comprador_obs || '');
+  const cor = corStatusComprador(linha.status_comprador);
+  // "Outro" aparece como Outro; a descrição vai ao lado (editável) ou no title do selo.
+  const rotulo = rotuloStatusComprador(linha.status_comprador);
+
+  const gravar = async (status: StatusComprador | null, obs?: string) => {
+    setSalvando(true);
+    try {
+      onSalvo(await definirStatusComprador(linha, status, obs));
+      setEditandoOutro(false);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const selo = (
+    <span
+      className="inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded max-w-full"
+      style={{ color: cor, background: `color-mix(in srgb, ${cor} 14%, transparent)` }}
+      title={[
+        linha.status_comprador === 'outro' ? linha.status_comprador_obs : null,
+        linha.status_comprador_em ? `Atualizado em ${formatDateTimeBR(linha.status_comprador_em)}` : null,
+      ].filter(Boolean).join(' · ') || undefined}
+    >
+      <Tag className="h-3 w-3 shrink-0" />
+      <span className="truncate">{rotulo}</span>
+    </span>
+  );
+
+  if (somenteLeitura) return linha.status_comprador ? selo : null;
+
+  if (editandoOutro) {
+    return (
+      <form
+        className="flex flex-wrap items-center gap-1.5"
+        onSubmit={(e) => { e.preventDefault(); gravar('outro', descricao); }}
+      >
+        <input
+          autoFocus
+          value={descricao}
+          onChange={(e) => setDescricao(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setEditandoOutro(false); } }}
+          placeholder="Descreva o status…"
+          aria-label="Descrição do status Outro"
+          maxLength={200}
+          className="rounded-lg border h-9 lg:h-7 px-2 text-xs min-w-0 w-56 focus:outline-2 focus:outline-offset-1"
+          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)', outlineColor: 'var(--brand)' }}
+        />
+        <button
+          type="submit"
+          disabled={salvando || !descricao.trim()}
+          className="inline-flex items-center gap-1 rounded-lg h-9 lg:h-7 px-2.5 text-[11px] font-bold text-white cursor-pointer disabled:opacity-50"
+          style={{ background: 'var(--brand)' }}
+        >
+          {salvando ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Salvar
+        </button>
+        <button
+          type="button"
+          onClick={() => { setEditandoOutro(false); setDescricao(linha.status_comprador_obs || ''); }}
+          aria-label="Cancelar descrição do status"
+          className="rounded-lg p-1.5 cursor-pointer hover:bg-[var(--surface-raised)]"
+          style={{ color: 'var(--ink-muted)' }}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <div className="inline-flex items-center gap-1.5 min-w-0">
+      <div className="relative inline-flex items-center">
+        <Tag className="absolute left-2 h-3 w-3 pointer-events-none" style={{ color: cor }} />
+        <select
+          aria-label="Status do comprador"
+          value={linha.status_comprador || ''}
+          disabled={salvando}
+          onChange={(e) => {
+            const v = e.target.value as StatusComprador | '';
+            if (v === 'outro') { setDescricao(linha.status_comprador_obs || ''); setEditandoOutro(true); return; }
+            gravar(v || null);
+          }}
+          className="appearance-none rounded-lg border h-9 lg:h-7 pl-6 pr-6 text-[11px] font-bold cursor-pointer disabled:opacity-60 focus:outline-2 focus:outline-offset-1"
+          style={{
+            color: cor,
+            borderColor: `color-mix(in srgb, ${cor} 35%, var(--hairline))`,
+            background: `color-mix(in srgb, ${cor} 9%, var(--surface-card))`,
+            outlineColor: 'var(--brand)',
+          }}
+        >
+          <option value="">{ROTULO_SEM_STATUS_COMPRADOR}</option>
+          {STATUS_COMPRADOR.map(s => <option key={s.valor} value={s.valor}>{s.rotulo}</option>)}
+        </select>
+        {salvando
+          ? <Loader2 className="absolute right-2 h-3 w-3 animate-spin pointer-events-none" style={{ color: cor }} />
+          : <ChevronRight className="absolute right-1.5 h-3 w-3 rotate-90 pointer-events-none" style={{ color: cor }} />}
+      </div>
+      {linha.status_comprador === 'outro' && linha.status_comprador_obs && (
+        <button
+          type="button"
+          onClick={() => { setDescricao(linha.status_comprador_obs || ''); setEditandoOutro(true); }}
+          className="inline-flex items-center gap-1 text-[11px] min-w-0 cursor-pointer hover:underline"
+          style={{ color: 'var(--ink-secondary)' }}
+          aria-label="Editar descrição do status"
+        >
+          <span className="truncate max-w-[16rem]">{linha.status_comprador_obs}</span>
+          <Pencil className="h-3 w-3 shrink-0" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function PendenciasProcessamento({ user, onNavigate, embutida = false }: PendenciasProcessamentoProps) {
   const toast = useToast();
   const [grupos, setGrupos] = useState<GrupoPendencia[]>([]);
@@ -368,10 +517,11 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
   const [fornecedorFilter, setFornecedorFilter] = useState<Set<string>>(new Set());
   const [compradorFilter, setCompradorFilter] = useState<Set<string>>(new Set());
   const [causaFilter, setCausaFilter] = useState<Set<string>>(new Set());
+  const [statusCompradorFilter, setStatusCompradorFilter] = useState<Set<string>>(new Set());
   const [dateFilter, setDateFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
   // Celular: os 7 filtros saem da trilha horizontal (onde ficavam fora da tela) para um painel.
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
-  const filtrosLigados = [modeloFilter, solicitanteFilter, setorFilter, fornecedorFilter, compradorFilter, causaFilter].filter(f => f.size > 0).length
+  const filtrosLigados = [modeloFilter, solicitanteFilter, setorFilter, fornecedorFilter, compradorFilter, causaFilter, statusCompradorFilter].filter(f => f.size > 0).length
     + (dateFilter.preset && dateFilter.preset !== 'all' || dateFilter.from || dateFilter.to ? 1 : 0);
 
   // Mapa de setores
@@ -411,10 +561,27 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
     setCarregando(true);
     try {
       // Carrega todos os chamados para permitir filtragem reativa instantanea no cliente
-      setGrupos(await listarPendenciasAgrupadas(false));
+      const [gs, evid] = await Promise.all([listarPendenciasAgrupadas(false), contarEvidenciasPorPendencia()]);
+      setGrupos(gs);
+      setContagemEvid(evid);
     } finally {
       setCarregando(false);
     }
+  }, []);
+
+  // Evidências: quantas cada nota tem (botão da linha) e qual está aberta no modal.
+  const [contagemEvid, setContagemEvid] = useState<Map<string, number>>(new Map());
+  const [evidenciasDe, setEvidenciasDe] = useState<SupPendenciaProcessamentoNF | null>(null);
+  const atualizarContagemEvid = useCallback((id: string, total: number) => {
+    setContagemEvid(prev => (prev.get(id) === total ? prev : new Map(prev).set(id, total)));
+  }, []);
+
+  /** Troca a linha no estado depois de gravar o status do comprador, sem recarregar a fila. */
+  const substituirLinha = useCallback((nova: SupPendenciaProcessamentoNF) => {
+    setGrupos(prev => prev.map(g => (g.request_id !== nova.request_id ? g : {
+      ...g,
+      linhas: g.linhas.map(l => (l.id === nova.id ? nova : l)),
+    })));
   }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
@@ -512,6 +679,12 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
           if (!forn || !fornecedorFilter.has(forn)) return false;
         }
 
+        // Status do comprador (pelo rótulo base: "Outro" casa qualquer descrição)
+        if (statusCompradorFilter.size > 0) {
+          const base = STATUS_COMPRADOR.find(s => s.valor === l.status_comprador)?.rotulo || ROTULO_SEM_STATUS_COMPRADOR;
+          if (!statusCompradorFilter.has(base)) return false;
+        }
+
         // Comprador
         if (compradorFilter.size > 0) {
           const comp = (l.comprador || '').trim();
@@ -535,6 +708,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
             l.comprador,
             l.resolucao,
             l.documento_status,
+            rotuloStatusComprador(l.status_comprador, l.status_comprador_obs),
           ], tokens);
           if (!hit) return false;
         }
@@ -559,6 +733,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
     fornecedorFilter,
     compradorFilter,
     causaFilter,
+    statusCompradorFilter,
     dateFilter,
     getSectorName,
   ]);
@@ -574,6 +749,30 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
       pendentes,
     };
   }, [grupos, gruposFiltrados]);
+
+  // Resumo: notas ainda não baixadas por status do comprador (fila inteira,
+  // "Outro" agrupado como Outro, independente da descrição).
+  const resumoStatusComprador = useMemo(() => {
+    const cont = new Map<string, number>(OPCOES_STATUS_COMPRADOR.map(r => [r, 0]));
+    grupos.forEach(g => g.linhas.forEach(l => {
+      if (l.status === 'concluido') return;
+      const r = STATUS_COMPRADOR.find(s => s.valor === l.status_comprador)?.rotulo || ROTULO_SEM_STATUS_COMPRADOR;
+      cont.set(r, (cont.get(r) || 0) + 1);
+    }));
+    return OPCOES_STATUS_COMPRADOR.map(rotulo => ({
+      rotulo,
+      qtd: cont.get(rotulo) || 0,
+      cor: STATUS_COMPRADOR.find(s => s.rotulo === rotulo)?.cor || 'var(--ink-muted)',
+    }));
+  }, [grupos]);
+
+  const alternarStatusCompradorFilter = (rotulo: string) => {
+    setStatusCompradorFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(rotulo)) next.delete(rotulo); else next.add(rotulo);
+      return next;
+    });
+  };
 
   // Contagem de pendentes visíveis para seleção
   const totalPendentesVisiveis = useMemo(() => {
@@ -596,11 +795,12 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
       fornecedorFilter.size > 0 ||
       compradorFilter.size > 0 ||
       causaFilter.size > 0 ||
+      statusCompradorFilter.size > 0 ||
       (dateFilter.preset && dateFilter.preset !== 'all') ||
       Boolean(dateFilter.from) ||
       Boolean(dateFilter.to)
     );
-  }, [searchQuery, statusFilter, modeloFilter, solicitanteFilter, setorFilter, fornecedorFilter, compradorFilter, causaFilter, dateFilter]);
+  }, [searchQuery, statusFilter, modeloFilter, solicitanteFilter, setorFilter, fornecedorFilter, compradorFilter, causaFilter, statusCompradorFilter, dateFilter]);
 
   const handleClearAllFilters = () => {
     setSearchQuery('');
@@ -611,6 +811,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
     setFornecedorFilter(new Set());
     setCompradorFilter(new Set());
     setCausaFilter(new Set());
+    setStatusCompradorFilter(new Set());
     setDateFilter({ from: '', to: '', preset: 'all' });
   };
 
@@ -874,6 +1075,46 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
         </div>
       </div>
 
+      {/* Resumo: pendentes por status do comprador — clicar filtra */}
+      {resumoStatusComprador.some(r => r.qtd > 0) && (
+        <div className="rounded-xl border px-3 py-2.5 lg:px-4 flex flex-wrap items-center gap-2 reveal" style={cardStyle}>
+          <span className="text-[11px] font-bold uppercase tracking-wider mr-1" style={{ color: 'var(--ink-muted)' }}>
+            Pendentes por status
+          </span>
+          {resumoStatusComprador.map(r => {
+            const ativo = statusCompradorFilter.has(r.rotulo);
+            return (
+              <button
+                key={r.rotulo}
+                type="button"
+                onClick={() => alternarStatusCompradorFilter(r.rotulo)}
+                aria-pressed={ativo}
+                disabled={r.qtd === 0 && !ativo}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold cursor-pointer transition-colors disabled:cursor-default disabled:opacity-50"
+                style={{
+                  borderColor: ativo ? r.cor : `color-mix(in srgb, ${r.cor} 30%, var(--hairline))`,
+                  background: ativo ? `color-mix(in srgb, ${r.cor} 16%, var(--surface-card))` : 'var(--surface-card)',
+                  color: 'var(--ink-secondary)',
+                }}
+              >
+                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: r.cor }} />
+                {r.rotulo}
+                <strong className="tabular-nums" style={{ color: 'var(--ink-primary)' }}>{r.qtd}</strong>
+              </button>
+            );
+          })}
+          {statusCompradorFilter.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setStatusCompradorFilter(new Set())}
+              className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline px-1 cursor-pointer"
+            >
+              Limpar status
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Painel de Filtros */}
       <div className="rounded-xl border p-2.5 lg:p-4 space-y-3 reveal max-lg:sticky max-lg:top-0 max-lg:z-20" style={cardStyle}>
         {/* Linha 1: Campo de Busca e Toggle de Status */}
@@ -993,6 +1234,14 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
             panelClassName="w-80"
             className="shrink-0 w-[140px] sm:w-auto sm:min-w-[140px]"
           />
+          <MultiSelectFilter
+            label="Status comprador"
+            icon={Tag}
+            options={OPCOES_STATUS_COMPRADOR}
+            selected={statusCompradorFilter}
+            onChange={setStatusCompradorFilter}
+            className="shrink-0 w-[170px] sm:w-auto sm:min-w-[170px]"
+          />
           <DateRangeFilter
             label="Abertura"
             icon={Calendar}
@@ -1019,7 +1268,7 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
           ativos={filtrosLigados}
           onLimpar={() => {
             setModeloFilter(new Set()); setSolicitanteFilter(new Set()); setSetorFilter(new Set());
-            setFornecedorFilter(new Set()); setCompradorFilter(new Set()); setCausaFilter(new Set());
+            setFornecedorFilter(new Set()); setCompradorFilter(new Set()); setCausaFilter(new Set()); setStatusCompradorFilter(new Set());
             setDateFilter({ from: '', to: '', preset: 'all' });
           }}
           rotuloAplicar={`Ver ${gruposFiltrados.length} chamado${gruposFiltrados.length === 1 ? '' : 's'}`}
@@ -1041,6 +1290,9 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
           </CampoFiltro>
           <CampoFiltro rotulo="Causa">
             <MultiSelectFilter label="Causa" icon={Search} options={causaOptions} selected={causaFilter} onChange={setCausaFilter} className="w-full" />
+          </CampoFiltro>
+          <CampoFiltro rotulo="Status do comprador">
+            <MultiSelectFilter label="Status comprador" icon={Tag} options={OPCOES_STATUS_COMPRADOR} selected={statusCompradorFilter} onChange={setStatusCompradorFilter} className="w-full" />
           </CampoFiltro>
           <CampoFiltro rotulo="Data de abertura">
             <DateRangeFilter label="Abertura" icon={Calendar} value={dateFilter} onChange={setDateFilter} className="w-full" />
@@ -1240,6 +1492,25 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
                               </span>
                             )}
                           </div>
+                          {/* Status do comprador + evidências da nota */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusCompradorControle linha={l} somenteLeitura={concluido} onSalvo={substituirLinha} />
+                            {(() => {
+                              const qtd = contagemEvid.get(l.id) || 0;
+                              if (concluido && qtd === 0) return null;
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => setEvidenciasDe(l)}
+                                  className="inline-flex items-center gap-1 rounded-lg border h-9 lg:h-7 px-2.5 text-[11px] font-bold cursor-pointer hover:bg-[var(--surface-raised)]"
+                                  style={{ borderColor: 'var(--hairline)', color: qtd > 0 ? 'var(--brand)' : 'var(--ink-secondary)' }}
+                                >
+                                  <Paperclip className="h-3 w-3" />
+                                  {qtd > 0 ? `Evidências (${qtd})` : 'Anexar evidência'}
+                                </button>
+                              );
+                            })()}
+                          </div>
                           {/* Observação da linha — o que o comprador precisa resolver. Vem antes dos metadados secundários. */}
                           {obsLinha && (
                             <div
@@ -1331,6 +1602,15 @@ export default function PendenciasProcessamento({ user, onNavigate, embutida = f
         </div>
       )}
       </>
+      )}
+
+      {evidenciasDe && (
+        <EvidenciasPendenciaModal
+          linha={evidenciasDe}
+          user={user}
+          onClose={() => setEvidenciasDe(null)}
+          onContagem={atualizarContagemEvid}
+        />
       )}
 
       {/* Barra Flutuante de Ação em Lote */}

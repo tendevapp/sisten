@@ -568,3 +568,50 @@ describe('categoria Ajuste de Pedido', () => {
 });
 
 
+
+import {
+  rotuloStatusComprador,
+  validarStatusComprador,
+  mimeEvidencia,
+  ehStatusComprador,
+} from './supPendenciasProcessamento';
+
+describe('status do comprador', () => {
+  it('mostra o rótulo de cada status e "Sem status" quando vazio', () => {
+    expect(rotuloStatusComprador('em_andamento')).toBe('Em andamento');
+    expect(rotuloStatusComprador('central_fiscal')).toBe('Com Central Fiscal');
+    expect(rotuloStatusComprador('com_ag')).toBe('Com AG');
+    expect(rotuloStatusComprador('devolvido_contab')).toBe('Devolvido Contab');
+    expect(rotuloStatusComprador(null)).toBe('Sem status');
+    expect(rotuloStatusComprador('qualquer')).toBe('Sem status');
+  });
+
+  it('"Outro" mostra a descrição digitada', () => {
+    expect(rotuloStatusComprador('outro', ' aguardando fornecedor ')).toBe('Outro: aguardando fornecedor');
+    expect(rotuloStatusComprador('outro', '')).toBe('Outro');
+  });
+
+  it('"Outro" exige descrição; os demais não', () => {
+    expect(validarStatusComprador('outro', '  ')).toMatch(/Descreva/);
+    expect(validarStatusComprador('outro', 'x')).toBeNull();
+    expect(validarStatusComprador('com_ag')).toBeNull();
+    expect(validarStatusComprador(null)).toBeNull();
+    expect(validarStatusComprador('inventado')).toMatch(/desconhecido/);
+    expect(ehStatusComprador('devolvido_contab')).toBe(true);
+  });
+});
+
+describe('mimeEvidencia', () => {
+  it('deduz o tipo do e-mail pela extensão quando o navegador manda vazio', () => {
+    expect(mimeEvidencia('Re- NF 123.msg', '')).toBe('application/vnd.ms-outlook');
+    expect(mimeEvidencia('mensagem.EML', '')).toBe('message/rfc822');
+    expect(mimeEvidencia('nota.txt', '')).toBe('text/plain');
+    expect(mimeEvidencia('nf.pdf', '')).toBe('application/pdf');
+    expect(mimeEvidencia('print.png', 'image/png')).toBe('image/png');
+  });
+
+  it('recusa o que não é evidência aceita', () => {
+    expect(mimeEvidencia('planilha.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).toBeNull();
+    expect(mimeEvidencia('programa.exe', '')).toBeNull();
+  });
+});

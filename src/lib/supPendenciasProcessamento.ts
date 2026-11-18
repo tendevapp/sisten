@@ -80,6 +80,71 @@ export const CLASSIF_RECORRENCIA = [
   'Recorrente neste tipo de item ou processo',
 ] as const;
 
+/* -------------------------------------------------------------------------- */
+/* Status do comprador (por nota)                                              */
+/* Independente da baixa: diz onde a nota está enquanto não é concluída.       */
+/* Os valores batem com o CHECK de sup_pend_processamento_nf.status_comprador. */
+/* -------------------------------------------------------------------------- */
+
+export const STATUS_COMPRADOR = [
+  { valor: 'em_andamento', rotulo: 'Em andamento', cor: 'var(--brand)' },
+  { valor: 'central_fiscal', rotulo: 'Com Central Fiscal', cor: 'var(--series-7)' },
+  { valor: 'com_ag', rotulo: 'Com AG', cor: 'var(--status-serious)' },
+  { valor: 'devolvido_contab', rotulo: 'Devolvido Contab', cor: 'var(--status-critical)' },
+  { valor: 'outro', rotulo: 'Outro', cor: 'var(--ink-secondary)' },
+] as const;
+
+export type StatusComprador = typeof STATUS_COMPRADOR[number]['valor'];
+
+/** Rótulo usado no filtro para as notas ainda sem status do comprador. */
+export const ROTULO_SEM_STATUS_COMPRADOR = 'Sem status';
+
+export function ehStatusComprador(v: unknown): v is StatusComprador {
+  return typeof v === 'string' && STATUS_COMPRADOR.some(s => s.valor === v);
+}
+
+/**
+ * Texto do status como aparece na tela: "Outro" mostra a descrição digitada
+ * ("Outro: aguardando fornecedor"); sem status, devolve `ROTULO_SEM_STATUS_COMPRADOR`.
+ */
+export function rotuloStatusComprador(status?: string | null, obs?: string | null): string {
+  const def = STATUS_COMPRADOR.find(s => s.valor === status);
+  if (!def) return ROTULO_SEM_STATUS_COMPRADOR;
+  const desc = (obs || '').trim();
+  if (def.valor === 'outro' && desc) return `Outro: ${desc}`;
+  return def.rotulo;
+}
+
+/** Valida a escolha antes de gravar: "Outro" exige descrição. Devolve a mensagem de erro, ou null. */
+export function validarStatusComprador(status: string | null, obs?: string | null): string | null {
+  if (status === null) return null;
+  if (!ehStatusComprador(status)) return 'Status desconhecido.';
+  if (status === 'outro' && !(obs || '').trim()) return 'Descreva o status em "Outro".';
+  return null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Evidências                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** Extensões que o campo de evidência aceita além de imagem e PDF. */
+export const ACCEPT_EVIDENCIA = 'image/*,application/pdf,.eml,.msg,.txt,message/rfc822,application/vnd.ms-outlook,text/plain';
+
+/**
+ * Tipo MIME para subir ao Storage. O navegador costuma mandar `.msg` sem tipo
+ * (string vazia) — o bucket recusaria, então o tipo sai da extensão.
+ * Devolve null para o que não é evidência aceita.
+ */
+export function mimeEvidencia(nome: string, tipo: string): string | null {
+  const ext = (nome.split('.').pop() || '').toLowerCase();
+  if (tipo.startsWith('image/')) return tipo;
+  if (tipo === 'application/pdf' || ext === 'pdf') return 'application/pdf';
+  if (ext === 'eml' || tipo === 'message/rfc822') return 'message/rfc822';
+  if (ext === 'msg' || tipo === 'application/vnd.ms-outlook') return 'application/vnd.ms-outlook';
+  if (ext === 'txt' || tipo === 'text/plain') return 'text/plain';
+  return null;
+}
+
 /** Metadados de classificação + observação livre de um chamado de pendência. */
 export interface MetaPendencia {
   observacao?: string;

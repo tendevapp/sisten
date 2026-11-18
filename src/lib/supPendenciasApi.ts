@@ -12,11 +12,14 @@
 
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
-import type { SupPendenciaAcaoLog, SupPendenciaProcessamentoNF } from '../types';
+import type { SupPendenciaAcaoLog, SupPendenciaEvidencia, SupPendenciaProcessamentoNF } from '../types';
 import {
   formatarDataDDMMAA,
   rotuloNumero,
   derivarStatusChamadoPendencias,
+  rotuloStatusComprador,
+  validarStatusComprador,
+  type StatusComprador,
   type LinhaPendencia,
   type DadosAjustePedido,
   type MetaPendencia,
@@ -625,6 +628,173 @@ export async function reabrirChamadoSuprimentos(
     `Chamado reaberto por ${quem} (${reabertas} ${rotulo}(s) voltaram para o Suprimentos). Motivo: ${texto}`,
   );
   return reabertas;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Status do comprador                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Grava o status do comprador numa nota, com o "de → para" no histórico de
+ * ações. `status = null` limpa. Devolve a linha atualizada.
+ */
+export async function definirStatusComprador(
+  linha: SupPendenciaProcessamentoNF,
+  status: StatusComprador | null,
+  obs?: string | null,
+): Promise<SupPendenciaProcessamentoNF> {
+  if (!supabase) throw new Error('Sem conexão com o banco.');
+  const erro = validarStatusComprador(status, obs);
+  if (erro) throw new Error(erro);
+
+  const user = localDb.getCurrentUser();
+  const agoraISO = new Date().toISOString();
+  const descricao = status === 'outro' ? (obs || '').trim() : null;
+
+  const antes = rotuloStatusComprador(linha.status_comprador, linha.status_comprador_obs);
+  const depois = rotuloStatusComprador(status, descricao);
+  const hist = extrairHistoricoExistente(linha);
+  if (antes !== depois) {
+    hist.push({
+      tipo: 'status',
+      usuario_id: user?.id || null,
+      usuario_nome: user?.name || null,
+      data_hora: agoraISO,
+      alteracoes: [`Status: ${antes} → ${depois}`],
+    });
+  }
+
+  const { data, error } = await (supabase as any)
+    .from(TABELA)
+    .update({
+      status_comprador: status,
+      status_comprador_obs: descricao,
+      status_comprador_por: status ? user?.id || null : null,
+      status_comprador_em: status ? agoraISO : null,
+      historico_acoes: hist,
+    })
+    .eq('id', linha.id)
+    .select()
+    .single();
+  if (error || !data) throw new Error(error?.message || 'Não foi possível gravar o status.');
+  return data as SupPendenciaProcessamentoNF;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Evidências (tabela sup_pend_evidencias + bucket request-attachments)        */
+/* -------------------------------------------------------------------------- */
+
+const TABELA_EVIDENCIAS = 'sup_pend_evidencias';
+
+/** Quantas evidências cada nota tem — balão do botão "Evidências" na fila. */
+export async function contarEvidenciasPorPendencia(): Promise<Map<string, number>> {
+  const contagem = new Map<string, number>();
+  if (!supabase) return contagem;
+  // PostgREST corta em 1.000 linhas: pagina até acabar.
+  const PAGINA = 1000;
+  for (let de = 0; ; de += PAGINA) {
+    const { data, error } = await (supabase as any)
+      .from(TABELA_EVIDENCIAS)
+      .select('pendencia_id')
+      .order('id', { ascending: true })
+      .range(de, de + PAGINA - 1);
+    if (error) { console.error('Falha ao contar evidências:', error); break; }
+    const linhas = (data || []) as { pendencia_id: string }[];
+    linhas.forEach(r => contagem.set(r.pendencia_id, (contagem.get(r.pendencia_id) || 0) + 1));
+    if (linhas.length < PAGINA) break;
+  }
+  return contagem;
+}
+
+/** Evidências de uma nota, da mais recente para a mais antiga. */
+export async function listarEvidencias(pendenciaId: string): Promise<SupPendenciaEvidencia[]> {
+  if (!supabase) return [];
+  const { data, error } = await (supabase as any)
+    .from(TABELA_EVIDENCIAS)
+    .select('*')
+    .eq('pendencia_id', pendenciaId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data || []) as SupPendenciaEvidencia[];
+}
+
+/** Arquivo já pronto para subir (imagem comprimida por `prepareAttachment`). */
+export interface ArquivoEvidencia {
+  blob: Blob;
+  nome: string;
+  mimeType: string;
+}
+
+/**
+ * Grava uma evidência: o texto (se houver) vira uma linha e cada arquivo outra.
+ * Os arquivos sobem antes; se a gravação da linha falhar, o arquivo é removido
+ * para não sobrar órfão no Storage. Devolve quantas evidências entraram.
+ */
+export async function adicionarEvidencias(
+  linha: Pick<SupPendenciaProcessamentoNF, 'id' | 'request_id'>,
+  texto: string,
+  arquivos: ArquivoEvidencia[],
+): Promise<number> {
+  if (!supabase) throw new Error('Sem conexão com o banco.');
+  const user = localDb.getCurrentUser();
+  if (!user) throw new Error('Sessão expirada. Entre de novo.');
+  const base = { pendencia_id: linha.id, request_id: linha.request_id, autor_id: user.id, autor_nome: user.name || null };
+
+  let gravadas = 0;
+  const falhas: string[] = [];
+
+  const corpo = texto.trim();
+  if (corpo) {
+    const { error } = await (supabase as any).from(TABELA_EVIDENCIAS).insert({ ...base, tipo: 'texto', texto: corpo });
+    if (error) falhas.push(`texto: ${error.message}`);
+    else gravadas++;
+  }
+
+  for (let i = 0; i < arquivos.length; i++) {
+    const a = arquivos[i];
+    const nomeSeguro = a.nome.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.-]+/g, '_').slice(-80) || 'arquivo';
+    const path = `${linha.request_id}/pendencia-evidencias/${linha.id}/${Date.now()}-${i + 1}-${nomeSeguro}`;
+    const { error: upErr } = await supabase.storage
+      .from(BUCKET_ANEXOS)
+      .upload(path, a.blob, { contentType: a.mimeType, upsert: false });
+    if (upErr) { falhas.push(`${a.nome}: ${upErr.message}`); continue; }
+
+    const { error } = await (supabase as any).from(TABELA_EVIDENCIAS).insert({
+      ...base,
+      tipo: 'arquivo',
+      path,
+      nome_arquivo: a.nome,
+      mime_type: a.mimeType,
+      tamanho: a.blob.size,
+    });
+    if (error) {
+      await supabase.storage.from(BUCKET_ANEXOS).remove([path]);
+      falhas.push(`${a.nome}: ${error.message}`);
+      continue;
+    }
+    gravadas++;
+  }
+
+  if (falhas.length > 0) {
+    throw new Error(`${gravadas > 0 ? `${gravadas} evidência(s) gravada(s), mas ` : ''}falhou: ${falhas.join('; ')}`);
+  }
+  return gravadas;
+}
+
+/** Remove a evidência (só o autor ou o admin — a RLS confere) e o arquivo dela. */
+export async function removerEvidencia(ev: SupPendenciaEvidencia): Promise<void> {
+  if (!supabase) throw new Error('Sem conexão com o banco.');
+  const { data, error } = await (supabase as any)
+    .from(TABELA_EVIDENCIAS)
+    .delete()
+    .eq('id', ev.id)
+    .select('id');
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error('Só quem anexou a evidência pode removê-la.');
+  if (ev.path) {
+    const { error: stErr } = await supabase.storage.from(BUCKET_ANEXOS).remove([ev.path]);
+    if (stErr) console.error('Evidência removida, mas o arquivo ficou no Storage:', stErr);
+  }
 }
 
 /** Conclui múltiplas notas de pendência em lote e gera as notificações para os solicitantes. */

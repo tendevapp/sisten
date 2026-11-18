@@ -2438,7 +2438,8 @@ export type SupPendenciaStatus = 'pendente' | 'concluido';
 export type SupPendenciaModelo = 'nfse' | 'documento' | 'ajuste_pedido';
 
 export interface SupPendenciaAcaoLog {
-  tipo: 'concluido' | 'reaberto' | 'criado' | 'editado';
+  /** 'status' = mudança do status do comprador (o "de → para" vai em `alteracoes`). */
+  tipo: 'concluido' | 'reaberto' | 'criado' | 'editado' | 'status';
   usuario_id?: string | null;
   usuario_nome?: string | null;
   data_hora: string;
@@ -2486,6 +2487,12 @@ export interface SupPendenciaProcessamentoNF {
   classif_impacto?: string | null;
   classif_recorrencia?: string | null;
   status: SupPendenciaStatus;
+  /** Onde a nota está enquanto não é baixada — ver `STATUS_COMPRADOR`. */
+  status_comprador?: 'em_andamento' | 'central_fiscal' | 'com_ag' | 'devolvido_contab' | 'outro' | null;
+  /** Descrição do status "Outro". */
+  status_comprador_obs?: string | null;
+  status_comprador_por?: string | null;
+  status_comprador_em?: string | null;
   /** Nota do Suprimentos ao dar baixa na linha. */
   resolucao?: string | null;
   resolvido_por?: string | null;
@@ -2493,6 +2500,24 @@ export interface SupPendenciaProcessamentoNF {
   /** Historico completo de acoes (conclusoes, reaberturas, etc). */
   historico_acoes?: SupPendenciaAcaoLog[] | null;
   ordem: number;
+  created_at: string;
+}
+
+/** Evidência anexada pelo comprador a uma nota (tabela `sup_pend_evidencias`). */
+export interface SupPendenciaEvidencia {
+  id: string;
+  pendencia_id: string;
+  request_id: string;
+  tipo: 'texto' | 'arquivo';
+  /** Texto colado (e-mail, comentário) — tipo 'texto'. */
+  texto?: string | null;
+  /** Caminho no bucket request-attachments — tipo 'arquivo'. */
+  path?: string | null;
+  nome_arquivo?: string | null;
+  mime_type?: string | null;
+  tamanho?: number | null;
+  autor_id: string;
+  autor_nome?: string | null;
   created_at: string;
 }
 
