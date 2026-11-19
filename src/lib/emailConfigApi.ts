@@ -175,7 +175,7 @@ export const CONFIGS_EMAIL_PADRAO: ConfigEnvioEmail[] = [
     nome: 'Solicitação de Compra do tipo Serviço',
     modulo: 'SUPRIMENTOS',
     descricao: 'Disparado ao enviar uma solicitação de compra com tipo Serviço (aba Compra em Nova Solicitação).',
-    destinatarios: 'jefferson.santana@ten.ind.br',
+    destinatarios: 'lourivan.ferreira@ten.ind.br',
     copia: null,
     copia_oculta: null,
     assunto_padrao: 'Solicitação de Serviço',

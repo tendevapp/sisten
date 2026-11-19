@@ -27,6 +27,7 @@ import GestaoGrupoComprador from '../components/admin/GestaoGrupoComprador';
 import GestaoNiveisMercadorias from '../components/admin/GestaoNiveisMercadorias';
 import ConfigAberturaRm from '../components/admin/ConfigAberturaRm';
 import { supabase } from '../db/supabaseClient';
+import { localDb } from '../db/localDb';
 
 interface Props {
   user: Profile;
@@ -38,6 +39,7 @@ type TabType = 'emails_envios' | 'suprimentos';
 type SubSuprimentos = 'lead_time' | 'transportadoras' | 'grupos_compradores' | 'niveis_mercadorias' | 'abertura_rm';
 
 const SUGESTOES_GATILHOS = [
+  { chave: 'compra_servico', nome: 'Solicitação de Compra do tipo Serviço', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Solicitação de Serviço' },
   { chave: 'cadastro_sap', nome: 'Cadastro SAP — Itens', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Cadastro SAP - Item' },
   { chave: 'cadastro_sap_fornecedor', nome: 'Cadastro SAP — Fornecedor', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Cadastro SAP - Fornecedor' },
   { chave: 'helpdesk_suprimentos', nome: 'Abertura de Chamado Suprimentos (Pendências)', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Pendências de Processamento de Notas Fiscais' },
@@ -105,6 +107,11 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
 
   // Formulário de E-mail
   const [formEmailChave, setFormEmailChave] = useState('');
+  const editandoDestinoServico = modalEmailOpen && formEmailChave === 'compra_servico';
+  const usuariosParaServico = useMemo(() => editandoDestinoServico
+    ? localDb.getProfiles().filter(p => p.status === 'ativo' && !p.login_sem_email && p.email)
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    : [], [editandoDestinoServico]);
   const [formEmailNome, setFormEmailNome] = useState('');
   const [formEmailModulo, setFormEmailModulo] = useState<EmailModulo>('SUPRIMENTOS');
   const [formEmailDescricao, setFormEmailDescricao] = useState('');
@@ -1458,17 +1465,24 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="destinatarios-principais" className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                     Destinatários Principais (Para) *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="Ex: jefferson.santana@ten.ind.br, equipe.compras@ten.ind.br"
+                    id="destinatarios-principais"
+                    list={editandoDestinoServico ? 'usuarios-compra-servico' : undefined}
+                    placeholder={editandoDestinoServico ? 'Busque pelo nome ou e-mail do usuário' : 'nome@ten.ind.br, equipe.compras@ten.ind.br'}
                     value={formEmailDestinatarios}
                     onChange={(e) => setFormEmailDestinatarios(e.target.value)}
                     className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
+                  {editandoDestinoServico && (
+                    <datalist id="usuarios-compra-servico">
+                      {usuariosParaServico.map(p => <option key={p.id} value={p.email}>{p.name}</option>)}
+                    </datalist>
+                  )}
                   <p className="mt-0.5 text-[10px] text-slate-500">
                     Separe múltiplos e-mails por vírgula ou ponto e vírgula.
                   </p>

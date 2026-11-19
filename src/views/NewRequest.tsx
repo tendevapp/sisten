@@ -1214,9 +1214,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     </div>
   );
 
-  // Serviço não segue o fluxo normal de compra: quem cadastra e negocia é o
-  // Jefferson, então a solicitação vai por e-mail no mesmo molde do Cadastro
-  // SAP — mailto: não leva anexos, por isso vai a contagem e o link do SISTEN.
+  // O responsável pelo serviço recebe a contagem de anexos e o link do SISTEN.
   const buildCompraServicoEmailBody = (reqId: string, reqNumero: string): string => {
     const setorNome = sectors.find(sec => sec.id === sectorId)?.name || '—';
     const totalAnexos = items.reduce(
@@ -1225,7 +1223,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     );
 
     const linhas: string[] = [
-      'Olá, Jeff!',
+      'Olá',
       '',
       'Abri uma solicitação de compra de SERVIÇO no SISTEN:',
       '',
@@ -1802,17 +1800,16 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
       if (activeTab === 'compra' && ehServico) {
         const configEmail = await obterConfigEmail('compra_servico');
-        const subject = configEmail?.assunto_padrao
-          ? `${configEmail.assunto_padrao} #${reqNumero}`
-          : `Solicitação de Serviço #${reqNumero}`;
-        window.location.href = montarMailtoComConfig({
-          destinatarios: configEmail?.destinatarios || 'jefferson.santana@ten.ind.br',
-          copia: configEmail?.copia,
-          copiaOculta: configEmail?.copia_oculta,
-          assunto: subject,
-          corpo: buildCompraServicoEmailBody(reqId, reqNumero),
-        });
-        toast.info('E-mail aberto no Outlook para o Jefferson. Anexe os arquivos manualmente antes de enviar — o link não inclui anexos.');
+        if (configEmail?.ativo) {
+          window.location.href = montarMailtoComConfig({
+            destinatarios: configEmail.destinatarios,
+            copia: configEmail.copia,
+            copiaOculta: configEmail.copia_oculta,
+            assunto: `${configEmail.assunto_padrao || 'Solicitação de Serviço'} #${reqNumero}`,
+            corpo: buildCompraServicoEmailBody(reqId, reqNumero),
+          });
+          toast.info(`E-mail aberto no Outlook para ${configEmail.destinatarios}. Anexe os arquivos antes de enviar.`);
+        }
       }
 
       if (activeTab === 'cadastro_sap') {
