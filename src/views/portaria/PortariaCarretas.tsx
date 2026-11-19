@@ -16,7 +16,7 @@ import { usePageTour } from '../../components/help/TourRegistryContext';
 import type { TourStep } from '../../components/help/types';
 import type { Profile, PortControleCarreta, PortCarretaStatus } from '../../types';
 import * as api from '../../lib/portariaApi';
-import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { podeEditarRegistroPortaria, podeRegistrarSaidaPortaria } from '../../lib/permissoesFormularios';
 import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
 import type { PdfGerado } from '../../lib/pdfExport/core';
 import { exportCarretasPdf, gerarCarretasPdf } from '../../lib/pdfExport/exportPortariaPdf';
@@ -236,7 +236,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
     const campos = ['empresa', 'placa_cavalo', 'placa_carreta', 'nome_motorista', 'cpf_motorista', 'observacoes'];
     Promise.all(campos.map((c) => api.buscarHistoricoCampoPortaria(tabela, c).then((v) => [c, v] as const)))
       .then((pares) => setHistorico(Object.fromEntries(pares)))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const carregarDados = useCallback(async () => {
@@ -273,11 +273,11 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
         criado_por: user.id,
       });
       toast.success('Entrada de carreta de chapas registrada com sucesso!');
-        if (faraBafometro) {
-          const teste = await api.cadastrarBafometroNaEntrada({ nome: formNovo.nome_motorista, documento: formNovo.cpf_motorista, empresa: formNovo.empresa }, { data: formNovo.data_entrada, horario: formNovo.hora_entrada, origem: 'Carretas de Chapas', criadoPor: user });
-          if (teste) toast.success(`${teste.nome} entrou no Teste de Alcoolemia (pendente).`);
-          else toast.error('A pessoa não entrou no Teste de Alcoolemia. Cadastre pela tela do teste.');
-        }
+      if (faraBafometro) {
+        const teste = await api.cadastrarBafometroNaEntrada({ nome: formNovo.nome_motorista, documento: formNovo.cpf_motorista, empresa: formNovo.empresa }, { data: formNovo.data_entrada, horario: formNovo.hora_entrada, origem: 'Carretas de Chapas', criadoPor: user });
+        if (teste) toast.success(`${teste.nome} entrou no Teste de Alcoolemia (pendente).`);
+        else toast.error('A pessoa não entrou no Teste de Alcoolemia. Cadastre pela tela do teste.');
+      }
       rascunhoEntrada.concluir();
       setFaraBafometro(false);
       setModalNovoAberto(false);
@@ -416,11 +416,10 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
               key={st}
               type="button"
               onClick={() => setFiltroStatus(st)}
-              className={`rounded-xl px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all ${
-                filtroStatus === st
+              className={`rounded-xl px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all ${filtroStatus === st
                   ? 'bg-blue-600 text-white shadow-xs dark:bg-blue-500'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
-              }`}
+                }`}
             >
               {st === 'NO_PATIO' ? 'No Pátio (Descarregando)' : st === 'TODOS' ? 'Todas as Carretas' : 'Finalizadas (Saída Registrada)'}
             </button>
@@ -511,35 +510,35 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     <td className="px-4 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         {item.excluido_em ? (
-                          podeEditarFormulario(user, item) && <RestaurarButton onClick={() => handleRestaurar(item)} />
+                          podeEditarRegistroPortaria(user, item) && <RestaurarButton onClick={() => handleRestaurar(item)} />
                         ) : (
-                        <>
-                        {item.status !== 'FINALIZADO' && podeEditarFormulario(user, item) && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (itemSelecionado?.id !== item.id) setFormSaida(formSaidaVazio());
-                              setItemSelecionado(item);
-                              setModalSaidaAberto(true);
-                            }}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-400"
-                            title="Registrar saída e assinatura"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Liberar Saída
-                          </button>
-                        )}
-                        {podeEditarFormulario(user, item) && (
-                          <button aria-label="Excluir registro"
-                            type="button"
-                            onClick={() => setItemParaExcluir(item)}
-                            className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
-                            title="Excluir registro"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                        </>
+                          <>
+                            {item.status !== 'FINALIZADO' && podeRegistrarSaidaPortaria(user, item) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (itemSelecionado?.id !== item.id) setFormSaida(formSaidaVazio());
+                                  setItemSelecionado(item);
+                                  setModalSaidaAberto(true);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-400"
+                                title="Registrar saída e assinatura"
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                Liberar Saída
+                              </button>
+                            )}
+                            {podeEditarRegistroPortaria(user, item) && (
+                              <button aria-label="Excluir registro"
+                                type="button"
+                                onClick={() => setItemParaExcluir(item)}
+                                className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
+                                title="Excluir registro"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>

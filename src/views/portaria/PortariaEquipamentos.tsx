@@ -16,7 +16,7 @@ import { usePageTour } from '../../components/help/TourRegistryContext';
 import type { TourStep } from '../../components/help/types';
 import type { Profile, PortControleEquipamento, PortEquipamentoStatus } from '../../types';
 import * as api from '../../lib/portariaApi';
-import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { podeEditarRegistroPortaria, podeRegistrarSaidaPortaria } from '../../lib/permissoesFormularios';
 import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
 import type { PdfGerado } from '../../lib/pdfExport/core';
 import { exportEquipamentoPdf, gerarEquipamentoPdf } from '../../lib/pdfExport/exportPortariaPdf';
@@ -474,10 +474,10 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                     <td className="px-4 py-3.5 align-top text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         {item.excluido_em ? (
-                          podeEditarFormulario(user, item) && <RestaurarButton onClick={() => handleRestaurar(item)} />
+                          podeEditarRegistroPortaria(user, item) && <RestaurarButton onClick={() => handleRestaurar(item)} />
                         ) : (
                         <>
-                        {item.status === 'NO_PATIO' && podeEditarFormulario(user, item) && (
+                        {item.status === 'NO_PATIO' && podeRegistrarSaidaPortaria(user, item) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -503,7 +503,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                         >
                           <FileDown className="h-4 w-4" />
                         </button>
-                        {podeEditarFormulario(user, item) && (
+                        {podeEditarRegistroPortaria(user, item) && (
                           <button aria-label="Excluir registro"
                             type="button"
                             onClick={() => setItemParaExcluir(item)}

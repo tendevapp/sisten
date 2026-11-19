@@ -592,6 +592,22 @@ export function obterMetadadosOcorrencia(id: string): Partial<PortRelatorioOcorr
   }
 }
 
+/**
+ * Mescla linha vinda do banco com cache local antigo: o banco SEMPRE prevalece
+ * para qualquer campo preenchido, evitando que edicoes feitas em outro aparelho
+ * sejam sobrescritas pelo localStorage deste dispositivo.
+ */
+function mesclarOcorrenciaComCacheLocal<T extends Record<string, any>>(banco: T, id?: string): T {
+  const meta = id ? obterMetadadosOcorrencia(id) : {};
+  const resultado: Record<string, any> = { ...meta };
+  for (const [k, v] of Object.entries(banco || {})) {
+    if (v !== undefined && (v !== null || !(k in resultado))) {
+      resultado[k] = v;
+    }
+  }
+  return resultado as T;
+}
+
 export function salvarMetadadosOcorrencia(id: string, meta: Partial<PortRelatorioOcorrencia>): void {
   try {
     const map = JSON.parse(localStorage.getItem(KEY_OCORRENCIA_EXTRA) || '{}');
@@ -729,7 +745,7 @@ export async function listarRelatorios(filtros?: {
   const relatorios = (data || []).map((r: any) => ({
     ...r,
     ocorrencias: semExcluidos(r.ocorrencias, filtros?.incluirExcluidos)
-      .map((o: any) => ({ ...o, ...obterMetadadosOcorrencia(o.id) }))
+      .map((o: any) => mesclarOcorrenciaComCacheLocal(o, o.id))
       .sort((a: any, b: any) => a.horario.localeCompare(b.horario)),
   })) as PortRelatorioPortaria[];
   return assinarFotosRelatorios(relatorios);
@@ -751,10 +767,35 @@ export async function obterRelatorio(id: string, incluirExcluidos = false): Prom
   const [assinado] = await assinarFotosRelatorios([{
     ...data,
     ocorrencias: semExcluidos(data.ocorrencias, incluirExcluidos)
-      .map((o: any) => ({ ...o, ...obterMetadadosOcorrencia(o.id) }))
+      .map((o: any) => mesclarOcorrenciaComCacheLocal(o, o.id))
       .sort((a: any, b: any) => a.horario.localeCompare(b.horario)),
   } as PortRelatorioPortaria]);
   return assinado;
+}
+
+/** Busca a versao mais recente de um lancamento no banco (com fotos assinadas) antes de editar em outro aparelho. */
+export async function obterOcorrencia(id: string): Promise<PortRelatorioOcorrencia | null> {
+  const { data, error } = await dbOcorrencias()
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  const oc = mesclarOcorrenciaComCacheLocal(data, data.id) as PortRelatorioOcorrencia;
+  const paths = [...(oc.fotos || []), ...(oc.fotos_nf || [])].map((f) => f.path).filter(Boolean);
+  if (paths.length === 0) return oc;
+
+  const urls: Record<string, string> = {};
+  try {
+    const { data: signed } = await supabase.storage.from(BUCKET_OCORRENCIAS).createSignedUrls(paths, 60 * 60 * 24);
+    (signed || []).forEach((item) => { if (item.path && item.signedUrl) urls[item.path] = item.signedUrl; });
+  } catch (err) {
+    console.warn('Erro ao assinar fotos da ocorrência:', err);
+  }
+  const comUrl = (fotos?: PortAlcoolemiaFoto[]) => (fotos || []).map((f) => ({ ...f, preview_url: urls[f.path] || '' }));
+  return { ...oc, fotos: comUrl(oc.fotos), fotos_nf: comUrl(oc.fotos_nf) };
 }
 
 export async function criarRelatorio(dados: Partial<PortRelatorioPortaria>): Promise<PortRelatorioPortaria> {
@@ -895,10 +936,7 @@ export async function adicionarOcorrencia(
     salvarMetadadosOcorrencia(data.id, dados);
   }
 
-  return {
-    ...data,
-    ...obterMetadadosOcorrencia(data.id),
-  } as PortRelatorioOcorrencia;
+  return mesclarOcorrenciaComCacheLocal(data, data?.id) as PortRelatorioOcorrencia;
 }
 
 /** Tipos de lançamento que entram e precisam de saída registrada (o que chega tem que sair). */
@@ -992,10 +1030,7 @@ export async function atualizarOcorrencia(
 
   salvarMetadadosOcorrencia(id, dados);
 
-  return {
-    ...data,
-    ...obterMetadadosOcorrencia(id),
-  } as PortRelatorioOcorrencia;
+  return mesclarOcorrenciaComCacheLocal(data, id) as PortRelatorioOcorrencia;
 }
 
 export async function excluirOcorrencia(id: string, excluidoPor?: string): Promise<void> {

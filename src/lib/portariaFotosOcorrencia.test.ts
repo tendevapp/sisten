@@ -39,13 +39,14 @@ describe('entrega de material', () => {
     expect(aceitaEntregaMaterial('RONDA_PATRIMONIAL')).toBe(false);
   });
 
-  it('exige NF verificada e foto da nota', () => {
+  it('exige NF verificada e destino Almoxarifado, deixando foto da nota opcional no lancamento', () => {
     const base = { tipo: 'ENTRADA_VEICULO' as const, entrega_material: true, nf_verificada: false, fotosNf: 0, vai_almoxarifado: true as boolean | null };
     expect(validarEntregaMaterial(base).ok).toBe(false);
     // "Vai para o Almoxarifado?" sem resposta não passa; "Não" é resposta válida.
     expect(validarEntregaMaterial({ ...base, nf_verificada: true, fotosNf: 1, vai_almoxarifado: null }).erro).toMatch(/Almoxarifado/);
     expect(validarEntregaMaterial({ ...base, nf_verificada: true, fotosNf: 1, vai_almoxarifado: false }).ok).toBe(true);
-    expect(validarEntregaMaterial({ ...base, nf_verificada: true }).erro).toMatch(/foto/);
+    // Foto da NF passa a ser opcional no lancamento (pode ser anexada depois na edicao).
+    expect(validarEntregaMaterial({ ...base, nf_verificada: true, fotosNf: 0 }).ok).toBe(true);
     expect(validarEntregaMaterial({ ...base, nf_verificada: true, fotosNf: 2 }).ok).toBe(true);
     expect(validarEntregaMaterial({ ...base, entrega_material: false }).ok).toBe(true);
     // Tipo que não é entrada ignora a marcação que sobrou ao trocar o tipo.

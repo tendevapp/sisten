@@ -23,7 +23,7 @@ import type {
   Profile, PortBriefingSessao, PortBriefingParticipante
 } from '../../types';
 import * as api from '../../lib/portariaApi';
-import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { podeEditarRegistroPortaria } from '../../lib/permissoesFormularios';
 import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
 import type { PdfGerado } from '../../lib/pdfExport/core';
 import {
@@ -112,7 +112,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
   // Colher a assinatura que falta é de qualquer vigilante de plantão — as turmas
   // nascem da entrada na portaria e quem está no tablet quase nunca é o autor
   // (até 05/11/2026 elas nem gravavam autor, e ninguém conseguia assinar).
-  const podeEditarSessao = podeEditarFormulario(user, sessaoAtiva);
+  const podeEditarSessao = podeEditarRegistroPortaria(user, sessaoAtiva);
   const podeColetarAssinatura = !!sessaoAtiva && !sessaoAtiva.excluido_em;
   // Celular/tablet em pé: lista OU detalhe da turma (no computador, os dois lado a lado).
   const [detalheAberto, setDetalheAberto] = useState(false);

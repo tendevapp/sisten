@@ -39,7 +39,7 @@ import {
 import FotosOcorrenciaCampo, { type FotoNova } from '../../components/portaria/FotosOcorrenciaCampo';
 import DetalheOcorrenciaModal from '../../components/portaria/DetalheOcorrenciaModal';
 import { useLightbox } from '../../components/ui/Lightbox';
-import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { ehMesmoDiaPortaria, podeEditarRegistroPortaria } from '../../lib/permissoesFormularios';
 import { listarRhPessoas } from '../../lib/rhApi';
 import { listarVeiculosLeves } from '../../lib/facilitiesApi';
 import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
@@ -346,9 +346,9 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   /** Celular: lista completa de livros num painel (a coluna da esquerda fica só no desktop). */
   const [livrosAbertos, setLivrosAbertos] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
-  // Só o autor do livro de plantão (ou um admin) altera lançamentos; os
-  // demais só consultam. Espelha a RLS em `form_pode_editar`.
-  const podeEditarAtivo = podeEditarFormulario(user, relatorioAtivo);
+  // Setor Portaria edita os registros do proprio dia (inclusive de outros aparelhos);
+  // apos finalizar o dia, somente admin altera. Espelha `port_pode_editar_no_dia`.
+  const podeEditarAtivo = podeEditarRegistroPortaria(user, relatorioAtivo);
   // O que chega tem que sair: veículos/visitantes sem saída de QUALQUER plantão.
   // Registrar a saída é de qualquer vigilante (o carro entra num turno e sai no
   // outro); editar/excluir o lançamento segue só do autor ou admin.
@@ -704,6 +704,26 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     carregarRelatorios();
   }, [carregarRelatorios]);
 
+  // Atualiza a lista ao voltar foco para a aba (com modais fechados),
+  // para outros aparelhos enxergarem lancamentos salvos recentemente.
+  useEffect(() => {
+    let ultimoRefresh = 0;
+    const atualizarAoFocar = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (modalNovaOcorrencia || modalRegistrarSaida || ocorrenciaHorario) return;
+      const agora = Date.now();
+      if (agora - ultimoRefresh < 10_000) return;
+      ultimoRefresh = agora;
+      void carregarRelatorios(relatorioAtivo?.id);
+    };
+    window.addEventListener('focus', atualizarAoFocar);
+    document.addEventListener('visibilitychange', atualizarAoFocar);
+    return () => {
+      window.removeEventListener('focus', atualizarAoFocar);
+      document.removeEventListener('visibilitychange', atualizarAoFocar);
+    };
+  }, [carregarRelatorios, relatorioAtivo?.id, modalNovaOcorrencia, modalRegistrarSaida, ocorrenciaHorario]);
+
   // Busca sugestões no autocomplete
   useEffect(() => {
     let ativo = true;
@@ -848,7 +868,16 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     setModalNovaOcorrencia(true);
   };
 
-  const abrirModalEdicao = (oc: PortRelatorioOcorrencia) => {
+  const abrirModalEdicao = async (ocInicial: PortRelatorioOcorrencia) => {
+    // Recarrega a versao mais recente do banco para nao sobrescrever edicoes feitas em outro aparelho.
+    let oc = ocInicial;
+    try {
+      const recente = await api.obterOcorrencia(ocInicial.id);
+      if (recente) oc = recente;
+    } catch {
+      // Sem rede: segue com os dados ja carregados na tela.
+    }
+
     setOcorrenciaEmEdicao(oc);
     if (oc.pessoas && oc.pessoas.length > 0) {
       setPessoasForm(
@@ -1027,8 +1056,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     }
 
     const pessoasValidas = pessoasForm.filter((p) => p.nome.trim());
-    if (!tipoAtual.isLivre && pessoasValidas.length === 0) {
-      toast.error('Informe ao menos o nome de uma pessoa / visitante.');
+    const temIdentificacaoMinima =
+      pessoasValidas.length > 0 || !!formOcorrencia.empresa.trim() || !!formOcorrencia.placa_veiculo.trim();
+    if (!tipoAtual.isLivre && !temIdentificacaoMinima) {
+      toast.error('Informe ao menos o nome de uma pessoa, empresa ou placa.');
       return;
     }
     if (formOcorrencia.tipo_registro === 'VEICULO_LEVE' && !formOcorrencia.veiculo_leve_id) {
@@ -1098,7 +1129,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         ? await api.subirFotosOcorrencia(ocorrenciaId, fotosNfNovas.map((f) => f.file), 'nf')
         : { ok: [], falhas: 0 };
       const falhasFoto = subidas.falhas + subidasNf.falhas;
-      if (comEntrega && fotosNfSalvas.length + subidasNf.ok.length === 0) {
+      if (comEntrega && fotosNfNovas.length > 0 && subidasNf.ok.length === 0) {
         throw new Error('A foto da nota fiscal não subiu. Tente de novo.');
       }
       const fotosFinais = [...fotosSalvas, ...subidas.ok];
@@ -1471,11 +1502,11 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                           {countOcorrencias} reg
                         </span>
                         {rel.excluido_em ? (
-                          podeEditarFormulario(user, rel) && (
+                          podeEditarRegistroPortaria(user, rel) && (
                             <RestaurarButton onClick={() => handleRestaurarPlantao(rel)} />
                           )
                         ) : (
-                          podeEditarFormulario(user, rel) && (
+                          podeEditarRegistroPortaria(user, rel) && (
                             <button aria-label="Excluir este plantão"
                               type="button"
                               onClick={(e) => {
@@ -1579,8 +1610,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
           </div>
           <FotosOcorrenciaCampo
             titulo="Foto da(s) nota(s) fiscal(is)"
-            ajuda="Uma foto por nota. Fotografe a nota inteira, com o número legível."
-            obrigatorio
+            ajuda="Opcional no lançamento — pode anexar agora ou depois editando o registro (inclusive por outro aparelho)."
             tom="emerald"
             salvas={fotosNfSalvas}
             novas={fotosNfNovas}
@@ -1806,7 +1836,9 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                       </>
                     ) : (
                       <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                        Somente leitura — livro de outro usuário
+                        {relatorioAtivo && !ehMesmoDiaPortaria(relatorioAtivo)
+                          ? 'Somente leitura — dia encerrado'
+                          : 'Somente leitura — livro de outro usuário'}
                       </span>
                     )}
                   </div>
@@ -2090,22 +2122,20 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                               </button>
                             )}
 
-                            {/* Corrigir horário: de qualquer vigilante, como Registrar Saída. */}
-                            <button
-                              type="button"
-                              aria-label={`Editar horário do lançamento das ${String(oc.horario).slice(0, 5)}`}
-                              title="Editar horário de entrada"
-                              onClick={() => abrirModalHorario(oc)}
-                              className="p-1.5 text-slate-500 hover:text-purple-600 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/50 transition-all"
-                            >
-                              <Clock className="h-4 w-4" />
-                            </button>
-
                             {podeEditarAtivo && (
                               <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  aria-label={`Editar horário do lançamento das ${String(oc.horario).slice(0, 5)}`}
+                                  title="Editar horário de entrada"
+                                  onClick={() => abrirModalHorario(oc)}
+                                  className="p-1.5 text-slate-500 hover:text-purple-600 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/50 transition-all"
+                                >
+                                  <Clock className="h-4 w-4" />
+                                </button>
                                 <button aria-label="Editar ou reabrir lançamento"
                                   type="button"
-                                  onClick={() => abrirModalEdicao(oc)}
+                                  onClick={() => { void abrirModalEdicao(oc); }}
                                   className="p-1.5 text-slate-500 hover:text-purple-600 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/50 transition-all"
                                   title="Editar ou reabrir lançamento"
                                 >
@@ -3103,7 +3133,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
               <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                 <FotosOcorrenciaCampo
                   titulo="Fotos do registro"
-                  ajuda="Câmera ou galeria. As fotos são reduzidas antes de subir."
+                  ajuda="Câmera ou galeria. Opcional — pode anexar agora ou depois editando o registro em outro aparelho. As fotos são reduzidas antes de subir."
                   legado={fotoLegado && !fotoLegado.removida ? {
                     url: fotoLegado.url,
                     carregando: fotoLegado.carregando,
@@ -3333,7 +3363,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
             tipoLabel={tipo?.label}
             tipoBadgeCor={tipo?.badgeCor}
             onClose={fechar}
-            onEditar={podeEditarAtivo ? () => { fechar(); abrirModalEdicao(oc); } : undefined}
+            onEditar={podeEditarAtivo ? () => { fechar(); void abrirModalEdicao(oc); } : undefined}
             onRegistrarSaida={pendente ? () => { fechar(); abrirModalDarSaida(oc); } : undefined}
             onAbrirFotos={(imagens, indice) => lightbox.abrir(imagens, indice)}
           />

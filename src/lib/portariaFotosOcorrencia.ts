@@ -66,9 +66,9 @@ export interface ValidacaoEntrega {
 }
 
 /**
- * Entrada com entrega de material exige a resposta "Vai para o Almoxarifado?",
- * NF conferida pela portaria e ao menos uma foto da nota. `fotosNf` conta as
- * já salvas e as novas do formulário.
+ * Entrada com entrega de material exige a resposta "Vai para o Almoxarifado?"
+ * e NF conferida pela portaria. As fotos da nota sao opcionais no lancamento
+ * e podem ser anexadas depois na edicao (inclusive por outro aparelho).
  */
 export function validarEntregaMaterial(dados: {
   tipo: PortTipoRegistroOcorrencia;
@@ -80,6 +80,5 @@ export function validarEntregaMaterial(dados: {
   if (!aceitaEntregaMaterial(dados.tipo) || !dados.entrega_material) return { ok: true };
   if (dados.vai_almoxarifado === null) return { ok: false, erro: 'Entrega de material: responda se vai para o Almoxarifado.' };
   if (!dados.nf_verificada) return { ok: false, erro: 'Entrega de material: confirme que a nota fiscal foi verificada.' };
-  if (dados.fotosNf < 1) return { ok: false, erro: 'Entrega de material: tire a foto da(s) nota(s) fiscal(is).' };
   return { ok: true };
 }

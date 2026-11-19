@@ -26,7 +26,7 @@ import type {
 } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { entregadoresDoAnterior, itensIniciaisDoPlantao, podeEncerrarPlantao } from '../../lib/passagemPlantao';
-import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { podeEditarRegistroPortaria } from '../../lib/permissoesFormularios';
 import VigilanteSelect from '../../components/portaria/VigilanteSelect';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import { useToast } from '../../components/ui/Toast';
@@ -693,9 +693,9 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
           const totalItens = (p.itens_conferidos || []).length;
           const itensOk = (p.itens_conferidos || []).filter((i) => i.conferido).length;
           const isCompleto = totalItens > 0 && itensOk === totalItens;
-          // Excluir/restaurar só para o autor do plantão ou admin; encerrar,
-          // qualquer um da tela (ver podeEncerrarPlantao).
-          const podeEditar = podeEditarFormulario(user, p);
+          // Alterar/excluir/restaurar: setor Portaria no proprio dia ou admin;
+          // encerrar plantao em andamento segue liberado (ver podeEncerrarPlantao).
+          const podeEditar = podeEditarRegistroPortaria(user, p);
 
           return (
             <div

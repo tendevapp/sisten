@@ -17,7 +17,7 @@ import { usePageTour } from '../../components/help/TourRegistryContext';
 import type { TourStep } from '../../components/help/types';
 import type { Profile, PortRegistroTransporte, PortTransporteStatus, PortTurno } from '../../types';
 import * as api from '../../lib/portariaApi';
-import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { podeEditarRegistroPortaria, podeRegistrarSaidaPortaria } from '../../lib/permissoesFormularios';
 import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
 import type { PdfGerado } from '../../lib/pdfExport/core';
 import { exportTransportesPdf, gerarTransportesPdf } from '../../lib/pdfExport/exportPortariaPdf';
@@ -931,7 +931,8 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                   <div className="space-y-3">
                     {transportesDoDiaFiltrados.map((item) => {
                       const estaNoPatio = item.status === 'NO_PATIO';
-                      const podeEditar = podeEditarFormulario(user, item);
+                      const podeEditar = podeEditarRegistroPortaria(user, item);
+                      const podeDarSaida = podeRegistrarSaidaPortaria(user, item);
 
                       return (
                         <div
@@ -1015,7 +1016,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                               podeEditar && <RestaurarButton onClick={() => handleRestaurar(item)} />
                             ) : (
                               <>
-                                {estaNoPatio && podeEditar && (
+                                {estaNoPatio && podeDarSaida && (
                                   <button
                                     type="button"
                                     onClick={() => abrirConfirmacaoSaida(item)}

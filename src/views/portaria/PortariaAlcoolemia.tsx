@@ -22,7 +22,7 @@ import {
 import type { Profile, PortAlcoolemiaFoto, PortAlcoolemiaTeste, PortAlcoolemiaResultado, PortAlcoolemiaVinculo, RhPessoa } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { listarRhPessoas } from '../../lib/rhApi';
-import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { podeEditarRegistroPortaria } from '../../lib/permissoesFormularios';
 import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
 import type { PdfGerado } from '../../lib/pdfExport/core';
 import { gerarAlcoolemiaPeriodoPdf } from '../../lib/pdfExport/exportPortariaPdf';
@@ -863,7 +863,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                   )}
                   <div className="space-y-3">
                     {g.itens.map((item) => {
-                      const podeEditar = podeEditarFormulario(user, item);
+                      const podeEditar = podeEditarRegistroPortaria(user, item);
                       const isPendente = item.resultado === 'PENDENTE';
                       return (
                         <CartaoTeste
@@ -919,7 +919,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {testesFiltrados.map((item) => {
-                    const podeEditar = podeEditarFormulario(user, item);
+                    const podeEditar = podeEditarRegistroPortaria(user, item);
                     const isPendente = item.resultado === 'PENDENTE';
                     const isPositivo = item.resultado === 'POSITIVO';
                     return (
