@@ -5,7 +5,7 @@ import { supabase } from './db/supabaseClient';
 import { trackLogin, trackPageView } from './lib/usageTracker';
 import { registrarAcessoIp } from './lib/monitoramentoIpApi';
 import { recordRecentPage } from './lib/homePrefs';
-import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, pageIdForPath, tituloAba } from './lib/pages';
+import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, isUserAndre, pageIdForPath, tituloAba } from './lib/pages';
 import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia, usuarioSessaoPermanente } from './lib/sessaoDiaria';
 import { limparCenaSessao } from './lib/cenaInicio';
 import { pareceFalhaDeRede } from './lib/rede';
@@ -1663,7 +1663,13 @@ export default function App() {
 
       case '/admin/uso':
         if (canAccessPage(user, 'admin_uso')) {
-          return <UsageDashboard />;
+          return <UsageDashboard user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/admin/uso/individual':
+        if (canAccessPage(user, 'admin_uso') && isUserAndre(user)) {
+          return <UsageDashboard user={user} initialSubPage="individual" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

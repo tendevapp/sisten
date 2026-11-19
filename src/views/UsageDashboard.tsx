@@ -16,6 +16,8 @@ import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
 import { labelForPath } from '../lib/usageTracker';
+import { isUserAndre } from '../lib/pages';
+import UsoIndividualUsuarioView from '../components/admin/UsoIndividualUsuarioView';
 
 type Granularity = 'day' | 'week' | 'month';
 type Preset = 'today' | '7' | '30' | '90' | 'custom';
@@ -91,7 +93,17 @@ function fmtDesde(iso: string | null): string {
   return d === 1 ? 'há 1 dia' : `há ${d} dias`;
 }
 
-export default function UsageDashboard() {
+interface UsageDashboardProps {
+  user?: Profile | null;
+  initialSubPage?: 'geral' | 'individual';
+}
+
+export default function UsageDashboard({ user, initialSubPage = 'geral' }: UsageDashboardProps) {
+  const currentUser = user ?? localDb.getCurrentUser();
+  const podeVerIndividual = isUserAndre(currentUser);
+  const [subPagina, setSubPagina] = useState<'geral' | 'individual'>(() =>
+    initialSubPage === 'individual' && podeVerIndividual ? 'individual' : 'geral',
+  );
   const [preset, setPreset] = useState<Preset>('30');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -352,6 +364,21 @@ export default function UsageDashboard() {
     [profiles, selectedUser]
   );
 
+  if (subPagina === 'individual' && podeVerIndividual) {
+    return (
+      <UsoIndividualUsuarioView
+        currentUser={currentUser}
+        initialUserId={selectedUser !== 'todos' ? selectedUser : null}
+        onVoltar={() => {
+          setSubPagina('geral');
+          if (typeof window !== 'undefined' && window.location.hash.includes('/admin/uso/individual')) {
+            window.location.hash = '/admin/uso';
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div className="p-4 sm:p-6 w-full space-y-6">
       {/* Top Header & Filters */}
@@ -418,7 +445,14 @@ export default function UsageDashboard() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon={Users} label="Ativos hoje" value={kpis ? kpis.active_today : '—'} accent="emerald" />
+        <KpiCard
+          icon={Users}
+          label="Ativos hoje"
+          value={kpis ? kpis.active_today : '—'}
+          accent="emerald"
+          onClick={podeVerIndividual ? () => setSubPagina('individual') : undefined}
+          hint={podeVerIndividual ? 'Abrir uso individual' : undefined}
+        />
         <KpiCard icon={LogIn} label="Sessões" value={kpis ? kpis.sessions : '—'} accent="blue" />
         <KpiCard icon={FileText} label="Visualizações" value={kpis ? kpis.page_views : '—'} accent="indigo" />
         <KpiCard icon={Clock} label="Tempo médio/sessão" value={kpis ? fmtDwell(kpis.avg_session_minutes * 60) : '—'} accent="amber" />
@@ -783,16 +817,54 @@ const ACCENTS: Record<string, string> = {
   indigo: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950/40',
 };
 
-function KpiCard({ icon: Icon, label, value, accent }: { icon: any; label: string; value: React.ReactNode; accent: string }) {
-  return (
-    <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex items-center gap-3">
+function KpiCard({
+  icon: Icon,
+  label,
+  value,
+  accent,
+  onClick,
+  hint,
+}: {
+  icon: any;
+  label: string;
+  value: React.ReactNode;
+  accent: string;
+  onClick?: () => void;
+  hint?: string;
+}) {
+  const content = (
+    <>
       <div className={`rounded-lg p-2.5 ${ACCENTS[accent] || ACCENTS.emerald}`}>
         <Icon className="h-5 w-5" />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">{label}</p>
         <p className="text-xl font-bold text-slate-900 dark:text-slate-100">{value}</p>
+        {hint && (
+          <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 mt-0.5 flex items-center gap-0.5">
+            <span>{hint}</span>
+            <ChevronRight className="h-3 w-3" />
+          </p>
+        )}
       </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="w-full text-left rounded-xl border border-slate-100 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 bg-white dark:bg-slate-900 p-4 shadow-sm hover:shadow transition-all flex items-center gap-3 cursor-pointer"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex items-center gap-3">
+      {content}
     </div>
   );
 }

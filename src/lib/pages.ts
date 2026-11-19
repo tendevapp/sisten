@@ -890,6 +890,18 @@ export function isUserAdriano(user: Profile): boolean {
   );
 }
 
+/**
+ * Identifica exclusivamente o usuario de Andre Muritiba Araujo (sem liberar para outros admins).
+ */
+export const ANDRE_USER_ID = 'd0b74528-134c-4fbb-afde-f2cbfbfbb148';
+export const ANDRE_EMAIL = 'andre.araujo@ten.ind.br';
+
+export function isUserAndre(user: Pick<Profile, 'id' | 'email'> | null | undefined): boolean {
+  if (!user) return false;
+  const email = (user.email || '').toLowerCase().trim();
+  return user.id === ANDRE_USER_ID || email === ANDRE_EMAIL;
+}
+
 /** Setor "RH" em `core_setores` — dono do módulo de RH. */
 export const SETOR_RH_ID = '1';
 
