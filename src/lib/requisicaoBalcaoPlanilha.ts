@@ -16,6 +16,42 @@ import { ROTULO_TIPO_MOVIMENTO, type TipoMovimentoBalcao } from './requisicaoBal
 /** Centro receptor. A operação tem um só. */
 export const BALCAO_CENTRO = 'TEN2';
 
+export interface LinhaBaixasSimulacao {
+  linha: number; codigo: string; doc: string; material: string; descricao: string;
+  quantidade: number; origem: string; destino: string; tipo: 'saida' | 'transferencia';
+}
+
+/** Para simular, entram também as linhas rejeitadas pela MB03. A importação de retorno tem outro critério. */
+export function lerBaixasSimulacao(wb: XLSX.WorkBook): LinhaBaixasSimulacao[] {
+  const nome = wb.SheetNames.find(s => chave(s) === 'baixas');
+  if (!nome) throw new Error('A aba BAIXAS não foi encontrada no arquivo.');
+  const matriz = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[nome], { header: 1, raw: true, defval: '', range: 0 });
+  const h = matriz.findIndex(r => r.some(c => chave(c) === 'observacao') && r.some(c => chave(c) === 'material'));
+  const col = (nome: string) => {
+    const i = (matriz[h] || []).findIndex(c => chave(c) === chave(nome));
+    if (i < 0) throw new Error('Falta a coluna ' + nome + ' na aba BAIXAS.');
+    return i;
+  };
+  const [mat, desc, obs, doc, qtd, orig, dest, tipo, centro] =
+    ['Material','Texto breve','Observacao','SAP','Quantidade','Deposito_Origem','Deposito_Destino','Tipo','Receptor_Centro'].map(col);
+  const linhas: LinhaBaixasSimulacao[] = [];
+  for (let i = h + 1; i < matriz.length; i++) {
+    const row = matriz[i];
+    if (!row.some(c => texto(c))) continue;
+    const codigo = texto(row[obs]).match(/\bRQB-\d{6}-\d+\b/i)?.[0].toUpperCase();
+    const movimento = chave(row[tipo]), origem = texto(row[orig]), destino = texto(row[dest]);
+    const quantidade = typeof row[qtd] === 'number' ? Number(row[qtd]) : Number(texto(row[qtd]).replace(',','.'));
+    if (!codigo || !texto(row[mat]) || !/^\d{10}$/.test(texto(row[doc])) || !origem || !Number.isFinite(quantidade) || quantidade <= 0 ||
+        !['transferencia','saida'].includes(movimento) || (movimento === 'transferencia' && !destino) || texto(row[centro]).toUpperCase() !== BALCAO_CENTRO) {
+      throw new Error('Revise RQB, documento SAP, material, quantidade, movimento, centro e depósitos na linha ' + (i + 1) + ' da aba BAIXAS.');
+    }
+    linhas.push({ linha: i + 1, codigo, doc: texto(row[doc]), material: texto(row[mat]).replace(/^0+/,''), descricao: texto(row[desc]),
+      quantidade, origem: origem.padStart(4,'0'), destino: movimento === 'transferencia' ? destino.padStart(4,'0') : '', tipo: movimento as LinhaBaixasSimulacao['tipo'] });
+  }
+  if (!linhas.length) throw new Error('A aba BAIXAS está vazia.');
+  return linhas;
+}
+
 /** Ordem das colunas — quem processa a planilha lê por posição. */
 export const BALCAO_COLUNAS = [
   'Tipo',

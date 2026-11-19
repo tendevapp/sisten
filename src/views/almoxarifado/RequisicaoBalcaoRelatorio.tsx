@@ -36,6 +36,7 @@ import { canAccessForm } from '../../lib/pages';
 import FiltroPeriodoRequisicao from '../../components/almoxarifado/FiltroPeriodoRequisicao';
 import DetalheAuditoriaModal from '../../components/almoxarifado/auditoriaRqb/DetalheAuditoriaModal';
 import DivergenciasDocumento from '../../components/almoxarifado/auditoriaRqb/DivergenciasDocumento';
+import SimulacaoBaixas from '../../components/almoxarifado/auditoriaRqb/SimulacaoBaixas';
 import LogGeralModal from '../../components/almoxarifado/auditoriaRqb/LogGeralModal';
 import { DetalheMb51, SeloStatus } from '../../components/almoxarifado/auditoriaRqb/selos';
 import {
@@ -65,12 +66,13 @@ const ROTULO_CONFERENCIA: Record<FiltroConferencia, string> = {
   sem_exportar: 'Sem exportar',
 };
 
-type Visao = 'itens' | 'agrupado' | 'documento';
+type Visao = 'itens' | 'agrupado' | 'documento' | 'simulacao';
 
 const ROTULO_VISAO: Record<Visao, string> = {
   itens: 'Por requisição',
   agrupado: 'Agrupado por item',
   documento: 'Por documento SAP',
+  simulacao: 'Simulação de baixas',
 };
 
 const PAGINA = 300;
@@ -110,7 +112,7 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
   // `?visao=documento` — a conferência da importação da planilha abre direto na lista por documento.
   const [visao, setVisao] = useState<Visao>(() => {
     const v = new URLSearchParams(window.location.hash.split('?')[1] || '').get('visao');
-    return v === 'documento' || v === 'agrupado' ? v : 'itens';
+    return v === 'documento' || v === 'agrupado' || v === 'simulacao' ? v : 'itens';
   });
   const [versao, setVersao] = useState(0);
   const [material, setMaterial] = useState<string | null>(null);
@@ -121,8 +123,11 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
   const [abrindoInventario, setAbrindoInventario] = useState(false);
   const [logAberto, setLogAberto] = useState(false);
   const podeInventario = canAccessForm(user, 'form_almoxarifado_inventario');
+  const listaDeItens = visao === 'itens' || visao === 'agrupado';
+  const simulando = visao === 'simulacao';
 
   const carregar = useCallback(async () => {
+    if (simulando) return;
     setCarregando(true);
     setErro('');
     try {
@@ -132,7 +137,7 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
     } finally {
       setCarregando(false);
     }
-  }, [periodo.base, periodo.de, periodo.ate]);
+  }, [periodo.base, periodo.de, periodo.ate, simulando]);
 
   useEffect(() => { void carregar(); }, [carregar]);
   useEffect(() => { setLimite(PAGINA); setLimiteGrupos(GRUPOS_POR_PAGINA); }, [busca, status, conferencia, material, visao, periodo]);
@@ -296,9 +301,9 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
             <History className="h-3.5 w-3.5" /> Log
           </button>
           <button type="button" onClick={() => { void carregar(); setVersao((v) => v + 1); }} className={`inline-flex items-center gap-1.5 ${botaoSecundario}`} style={estiloSecundario}>
-            <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'animate-spin' : ''}`} /> Atualizar
+            <RefreshCw className={`h-3.5 w-3.5 ${!simulando && carregando ? 'animate-spin' : ''}`} /> Atualizar
           </button>
-          {visao !== 'documento' && (
+          {listaDeItens && (
             <button
               type="button"
               onClick={exportarXlsx}
@@ -315,7 +320,7 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex min-w-0 flex-1 basis-64 flex-col gap-0.5">
           <label htmlFor={idBusca} className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--ink-muted)' }}>
-            Item, RQB, colaborador, PEP ou documento
+            {simulando ? 'Material, RQB, depósito ou documento' : 'Item, RQB, colaborador, PEP ou documento'}
           </label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
@@ -329,7 +334,7 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
             />
           </div>
         </div>
-        <div className="flex flex-col gap-0.5">
+        {!simulando && <div className="flex flex-col gap-0.5">
           <label htmlFor={idStatus} className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--ink-muted)' }}>Status</label>
           <select
             id={idStatus}
@@ -341,12 +346,12 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
             <option value="todos">Todos</option>
             {(Object.keys(ROTULO_STATUS_RQB) as StatusRqb[]).map((s) => <option key={s} value={s}>{ROTULO_STATUS_RQB[s]}</option>)}
           </select>
-        </div>
+        </div>}
         <FiltroPeriodoRequisicao valor={periodo} onChange={setPeriodo} />
       </div>
 
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Conferência com a MB51">
-        {visao !== 'documento' && (Object.keys(ROTULO_CONFERENCIA) as FiltroConferencia[]).map((f) => {
+        {listaDeItens && (Object.keys(ROTULO_CONFERENCIA) as FiltroConferencia[]).map((f) => {
           const ativo = conferencia === f;
           const alerta = (f === 'divergentes' || f === 'reexportadas') && contagemConferencia[f] > 0;
           const cor = f === 'reexportadas' ? 'var(--status-serious)' : 'var(--status-critical)';
@@ -365,7 +370,7 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
             </button>
           );
         })}
-        <div className="ml-auto inline-flex rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)' }}>
+        <div className="ml-auto inline-flex flex-wrap rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)' }}>
           {(Object.keys(ROTULO_VISAO) as Visao[]).map((v) => (
             <button
               key={v}
@@ -381,7 +386,7 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
         </div>
       </div>
 
-      {podeInventario && visao !== 'documento' && (
+      {podeInventario && listaDeItens && (
         <div
           className="sticky top-2 z-10 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2"
           style={{ borderColor: selecao.size > 0 ? 'var(--brand)' : 'var(--hairline)', background: 'var(--surface-raised)' }}
@@ -421,11 +426,11 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
         </div>
       )}
 
-      {erro && (
+      {!simulando && erro && (
         <div className="rounded-xl border px-3 py-2 text-xs" style={{ borderColor: 'var(--status-critical)', color: 'var(--status-critical)' }}>{erro}</div>
       )}
 
-      {material && (
+      {!simulando && material && (
         <PainelMaterial
           material={material}
           linhas={semConferencia}
@@ -433,7 +438,7 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
         />
       )}
 
-      {visao === 'documento' ? (
+      {simulando ? <SimulacaoBaixas periodo={periodo} busca={busca} versao={versao} /> : visao === 'documento' ? (
         <DivergenciasDocumento
           periodo={periodo}
           busca={busca}

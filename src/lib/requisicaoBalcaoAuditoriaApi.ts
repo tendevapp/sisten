@@ -13,6 +13,9 @@ import type {
 } from './requisicaoBalcaoAuditoria';
 import { criarInventario, definirReservaInventario } from './inventarioCiclicoApi';
 import { dataHojeLocal } from './dataLocal';
+import { prepararCasos, type MovimentoSimulacao } from './simulacaoBaixas';
+import { BALCAO_CENTRO } from './requisicaoBalcaoPlanilha';
+import type { EstoqueItem } from '../types';
 
 export interface ParametrosAuditoria {
   material?: string | null;
@@ -89,6 +92,31 @@ export interface MovimentoMb51 {
 
 /** Movimentos tipos de saída (201/221/241 e estornos) e transferência (311/312) — os que a requisição gera. */
 export const TIPOS_MB51_BALCAO = ['201', '202', '221', '222', '241', '242', '311', '312'];
+
+export async function carregarSimulacaoBaixas() {
+  const [pares, itens, estoque, importacao] = await Promise.all([
+    listarDivergenciasDoc({ base: 'exportacao' }),
+    auditarRequisicoesMb51({ base: 'exportacao' }),
+    buscarTudo<EstoqueItem>((de, ate) => supabase.from('sap_zl0024_stk')
+      .select('id, material, deposito, quantidade, umb').eq('centro', BALCAO_CENTRO).order('id').range(de, ate)),
+    supabase.from('ops_importacoes').select('created_at').eq('type', 'ZL0024').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  if (importacao.error) throw importacao.error;
+  const docs = [...new Set(pares.filter(p => ['fora_do_doc', 'parcial'].includes(p.situacao)).map(p => p.doc))];
+  const movimentos = await movimentosParaSimular(docs);
+  return { casos: prepararCasos(pares, itens, movimentos), estoque, zlEm: importacao.data?.created_at,
+    itens, pares, movimentos, mbAte: itens[0]?.mb51_ate };
+}
+
+export async function movimentosParaSimular(docs: string[]): Promise<MovimentoSimulacao[]> {
+  const movimentos: MovimentoSimulacao[] = [];
+  for (let i = 0; i < docs.length; i += 50) {
+    movimentos.push(...await buscarTudo<MovimentoSimulacao>((de, ate) => supabase.from('sap_mb51_mov')
+      .select('doc_material,material,deposito,tipo_movimento,qtd_um_registro,um_registro')
+      .in('doc_material', docs.slice(i, i + 50)).order('id').range(de, ate)));
+  }
+  return movimentos;
+}
 
 /** Lançamentos da MB51 de um material, do mais recente para o mais antigo. */
 export async function movimentosMb51DoMaterial(material: string, desde?: string | null): Promise<MovimentoMb51[]> {
