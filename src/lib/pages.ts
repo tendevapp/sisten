@@ -953,13 +953,15 @@ export function canAccessPage(user: Profile, pageId: string): boolean {
   const def = BY_ID[pageId];
   if (!def) return false;
 
-  // Módulo RH: administradores e o pessoal do setor de RH. O admin pode ainda
-  // liberar ou bloquear página a página pelo painel de Módulos de Acesso.
+  // Módulo RH: administradores e o pessoal do setor de RH por padrão. O admin
+  // libera ou bloqueia página a página pela Gestão de Acessos — também para
+  // quem é de outro setor: liberar o hub `rh` abre o módulo inteiro, salvo
+  // bloqueio da página (espelha public.pode_gerir_rh no banco).
   if (def.group === 'RH') {
-    if (!isUserSetorRh(user)) return false;
     const override = user.page_access?.[pageId];
     if (override !== undefined) return override;
-    return true;
+    if (isUserSetorRh(user)) return true;
+    return user.page_access?.rh === true;
   }
 
   // Módulo Facilities: restrito estritamente a Administradores e ao Adriano

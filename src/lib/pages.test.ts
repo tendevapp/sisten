@@ -300,10 +300,16 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(canAccessPage(user, 'rh_percentual_he')).toBe(false);
     });
 
-    it('não libera o módulo por override quando o usuário não é do RH', () => {
-      // O override refina o acesso de quem já é do setor; não é porta de entrada.
-      const forasteiro = mockUser({ roles: ['comprador'], sector_id: '5', page_access: { rh: true } });
-      expect(canAccessPage(forasteiro, 'rh')).toBe(false);
+    it('libera o módulo por liberação do admin para quem não é do RH', () => {
+      // Mesmo critério do banco (public.pode_gerir_rh): a flag `rh` abre o
+      // módulo; a flag de uma página abre só ela; o bloqueio da página vence.
+      const diretor = mockUser({ roles: ['gestor'], sector_id: '16', page_access: { rh: true, rh_percentual_he: false } });
+      expect(canAccessPage(diretor, 'rh')).toBe(true);
+      expect(canAccessPage(diretor, 'rh_colaboradores')).toBe(true);
+      expect(canAccessPage(diretor, 'rh_percentual_he')).toBe(false);
+      const soUma = mockUser({ roles: ['comprador'], sector_id: '5', page_access: { rh_turnos_cad: true } });
+      expect(canAccessPage(soUma, 'rh_turnos_cad')).toBe(true);
+      expect(canAccessPage(soUma, 'rh_colaboradores')).toBe(false);
     });
   });
 

@@ -6,9 +6,9 @@ import { dentroDoPeriodo, filtrarDivergenciasDoc, ROTULO_SITUACAO_DOC, type Filt
 import { acaoCaso, calcularPosicoes, detalheCaso, simularArquivoBaixas, type PosicaoSimulada } from '../../../lib/simulacaoBaixas';
 import { formatDateBR, formatDateTimeBR, formatQtd } from '../../../lib/format';
 import { carregarCodigosEpiBook } from '../../../lib/requisicaoBalcaoApi';
-import { indexarPosicoes } from '../../../lib/inventarioRoteiro';
-import { posicoesParaContar, type ApontamentoSimulacao } from '../../../lib/apontamentoSimulacao';
-import { listarApontamentosSimulacao } from '../../../lib/apontamentoSimulacaoApi';
+import { chavePosicao, indexarPosicoes } from '../../../lib/inventarioRoteiro';
+import { posicoesParaContar, ultimoApontamentoPorChave, type ApontamentoSimulacao } from '../../../lib/apontamentoSimulacao';
+import { listarApontamentosSimulacao, salvarApontamentoSimulacao } from '../../../lib/apontamentoSimulacaoApi';
 import ApontamentoSimulacaoModal from './ApontamentoSimulacaoModal';
 
 type Dados = Awaited<ReturnType<typeof carregarSimulacaoBaixas>>;
@@ -27,7 +27,8 @@ export default function SimulacaoBaixas({ periodo, busca, versao, usuarioNome }:
   const [erroArquivo, setErroArquivo] = useState('');
   const [lendoArquivo, setLendoArquivo] = useState(false);
   // Apontamento de contagem (temporário, não é inventário): sem os itens sem
-  // saldo na ZL0024 e sem EPI; o contado vem gravado por corte da ZL0024.
+  // saldo na ZL0024, sem EPI e sem 0105/0006. Vale a contagem mais recente de
+  // cada posição, de qualquer corte: reimportar a ZL0024 não apaga o contado.
   const [codigosEpi, setCodigosEpi] = useState<Set<string>>(new Set());
   const [apontamentos, setApontamentos] = useState<Map<string, ApontamentoSimulacao>>(new Map());
   const [apontando, setApontando] = useState(false);
@@ -36,17 +37,32 @@ export default function SimulacaoBaixas({ periodo, busca, versao, usuarioNome }:
     carregarCodigosEpiBook().then(c => { if (ativo) setCodigosEpi(c); });
     return () => { ativo = false; };
   }, []);
+  const [erroGravar, setErroGravar] = useState('');
   useEffect(() => {
-    if (!dados?.zlEm) return;
+    if (!dados) return;
     let ativo = true;
-    listarApontamentosSimulacao(dados.zlEm).then(lista => {
+    listarApontamentosSimulacao().then(lista => {
       if (!ativo) return;
-      const mapa = new Map(lista.map(a => [[a.material, a.deposito, a.unidade].join('|'), a]));
+      const mapa = ultimoApontamentoPorChave(lista);
       setApontamentos(mapa);
       setContagens(v => ({ ...Object.fromEntries([...mapa].map(([k, a]) => [k, String(a.contado)])), ...v }));
     }).catch(e => console.warn('Apontamentos da simulação não lidos:', e));
     return () => { ativo = false; };
-  }, [dados?.zlEm]);
+  }, [dados]);
+  /** Grava a contagem digitada direto na tabela (ao sair do campo). */
+  async function gravarContagem(p: PosicaoSimulada, texto: string) {
+    if (!dados?.zlEm || texto.trim() === '') return;
+    const contado = Number(texto);
+    const k = chave(p);
+    if (!Number.isFinite(contado) || contado < 0 || apontamentos.get(k)?.contado === contado) return;
+    setErroGravar('');
+    try {
+      const salvo = await salvarApontamentoSimulacao({ zl_em: dados.zlEm, material: p.material, deposito: p.deposito, unidade: p.unidade,
+        descricao: p.descricao || null, posicao: posicoesEstoque.get(chavePosicao(p.material, p.deposito))?.[0] ?? null, esperado: p.esperado,
+        contado, observacao: apontamentos.get(k)?.observacao ?? null, contado_por_nome: usuarioNome });
+      setApontamentos(m => new Map(m).set(k, salvo));
+    } catch (e) { setErroGravar(`Contagem de ${p.material} não gravada: ${e instanceof Error ? e.message : 'falha de rede'}`); }
+  }
   useEffect(() => {
     let ativo = true;
     setDados(null); setErro(''); setContagens({});
@@ -152,6 +168,7 @@ export default function SimulacaoBaixas({ periodo, busca, versao, usuarioNome }:
     </div>
     <p><strong>{casos.length}</strong> pares de documento e material · <strong>{posicoes.length}</strong> posições para contar · <strong>{revisar}</strong> pares exigem revisão antes de entrar nas contas.
       {(filtroContagem.semSaldo + filtroContagem.epi + filtroContagem.deposito) > 0 && <> Fora da lista: {filtroContagem.semSaldo} sem saldo na ZL0024, {filtroContagem.epi} EPI e {filtroContagem.deposito} nos depósitos 0105 e 0006.</>}</p>
+    {erroGravar && <p role="alert" style={{ color: 'var(--status-critical)' }}>{erroGravar}</p>}
     {posicoes.length > 0 && <div className="overflow-auto max-h-[32rem]"><table className="w-full text-left [&_td]:p-2 [&_th]:p-2">
       <thead className="sticky top-0" style={{background:'var(--surface-raised)'}}><tr>{['Depósito','Material','Descrição','UM','Saldo SAP','Saídas','Entradas','Físico esperado','Contado','Conferência'].map(t => <th key={t}>{t}</th>)}</tr></thead>
       <tbody>{posicoes.map(p => {
@@ -161,7 +178,8 @@ export default function SimulacaoBaixas({ periodo, busca, versao, usuarioNome }:
         return <tr key={key} className="border-t"><td>{p.deposito}</td><td>{p.material}</td><td>{p.descricao}</td><td>{p.unidade}</td>
           <td>{formatQtd(p.saldo)}</td><td>{formatQtd(p.saidas)}</td><td>{formatQtd(p.entradas)}</td><td><strong>{formatQtd(p.esperado)}</strong></td>
           <td><input className={campo + ' w-24'} aria-label={'Contado ' + p.material + ' depósito ' + p.deposito} type="number" step="any" min="0" value={contado}
-            onChange={e => { const valor = e.target.value; if (e.target.validity.valid) setContagens(v => ({ ...v, [key]: valor })); }} /></td><td>{resultado}</td></tr>;
+            onChange={e => { const valor = e.target.value; if (e.target.validity.valid) setContagens(v => ({ ...v, [key]: valor })); }}
+            onBlur={e => gravarContagem(p, e.target.value)} />{apontamentos.has(key) && <span className="ml-1 text-[10px] text-slate-500">gravado</span>}</td><td>{resultado}</td></tr>;
       })}</tbody></table></div>}
     <details><summary className="cursor-pointer font-bold">Documentos, requisições e providências ({casos.length})</summary>
       <div className="max-h-96 overflow-auto"><table className="w-full text-left [&_td]:p-2 [&_th]:p-2"><thead><tr>{['Documento / material','Situação','RQBs','Pedido','MB51','Residual','Providência'].map(t => <th key={t}>{t}</th>)}</tr></thead>

@@ -3,19 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Gravação do apontamento de contagem da Simulação de baixas (TEMPORÁRIO,
- * `alm_simulacao_apontamentos`). Uma rodada por corte da ZL0024; recontar o
- * mesmo material × depósito × UM sobrescreve.
+ * `alm_simulacao_apontamentos`). Grava por corte da ZL0024 (recontar no
+ * mesmo corte sobrescreve), mas a tela lê a contagem mais recente de cada
+ * material × depósito × UM: reimportar a ZL0024 não apaga o que já foi contado.
  */
 
 import { supabase } from '../db/supabaseClient';
+import { buscarTudo } from './buscarTudo';
 import type { ApontamentoSimulacao } from './apontamentoSimulacao';
 
 const tabela = () => (supabase.from as any)('alm_simulacao_apontamentos');
 
-export async function listarApontamentosSimulacao(zlEm: string): Promise<ApontamentoSimulacao[]> {
-  const { data, error } = await tabela().select('*').eq('zl_em', zlEm).order('contado_em');
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as ApontamentoSimulacao[]).map(a => ({
+/** Todas as contagens, de todos os cortes, da mais antiga para a mais recente. */
+export async function listarApontamentosSimulacao(): Promise<ApontamentoSimulacao[]> {
+  const data = await buscarTudo<ApontamentoSimulacao>((de, ate) =>
+    tabela().select('*').order('contado_em').order('id').range(de, ate));
+  return data.map(a => ({
     ...a,
     contado: Number(a.contado),
     esperado: a.esperado == null ? null : Number(a.esperado),

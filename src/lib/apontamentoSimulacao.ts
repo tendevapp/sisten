@@ -61,6 +61,20 @@ export function posicoesParaContar(posicoes: PosicaoSimulada[], codigosEpi: Read
   return out;
 }
 
+/**
+ * A contagem mais recente de cada material × depósito × UM, de qualquer corte
+ * da ZL0024 — reimportar a ZL0024 não pode sumir com o que já foi contado.
+ */
+export function ultimoApontamentoPorChave(lista: ApontamentoSimulacao[]): Map<string, ApontamentoSimulacao> {
+  const mapa = new Map<string, ApontamentoSimulacao>();
+  for (const a of lista) {
+    const k = chaveApontamento(a);
+    const atual = mapa.get(k);
+    if (!atual || String(a.contado_em ?? '') >= String(atual.contado_em ?? '')) mapa.set(k, a);
+  }
+  return mapa;
+}
+
 export type SituacaoApontamento = 'contar' | 'coincide' | 'diferenca';
 
 export function situacaoApontamento(esperado: number | null, contado: number | null | undefined): SituacaoApontamento {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chaveApontamento, diferencaApontamento, posicoesParaContar, situacaoApontamento } from './apontamentoSimulacao';
+import { chaveApontamento, diferencaApontamento, posicoesParaContar, situacaoApontamento, ultimoApontamentoPorChave, type ApontamentoSimulacao } from './apontamentoSimulacao';
 import type { PosicaoSimulada } from './simulacaoBaixas';
 
 const pos = (o: Partial<PosicaoSimulada>): PosicaoSimulada => ({
@@ -27,5 +27,13 @@ describe('apontamento da simulação de baixas', () => {
     expect(diferencaApontamento(3360, 3359.5)).toBe(-0.5);
     expect(diferencaApontamento(null, 2)).toBeNull();
     expect(chaveApontamento(pos({}))).toBe('1047385|0001|KG');
+  });
+
+  it('reimportar a ZL0024 não perde a contagem: vale a mais recente de qualquer corte', () => {
+    const a = (zl: string, contado: number, em: string): ApontamentoSimulacao => ({ zl_em: zl, material: '1047385', deposito: '0001', unidade: 'KG',
+      descricao: null, posicao: null, esperado: 10, contado, observacao: null, contado_por_nome: null, contado_em: em });
+    const m = ultimoApontamentoPorChave([a('2026-11-19T12:51', 8, '2026-11-19T13:00'), a('2026-11-19T14:43', 9, '2026-11-19T15:00'), a('2026-11-18T10:00', 7, '2026-11-18T11:00')]);
+    expect(m.size).toBe(1);
+    expect(m.get('1047385|0001|KG')?.contado).toBe(9);
   });
 });
