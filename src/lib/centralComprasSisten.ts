@@ -148,3 +148,16 @@ export function formatarItemCotacao(params: FormatarItemCotacaoParams): string {
     `   Texto Técnico: ${techText}`
   ].join('\n');
 }
+
+/**
+ * Formata o valor da coluna "Solicitacao SISTEN" na exportacao de planilha da
+ * Central de Compras (vinculo ativo, solicitacao excluida ou travessao).
+ */
+export function rotuloSolicitacaoSistenExport(
+  vinculo: VinculoSistenRm | null | undefined,
+  excluida?: { request_number: string } | null,
+): string {
+  if (vinculo?.requestNumber) return `SISTEN #${vinculo.requestNumber}`;
+  if (excluida?.request_number) return `SISTEN #${excluida.request_number} (Excluída)`;
+  return '—';
+}

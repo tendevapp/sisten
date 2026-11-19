@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buscarVinculoSistenRm, formatarItemCotacao, indexarVinculosSistenPorRm, textoTecnicoParaCotacao,
-  type VinculoSistenRm,
+  buscarVinculoSistenRm, formatarItemCotacao, indexarVinculosSistenPorRm, rotuloSolicitacaoSistenExport,
+  textoTecnicoParaCotacao, type VinculoSistenRm,
 } from './centralComprasSisten';
 import type { Request, RequestItem } from '../types';
 
@@ -242,5 +242,19 @@ describe('formatarItemCotacao', () => {
     });
 
     expect(resultado).toContain('   Texto Técnico: —');
+  });
+});
+
+describe('rotuloSolicitacaoSistenExport', () => {
+  it('formata vínculo ativo, excluído e ausência de vínculo', () => {
+    const vinculo: VinculoSistenRm = {
+      requestId: 'r1',
+      requestNumber: '2001004',
+      solicitanteName: 'Jamille Souza',
+      item: item(),
+    };
+    expect(rotuloSolicitacaoSistenExport(vinculo, null)).toBe('SISTEN #2001004');
+    expect(rotuloSolicitacaoSistenExport(null, { request_number: '2001099' })).toBe('SISTEN #2001099 (Excluída)');
+    expect(rotuloSolicitacaoSistenExport(null, null)).toBe('—');
   });
 });

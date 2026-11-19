@@ -39,8 +39,8 @@ import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../lib/b
 import { RASCUNHO_COTACAO_KEY } from '../lib/cotacoes';
 import SearchKeywordsChips from '../components/ui/SearchKeywordsChips';
 import {
-  buscarVinculoSistenRm, formatarItemCotacao, indexarVinculosSistenPorRm, textoTecnicoParaCotacao,
-  type VinculoSistenRm,
+  buscarVinculoSistenRm, formatarItemCotacao, indexarVinculosSistenPorRm, rotuloSolicitacaoSistenExport,
+  textoTecnicoParaCotacao, type VinculoSistenRm,
 } from '../lib/centralComprasSisten';
 import { listarMarcasExportacaoRm } from '../lib/almoxarifadoRmApi';
 import {
@@ -2519,9 +2519,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     filteredGroups.forEach(g => {
       g.items.forEach(({ record: r, encontrado, fornecedores }) => {
         const cotacoesItem = obterCotacoesDoItem(r);
+        const vinculoSisten = buscarVinculoSistenRm(vinculosSistenPorRm, r.requisicao_de_compra, r.material_code);
+        const excluidaSisten = !vinculoSisten ? buscarExcluidaPorRm(excluidasPorRm, r.requisicao_de_compra) : null;
         const base = {
           'RM / Requisição': r.requisicao_de_compra || '—',
           'Item': r.item_reqc || '—',
+          'Solicitação SISTEN': rotuloSolicitacaoSistenExport(vinculoSisten, excluidaSisten),
+          'Requisitante': r.requisitante_name || '—',
           'Cotação': cotacoesItem.length > 0 ? cotacoesItem.map(c => c.numero).join(', ') : '—',
           'Código do Material': r.material_code || '—',
           'Descrição': r.texto_breve || '—',
