@@ -12,7 +12,7 @@ import {
   FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles,
   Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database, BookOpen, Cpu, Users2, Boxes, Receipt,
   Building2, Edit2, Search, UserCheck, UserX, MoreHorizontal, Filter, ShieldCheck, ShoppingBag, Award, Briefcase, KeyRound, Lock,
-  SlidersHorizontal, Eye, Mail, Settings2, UserPlus, FileCheck, Trash2, Loader2, FolderTree,
+  SlidersHorizontal, Eye, Mail, Settings2, UserPlus, FileCheck, Trash2, Loader2, FolderTree, Globe,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -39,6 +39,7 @@ import {
 } from '../lib/rhApi';
 import { mapearPlanilhaPessoas } from '../lib/rhPessoasImport';
 import UsersByModuleView from '../components/admin/UsersByModuleView';
+import MonitoramentoIpView from '../components/admin/MonitoramentoIpView';
 import { CATEGORIAS_TI } from '../lib/chamadoTi';
 import { avaliarCargaMe5a, mensagemCargaParcialMe5a } from '../lib/cargaMe5a';
 import { referenciaCargaMe5a } from '../lib/cargaMe5aApi';
@@ -93,8 +94,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [governanceModalUser, setGovernanceModalUser] = useState<Profile | null>(null);
   // Menu de ações rápidas aberto
   const [actionDropdownUserId, setActionDropdownUserId] = useState<string | null>(null);
-  // Modo de visualização da aba Usuários: por Colaborador ou por Módulo
-  const [userViewMode, setUserViewMode] = useState<'colaborador' | 'modulo'>('colaborador');
+  // Modo de visualização da aba Usuários: por Colaborador, por Módulo ou Monitoramento de IPs
+  const [userViewMode, setUserViewMode] = useState<'colaborador' | 'modulo' | 'monitoramento_ip'>('colaborador');
 
   // Sectors State
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -1388,9 +1389,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       {/* Tab 1: Users approval list and settings */}
       {activeTab === 'usuarios' && (
         <div className="space-y-6">
-          {/* Seletor de Visão: Colaborador vs Módulo */}
+          {/* Seletor de Visão: Colaborador vs Módulo vs Monitoramento de IPs */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setUserViewMode('colaborador')}
@@ -1416,16 +1417,35 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <Layers className="w-4 h-4" />
                 <span>Visão por Módulo & Permissões</span>
               </button>
+
+              {user.roles.includes('admin') && (
+                <button
+                  type="button"
+                  onClick={() => setUserViewMode('monitoramento_ip')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    userViewMode === 'monitoramento_ip'
+                      ? 'bg-amber-700 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                  }`}
+                >
+                  <Globe className="w-4 h-4" />
+                  <span>Monitoramento de IPs</span>
+                </button>
+              )}
             </div>
 
             <p className="text-xs text-slate-400 font-medium px-2">
-              {userViewMode === 'colaborador' 
+              {userViewMode === 'colaborador'
                 ? 'Lista de colaboradores cadastrados, setores, cargos e papéis'
-                : 'Auditoria e controle de acesso tela a tela do SISTEN'}
+                : userViewMode === 'modulo'
+                  ? 'Auditoria e controle de acesso tela a tela do SISTEN'
+                  : 'Auditoria de IPs por usuário, acessos externos/desconhecidos e redes confiáveis'}
             </p>
           </div>
 
-          {userViewMode === 'modulo' ? (
+          {userViewMode === 'monitoramento_ip' ? (
+            <MonitoramentoIpView currentUser={user} sectors={sectors} />
+          ) : userViewMode === 'modulo' ? (
             <UsersByModuleView
               profiles={profiles}
               sectors={sectors}

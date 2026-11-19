@@ -3,6 +3,7 @@ import { localDb } from './db/localDb';
 import { Profile, Role } from './types';
 import { supabase } from './db/supabaseClient';
 import { trackLogin, trackPageView } from './lib/usageTracker';
+import { registrarAcessoIp } from './lib/monitoramentoIpApi';
 import { recordRecentPage } from './lib/homePrefs';
 import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, pageIdForPath, tituloAba } from './lib/pages';
 import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia, usuarioSessaoPermanente } from './lib/sessaoDiaria';
@@ -392,6 +393,7 @@ export default function App() {
               perfilBuscadoEm = Date.now();
               marcarDiaSessao();
               trackLogin(mapped);
+              void registrarAcessoIp('sessao');
               // Sincroniza logo de início se estiver com sessão ativa
               localDb.syncFromSupabase().catch(err => {
                 console.error("Falha ao sincronizar cache local com o Supabase:", err);
@@ -480,6 +482,7 @@ export default function App() {
                 if (trocouUsuario) {
                   marcarDiaSessao();
                   trackLogin(mapped);
+                  void registrarAcessoIp('login');
                   // Sincroniza ao detectar login com sucesso
                   localDb.syncFromSupabase().catch(err => {
                     console.error("Falha ao sincronizar cache local com o Supabase:", err);
@@ -601,22 +604,29 @@ export default function App() {
       });
     }, 5 * 60 * 1000);
 
-    // Verificação instantânea ao reativar a aba (focus / visibilitychange)
+    // Verificação instantânea ao reativar a aba (focus / visibilitychange / online)
     const handleFocusOrVisible = () => {
       if (document.visibilityState === 'visible') {
+        void registrarAcessoIp('sessao');
         localDb.syncFromSupabase().catch(err => {
           console.warn("Falha na sincronização ao focar a página:", err);
         });
       }
     };
 
+    const handleOnline = () => {
+      void registrarAcessoIp('sessao', { forcar: true });
+    };
+
     window.addEventListener('focus', handleFocusOrVisible);
     document.addEventListener('visibilitychange', handleFocusOrVisible);
+    window.addEventListener('online', handleOnline);
 
     return () => {
       clearInterval(intervalId);
       window.removeEventListener('focus', handleFocusOrVisible);
       document.removeEventListener('visibilitychange', handleFocusOrVisible);
+      window.removeEventListener('online', handleOnline);
     };
   }, [user?.id]);
 
@@ -711,6 +721,7 @@ export default function App() {
   const handleLoginSuccess = (authenticatedUser: Profile) => {
     setUser(authenticatedUser);
     marcarDiaSessao();
+    void registrarAcessoIp('login');
     if (usuarioSessaoPermanente(authenticatedUser)) {
       handleNavigate('/financeiro/faturamento-gwjaco');
     } else if (haItemQrPendente()) {
