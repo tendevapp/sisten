@@ -98,7 +98,7 @@ export async function carregarSimulacaoBaixas() {
     listarDivergenciasDoc({ base: 'exportacao' }),
     auditarRequisicoesMb51({ base: 'exportacao' }),
     buscarTudo<EstoqueItem>((de, ate) => supabase.from('sap_zl0024_stk')
-      .select('id, material, deposito, quantidade, umb').eq('centro', BALCAO_CENTRO).order('id').range(de, ate)),
+      .select('id, material, deposito, quantidade, umb, posicao_estoque').eq('centro', BALCAO_CENTRO).order('id').range(de, ate)),
     supabase.from('ops_importacoes').select('created_at').eq('type', 'ZL0024').order('created_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
   if (importacao.error) throw importacao.error;

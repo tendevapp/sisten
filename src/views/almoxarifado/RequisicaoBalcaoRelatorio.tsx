@@ -438,7 +438,7 @@ export default function RequisicaoBalcaoRelatorio({ user, onNavigate }: Props) {
         />
       )}
 
-      {simulando ? <SimulacaoBaixas periodo={periodo} busca={busca} versao={versao} /> : visao === 'documento' ? (
+      {simulando ? <SimulacaoBaixas periodo={periodo} busca={busca} versao={versao} usuarioNome={user.name} /> : visao === 'documento' ? (
         <DivergenciasDocumento
           periodo={periodo}
           busca={busca}

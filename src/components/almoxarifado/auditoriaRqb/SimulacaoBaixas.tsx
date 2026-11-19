@@ -5,13 +5,18 @@ import { lerBaixasSimulacao, type LinhaBaixasSimulacao } from '../../../lib/requ
 import { dentroDoPeriodo, filtrarDivergenciasDoc, ROTULO_SITUACAO_DOC, type FiltroPeriodo } from '../../../lib/requisicaoBalcaoAuditoria';
 import { acaoCaso, calcularPosicoes, detalheCaso, simularArquivoBaixas, type PosicaoSimulada } from '../../../lib/simulacaoBaixas';
 import { formatDateBR, formatDateTimeBR, formatQtd } from '../../../lib/format';
+import { carregarCodigosEpiBook } from '../../../lib/requisicaoBalcaoApi';
+import { indexarPosicoes } from '../../../lib/inventarioRoteiro';
+import { posicoesParaContar, type ApontamentoSimulacao } from '../../../lib/apontamentoSimulacao';
+import { listarApontamentosSimulacao } from '../../../lib/apontamentoSimulacaoApi';
+import ApontamentoSimulacaoModal from './ApontamentoSimulacaoModal';
 
 type Dados = Awaited<ReturnType<typeof carregarSimulacaoBaixas>>;
 const campo = 'rounded-lg border px-2 py-1.5 text-xs';
 const chave = (p: PosicaoSimulada) => [p.material, p.deposito, p.unidade].join('|');
 const orientacao = 'Conte no mesmo corte da ZL0024. Se o físico coincidir, confirme a entrega, o destino e eventuais documentos avulsos antes de lançar o residual. Em caso de diferença ou físico esperado negativo, reconcilie os movimentos e reconte.';
 
-export default function SimulacaoBaixas({ periodo, busca, versao }: { periodo: FiltroPeriodo; busca: string; versao: number }) {
+export default function SimulacaoBaixas({ periodo, busca, versao, usuarioNome }: { periodo: FiltroPeriodo; busca: string; versao: number; usuarioNome: string }) {
   const [dados, setDados] = useState<Dados | null>(null);
   const [erro, setErro] = useState('');
   const [tipo, setTipo] = useState('todas');
@@ -21,6 +26,27 @@ export default function SimulacaoBaixas({ periodo, busca, versao }: { periodo: F
   const [analise, setAnalise] = useState<ReturnType<typeof simularArquivoBaixas> | null>(null);
   const [erroArquivo, setErroArquivo] = useState('');
   const [lendoArquivo, setLendoArquivo] = useState(false);
+  // Apontamento de contagem (temporário, não é inventário): sem os itens sem
+  // saldo na ZL0024 e sem EPI; o contado vem gravado por corte da ZL0024.
+  const [codigosEpi, setCodigosEpi] = useState<Set<string>>(new Set());
+  const [apontamentos, setApontamentos] = useState<Map<string, ApontamentoSimulacao>>(new Map());
+  const [apontando, setApontando] = useState(false);
+  useEffect(() => {
+    let ativo = true;
+    carregarCodigosEpiBook().then(c => { if (ativo) setCodigosEpi(c); });
+    return () => { ativo = false; };
+  }, []);
+  useEffect(() => {
+    if (!dados?.zlEm) return;
+    let ativo = true;
+    listarApontamentosSimulacao(dados.zlEm).then(lista => {
+      if (!ativo) return;
+      const mapa = new Map(lista.map(a => [[a.material, a.deposito, a.unidade].join('|'), a]));
+      setApontamentos(mapa);
+      setContagens(v => ({ ...Object.fromEntries([...mapa].map(([k, a]) => [k, String(a.contado)])), ...v }));
+    }).catch(e => console.warn('Apontamentos da simulação não lidos:', e));
+    return () => { ativo = false; };
+  }, [dados?.zlEm]);
   useEffect(() => {
     let ativo = true;
     setDados(null); setErro(''); setContagens({});
@@ -46,7 +72,9 @@ export default function SimulacaoBaixas({ periodo, busca, versao }: { periodo: F
     const pares = new Set(filtrarDivergenciasDoc(noPeriodo.map(c => c.par), { busca, situacao: 'todas' }));
     return noPeriodo.filter(c => pares.has(c.par) && (tipo === 'todas' || c.par.situacao === tipo));
   }, [historico, periodo, busca, tipo]);
-  const posicoes = useMemo(() => calcularPosicoes(casos, dados?.estoque || []), [casos, dados]);
+  const filtroContagem = useMemo(() => posicoesParaContar(calcularPosicoes(casos, dados?.estoque || []), codigosEpi), [casos, dados, codigosEpi]);
+  const posicoes = filtroContagem.contar;
+  const posicoesEstoque = useMemo(() => indexarPosicoes(dados?.estoque || []), [dados]);
   if (erro) return <p role="alert">{erro}</p>;
   if (!dados) return <p role="status">Carregando divergências, movimentos e posição de estoque…</p>;
   const revisar = casos.filter(c => c.revisar).length;
@@ -54,7 +82,7 @@ export default function SimulacaoBaixas({ periodo, busca, versao }: { periodo: F
     if (!dados) return;
     const todos = escopo === 'historico';
     const lista = todos ? historico || [] : casos;
-    const pos = todos ? calcularPosicoes(lista, dados.estoque) : posicoes;
+    const pos = todos ? posicoesParaContar(calcularPosicoes(lista, dados.estoque), codigosEpi).contar : posicoes;
     const wb = XLSX.utils.book_new();
     const linhas: (string | number | null)[][] = [['Material', 'Descrição', 'Depósito', 'UM', 'Saldo ZL0024', 'Saídas', 'Entradas', 'Físico esperado', 'Contado', 'Contado − esperado', 'Conferência']];
     for (const p of pos) {
@@ -117,8 +145,13 @@ export default function SimulacaoBaixas({ periodo, busca, versao }: { periodo: F
         <option value="recorte">Período e cenário selecionados</option><option value="historico">Fonte completa, ambos os cenários</option>
       </select></label>
       <button type="button" disabled={lendoArquivo || !(escopo === 'historico' ? historico?.length : casos.length)} onClick={exportar} className={campo}>Baixar Excel</button>
+      <button type="button" disabled={!posicoes.length || !dados.zlEm} onClick={() => setApontando(true)}
+        className="rounded-lg px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50" style={{ background: 'var(--brand)' }}>
+        Apontar contagem ({posicoes.length - posicoes.filter(p => apontamentos.has(chave(p))).length} a contar)
+      </button>
     </div>
-    <p><strong>{casos.length}</strong> pares de documento e material · <strong>{posicoes.length}</strong> posições para contar · <strong>{revisar}</strong> pares exigem revisão antes de entrar nas contas.</p>
+    <p><strong>{casos.length}</strong> pares de documento e material · <strong>{posicoes.length}</strong> posições para contar · <strong>{revisar}</strong> pares exigem revisão antes de entrar nas contas.
+      {(filtroContagem.semSaldo + filtroContagem.epi + filtroContagem.deposito) > 0 && <> Fora da lista: {filtroContagem.semSaldo} sem saldo na ZL0024, {filtroContagem.epi} EPI e {filtroContagem.deposito} nos depósitos 0105 e 0006.</>}</p>
     {posicoes.length > 0 && <div className="overflow-auto max-h-[32rem]"><table className="w-full text-left [&_td]:p-2 [&_th]:p-2">
       <thead className="sticky top-0" style={{background:'var(--surface-raised)'}}><tr>{['Depósito','Material','Descrição','UM','Saldo SAP','Saídas','Entradas','Físico esperado','Contado','Conferência'].map(t => <th key={t}>{t}</th>)}</tr></thead>
       <tbody>{posicoes.map(p => {
@@ -137,5 +170,13 @@ export default function SimulacaoBaixas({ periodo, busca, versao }: { periodo: F
           <td>{formatQtd(c.par.qtd_rqbs)}</td><td>{formatQtd(c.par.qtd_doc)}</td><td>{formatQtd(c.par.falta)} {c.par.unidade}</td><td>{acaoCaso(c)} {c.par.avulsos}</td></tr>)}</tbody>
       </table></div>
     </details>
+    {apontando && dados.zlEm && <ApontamentoSimulacaoModal
+      posicoes={posicoes} posicoesEstoque={posicoesEstoque} zlEm={dados.zlEm} usuarioNome={usuarioNome}
+      apontamentos={apontamentos} onClose={() => setApontando(false)}
+      onSalvo={a => {
+        const k = [a.material, a.deposito, a.unidade].join('|');
+        setApontamentos(m => new Map(m).set(k, a));
+        setContagens(v => ({ ...v, [k]: String(a.contado) }));
+      }} />}
   </section>;
 }
