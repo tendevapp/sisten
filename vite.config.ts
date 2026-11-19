@@ -4,8 +4,17 @@ import path from 'path';
 import {defineConfig} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
 
+// Pré-bundle das dependências (node_modules/.vite) fora do OneDrive no Windows:
+// o projeto mora numa pasta sincronizada, e a sincronização apagava/travava
+// os chunks que o Vite reescreve a cada otimização — o _metadata.json ficava
+// apontando para `chunk-*.js` inexistente e a página dava 404 no import
+// (18/11/2026, Recebimento do almoxarifado). Fora do Windows (Vercel/CI) fica
+// o padrão.
+const cacheDir = process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'sisten-vite') : undefined;
+
 export default defineConfig(() => {
   return {
+    cacheDir,
     plugins: [
       react(),
       tailwindcss(),
