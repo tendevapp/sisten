@@ -12667,6 +12667,7 @@ export type Database = {
         Row: {
           atualizado_por_id: string | null
           atualizado_por_nome: string | null
+          codigo_rastreio: string | null
           created_at: string
           data_faturamento_transportadora: string | null
           doc_compra: string | null
@@ -12679,6 +12680,7 @@ export type Database = {
         Insert: {
           atualizado_por_id?: string | null
           atualizado_por_nome?: string | null
+          codigo_rastreio?: string | null
           created_at?: string
           data_faturamento_transportadora?: string | null
           doc_compra?: string | null
@@ -12691,6 +12693,7 @@ export type Database = {
         Update: {
           atualizado_por_id?: string | null
           atualizado_por_nome?: string | null
+          codigo_rastreio?: string | null
           created_at?: string
           data_faturamento_transportadora?: string | null
           doc_compra?: string | null

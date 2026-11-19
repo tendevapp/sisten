@@ -46,7 +46,7 @@ import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import MultiSelectFilter from '../ui/MultiSelectFilter';
 import DateRangeFilter, { type DateRangeValue } from '../ui/DateRangeFilter';
 import {
-  ItemDiligenciamento, dataValida, filtrarItensDiligenciamento, indexarCidadesPorCodigo, montarItens,
+  ItemDiligenciamento, dataValida, ehSedexColeta, filtrarItensDiligenciamento, indexarCidadesPorCodigo, montarItens,
   normalizarChaveTransportadora, resolverPrazoDias, somarDiasCorridos, transportadorasConhecidas,
 } from '../../lib/diligenciamento';
 import { montarMailtoComConfig, obterConfigEmail } from '../../lib/emailConfigApi';
@@ -56,7 +56,7 @@ import { montarMailtoComConfig, obterConfigEmail } from '../../lib/emailConfigAp
 import { cabeNoMailto } from '../../lib/expedicaoEmail';
 import {
   ASSUNTO_COLETA_PADRAO, CHAVE_CONFIG_COLETA, DESTINATARIO_COLETA_PADRAO, LinhaColeta,
-  montarAssuntoColeta, montarCorpoColeta, resolverDadosFornecedor,
+  montarAssuntoColeta, montarCorpoColeta, resolverDadosFornecedor, RastreioColetaPendente,
 } from '../../lib/coletaEmail';
 import {
   PatchDiligenciamentoItem,
@@ -148,6 +148,9 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   // Seleção múltipla (apenas itens ainda não chegados são selecionáveis).
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [loteTransp, setLoteTransp] = useState('');
+  const [loteCodigo, setLoteCodigo] = useState('');
+  const [edicaoSedex, setEdicaoSedex] = useState<{ item: ItemDiligenciamento; nome: string; codigo: string } | null>(null);
+  const [salvandoSedex, setSalvandoSedex] = useState(false);
   const [loteFat, setLoteFat] = useState('');
   const [lotePrev, setLotePrev] = useState('');
   const [loteObs, setLoteObs] = useState('');
@@ -393,6 +396,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
   const limparSelecao = () => {
     setSelecionados(new Set());
+    setLoteCodigo('');
     setLoteTransp(''); setLoteFat(''); setLotePrev(''); setLoteObs('');
   };
 
@@ -493,14 +497,30 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     return true;
   };
 
-  const salvarTransportadora = async (item: ItemDiligenciamento, novoNome: string) => {
+  const gravarTransportadora = async (item: ItemDiligenciamento, novoNome: string, codigo: string | null) => {
+    const docs = new Map([[item.riPo, item.docCompra]]);
+    const usuario = { id: user.id, nome: user.name };
     try {
-      await trocarTransportadora([item.riPo], new Map([[item.riPo, item.docCompra]]), novoNome, { id: user.id, nome: user.name });
-      await propagarPrevisaoParaRastreio(item, novoNome, undefined);
+      if (ehSedexColeta(item.transportadora) && ehSedexColeta(novoNome)) {
+        await salvarDiligenciamentoItens([item.riPo], docs, { transportadora: novoNome, codigo_rastreio: codigo }, usuario);
+      } else {
+        await trocarTransportadora([item.riPo], docs, novoNome, codigo, usuario);
+        await propagarPrevisaoParaRastreio(item, novoNome, undefined);
+      }
       await carregarDiligenciamento();
+      return true;
     } catch (e) {
       console.error('Falha ao salvar transportadora:', e);
       toast.error('Não foi possível salvar a transportadora.');
+      return false;
+    }
+  };
+
+  const salvarTransportadora = (item: ItemDiligenciamento, nome: string) => {
+    if (ehSedexColeta(nome)) {
+      setEdicaoSedex({ item, nome, codigo: item.codigoRastreio });
+    } else {
+      void gravarTransportadora(item, nome, null);
     }
   };
 
@@ -557,6 +577,10 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     const selecionadosItens = selecionaveis.filter(i => selecionados.has(i.riPo));
     if (selecionadosItens.length === 0) return;
 
+    if (ehSedexColeta(loteTransp)) {
+      toast.error('Aplique a transportadora e o código aos itens selecionados antes de gerar a lista.');
+      return;
+    }
     setEnviandoColeta(true);
     try {
       const linhas: LinhaColeta[] = selecionadosItens.map(item => {
@@ -573,6 +597,8 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
         });
 
         return {
+          transportadora: item.transportadora,
+          codigoRastreio: item.codigoRastreio,
           dataColeta: item.previsaoEfetiva,
           fornecedor: reg?.fornecedor_name || '',
           fornecedorCodigo: reg?.fornecedor_code || '',
@@ -595,13 +621,13 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
       const chaves = new Set(selecionadosItens.map(i => normalizarChaveTransportadora(i.transportadora || '')));
       const transportadora = chaves.size === 1 ? (selecionadosItens[0].transportadora || '').trim() : '';
 
+      const corpo = montarCorpoColeta({ linhas, transportadora, solicitante: user.name });
       const config = await obterConfigEmail(CHAVE_CONFIG_COLETA);
       const assunto = montarAssuntoColeta({
         assuntoBase: config?.assunto_padrao || ASSUNTO_COLETA_PADRAO,
         transportadora,
         quantidadeItens: linhas.length,
       });
-      const corpo = montarCorpoColeta({ linhas, transportadora, solicitante: user.name });
       const destinatarios = config?.destinatarios || DESTINATARIO_COLETA_PADRAO;
 
       const mailto = montarMailtoComConfig({
@@ -620,6 +646,10 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
         toast.warning('Lista longa demais para o preenchimento automático: o conteúdo foi copiado — cole no Outlook com Ctrl+V.');
       }
     } catch (e) {
+      if (e instanceof RastreioColetaPendente) {
+        toast.error(e.message);
+        return;
+      }
       console.error('Falha ao montar a lista de coleta:', e);
       toast.error('Não foi possível montar o e-mail da lista de coleta.');
     } finally {
@@ -642,10 +672,17 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     if (riPos.length === 0) return;
 
     const patch: PatchDiligenciamentoItem = {};
-    if (loteTransp) patch.transportadora = loteTransp;
+    if (loteTransp.trim()) {
+      if (ehSedexColeta(loteTransp) && !loteCodigo.trim()) {
+        toast.error('Informe o Código de Rastreio para aplicar SEDEX - COLETA.');
+        return;
+      }
+      patch.transportadora = loteTransp.trim();
+      patch.codigo_rastreio = ehSedexColeta(loteTransp) ? loteCodigo.trim() : null;
+    }
     if (loteFat) patch.data_faturamento_transportadora = loteFat;
     if (lotePrev) patch.previsao_manual = lotePrev;
-    if (loteTransp && !lotePrev) patch.previsao_manual = null;
+    if (patch.transportadora && !lotePrev) patch.previsao_manual = null;
 
     if (Object.keys(patch).length === 0 && !loteObs) {
       toast.error('Preencha transportadora, faturamento, previsão e/ou observação para aplicar.');
@@ -809,7 +846,8 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
         <BarraLote
           quantidade={selecionados.size}
           opcoes={opcoesTransportadora}
-          transp={loteTransp} setTransp={setLoteTransp}
+          transp={loteTransp} setTransp={nome => { setLoteTransp(nome); if (!ehSedexColeta(nome)) setLoteCodigo(''); }}
+          codigo={loteCodigo} setCodigo={setLoteCodigo}
           fat={loteFat} setFat={setLoteFat}
           prev={lotePrev} setPrev={setLotePrev}
           obs={loteObs} setObs={setLoteObs}
@@ -1068,6 +1106,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                                     <Td>
                                       <CampoTransportadora
                                         valor={item.transportadora}
+                                        codigo={item.codigoRastreio}
                                         opcoes={opcoesTransportadora}
                                         desabilitado={item.chegou}
                                         onSalvar={nome => salvarTransportadora(item, nome)}
@@ -1210,6 +1249,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                           <Td>
                             <CampoTransportadora
                               valor={item.transportadora}
+                              codigo={item.codigoRastreio}
                               opcoes={opcoesTransportadora}
                               desabilitado={item.chegou}
                               onSalvar={nome => salvarTransportadora(item, nome)}
@@ -1458,6 +1498,39 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
         />
       )}
 
+      {edicaoSedex && (
+        <Modal ariaLabel="Rastreio SEDEX - COLETA" layout="dialog" maxWidth="max-w-md"
+          onClose={() => { if (!salvandoSedex) setEdicaoSedex(null); }}>
+          <ModalHeader>SEDEX - COLETA</ModalHeader>
+          <form onSubmit={async e => {
+            e.preventDefault();
+            if (salvandoSedex || !edicaoSedex.codigo.trim()) return;
+            setSalvandoSedex(true);
+            try {
+              if (await gravarTransportadora(edicaoSedex.item, edicaoSedex.nome, edicaoSedex.codigo.trim())) setEdicaoSedex(null);
+            } finally {
+              setSalvandoSedex(false);
+            }
+          }}>
+            <ModalBody>
+              <p className="mb-3 text-sm">PO {edicaoSedex.item.docCompra} · {edicaoSedex.item.descricao}</p>
+              <label className="flex flex-col gap-1 text-sm font-semibold">Código de Rastreio (obrigatório)
+                <input autoFocus required disabled={salvandoSedex} value={edicaoSedex.codigo}
+                  onChange={e => setEdicaoSedex({ ...edicaoSedex, codigo: e.target.value })}
+                  className="rounded border px-3 py-2" style={campo} />
+              </label>
+            </ModalBody>
+            <ModalFooter>
+              <button type="button" disabled={salvandoSedex} onClick={() => setEdicaoSedex(null)}>Cancelar</button>
+              <button type="submit" disabled={salvandoSedex || !edicaoSedex.codigo.trim()}
+                className="rounded px-4 py-2 text-white disabled:opacity-50" style={{ background: 'var(--brand)' }}>
+                {salvandoSedex ? 'Salvando…' : 'Salvar'}
+              </button>
+            </ModalFooter>
+          </form>
+        </Modal>
+      )}
+
       {modalColeta && (
         <ModalColetaTexto
           corpo={modalColeta.corpo}
@@ -1536,12 +1609,13 @@ function ResumoStat({
 
 /** Barra de ação em lote — aparece quando há itens selecionados. */
 function BarraLote({
-  quantidade, opcoes, transp, setTransp, fat, setFat, prev, setPrev, obs, setObs, aplicando, onAplicar, onLimpar,
+  quantidade, opcoes, transp, setTransp, codigo, setCodigo, fat, setFat, prev, setPrev, obs, setObs, aplicando, onAplicar, onLimpar,
   enviandoColeta, onEnviarColeta,
 }: {
   quantidade: number;
   opcoes: string[];
   transp: string; setTransp: (v: string) => void;
+  codigo: string; setCodigo: (v: string) => void;
   fat: string; setFat: (v: string) => void;
   prev: string; setPrev: (v: string) => void;
   obs: string; setObs: (v: string) => void;
@@ -1575,6 +1649,13 @@ function BarraLote({
           />
           <datalist id={listId}>{opcoes.map(o => <option key={o} value={o} />)}</datalist>
         </label>
+        {ehSedexColeta(transp) && (
+          <label className="flex flex-col gap-1 text-xs font-semibold">
+            Código de Rastreio (obrigatório)
+            <input required value={codigo} onChange={e => setCodigo(e.target.value)} placeholder="Código dos itens selecionados"
+              className="h-8 rounded border px-2 text-xs" style={campo} />
+          </label>
+        )}
 
         <label className="flex flex-col gap-1">
           <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Fat. transp.</span>
@@ -1610,7 +1691,7 @@ function BarraLote({
         <button
           type="button"
           onClick={onEnviarColeta}
-          disabled={enviandoColeta}
+          disabled={enviandoColeta || aplicando}
           title="Abre o Outlook com a lista dos itens marcados para a logística coletar"
           className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-3.5 text-xs font-bold cursor-pointer disabled:opacity-50"
           style={{ borderColor: 'var(--brand)', color: 'var(--brand)', background: 'var(--surface-card)' }}
@@ -1907,15 +1988,16 @@ function ItemCard({
               onSalvar={data => onSalvarFaturamento(item, data)}
             />
           </label>
-          <label className="flex flex-col gap-0.5">
+          <div className="flex flex-col gap-0.5">
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Transportadora</span>
             <CampoTransportadora
               valor={item.transportadora}
+              codigo={item.codigoRastreio}
               opcoes={opcoesTransportadora}
               desabilitado={item.chegou}
               onSalvar={nome => onSalvarTransportadora(item, nome)}
             />
-          </label>
+          </div>
         </div>
         <div>
           <label className="flex flex-col gap-0.5">
@@ -1938,8 +2020,8 @@ function ItemCard({
  * o valor de fato mudou.
  */
 function CampoTransportadora({
-  valor, opcoes, desabilitado, onSalvar,
-}: { valor: string; opcoes: string[]; desabilitado: boolean; onSalvar: (nome: string) => void }) {
+  valor, codigo, opcoes, desabilitado, onSalvar,
+}: { valor: string; codigo: string; opcoes: string[]; desabilitado: boolean; onSalvar: (nome: string) => void }) {
   const [rascunho, setRascunho] = useState(valor);
   const listId = useId();
 
@@ -1954,7 +2036,15 @@ function CampoTransportadora({
         value={rascunho}
         disabled={desabilitado}
         placeholder="Digite ou escolha…"
-        onChange={e => setRascunho(e.target.value)}
+        onChange={e => {
+          const nome = e.target.value;
+          if (ehSedexColeta(nome) && !ehSedexColeta(valor)) {
+            setRascunho(valor);
+            onSalvar(nome.trim());
+          } else {
+            setRascunho(nome);
+          }
+        }}
         onBlur={() => {
           if (normalizarChaveTransportadora(rascunho) !== normalizarChaveTransportadora(valor)) onSalvar(rascunho.trim());
         }}
@@ -1964,6 +2054,12 @@ function CampoTransportadora({
       <datalist id={listId}>
         {opcoes.map(o => <option key={o} value={o} />)}
       </datalist>
+      {ehSedexColeta(valor) && (
+        <button type="button" disabled={desabilitado} onClick={() => onSalvar(valor)}
+          className="mt-1 block text-left text-xs underline" style={{ color: 'var(--brand)' }}>
+          {codigo ? `Código de Rastreio: ${codigo}` : 'Informar Código de Rastreio (obrigatório)'}
+        </button>
+      )}
     </>
   );
 }

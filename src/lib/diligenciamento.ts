@@ -55,6 +55,10 @@ export function normalizarChaveTransportadora(nome: string | null | undefined): 
   return (nome || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+export function ehSedexColeta(nome: string | null | undefined): boolean {
+  return /^sedex\s*-\s*coleta$/i.test((nome || '').trim());
+}
+
 /**
  * Lista de transportadoras já usadas, para o autocompletar do campo — sem
  * tela de cadastro, a lista nasce do que foi digitado. Dedup por chave
@@ -173,6 +177,7 @@ export interface ItemDiligenciamento {
   unidade: string;
   valor?: number;
   transportadora: string;
+  codigoRastreio: string;
   /** Código do grupo do comprador responsável (ex: 314, 358, 447). */
   grupoComprador?: string;
   faturamentoTransportadora?: string;
@@ -292,6 +297,7 @@ export function montarItens(
         unidade: r.unidade_medida,
         valor: r.valor_total,
         transportadora,
+        codigoRastreio: dilig?.codigo_rastreio?.trim() || '',
         grupoComprador: r.grupo_comprador || undefined,
         faturamentoTransportadora: dataValida(dilig?.data_faturamento_transportadora)
           ? (dilig!.data_faturamento_transportadora as string)

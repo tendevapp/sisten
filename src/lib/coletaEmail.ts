@@ -13,6 +13,7 @@
  */
 
 import { formatBRL } from './format';
+import { ehSedexColeta } from './diligenciamento';
 import type { CidadeForn, ContatoFornecedor } from '../types';
 
 /** Chave do gatilho em `config_envio_emails` (Admin › E-mails). */
@@ -24,6 +25,8 @@ const SEPARADOR_CABECALHO = '---------------------------------------------------
 const SEPARADOR_FORNECEDOR = '--------------------------------------------------';
 
 export interface LinhaColeta {
+  transportadora?: string | null;
+  codigoRastreio?: string | null;
   /** Data da coleta = previsão de entrega efetiva do item (ISO), quando houver. */
   dataColeta: string | null;
   fornecedor: string;
@@ -175,6 +178,8 @@ function textoOuTraco(valor?: string | null): string {
   return v || '—';
 }
 
+export class RastreioColetaPendente extends Error {}
+
 /**
  * Uma linha por item no modelo:
  * Código: 1437256 | Material: CAMISA TERM UNI 90PES/10EL% PT G | Qtd: 5 UN | Valor: R$ 224,50
@@ -186,6 +191,13 @@ function linhaItem(linha: LinhaColeta): string {
     `Qtd: ${quantidadeTexto(linha.quantidade, linha.unidade)}`,
     `Valor: ${linha.valor === null || linha.valor === undefined ? '—' : formatBRL(linha.valor)}`,
   ];
+  if (ehSedexColeta(linha.transportadora)) {
+    const codigo = linha.codigoRastreio?.trim();
+    if (!codigo) {
+      throw new RastreioColetaPendente(`Informe o Código de Rastreio do PO ${linha.po}, material ${linha.codigoItem}, antes de gerar a lista.`);
+    }
+    campos.push(`Código de Rastreio: ${codigo}`);
+  }
   return campos.join(' | ');
 }
 
@@ -209,7 +221,8 @@ export function montarCorpoColeta(params: {
 
   partes.push('Bom dia!');
   partes.push('');
-  partes.push('Segue a lista de coleta para busca do material junto aos fornecedores.');
+  const correios = linhas.filter(l => ehSedexColeta(l.transportadora));
+  partes.push(correios.length ? 'Segue a lista de coleta para retirada nos locais indicados.' : 'Segue a lista de coleta para busca do material junto aos fornecedores.');
   partes.push(`Itens: ${linhas.length}`);
 
   const total = linhas.reduce((acc, l) => acc + (l.valor || 0), 0);
@@ -219,6 +232,19 @@ export function montarCorpoColeta(params: {
 
   partes.push(SEPARADOR_CABECALHO);
 
+  const fornecedores = linhas.filter(l => !ehSedexColeta(l.transportadora));
+  if (fornecedores.length) partes.push(...blocosPorFornecedor(fornecedores, false));
+  if (correios.length) {
+    partes.push('SEDEX - COLETA | Correios de Jacobina',
+      'R. Sen. Pedro Lago, 160 - Centro, Jacobina - BA, CEP 44702-959',
+      'Caixa Postal 97 - Torres Eolicas', '',
+      ...blocosPorFornecedor(correios, true));
+  }
+  return partes.join('\n').trimEnd();
+}
+
+function blocosPorFornecedor(linhas: LinhaColeta[], retiradaNosCorreios: boolean): string[] {
+  const partes: string[] = [];
   const porFornecedor = new Map<string, LinhaColeta[]>();
   for (const linha of linhas) {
     const chave = textoOuTraco(linha.fornecedor);
@@ -248,7 +274,7 @@ export function montarCorpoColeta(params: {
       partes.push(`Razão Social: ${razaoSocial}`);
     }
 
-    if (endereco) {
+    if (endereco && !retiradaNosCorreios) {
       partes.push(`Endereço: ${endereco}`);
     }
 
@@ -286,5 +312,5 @@ export function montarCorpoColeta(params: {
     }
   }
 
-  return partes.join('\n').trimEnd();
+  return partes;
 }

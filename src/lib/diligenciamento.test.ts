@@ -100,6 +100,16 @@ describe('soma de dias corridos', () => {
 });
 
 describe('montarItens', () => {
+  it('associa o rastreio ao item de cada PO, inclusive quando a mesma RI está em dois pedidos', () => {
+    const registros = [registro(), registro({ documento_compra: '4500002' })];
+    const dilig = new Map<string, DiligenciamentoItem>([
+      ['r1-4500001', { ri: 'r1', ri_po: 'r1-4500001', transportadora: 'SEDEX - COLETA', codigo_rastreio: 'AA123BR' }],
+      ['r1-4500002', { ri: 'r1', ri_po: 'r1-4500002', transportadora: 'SEDEX - COLETA' }],
+    ]);
+    expect(montarItens(registros, dilig, semChegadas, semCidades, semRegiao, []).map(i => i.codigoRastreio))
+      .toEqual(['AA123BR', '']);
+  });
+
   it('exclui item sem PO, item com PO cancelado/eliminado, item já com MIGO e RM de serviço', () => {
     const registros = [
       registro({ ri: 'sem-po', documento_compra: undefined }),
@@ -297,6 +307,7 @@ describe('filtrarItensPorTransportadoras', () => {
     descricao: 'Desc',
     unidade: 'UN',
     transportadora,
+    codigoRastreio: '',
     previsaoCalculada: null,
     previsaoEfetiva: null,
     chegou: false,
@@ -350,6 +361,7 @@ describe('itemAtendeFiltroPromessa e filtrarItensDiligenciamento', () => {
     descricao: 'Gas Dioxido Carbono',
     unidade: 'UN',
     transportadora: 'Braspress',
+    codigoRastreio: '',
     previsaoCalculada: '2026-04-26',
     previsaoEfetiva: '2026-04-26',
     chegou: false,
@@ -363,6 +375,7 @@ describe('itemAtendeFiltroPromessa e filtrarItensDiligenciamento', () => {
     descricao: 'Outro Material',
     unidade: 'UN',
     transportadora: 'Bahia Sul',
+    codigoRastreio: '',
     previsaoCalculada: '2026-08-15',
     previsaoEfetiva: '2026-08-15',
     chegou: false,
@@ -376,6 +389,7 @@ describe('itemAtendeFiltroPromessa e filtrarItensDiligenciamento', () => {
     descricao: 'Item sem data',
     unidade: 'UN',
     transportadora: '',
+    codigoRastreio: '',
     previsaoCalculada: null,
     previsaoEfetiva: null,
     chegou: false,

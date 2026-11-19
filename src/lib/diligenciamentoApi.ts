@@ -103,6 +103,7 @@ export function regiaoUfBrutaPorRi(): Map<string, string> {
 
 export interface PatchDiligenciamentoItem {
   transportadora?: string | null;
+  codigo_rastreio?: string | null;
   data_faturamento_transportadora?: string | null;
   previsao_manual?: string | null;
 }
@@ -155,9 +156,12 @@ export async function trocarTransportadora(
   riPos: string[],
   docCompraPorRiPo: Map<string, string>,
   transportadora: string,
+  codigoRastreio: string | null,
   usuario: { id: string; nome: string },
 ): Promise<void> {
-  await salvarDiligenciamentoItens(riPos, docCompraPorRiPo, { transportadora, previsao_manual: null }, usuario);
+  await salvarDiligenciamentoItens(riPos, docCompraPorRiPo, {
+    transportadora, codigo_rastreio: codigoRastreio, previsao_manual: null,
+  }, usuario);
 }
 
 /* Escrita — sup_prazos_transporte ----------------------------------------- */

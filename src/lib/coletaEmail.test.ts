@@ -31,6 +31,27 @@ describe('montarAssuntoColeta', () => {
 });
 
 describe('montarCorpoColeta', () => {
+  it('separa retiradas nos Correios das retiradas no fornecedor, mesmo para o mesmo PO', () => {
+    const corpo = montarCorpoColeta({ linhas: [
+      linha({ material: 'ARRUELA', endereco: 'Rua do fornecedor', codigoRastreio: 'IGNORADO' }),
+      linha({ material: 'PORCA', endereco: 'Rua do fornecedor', transportadora: ' sedex - coleta ', codigoRastreio: ' AA123BR ' }),
+      linha({ material: 'BUCHA', po: '4500123457', transportadora: 'SEDEX - COLETA', codigoRastreio: 'BB456BR' }),
+    ] });
+    const [fornecedor, correios] = corpo.split('SEDEX - COLETA | Correios de Jacobina');
+    expect(fornecedor).toContain('Rua do fornecedor');
+    expect(fornecedor).not.toContain('Código de Rastreio');
+    expect(correios).toContain('R. Sen. Pedro Lago, 160 - Centro, Jacobina - BA, CEP 44702-959\nCaixa Postal 97 - Torres Eolicas');
+    expect(correios).toMatch(/Material: PORCA[^\n]+Código de Rastreio: AA123BR/);
+    expect(correios).toMatch(/Material: BUCHA[^\n]+Código de Rastreio: BB456BR/);
+    expect(correios).not.toContain('Rua do fornecedor');
+    expect(correios).not.toContain('ARRUELA');
+  });
+
+  it('identifica o item SEDEX sem código e impede a geração da lista inteira', () => {
+    expect(() => montarCorpoColeta({ linhas: [linha(), linha({ transportadora: 'SEDEX-COLETA', codigoRastreio: '  ' })] }))
+      .toThrow(/Código de Rastreio do PO 4500123456, material 100234/);
+  });
+
   it('monta o corpo com saudação, totais, cabeçalho e itens agrupados por PO', () => {
     const corpo = montarCorpoColeta({ linhas: [linha()], transportadora: 'RODOTEN', solicitante: 'André' });
     expect(corpo).toContain('Bom dia!');
