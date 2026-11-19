@@ -9,8 +9,9 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ArrowLeft, Plus, Search, FileDown, CheckCircle2,
   Trash2, X, Loader2, Bus, Car, Truck, Clock, Calendar, User, Filter,
-  HelpCircle, Bug, Lightbulb, Pencil
+  HelpCircle, Bug, Lightbulb, Pencil, BarChart3, ClipboardList
 } from 'lucide-react';
+import RelatorioChegadasTransporte from '../../components/portaria/RelatorioChegadasTransporte';
 import TourSpotlight from '../../components/help/TourSpotlight';
 import { usePageTour } from '../../components/help/TourRegistryContext';
 import type { TourStep } from '../../components/help/types';
@@ -228,11 +229,11 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const [motoristaSugestoesAbertas, setMotoristaSugestoesAbertas] = useState(false);
 
   const carregarMotoristasSalvos = useCallback(() => {
-    api.buscarMotoristasPortaria().then(setMotoristasSalvos).catch(() => {});
+    api.buscarMotoristasPortaria().then(setMotoristasSalvos).catch(() => { });
   }, []);
 
   useEffect(() => {
-    api.buscarHistoricoCampoPortaria('port_registro_transportes', 'ocupacao').then(setHistoricoOcupacao).catch(() => {});
+    api.buscarHistoricoCampoPortaria('port_registro_transportes', 'ocupacao').then(setHistoricoOcupacao).catch(() => { });
     carregarMotoristasSalvos();
   }, [carregarMotoristasSalvos]);
 
@@ -345,6 +346,16 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const [termoBuscaDias, setTermoBuscaDias] = useState('');
   /** Celular: lista completa de dias num painel (a coluna da esquerda fica só no desktop). */
   const [listaDiasAberta, setListaDiasAberta] = useState(false);
+  /** Lançamentos do dia × relatório de chegadas (pontualidade, atrasos, recorrências). */
+  const [aba, setAba] = useState<'registros' | 'relatorio'>(() =>
+    new URLSearchParams(window.location.hash.split('?')[1] || '').get('aba') === 'relatorio' ? 'relatorio' : 'registros');
+  const trocarAba = (nova: 'registros' | 'relatorio') => {
+    setAba(nova);
+    try {
+      const base = window.location.hash.split('?')[0] || '#/formularios/portaria-transportes';
+      window.history.replaceState(null, '', nova === 'relatorio' ? `${base}?aba=relatorio` : base);
+    } catch { /* sem history: vale só nesta tela */ }
+  };
 
   const carregarDados = useCallback(async () => {
     setLoading(true);
@@ -587,95 +598,94 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   /** Busca + lista da coluna da esquerda: no desktop fica na coluna, no celular abre num painel. */
   const painelDias = (
     <>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Filtrar por data, placa, empresa..."
-              value={termoBuscaDias}
-              onChange={(e) => setTermoBuscaDias(e.target.value.toUpperCase())}
-              className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 py-1.5 text-xs uppercase text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
-            />
-          </div>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+        <input
+          type="text"
+          placeholder="Filtrar por data, placa, empresa..."
+          value={termoBuscaDias}
+          onChange={(e) => setTermoBuscaDias(e.target.value.toUpperCase())}
+          className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 py-1.5 text-xs uppercase text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
+        />
+      </div>
 
-          {loading ? (
-            <div className="flex h-32 items-center justify-center rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-              <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-            </div>
-          ) : diasFiltrados.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-xs text-slate-500 dark:text-slate-400">Nenhum dia com registro encontrado.</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setItemEditando(null);
-                  setFormNovo({ ...formTransporteVazio(), data: api.hojeISO(), vigilante: user.name });
-                  setModalNovoAberto(true);
-                }}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-500 shadow-sm"
+      {loading ? (
+        <div className="flex h-32 items-center justify-center rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+        </div>
+      ) : diasFiltrados.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-xs text-slate-500 dark:text-slate-400">Nenhum dia com registro encontrado.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setItemEditando(null);
+              setFormNovo({ ...formTransporteVazio(), data: api.hojeISO(), vigilante: user.name });
+              setModalNovoAberto(true);
+            }}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-500 shadow-sm"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Novo Lançamento Hoje
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2.5 lg:max-h-[700px] lg:overflow-y-auto lg:pr-1">
+          {diasFiltrados.map((g) => {
+            const isSelected = diaAtivo === g.data;
+            const ehHoje = g.data === api.hojeISO();
+
+            return (
+              <div
+                key={g.data}
+                onClick={() => escolherDia(g.data)}
+                className={`cursor-pointer rounded-2xl border p-4 transition-all ${isSelected
+                    ? 'border-blue-500 bg-blue-50/40 ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/20'
+                    : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
+                  }`}
               >
-                <Plus className="h-3.5 w-3.5" />
-                Novo Lançamento Hoje
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-2.5 lg:max-h-[700px] lg:overflow-y-auto lg:pr-1">
-              {diasFiltrados.map((g) => {
-                const isSelected = diaAtivo === g.data;
-                const ehHoje = g.data === api.hojeISO();
-
-                return (
-                  <div
-                    key={g.data}
-                    onClick={() => escolherDia(g.data)}
-                    className={`cursor-pointer rounded-2xl border p-4 transition-all ${
-                      isSelected
-                        ? 'border-blue-500 bg-blue-50/40 ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/20'
-                        : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
-                            {g.data.split('-').reverse().join('/')}
-                          </span>
-                          {ehHoje && (
-                            <span className="rounded-md bg-emerald-100 px-1.5 py-0.2 text-[10px] font-extrabold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                              Hoje
-                            </span>
-                          )}
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-0.5">
-                          {g.total} transporte{g.total > 1 ? 's' : ''} registrado{g.total > 1 ? 's' : ''}
-                        </h4>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1 justify-end">
-                        {g.noPatio > 0 ? (
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                            {g.noPatio} no pátio
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                            Finalizados
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-2.5 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 pt-2 dark:border-slate-800/80">
-                      <span className="truncate max-w-[150px]">
-                        Turnos: <strong>{g.turnos.join(', ') || 'Nenhum'}</strong>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
+                        {g.data.split('-').reverse().join('/')}
                       </span>
-                      <span className="font-bold text-blue-600 dark:text-blue-400">
-                        {g.total} reg
-                      </span>
+                      {ehHoje && (
+                        <span className="rounded-md bg-emerald-100 px-1.5 py-0.2 text-[10px] font-extrabold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          Hoje
+                        </span>
+                      )}
                     </div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-0.5">
+                      {g.total} transporte{g.total > 1 ? 's' : ''} registrado{g.total > 1 ? 's' : ''}
+                    </h4>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div className="flex flex-wrap items-center gap-1 justify-end">
+                    {g.noPatio > 0 ? (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        {g.noPatio} no pátio
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                        Finalizados
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-2.5 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 pt-2 dark:border-slate-800/80">
+                  <span className="truncate max-w-[150px]">
+                    Turnos: <strong>{g.turnos.join(', ') || 'Nenhum'}</strong>
+                  </span>
+                  <span className="font-bold text-blue-600 dark:text-blue-400">
+                    {g.total} reg
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 
@@ -714,7 +724,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
         </div>
 
         <div className="grid w-full grid-cols-[1fr_auto] gap-2 sm:flex sm:w-auto sm:items-center sm:gap-2.5">
-          {grupoAtivo && (
+          {grupoAtivo && aba === 'registros' && (
             <button
               type="button"
               onClick={handleExportarRelatorio}
@@ -743,6 +753,34 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
         </div>
       </div>
 
+      <div className="flex w-full rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80 sm:inline-flex sm:w-auto" role="tablist" aria-label="Visão">
+        {([
+          ['registros', 'Lançamentos', ClipboardList],
+          ['relatorio', 'Relatório de chegadas', BarChart3],
+        ] as const).map(([id, rotulo, Icone]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={aba === id}
+            onClick={() => trocarAba(id)}
+            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition sm:flex-none ${
+              aba === id ? 'bg-white text-blue-700 shadow-2xs dark:bg-slate-700 dark:text-blue-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            <Icone className="h-3.5 w-3.5" /> {rotulo}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'relatorio' && (
+        <RelatorioChegadasTransporte
+          user={user}
+          onAbrirDia={(d) => { setDiaAtivo(d); trocarAba('registros'); }}
+        />
+      )}
+
+      {aba === 'registros' && (<>
       {/* Celular: o dia escolhido ocupa a tela; os outros dias ficam atrás das setas e da lista. */}
       {!loading && (
         <NavegadorRegistros
@@ -898,11 +936,10 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                       return (
                         <div
                           key={item.id}
-                          className={`group flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition-all ${
-                            estaNoPatio
+                          className={`group flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition-all ${estaNoPatio
                               ? 'border-emerald-200 bg-emerald-50/20 dark:border-emerald-900/40 dark:bg-emerald-950/10'
                               : 'border-slate-200/90 bg-white hover:border-blue-300 dark:border-slate-800 dark:bg-slate-900'
-                          } ${classeLinhaExcluida(item.excluido_em)}`}
+                            } ${classeLinhaExcluida(item.excluido_em)}`}
                         >
                           <div className="flex items-start gap-3.5 min-w-0">
                             {/* Tag de Horário e Turno */}
@@ -1052,6 +1089,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
           )}
         </div>
       </div>
+      </>)}
 
       {listaDiasAberta && (
         <ListaRegistrosSheet titulo={`Dias com transporte (${gruposPorDia.length})`} onClose={() => setListaDiasAberta(false)}>
@@ -1194,11 +1232,10 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                               motorista_doc_tipo: tipo,
                               motorista_documento: formatarDocMotorista(tipo, formNovo.motorista_documento),
                             })}
-                            className={`min-w-[3.25rem] rounded-lg px-3 text-sm font-bold transition-colors ${
-                              ativo
+                            className={`min-w-[3.25rem] rounded-lg px-3 text-sm font-bold transition-colors ${ativo
                                 ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-800 dark:text-blue-300'
                                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                            }`}
+                              }`}
                           >
                             {tipo}
                           </button>
@@ -1216,11 +1253,10 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                       onBlur={() => setDocMotoristaTocado(true)}
                       aria-invalid={docMotoristaTocado && !!erroDocumento}
                       aria-describedby={docMotoristaTocado && erroDocumento ? `${idDocMotorista}-erro` : undefined}
-                      className={`min-w-0 flex-1 rounded-xl border bg-slate-50 px-3.5 py-2.5 sm:py-2 font-mono text-base sm:text-sm text-slate-900 focus:bg-white focus:outline-none dark:bg-slate-950 dark:text-slate-100 ${
-                        docMotoristaTocado && erroDocumento
+                      className={`min-w-0 flex-1 rounded-xl border bg-slate-50 px-3.5 py-2.5 sm:py-2 font-mono text-base sm:text-sm text-slate-900 focus:bg-white focus:outline-none dark:bg-slate-950 dark:text-slate-100 ${docMotoristaTocado && erroDocumento
                           ? 'border-rose-400 focus:border-rose-500 dark:border-rose-700'
                           : 'border-slate-200 focus:border-blue-500 dark:border-slate-700'
-                      }`}
+                        }`}
                     />
                   </div>
                   {docMotoristaTocado && erroDocumento && (

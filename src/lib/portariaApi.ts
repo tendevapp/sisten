@@ -601,7 +601,7 @@ export function salvarMetadadosOcorrencia(id: string, meta: Partial<PortRelatori
     delete anterior.foto_url;
     map[id] = { ...anterior, ...semFotos };
     localStorage.setItem(KEY_OCORRENCIA_EXTRA, JSON.stringify(map));
-  } catch {}
+  } catch { }
 }
 
 export function removerMetadadosOcorrencia(id: string): void {
@@ -609,7 +609,7 @@ export function removerMetadadosOcorrencia(id: string): void {
     const map = JSON.parse(localStorage.getItem(KEY_OCORRENCIA_EXTRA) || '{}');
     delete map[id];
     localStorage.setItem(KEY_OCORRENCIA_EXTRA, JSON.stringify(map));
-  } catch {}
+  } catch { }
 }
 
 // ---------------------------------------------------------------------

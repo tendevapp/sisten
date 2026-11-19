@@ -298,7 +298,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   const [motoristaSugestoesAbertas, setMotoristaSugestoesAbertas] = useState(false);
 
   const carregarMotoristasSalvos = useCallback(() => {
-    api.buscarMotoristasPortaria().then(setMotoristasSalvos).catch(() => {});
+    api.buscarMotoristasPortaria().then(setMotoristasSalvos).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -306,7 +306,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     const campos = ['empresa', 'documento', 'cargo_funcao', 'setor_area', 'etilometro_codigo', 'testemunha', 'observacoes'];
     Promise.all(campos.map((c) => api.buscarHistoricoCampoPortaria(tabela, c).then((v) => [c, v] as const)))
       .then((pares) => setHistorico(Object.fromEntries(pares)))
-      .catch(() => {});
+      .catch(() => { });
     carregarMotoristasSalvos();
   }, [carregarMotoristasSalvos]);
 
@@ -875,9 +875,9 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                               ? null
                               : item.excluido_em
                                 ? { rotulo: 'Restaurar', icone: RotateCcw, onClick: () => void restaurarTeste(item), destaque: false }
-                              : isPendente
-                                ? { rotulo: 'Registrar aferição', icone: Gauge, onClick: () => abrirModalAfericao(item), destaque: true }
-                                : { rotulo: 'Editar', icone: Edit2, onClick: () => abrirModalEdicao(item), destaque: false }
+                                : isPendente
+                                  ? { rotulo: 'Registrar aferição', icone: Gauge, onClick: () => abrirModalAfericao(item), destaque: true }
+                                  : { rotulo: 'Editar', icone: Edit2, onClick: () => abrirModalEdicao(item), destaque: false }
                           }
                           acoes={podeEditar && !item.excluido_em && (
                             <>
@@ -1067,11 +1067,10 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                       setTipoVinculo('TEN');
                       limparSelecaoRh();
                     }}
-                    className={`flex items-center justify-center gap-2 rounded-xl border p-3 text-xs font-bold transition-all ${
-                      tipoVinculo === 'TEN'
+                    className={`flex items-center justify-center gap-2 rounded-xl border p-3 text-xs font-bold transition-all ${tipoVinculo === 'TEN'
                         ? 'border-blue-500 bg-blue-50/70 text-blue-700 ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300'
                         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
-                    }`}
+                      }`}
                   >
                     <Building2 className="h-4 w-4" />
                     <span>Colaborador TEN (RH Pessoas)</span>
@@ -1084,11 +1083,10 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                       limparSelecaoRh();
                       setFormEmpresa('');
                     }}
-                    className={`flex items-center justify-center gap-2 rounded-xl border p-3 text-xs font-bold transition-all ${
-                      tipoVinculo === 'PJ'
+                    className={`flex items-center justify-center gap-2 rounded-xl border p-3 text-xs font-bold transition-all ${tipoVinculo === 'PJ'
                         ? 'border-amber-500 bg-amber-50/70 text-amber-700 ring-2 ring-amber-500/20 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-300'
                         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
-                    }`}
+                      }`}
                   >
                     <Briefcase className="h-4 w-4" />
                     <span>Terceiro / PJ (Digitação Manual)</span>
@@ -1312,11 +1310,10 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <span
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
-                      registrarAfericaoImediata
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${registrarAfericaoImediata
                         ? 'bg-rose-600 text-white shadow-xs'
                         : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                    }`}
+                      }`}
                   >
                     <Gauge className="h-4.5 w-4.5" />
                   </span>
@@ -1341,14 +1338,12 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                       setFormResultado('PENDENTE');
                     }
                   }}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    registrarAfericaoImediata ? 'bg-rose-600' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${registrarAfericaoImediata ? 'bg-rose-600' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                      registrarAfericaoImediata ? 'translate-x-5' : 'translate-x-0'
-                    }`}
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${registrarAfericaoImediata ? 'translate-x-5' : 'translate-x-0'
+                      }`}
                   />
                 </button>
               </div>
@@ -1380,11 +1375,10 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                           setFormResultado('NEGATIVO');
                           setFormValorMedido('0.00');
                         }}
-                        className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all ${
-                          formResultado === 'NEGATIVO'
+                        className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all ${formResultado === 'NEGATIVO'
                             ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-500/20 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-300'
                             : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
-                        }`}
+                          }`}
                       >
                         <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                         <span className="mt-1 text-xs font-bold">NEGATIVO</span>
@@ -1395,11 +1389,10 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                       <button
                         type="button"
                         onClick={() => setFormResultado('POSITIVO')}
-                        className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all ${
-                          formResultado === 'POSITIVO'
+                        className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all ${formResultado === 'POSITIVO'
                             ? 'border-rose-500 bg-rose-50 text-rose-800 ring-2 ring-rose-500/20 dark:border-rose-500 dark:bg-rose-950/40 dark:text-rose-300'
                             : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
-                        }`}
+                          }`}
                       >
                         <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-400" />
                         <span className="mt-1 text-xs font-bold">POSITIVO</span>
@@ -1413,11 +1406,10 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                           setFormResultado('RECUSA');
                           setFormValorMedido('0.00');
                         }}
-                        className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all ${
-                          formResultado === 'RECUSA'
+                        className={`flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all ${formResultado === 'RECUSA'
                             ? 'border-amber-500 bg-amber-50 text-amber-800 ring-2 ring-amber-500/20 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-300'
                             : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
-                        }`}
+                          }`}
                       >
                         <XCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                         <span className="mt-1 text-xs font-bold">RECUSA</span>
@@ -1638,11 +1630,10 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                     setAfericaoResultado('NEGATIVO');
                     setAfericaoValorMedido('0.00');
                   }}
-                  className={`flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-all ${
-                    afericaoResultado === 'NEGATIVO'
+                  className={`flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-all ${afericaoResultado === 'NEGATIVO'
                       ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-500/20 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-300'
                       : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
-                  }`}
+                    }`}
                 >
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                   <span className="mt-1.5 text-xs font-bold">NEGATIVO</span>
@@ -1653,11 +1644,10 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                 <button
                   type="button"
                   onClick={() => setAfericaoResultado('POSITIVO')}
-                  className={`flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-all ${
-                    afericaoResultado === 'POSITIVO'
+                  className={`flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-all ${afericaoResultado === 'POSITIVO'
                       ? 'border-rose-500 bg-rose-50 text-rose-800 ring-2 ring-rose-500/20 dark:border-rose-500 dark:bg-rose-950/40 dark:text-rose-300'
                       : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
-                  }`}
+                    }`}
                 >
                   <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-400" />
                   <span className="mt-1.5 text-xs font-bold">POSITIVO</span>
@@ -1671,11 +1661,10 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                     setAfericaoResultado('RECUSA');
                     setAfericaoValorMedido('0.00');
                   }}
-                  className={`flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-all ${
-                    afericaoResultado === 'RECUSA'
+                  className={`flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-all ${afericaoResultado === 'RECUSA'
                       ? 'border-amber-500 bg-amber-50 text-amber-800 ring-2 ring-amber-500/20 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-300'
                       : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
-                  }`}
+                    }`}
                 >
                   <XCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                   <span className="mt-1.5 text-xs font-bold">RECUSA</span>
