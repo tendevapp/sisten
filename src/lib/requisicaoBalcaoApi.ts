@@ -16,6 +16,7 @@ import type { EstoqueItem } from '../types';
 import { DEPOSITO_EPI, ORIGEM_FICHA_EPI, type PepAplicacao, type TipoMovimentoBalcao } from './requisicaoBalcao';
 import { ehRespostaOffline } from './offline/configFormularios';
 import { buscarTudo } from './buscarTudo';
+import type { BuscaNoHistorico } from './requisicaoBalcaoHistorico';
 
 /** As tabelas ainda não estão em `database.types.ts` — mesmo atalho de `almoxarifadoRmApi`. */
 const dbReq = () => (supabase.from as any)('alm_req_balcao');
@@ -228,8 +229,18 @@ const comItensOrdenados = (r: ReqBalcaoRow): ReqBalcaoRow => ({
  * ao confirmar, ela deixava de ser pendente e, fora das 500 mais recentes,
  * sumia também de "Não exportadas" — e não ia para o SAP (10/11, RSS do
  * dia 30/10 baixadas pelo almoxarifado).
+ *
+ * A concluída e antiga fica fora: a busca por código/doc. SAP e o filtro de
+ * período vão ao banco por `buscarRequisicoesBalcaoNoHistorico` e
+ * `listarRequisicoesBalcaoDoPeriodo`, a partir de `completoDesde`.
  */
-export async function listarRequisicoesBalcao(limite = 500): Promise<ReqBalcaoRow[]> {
+export interface ListaRequisicoesBalcao {
+  linhas: ReqBalcaoRow[];
+  /** Data (criação) da última das recentes; '' = a lista tem todas. O próprio dia pode ter ficado pela metade. */
+  completoDesde: string;
+}
+
+export async function listarRequisicoesBalcao(limite = 500): Promise<ListaRequisicoesBalcao> {
   const [recentes, emAberto] = await Promise.all([
     dbReq()
       .select('*, itens:alm_req_balcao_itens(*)')
@@ -267,9 +278,52 @@ export async function listarRequisicoesBalcao(limite = 500): Promise<ReqBalcaoRo
   } catch (err) {
     console.warn('Requisição no Balcão: não carregou as importações parciais.', err);
   }
-  return [...porId.values()]
-    .sort((a, b) => (b.data === a.data ? (b.created_at || '').localeCompare(a.created_at || '') : b.data.localeCompare(a.data)))
-    .map(comItensOrdenados);
+  const recentesLinhas = (recentes.data || []) as ReqBalcaoRow[];
+  return {
+    linhas: [...porId.values()]
+      .sort((a, b) => (b.data === a.data ? (b.created_at || '').localeCompare(a.created_at || '') : b.data.localeCompare(a.data)))
+      .map(comItensOrdenados),
+    completoDesde: recentesLinhas.length >= limite ? recentesLinhas[recentesLinhas.length - 1]?.data ?? '' : '',
+  };
+}
+
+/** Requisições pelo começo do código ou pelo doc. SAP, no histórico todo (a busca da tela, fora da lista). */
+export async function buscarRequisicoesBalcaoNoHistorico(alvo: BuscaNoHistorico, limite = 300): Promise<ReqBalcaoRow[]> {
+  let q = dbReq().select('*, itens:alm_req_balcao_itens(*)').eq('excluido', false);
+  q = alvo.tipo === 'codigo' ? q.ilike('codigo', `${alvo.prefixo}%`) : q.ilike('doc_sap', `%${alvo.doc}%`);
+  const { data, error } = await q
+    .order('data', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(limite);
+  if (error) throw new Error(error.message);
+  return ((data || []) as ReqBalcaoRow[]).map(comItensOrdenados);
+}
+
+/**
+ * Requisições do período que a lista não carregou: pela data de criação
+ * (`de`–`ate`) ou pelos lotes exportados no período (`lotes`), só até `ate` —
+ * depois disso a lista já tem.
+ */
+export async function listarRequisicoesBalcaoDoPeriodo(f: { de?: string; ate: string; lotes?: string[] }): Promise<ReqBalcaoRow[]> {
+  const consulta = () => dbReq().select('*, itens:alm_req_balcao_itens(*)').eq('excluido', false).lte('data', f.ate);
+  const saida: ReqBalcaoRow[] = [];
+  if (f.lotes) {
+    for (let i = 0; i < f.lotes.length; i += 100) {
+      const ids = f.lotes.slice(i, i + 100);
+      saida.push(...await buscarTudo<ReqBalcaoRow>((de, ate) => consulta()
+        .in('exportacao_id', ids)
+        .order('data', { ascending: false })
+        .order('id', { ascending: true })
+        .range(de, ate)));
+    }
+  } else {
+    saida.push(...await buscarTudo<ReqBalcaoRow>((de, ate) => {
+      let q = consulta();
+      if (f.de) q = q.gte('data', f.de);
+      return q.order('data', { ascending: false }).order('id', { ascending: true }).range(de, ate);
+    }));
+  }
+  return saida.map(comItensOrdenados);
 }
 
 /** Uma requisição pelo código, com os itens — para abrir uma que esteja fora da lista. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  conferirExportadasSemSap, documentosDaImportacao, contarAuditoria, dentroDoPeriodo, documentosDaPlanilha, filtrarAuditoria, filtrarDivergenciasDoc,
+  documentosDaImportacao, contarAuditoria, dentroDoPeriodo, documentosDaPlanilha, filtrarAuditoria, filtrarDivergenciasDoc,
   resumirConferenciaImportacao, resumirPorMaterial, totalizarDivergenciasDoc,
   type LinhaAuditoriaRqb, type LinhaDivergenciaDoc,
 } from './requisicaoBalcaoAuditoria';
@@ -110,35 +110,6 @@ describe('importação da planilha × MB51', () => {
     expect(t.ok.pares).toBe(1);
     expect(t.mb51_pendente.pares).toBe(1);
     expect(t.faltas.pares).toBe(0);
-  });
-});
-
-describe('exportadas sem doc. SAP × MB51', () => {
-  it('classifica pela situação dos itens sem doc. e junta os documentos que casaram', () => {
-    const m = conferirExportadasSemSap([
-      linha({ requisicao_id: 'a', item_id: 'a1', mb51_status: 'ok', mb51_docs: '4904074971, 4904074972' }),
-      linha({ requisicao_id: 'a', item_id: 'a2', mb51_status: 'ok', mb51_docs: '4904074971' }),
-      linha({ requisicao_id: 'b', item_id: 'b1', mb51_status: 'ok', mb51_docs: '4904110381' }),
-      linha({ requisicao_id: 'b', item_id: 'b2', mb51_status: 'faltando' }),
-      linha({ requisicao_id: 'c', item_id: 'c1', mb51_status: 'outra_data', outra_data: '14/10/2026: 40 (doc 4904086616, 4904086619)' }),
-      linha({ requisicao_id: 'd', item_id: 'd1', mb51_status: 'faltando' }),
-      linha({ requisicao_id: 'e', item_id: 'e1', mb51_status: 'mb51_pendente' }),
-    ]);
-    expect(m.get('a')).toEqual({ situacao: 'na_mb51', itens: 2, encontrados: 2, docs: ['4904074971', '4904074972'] });
-    expect(m.get('b')?.situacao).toBe('em_parte');
-    expect(m.get('c')).toMatchObject({ situacao: 'em_parte', encontrados: 0, docs: ['4904086616', '4904086619'] });
-    expect(m.get('d')?.situacao).toBe('nao_encontrada');
-    expect(m.get('e')?.situacao).toBe('mb51_pendente');
-  });
-
-  it('ignora item que já tem doc. SAP e requisição não exportada', () => {
-    const m = conferirExportadasSemSap([
-      linha({ requisicao_id: 'a', item_id: 'a1', item_doc_sap: '4904000001', mb51_status: 'ok' }),
-      linha({ requisicao_id: 'a', item_id: 'a2', mb51_status: 'faltando' }),
-      linha({ requisicao_id: 'n', exportacao_id: null, mb51_status: null }),
-    ]);
-    expect(m.get('a')).toMatchObject({ situacao: 'nao_encontrada', itens: 1 });
-    expect(m.has('n')).toBe(false);
   });
 });
 

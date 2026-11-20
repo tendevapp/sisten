@@ -15,6 +15,7 @@ import { criarInventario, definirReservaInventario } from './inventarioCiclicoAp
 import { dataHojeLocal } from './dataLocal';
 import { prepararCasos, type MovimentoSimulacao } from './simulacaoBaixas';
 import { BALCAO_CENTRO } from './requisicaoBalcaoPlanilha';
+import { sugerirDocsSemSap, type CandidatosSemSap, type ConferenciaSemSap } from './requisicaoBalcaoDocProvavel';
 import type { EstoqueItem } from '../types';
 
 export interface ParametrosAuditoria {
@@ -42,6 +43,28 @@ export async function auditarRequisicoesMb51(p: ParametrosAuditoria): Promise<Li
     doc_qtd: l.doc_qtd == null ? null : Number(l.doc_qtd),
     doc_qtd_rqbs: l.doc_qtd_rqbs == null ? null : Number(l.doc_qtd_rqbs),
   }));
+}
+
+/**
+ * Exportadas sem doc. SAP: o documento mais provável na MB51 de cada uma, casado
+ * linha a linha nos dois sentidos (RPC `alm_rqb_sem_doc_candidatos` + `sugerirDocsSemSap`).
+ */
+export async function sugerirDocsExportadasSemSap(): Promise<{ mapa: Map<string, ConferenciaSemSap>; ate: string | null; ultimo: string | null }> {
+  const { data, error } = await (supabase.rpc as any)('alm_rqb_sem_doc_candidatos');
+  if (error) throw new Error(error.message);
+  const dados = (data ?? {}) as CandidatosSemSap;
+  return {
+    mapa: sugerirDocsSemSap({
+      mb51_ate: dados.mb51_ate ?? null,
+      mb51_ultimo: dados.mb51_ultimo ?? null,
+      itens: dados.itens ?? [],
+      linhas: dados.linhas ?? [],
+      estornos: dados.estornos ?? [],
+      vinculados: dados.vinculados ?? [],
+    }),
+    ate: dados.mb51_ate ?? null,
+    ultimo: dados.mb51_ultimo ?? null,
+  };
 }
 
 /**
