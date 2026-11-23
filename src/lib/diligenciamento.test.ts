@@ -444,6 +444,15 @@ describe('itemAtendeFiltroPromessa e filtrarItensDiligenciamento', () => {
     expect(resultado.map(i => i.riPo)).toEqual(['po-abril']);
   });
 
+  it('filtra pela chegada registrada no Rastreio', () => {
+    const itemChegado = { ...itemAbril, riPo: 'po-chegado', chegou: true };
+    const todos = [...lista, itemChegado];
+    expect(filtrarItensDiligenciamento(todos, { chegada: 'pendente' }).map(i => i.riPo)).not.toContain('po-chegado');
+    expect(filtrarItensDiligenciamento(todos, { chegada: 'pendente' })).toHaveLength(lista.filter(i => !i.chegou).length);
+    expect(filtrarItensDiligenciamento(todos, { chegada: 'chegou' }).map(i => i.riPo)).toEqual(['po-chegado']);
+    expect(filtrarItensDiligenciamento(todos, { chegada: 'todas' })).toHaveLength(todos.length);
+  });
+
   it('filtra apenas itens sem previsão quando apenasSemPrevisao for true', () => {
     const resultado = filtrarItensDiligenciamento(lista, { apenasSemPrevisao: true });
     expect(resultado.map(i => i.riPo)).toEqual(['po-sem-data']);

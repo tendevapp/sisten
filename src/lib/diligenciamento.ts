@@ -530,6 +530,12 @@ export function itemAtendeFiltroFatTransportadora(
 }
 
 /**
+ * Recorte pela coluna "Chegada (Rastreio)": `pendente` = o almoxarifado ainda
+ * não registrou a chegada física; `chegou` = já registrou, mas falta a MIGO.
+ */
+export type FiltroChegadaRastreio = 'todas' | 'pendente' | 'chegou';
+
+/**
  * Filtra a lista de itens de diligenciamento por transportadoras (seleção múltipla),
  * intervalo de promessa/previsão de entrega, data de faturamento da transportadora,
  * itens vencidos ou itens sem previsão.
@@ -543,10 +549,15 @@ export function filtrarItensDiligenciamento(
     fatTransportadora?: FiltroPromessaValor | null;
     apenasVencidos?: boolean;
     apenasSemPrevisao?: boolean;
+    /** Chegada registrada pelo almoxarifado no Rastreio Compras. */
+    chegada?: FiltroChegadaRastreio;
     hojeISO?: string;
   },
 ): ItemDiligenciamento[] {
   let resultado = itens;
+
+  if (filtros.chegada === 'pendente') resultado = resultado.filter(item => !item.chegou);
+  else if (filtros.chegada === 'chegou') resultado = resultado.filter(item => item.chegou);
 
   if (filtros.transportadoras && filtros.transportadoras.size > 0) {
     resultado = filtrarItensPorTransportadoras(

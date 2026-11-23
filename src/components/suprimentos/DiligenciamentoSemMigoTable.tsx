@@ -47,6 +47,7 @@ import MultiSelectFilter from '../ui/MultiSelectFilter';
 import DateRangeFilter, { type DateRangeValue } from '../ui/DateRangeFilter';
 import {
   ItemDiligenciamento, dataValida, ehSedexColeta, filtrarItensDiligenciamento, indexarCidadesPorCodigo, montarItens,
+  type FiltroChegadaRastreio,
   normalizarChaveTransportadora, resolverPrazoDias, somarDiasCorridos, transportadorasConhecidas,
 } from '../../lib/diligenciamento';
 import { montarMailtoComConfig, obterConfigEmail } from '../../lib/emailConfigApi';
@@ -171,6 +172,10 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
    */
   const [fatTranspFilter, setFatTranspFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
 
+  /** Coluna "Chegada (Rastreio)": pendente = o almoxarifado ainda não registrou a chegada física. */
+  const [chegadaFilter, setChegadaFilter] = useState<FiltroChegadaRastreio>('todas');
+  const chegadaFilterId = useId();
+
   const cidades = useMemo(() => localDb.getCidadeForn(), []);
   const cidadesPorCodigo = useMemo(() => indexarCidadesPorCodigo(cidades), [cidades]);
   const contatos = useMemo(() => localDb.getContatosForn(), []);
@@ -259,9 +264,23 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
       sentinelaSemTransportadora: SEM_TRANSPORTADORA,
       promessa: promessaFilter,
       fatTransportadora: fatTranspFilter,
+      chegada: chegadaFilter,
       hojeISO,
     });
-  }, [itensOrdenados, transpFilter, promessaFilter, fatTranspFilter, hojeISO]);
+  }, [itensOrdenados, transpFilter, promessaFilter, fatTranspFilter, chegadaFilter, hojeISO]);
+
+  // Quantos itens do recorte (sem o filtro de chegada) ainda esperam a chegada física.
+  const qtdSemChegada = useMemo(
+    () => filtrarItensDiligenciamento(itensOrdenados, {
+      transportadoras: transpFilter,
+      sentinelaSemTransportadora: SEM_TRANSPORTADORA,
+      promessa: promessaFilter,
+      fatTransportadora: fatTranspFilter,
+      chegada: 'pendente',
+      hojeISO,
+    }).length,
+    [itensOrdenados, transpFilter, promessaFilter, fatTranspFilter, hojeISO],
+  );
 
   /**
    * Resumo da fila — o comprador precisa saber, antes de rolar a tabela,
@@ -773,6 +792,25 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
             onChange={setFatTranspFilter}
             className="shrink-0 min-w-[170px]"
           />
+          <div className="relative shrink-0">
+            <label htmlFor={chegadaFilterId} className="sr-only">Chegada (Rastreio)</label>
+            <PackageCheck className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
+            <select
+              id={chegadaFilterId}
+              value={chegadaFilter}
+              onChange={e => setChegadaFilter(e.target.value as FiltroChegadaRastreio)}
+              title="Chegada física registrada pelo almoxarifado no Rastreio Compras"
+              className={`h-9 cursor-pointer appearance-none rounded-xl border pl-9 pr-8 text-xs font-bold ${
+                chegadaFilter !== 'todas' ? 'bg-blue-50 dark:bg-blue-950/40 text-[#0056c6] dark:text-blue-400 border-blue-200 dark:border-blue-900/60' : ''
+              }`}
+              style={chegadaFilter === 'todas' ? { borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' } : undefined}
+            >
+              <option value="todas">Chegada: todas</option>
+              <option value="pendente">Pendentes de chegada ({qtdSemChegada})</option>
+              <option value="chegou">Já chegaram, sem MIGO</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
+          </div>
           <button
             type="button"
             onClick={() => setPrazosAberto(true)}
