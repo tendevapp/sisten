@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   KeyRound, Search, Filter, CheckCircle, Clock, AlertTriangle, ArrowRight, UserPlus, HelpCircle, Check, Info, FileText,
-  MessageSquare, Send, Loader2, Trash2, ArrowUp, ArrowDown, ArrowUpDown
+  MessageSquare, Send, Loader2, Trash2, ArrowUp, ArrowDown, ArrowUpDown, Mail
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request, RequestComment, Sector } from '../types';
@@ -19,6 +19,9 @@ import type { PdfGerado } from '../lib/pdfExport/core';
 import { exportCadastroSapPdf, gerarCadastroSapPdf } from '../lib/pdfExport/exportCadastroSapPdf';
 import { exportIndicacaoContaPdf, gerarIndicacaoContaPdf } from '../lib/pdfExport/exportIndicacaoContaPdf';
 import { formatDateTimeBR } from '../lib/format';
+import AvisarConclusaoModal from '../components/solicitacoes/AvisarConclusaoModal';
+import { ehResponsavelPelaSolicitacao } from '../lib/responsaveisSolicitacoes';
+import { listarConfigsEmail } from '../lib/emailConfigApi';
 
 interface CadastrosSapProps {
   user: Profile;
@@ -127,6 +130,14 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
   const [actionError, setActionError] = useState('');
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
+  // Retorno ao solicitante por e-mail ao fechar a demanda (ou depois, pelo botão).
+  const [avisoConclusao, setAvisoConclusao] = useState<{ request: Request; conclusao: string; codigo: string } | null>(null);
+  const [, setVersaoConfigs] = useState(0);
+
+  // Carrega os responsáveis (Cadastros Gerais › E-mails) para liberar o aviso a eles.
+  useEffect(() => {
+    listarConfigsEmail().then(() => setVersaoConfigs(v => v + 1)).catch(() => null);
+  }, []);
 
   useEffect(() => {
     const hash = window.location.hash || '';
@@ -400,6 +411,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
       await localDb.addRequestComment(selectedReq.id, finalComment, false);
       
       setActionSuccess('Solicitação marcada como resolvida!');
+      const resolucaoEscrita = resolution.trim();
       setResolution('');
 
       const updatedReq = localDb.getRequests().find(r => r.id === selectedReq.id);
@@ -407,6 +419,12 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
         setSelectedReq(updatedReq);
         setSapResultCode(updatedReq.codigo_fornecedor_sap || updatedReq.codigo_sap_gerado || '');
       }
+      // Oferece o retorno ao solicitante por Outlook, já com a resolução e o código.
+      setAvisoConclusao({
+        request: updatedReq || selectedReq,
+        conclusao: resolucaoEscrita,
+        codigo: sapResultCode.trim(),
+      });
       setComments(localDb.getRequestComments(selectedReq.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
       loadData();
     } catch (err) {
@@ -419,6 +437,18 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     user.roles.includes('admin') ||
     user.roles.includes('coordenador_suprimentos')
   ));
+
+  // Avisar o solicitante: quem atendeu ou o responsável configurado para o tipo.
+  const podeAvisarSolicitante = Boolean(selectedReq && (
+    podeAtender || ehResponsavelPelaSolicitacao(selectedReq, user)
+  ));
+
+  /** Última nota de fechamento gravada ("Cadastro Finalizado: ..."), sem o prefixo nem o código. */
+  const ultimaResolucao = (): string => {
+    const nota = [...comments].reverse().find(c => c.content.startsWith('Cadastro Finalizado:'));
+    if (!nota) return '';
+    return nota.content.replace(/^Cadastro Finalizado:\s*/, '').split(' | ')[0].trim();
+  };
 
   const podeExcluir = Boolean(selectedReq && (
     user.roles.includes('admin') ||
@@ -1281,6 +1311,20 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                         : 'Aguardando auto-fechamento do sistema ou confirmação de fechamento pelo solicitante.'}
                     </p>
 
+                    {podeAvisarSolicitante && (
+                      <button
+                        type="button"
+                        onClick={() => setAvisoConclusao({
+                          request: selectedReq,
+                          conclusao: ultimaResolucao(),
+                          codigo: selectedReq.codigo_fornecedor_sap || selectedReq.codigo_sap_gerado || '',
+                        })}
+                        className="mx-auto flex items-center justify-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 cursor-pointer transition-colors"
+                      >
+                        <Mail className="h-3.5 w-3.5" /> Avisar o solicitante (Outlook)
+                      </button>
+                    )}
+
                     {/* Edicao / atualizacao do codigo SAP se necessario */}
                     {podeAtender && (
                       <div className="mt-3 pt-3 border-t border-emerald-200/70 text-left space-y-1.5">
@@ -1396,6 +1440,16 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
             </form>
           </ModalBody>
         </Modal>
+      )}
+
+      {avisoConclusao && (
+        <AvisarConclusaoModal
+          request={avisoConclusao.request}
+          user={user}
+          conclusaoInicial={avisoConclusao.conclusao}
+          codigoSap={avisoConclusao.codigo}
+          onClose={() => setAvisoConclusao(null)}
+        />
       )}
 
       {confirmarExclusao && selectedReq && (

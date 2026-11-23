@@ -24,6 +24,7 @@ import { localDb } from '../db/localDb';
 import { canAccessPage } from './pages';
 import { estaEmAberto, solicitacoesVisiveis } from './solicitacoes';
 import { ehChamadoDoGrupoFiscal, ehSetorGrupoFiscal } from './chamadosSuprimentosGrupo';
+import { ehResponsavelPelaSolicitacao } from './responsaveisSolicitacoes';
 
 /* Escopos ----------------------------------------------------------------- */
 
@@ -201,6 +202,9 @@ export function podeVer(r: Request, user: Profile): boolean {
   if (podeAprovar(r, user)) return true;
   if (setoresAcompanhados(user).includes(r.solicitante_sector_id)) return true;
   if (ehChamadoDoGrupoFiscal(r, user, localDb.getSectors())) return true;
+  // Responsável escolhido em Cadastros Gerais › E-mails (Cadastro SAP / Serviço):
+  // recebe o e-mail de abertura, então precisa abrir a solicitação pelo link.
+  if (ehResponsavelPelaSolicitacao(r, user)) return true;
   return ehOperador(r, user);
 }
 

@@ -107,3 +107,82 @@ export function montarEmailSolicitacao(p: ParametrosEmailSolicitacao): EmailSoli
 
   return { assunto, corpo: corpo.join('\n') };
 }
+
+export interface ParametrosEmailConclusao {
+  request: Request;
+  itens: RequestItem[];
+  /** O que foi feito — nota de resolução do atendente. */
+  conclusao: string;
+  /** Código SAP gerado no Cadastro SAP (material ou fornecedor), quando houver. */
+  codigoSap?: string | null;
+  /** Quem finalizou e assina a mensagem. */
+  atendente: string;
+  /** Endereço do SISTEN, sem barra final. */
+  origem: string;
+}
+
+/** Primeiro nome em caixa de título ("LOURIVAN SILVA" → "Lourivan"). */
+function primeiroNome(nome?: string | null): string {
+  const primeiro = (nome || '').trim().split(/\s+/)[0] || '';
+  return primeiro ? primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase() : '';
+}
+
+/**
+ * E-mail de retorno ao solicitante quando o responsável finaliza um Cadastro
+ * SAP ou uma solicitação de Serviço: avisa que terminou e repete o conteúdo,
+ * para quem lê não precisar abrir o SISTEN para saber do que se trata.
+ */
+export function montarEmailConclusao(p: ParametrosEmailConclusao): EmailSolicitacao {
+  const { request: r, itens, conclusao, codigoSap, atendente, origem } = p;
+  const ehCadastro = r.type === 'cadastro_sap';
+  const ehFornecedor = r.registration_type === 'Fornecedor';
+  const nomeTipo = ehCadastro
+    ? `Cadastro SAP — ${ehFornecedor ? 'Fornecedor' : 'Item'}`
+    : r.type === 'compra' && r.tipo_compra === 'Serviço' ? 'Solicitação de Serviço' : rotuloTipo(r.type);
+
+  const assunto = `${nomeTipo} #${r.number} — finalizada`;
+  const nome = primeiroNome(r.solicitante_name);
+  const codigo = (codigoSap || '').trim();
+
+  const corpo: string[] = [
+    nome ? `Olá, ${nome}!` : 'Olá!',
+    '',
+    `Sua solicitação #${r.number} (${nomeTipo}) foi finalizada.`,
+    '',
+  ];
+
+  if (ehCadastro) {
+    corpo.push(
+      ...linha('Operação', r.fornecedor_operacao === 'atualizacao' ? 'Atualização de cadastro' : r.fornecedor_operacao === 'novo' ? 'Novo cadastro' : ''),
+      ...linha(ehFornecedor ? 'Código do fornecedor no SAP' : 'Código do material no SAP', codigo),
+    );
+  }
+
+  corpo.push(
+    'O que foi feito:',
+    conclusao.trim() || '—',
+  );
+
+  if (itens.length > 0) {
+    corpo.push('', `${r.tipo_compra === 'Serviço' ? 'Serviços' : 'Itens'} da solicitação (${itens.length}):`);
+    itens.forEach((it, i) => {
+      corpo.push(`${i + 1}. ${it.description || '—'}${it.quantity ? ` — ${formatQtd(it.quantity)} ${it.unit ?? ''}`.trimEnd() : ''}`);
+    });
+  }
+
+  const justificativa = r.justificativa?.trim();
+  if (justificativa) {
+    corpo.push('', 'Conteúdo da solicitação:', justificativa);
+  }
+
+  corpo.push(
+    '',
+    ...linha('Aberta em', formatDateBR(r.created_at)),
+    `Ver no SISTEN: ${origem}/#/solicitacoes?id=${r.id}`,
+    '',
+    'Atenciosamente,',
+    atendente,
+  );
+
+  return { assunto, corpo: corpo.join('\n') };
+}

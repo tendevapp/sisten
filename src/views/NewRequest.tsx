@@ -1267,7 +1267,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const buildCadastroSapEmailBody = (reqId: string, reqNumero: string): string => {
     const isAtualizacao = registrationType === 'Fornecedor' && sapFornecedorOperacao === 'atualizacao';
     const linhas: string[] = [
-      'Olá, Jeff!',
+      'Olá!',
       '',
       'Abri uma solicitação de cadastro no SAP:',
       '',
@@ -1813,8 +1813,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       }
 
       if (activeTab === 'cadastro_sap') {
-        // Cadastro de item vai para o Jeff; cadastro de fornecedor vai para a
-        // Ana Leite. Cada destino tem seu gatilho editável em Cadastros > E-mails.
+        // Cadastro de item e de fornecedor têm cada um seu responsável, escolhido
+        // em Cadastros Gerais › E-mails (bloco "Responsáveis pelas solicitações").
         const ehFornecedor = registrationType === 'Fornecedor';
         const chaveEmail = ehFornecedor ? 'cadastro_sap_fornecedor' : 'cadastro_sap';
         const destinoPadrao = ehFornecedor ? 'ana.leite@ten.ind.br' : 'jefferson.santana@ten.ind.br';

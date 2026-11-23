@@ -43,6 +43,9 @@ import {
 } from '../../lib/solicitacoesCentral';
 import HelpdeskSatisfactionCard from '../helpdesk/HelpdeskSatisfactionCard';
 import ReenviarEmailModal from './ReenviarEmailModal';
+import AvisarConclusaoModal, { MARCA_SERVICO_FINALIZADO } from './AvisarConclusaoModal';
+import { ehResponsavelPelaSolicitacao } from '../../lib/responsaveisSolicitacoes';
+import { aoMudarConfigsEmail, listarConfigsEmail } from '../../lib/emailConfigApi';
 import { EditarChamadoSuprimentosModal, ReabrirChamadoSuprimentosModal } from './ChamadoSuprimentosModais';
 import { podeEditarChamadoSuprimentos, podeReabrirChamadoSuprimentos } from '../../lib/chamadosSuprimentosGrupo';
 import { ROTA_PENDENCIAS_PROCESSAMENTO } from '../../lib/supPendenciasProcessamento';
@@ -148,6 +151,8 @@ export default function RequestDetailPanel({
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
   const [itensCopiados, setItensCopiados] = useState(false);
   const [reenviandoEmail, setReenviandoEmail] = useState(false);
+  const [avisandoConclusao, setAvisandoConclusao] = useState(false);
+  const [, setVersaoConfigs] = useState(0);
   const [modalChamadoSup, setModalChamadoSup] = useState<'editar' | 'reabrir' | null>(null);
   const [sinais, setSinais] = useState<Record<string, SinalChip[]>>({});
   const [carregandoSinais, setCarregandoSinais] = useState(false);
@@ -179,6 +184,7 @@ export default function RequestDetailPanel({
     setModalDecisaoAberta(false);
     setModalCancelarAberta(false);
     setReenviandoEmail(false);
+    setAvisandoConclusao(false);
     setModalChamadoSup(null);
     setNovaDecisaoJustificativa('');
     setMotivoCancelamento('');
@@ -211,6 +217,28 @@ export default function RequestDetailPanel({
     .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
 
   const souSolicitante = request.solicitante_id === user.id;
+
+  // Responsável configurado em Cadastros Gerais › E-mails (Cadastro SAP / Serviço).
+  useEffect(() => {
+    listarConfigsEmail().catch(() => null);
+    return aoMudarConfigsEmail(() => setVersaoConfigs(v => v + 1));
+  }, []);
+
+  const ehServico = request.type === 'compra' && request.tipo_compra === 'Serviço';
+  const responsavel = user.roles.includes('admin') || ehResponsavelPelaSolicitacao(request, user);
+  const finalizacaoServico = ehServico
+    ? [...comentarios].reverse().find(c => c.content.startsWith(MARCA_SERVICO_FINALIZADO))
+    : undefined;
+  const podeFinalizarServico =
+    ehServico && responsavel && !['rascunho', 'cancelada', 'rejeitada'].includes(request.status);
+  const podeAvisarCadastro =
+    request.type === 'cadastro_sap' && (responsavel || ehOperador(request, user)) &&
+    ['resolvido', 'fechado', 'aprovada'].includes(request.status);
+  /** Nota do fechamento do Cadastro SAP ("Cadastro Finalizado: ..."), sem prefixo nem código. */
+  const resolucaoCadastro = (): string => {
+    const nota = [...comentarios].reverse().find(c => c.content.startsWith('Cadastro Finalizado:'));
+    return nota ? nota.content.replace(/^Cadastro Finalizado:\s*/, '').split(' | ')[0].trim() : '';
+  };
   const aprovando = podeAprovar(request, user) && request.status === 'pendente' && request.type === 'compra';
   const modulo = moduloOperacional(request, user, sectors);
   const nomeSetor = (id?: string) => (id ? sectors.find(s => s.id === id)?.name || id : '—');
@@ -549,6 +577,16 @@ export default function RequestDetailPanel({
             </BotaoSecundario>
           )}
 
+          {(podeFinalizarServico || podeAvisarCadastro) && (
+            <BotaoSecundario
+              onClick={() => setAvisandoConclusao(true)}
+              title="Abrir o Outlook para o solicitante informando que a solicitação foi finalizada"
+            >
+              <CheckCircle className="h-4 w-4 text-emerald-600" />
+              {podeFinalizarServico && !finalizacaoServico ? 'Finalizar e avisar solicitante' : 'Avisar o solicitante'}
+            </BotaoSecundario>
+          )}
+
           <BotaoSecundario onClick={() => setReenviandoEmail(true)} title="Enviar o conteúdo da solicitação por e-mail">
             <Mail className="h-4 w-4" /> Reenviar por e-mail
           </BotaoSecundario>
@@ -560,6 +598,16 @@ export default function RequestDetailPanel({
           )}
         </div>
       </header>
+
+      {finalizacaoServico && (
+        <p className="flex items-start gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+          <CheckCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            <strong>Serviço finalizado</strong> por {finalizacaoServico.user_name} em {formatDateTimeBR(finalizacaoServico.created_at)}
+            {' — '}{finalizacaoServico.content.slice(MARCA_SERVICO_FINALIZADO.length).replace(/^:\s*/, '')}
+          </span>
+        </p>
+      )}
 
       {/*
         Decisão e avaliação ficam fora das abas, logo abaixo do cabeçalho: são
@@ -1194,6 +1242,18 @@ export default function RequestDetailPanel({
       )}
       {modalChamadoSup === 'reabrir' && (
         <ReabrirChamadoSuprimentosModal request={request} onClose={() => setModalChamadoSup(null)} onReaberto={onChanged} />
+      )}
+
+      {avisandoConclusao && (
+        <AvisarConclusaoModal
+          request={request}
+          user={user}
+          conclusaoInicial={request.type === 'cadastro_sap' ? resolucaoCadastro() : ''}
+          codigoSap={request.codigo_fornecedor_sap || request.codigo_sap_gerado}
+          registrarConclusao={podeFinalizarServico && !finalizacaoServico}
+          onClose={() => setAvisandoConclusao(false)}
+          onConcluido={onChanged}
+        />
       )}
 
       {reenviandoEmail && (

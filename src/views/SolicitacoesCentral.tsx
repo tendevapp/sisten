@@ -41,6 +41,7 @@ import {
   marcarLida, marcarTodasLidas, novidade, ordenarFila, ordenarPorRecencia,
   registrarVisita, universoVisivel,
 } from '../lib/solicitacoesCentral';
+import { aoMudarConfigsEmail, listarConfigsEmail } from '../lib/emailConfigApi';
 import {
   calcularPrazoSolicitacao,
   chaveOrdenacaoBasica,
@@ -243,7 +244,16 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
   /* Indices ---------------------------------------------------------------- */
 
-  const universo = useMemo(() => universoVisivel(todas, user), [todas, user]);
+  // Responsáveis de Cadastro SAP / Serviço (Cadastros Gerais › E-mails) entram
+  // no recorte de visibilidade; a lista chega assíncrona, então recalcula.
+  const [versaoConfigsEmail, setVersaoConfigsEmail] = useState(0);
+  useEffect(() => {
+    listarConfigsEmail().catch(() => null);
+    return aoMudarConfigsEmail(() => setVersaoConfigsEmail(v => v + 1));
+  }, []);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const universo = useMemo(() => universoVisivel(todas, user), [todas, user, versaoConfigsEmail]);
 
   const eventos = useMemo(
     () => indexarEventos(localDb.getAllRequestComments(), localDb.getAllRequestHistory()),

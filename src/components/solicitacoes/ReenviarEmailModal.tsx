@@ -7,6 +7,7 @@ import type { Request, Sector } from '../../types';
 import { montarEmailSolicitacao } from '../../lib/solicitacaoEmail';
 import { montarMailtoComConfig, obterConfigEmail } from '../../lib/emailConfigApi';
 import { cabeNoMailto } from '../../lib/expedicaoEmail';
+import { chaveGatilhoDaSolicitacao } from '../../lib/responsaveisSolicitacoes';
 
 interface Props {
   request: Request;
@@ -20,12 +21,6 @@ const campo: React.CSSProperties = {
   color: 'var(--ink-primary)',
 };
 
-/** Gatilho de e-mail já cadastrado para o destino natural da solicitação, quando existe. */
-function chaveEmailPadrao(r: Request): string | null {
-  if (r.type === 'compra' && r.tipo_compra === 'Serviço') return 'compra_servico';
-  if (r.type === 'cadastro_sap') return r.registration_type === 'Fornecedor' ? 'cadastro_sap_fornecedor' : 'cadastro_sap';
-  return null;
-}
 
 /**
  * Reenvia a solicitação por e-mail: monta o texto com o conteúdo dela e abre o
@@ -52,7 +47,7 @@ export default function ReenviarEmailModal({ request, sectors, onClose }: Props)
   // Sugere os destinatários do gatilho cadastrado (Cadastros > E-mails), sem
   // travar: o usuário pode apagar e digitar quem quiser.
   useEffect(() => {
-    const chave = chaveEmailPadrao(request);
+    const chave = chaveGatilhoDaSolicitacao(request);
     if (!chave) return;
     let ativo = true;
     setCarregandoPadrao(true);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Request, RequestItem } from '../types';
-import { montarEmailSolicitacao } from './solicitacaoEmail';
+import { montarEmailConclusao, montarEmailSolicitacao } from './solicitacaoEmail';
 
 const request = {
   id: 'r1', number: '5001028', type: 'compra', status: 'pendente', criticality: 5,
@@ -50,5 +50,35 @@ describe('montarEmailSolicitacao', () => {
   it('informa a quantidade de anexos sem levá-los', () => {
     const { corpo } = montarEmailSolicitacao({ ...base, totalAnexos: 3 });
     expect(corpo).toContain('Anexos: 3');
+  });
+});
+
+describe('montarEmailConclusao', () => {
+  it('avisa o solicitante que o serviço terminou e repete o conteúdo', () => {
+    const { assunto, corpo } = montarEmailConclusao({
+      request, itens: [item()], conclusao: 'Prestador contratado, PO 4500012345.',
+      atendente: 'LOURIVAN SILVA FERREIRA', origem: 'https://sisten.app',
+    });
+    expect(assunto).toBe('Solicitação de Serviço #5001028 — finalizada');
+    expect(corpo).toMatch(/^Olá, Bianca!/);
+    expect(corpo).toContain('foi finalizada');
+    expect(corpo).toContain('Prestador contratado, PO 4500012345.');
+    expect(corpo).toContain('Serviços da solicitação (1):');
+    expect(corpo).toContain('1. RECUPERAÇÃO DE IHM — 2 UN');
+    expect(corpo).toContain('COLUNA PARADA.');
+    expect(corpo).toContain('https://sisten.app/#/solicitacoes?id=r1');
+    expect(corpo.trimEnd().endsWith('LOURIVAN SILVA FERREIRA')).toBe(true);
+  });
+
+  it('no Cadastro SAP de fornecedor traz o código gerado', () => {
+    const cadastro = { ...request, type: 'cadastro_sap', registration_type: 'Fornecedor', fornecedor_operacao: 'novo', tipo_compra: undefined } as Request;
+    const { assunto, corpo } = montarEmailConclusao({
+      request: cadastro, itens: [], conclusao: 'Cadastrado.', codigoSap: ' 20004567 ',
+      atendente: 'Ana', origem: 'https://sisten.app',
+    });
+    expect(assunto).toBe('Cadastro SAP — Fornecedor #5001028 — finalizada');
+    expect(corpo).toContain('Operação: Novo cadastro');
+    expect(corpo).toContain('Código do fornecedor no SAP: 20004567');
+    expect(corpo).not.toContain('da solicitação (');
   });
 });

@@ -195,6 +195,28 @@ export function invalidarCacheConfigsEmail() {
   cacheTime = 0;
 }
 
+// Última lista lida do banco, sem prazo de validade: alimenta regras síncronas
+// (ex.: quem é responsável por Cadastro SAP / Serviço) que não podem esperar
+// uma consulta. Vazia até a primeira leitura — nada de destinatário embutido.
+let ultimasConfigsLidas: ConfigEnvioEmail[] = [];
+const ouvintesConfigs = new Set<() => void>();
+
+/** Configurações da última leitura bem-sucedida do banco (síncrono). */
+export function configsEmailConhecidas(): ConfigEnvioEmail[] {
+  return ultimasConfigsLidas;
+}
+
+/** Avisa quando a lista conhecida muda. Devolve a função para cancelar. */
+export function aoMudarConfigsEmail(fn: () => void): () => void {
+  ouvintesConfigs.add(fn);
+  return () => { ouvintesConfigs.delete(fn); };
+}
+
+function guardarConfigsLidas(lista: ConfigEnvioEmail[]) {
+  ultimasConfigsLidas = lista;
+  ouvintesConfigs.forEach(fn => fn());
+}
+
 /**
  * Normaliza e separa uma string com múltiplos e-mails (separados por vírgula,
  * ponto e vírgula ou quebras de linha).
@@ -336,8 +358,11 @@ export async function listarConfigsEmail(apenasAtivos = false): Promise<ConfigEn
       listaFinal = listaFinal.filter(c => c.ativo);
     }
 
-    cacheConfigs = listaFinal;
-    cacheTime = now;
+    if (!apenasAtivos) {
+      cacheConfigs = listaFinal;
+      cacheTime = now;
+      guardarConfigsLidas(listaFinal);
+    }
 
     return listaFinal;
   } catch (err) {

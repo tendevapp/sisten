@@ -26,6 +26,7 @@ import ConfirmDialog from '../components/ui/ConfirmDialog';
 import GestaoGrupoComprador from '../components/admin/GestaoGrupoComprador';
 import GestaoNiveisMercadorias from '../components/admin/GestaoNiveisMercadorias';
 import ConfigAberturaRm from '../components/admin/ConfigAberturaRm';
+import ResponsaveisSolicitacoes from '../components/admin/ResponsaveisSolicitacoes';
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 
@@ -708,6 +709,9 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
       {/* ========================================================= */}
       {activeTab === 'emails_envios' && (
         <div className="space-y-4">
+          {/* Quem recebe Cadastro SAP e Serviço — grava no "Para" dos gatilhos */}
+          <ResponsaveisSolicitacoes configs={configsEmail} onSalvo={carregarConfigsEmail} />
+
           {/* Stats Bar */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
