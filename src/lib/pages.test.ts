@@ -37,6 +37,31 @@ function mockUser(overrides: Partial<Profile> & { setor_id?: string } = {}): Pro
 }
 
 describe('pages.ts - Controle de Acesso', () => {
+  it.each(['form_ssma_ronda', 'form_ssma_oc'])('aplica a %s a permissão individual da Segurança e libera administradores ativos de qualquer setor', id => {
+    const seguranca = mockUser({ status: 'ativo', sector_id: '13', page_access: { form_ssma_isp: false } });
+    const outroSetor = mockUser({ status: 'ativo', sector_id: '5', page_access: { [id]: true } });
+    const admin = mockUser({ status: 'ativo', roles: ['admin'], page_access: { formularios: false, [id]: false } });
+    expect(canAccessFormGroup(seguranca, 'ssma')).toBe(true);
+    expect(canAccessForm(seguranca, id)).toBe(true);
+    expect(canAccessForm({ ...seguranca, page_access: { [id]: false } }, id)).toBe(false);
+    expect(canAccessPage(outroSetor, id)).toBe(false);
+    expect(canAccessPage(admin, id)).toBe(true);
+    expect(canAccessForm({ ...admin, status: 'inativo' }, id)).toBe(false);
+  });
+  it('restringe o ISP ao setor Segurança, inclusive com permissões individuais e do grupo', () => {
+    const seguranca = mockUser({ status: 'ativo', sector_id: '13' });
+    expect(canAccessFormGroup(seguranca, 'ssma')).toBe(true);
+    expect(canAccessForm(seguranca, 'form_ssma_isp')).toBe(true);
+    expect(canAccessForm({ ...seguranca, status: 'inativo' }, 'form_ssma_isp')).toBe(false);
+    expect(canAccessForm({ ...seguranca, page_access: { form_ssma_isp: false } }, 'form_ssma_isp')).toBe(false);
+    expect(canAccessForm({ ...seguranca, page_access: { form_ssma: false } }, 'form_ssma_isp')).toBe(false);
+    expect(canAccessForm({ ...seguranca, sector_id: '12', page_access: { form_ssma: true, form_ssma_isp: true } }, 'form_ssma_isp')).toBe(false);
+    const admin = mockUser({ status: 'ativo', sector_id: '5', roles: ['admin'] });
+    expect(canAccessForm(admin, 'form_ssma_isp')).toBe(true);
+    expect(canAccessPage(admin, 'form_ssma_isp')).toBe(true);
+    expect(canAccessForm({ ...admin, status: 'inativo' }, 'form_ssma_isp')).toBe(false);
+    expect(canAccessForm({ ...admin, page_access: { formularios: false, form_ssma_isp: false } }, 'form_ssma_isp')).toBe(true);
+  });
   describe('canAccessPage', () => {
     it('deve liberar tudo para administradores', () => {
       const admin = mockUser({ roles: ['admin'] });
@@ -528,8 +553,8 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(canAccessForm(visAlmoxBloqueado, 'form_ssma_rid')).toBe(false);
     });
 
-    it('administrador tem acesso irrestrito a todos os formulários', () => {
-      const admin = mockUser({ roles: ['admin'] });
+    it('administrador ativo de outro setor acessa todos os formulários, inclusive o ISP', () => {
+      const admin = mockUser({ roles: ['admin'], status: 'ativo' });
       for (const form of FORMULARIOS_DETALHADOS) {
         expect(canAccessForm(admin, form.id)).toBe(true);
       }

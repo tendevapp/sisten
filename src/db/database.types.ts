@@ -11402,6 +11402,438 @@ export type Database = {
         }
         Relationships: []
       }
+      ssma_oc_desvios: {
+        Row: {
+          descricao: string
+          ordem: number
+          registro_id: string
+        }
+        Insert: {
+          descricao: string
+          ordem: number
+          registro_id: string
+        }
+        Update: {
+          descricao?: string
+          ordem?: number
+          registro_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssma_oc_desvios_registro_id_fkey"
+            columns: ["registro_id"]
+            isOneToOne: false
+            referencedRelation: "ssma_oc_registros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ssma_oc_itens: {
+        Row: {
+          descricao: string
+          grupo: string
+          id: number
+        }
+        Insert: {
+          descricao: string
+          grupo: string
+          id: number
+        }
+        Update: {
+          descricao?: string
+          grupo?: string
+          id?: number
+        }
+        Relationships: []
+      }
+      ssma_oc_marcacoes: {
+        Row: {
+          item_id: number
+          registro_id: string
+        }
+        Insert: {
+          item_id: number
+          registro_id: string
+        }
+        Update: {
+          item_id?: number
+          registro_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssma_oc_marcacoes_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "ssma_oc_itens"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssma_oc_marcacoes_registro_id_fkey"
+            columns: ["registro_id"]
+            isOneToOne: false
+            referencedRelation: "ssma_oc_registros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ssma_oc_registros: {
+        Row: {
+          criado_em: string
+          criado_por: string
+          excluido_em: string | null
+          excluido_por: string | null
+          motivo_exclusao: string | null
+          data: string
+          duracao_min: number
+          hash_envio: string
+          id: string
+          indice: number
+          lider_area: string
+          local: string
+          nome: string
+          pessoas_contatadas: number
+          pessoas_observadas: number
+          praticas_seguras: string
+          turno_letra: string
+        }
+        Insert: {
+          criado_em?: string
+          criado_por: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          motivo_exclusao?: string | null
+          data: string
+          duracao_min: number
+          hash_envio: string
+          id: string
+          indice: number
+          lider_area: string
+          local: string
+          nome: string
+          pessoas_contatadas: number
+          pessoas_observadas: number
+          praticas_seguras: string
+          turno_letra: string
+        }
+        Update: {
+          criado_em?: string
+          criado_por?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          motivo_exclusao?: string | null
+          data?: string
+          duracao_min?: number
+          hash_envio?: string
+          id?: string
+          indice?: number
+          lider_area?: string
+          local?: string
+          nome?: string
+          pessoas_contatadas?: number
+          pessoas_observadas?: number
+          praticas_seguras?: string
+          turno_letra?: string
+        }
+        Relationships: []
+      }
+      ssma_ronda_participantes: {
+        Row: {
+          assinatura: string | null
+          nome: string
+          ordem: number
+          ronda_id: string
+        }
+        Insert: {
+          assinatura?: string | null
+          nome: string
+          ordem: number
+          ronda_id: string
+        }
+        Update: {
+          assinatura?: string | null
+          nome?: string
+          ordem?: number
+          ronda_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssma_ronda_participantes_ronda_id_fkey"
+            columns: ["ronda_id"]
+            isOneToOne: false
+            referencedRelation: "ssma_rondas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ssma_seg_formularios_log: {
+        Row: {
+          alteracoes: Json
+          alterado_por: string | null
+          alterado_por_nome: string | null
+          antes: Json | null
+          codigo: string | null
+          created_at: string
+          depois: Json | null
+          formulario: string
+          id: number
+          operacao: string
+          origem: string
+          registro_id: string
+        }
+        Insert: {
+          alteracoes?: Json
+          alterado_por?: string | null
+          alterado_por_nome?: string | null
+          antes?: Json | null
+          codigo?: string | null
+          created_at?: string
+          depois?: Json | null
+          formulario: string
+          id?: never
+          operacao: string
+          origem: string
+          registro_id: string
+        }
+        Update: {
+          alteracoes?: Json
+          alterado_por?: string | null
+          alterado_por_nome?: string | null
+          antes?: Json | null
+          codigo?: string | null
+          created_at?: string
+          depois?: Json | null
+          formulario?: string
+          id?: never
+          operacao?: string
+          origem?: string
+          registro_id?: string
+        }
+        Relationships: []
+      }
+      ssma_rondas: {
+        Row: {
+          assinatura_gerente: string | null
+          boas_praticas: string
+          criado_em: string
+          criado_por: string
+          excluido_em: string | null
+          excluido_por: string | null
+          motivo_exclusao: string | null
+          data: string
+          epi: number
+          frentes: string
+          gerente: string
+          hash_envio: string
+          hora: string
+          id: string
+          indice: number
+          observacoes: string
+          organizacao: number
+          protecao_coletiva: number
+          queda: number
+        }
+        Insert: {
+          assinatura_gerente?: string | null
+          boas_praticas: string
+          criado_em?: string
+          criado_por: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          motivo_exclusao?: string | null
+          data: string
+          epi: number
+          frentes: string
+          gerente: string
+          hash_envio: string
+          hora: string
+          id: string
+          indice: number
+          observacoes: string
+          organizacao: number
+          protecao_coletiva: number
+          queda: number
+        }
+        Update: {
+          assinatura_gerente?: string | null
+          boas_praticas?: string
+          criado_em?: string
+          criado_por?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          motivo_exclusao?: string | null
+          data?: string
+          epi?: number
+          frentes?: string
+          gerente?: string
+          hash_envio?: string
+          hora?: string
+          id?: string
+          indice?: number
+          observacoes?: string
+          organizacao?: number
+          protecao_coletiva?: number
+          queda?: number
+        }
+        Relationships: []
+      }
+      ssma_isp_acoes: {
+        Row: {
+          descricao: string
+          inspecao_id: string
+          item: string
+          ordem: number
+          prazo: string
+          quantidade: number
+          responsavel: string
+          rnc: string | null
+        }
+        Insert: {
+          descricao: string
+          inspecao_id: string
+          item: string
+          ordem: number
+          prazo: string
+          quantidade: number
+          responsavel: string
+          rnc?: string | null
+        }
+        Update: {
+          descricao?: string
+          inspecao_id?: string
+          item?: string
+          ordem?: number
+          prazo?: string
+          quantidade?: number
+          responsavel?: string
+          rnc?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssma_isp_acoes_inspecao_id_item_fkey"
+            columns: ["inspecao_id", "item"]
+            isOneToOne: false
+            referencedRelation: "ssma_isp_respostas"
+            referencedColumns: ["inspecao_id", "item"]
+          },
+        ]
+      }
+      ssma_isp_inspecoes: {
+        Row: {
+          area: string
+          comentarios: string
+          criado_em: string
+          criado_por: string
+          excluido_em: string | null
+          excluido_por: string | null
+          motivo_exclusao: string | null
+          data: string
+          duracao_min: number
+          fotos: string[]
+          hhi: number | null
+          id: string
+          indice: number
+          inicio: string
+          inspecionados: number
+          inspetor: string
+          pedido_hash: string
+          responsavel_area: string
+          tst: string
+        }
+        Insert: {
+          area: string
+          comentarios?: string
+          criado_em?: string
+          criado_por: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          motivo_exclusao?: string | null
+          data: string
+          duracao_min: number
+          fotos?: string[]
+          hhi?: number | null
+          id: string
+          indice: number
+          inicio: string
+          inspecionados: number
+          inspetor: string
+          pedido_hash: string
+          responsavel_area: string
+          tst: string
+        }
+        Update: {
+          area?: string
+          comentarios?: string
+          criado_em?: string
+          criado_por?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          motivo_exclusao?: string | null
+          data?: string
+          duracao_min?: number
+          fotos?: string[]
+          hhi?: number | null
+          id?: string
+          indice?: number
+          inicio?: string
+          inspecionados?: number
+          inspetor?: string
+          pedido_hash?: string
+          responsavel_area?: string
+          tst?: string
+        }
+        Relationships: []
+      }
+      ssma_isp_itens: {
+        Row: {
+          codigo: string
+          descricao: string
+          ordem: number
+        }
+        Insert: {
+          codigo: string
+          descricao: string
+          ordem: number
+        }
+        Update: {
+          codigo?: string
+          descricao?: string
+          ordem?: number
+        }
+        Relationships: []
+      }
+      ssma_isp_respostas: {
+        Row: {
+          inspecao_id: string
+          item: string
+          quantidade: number
+        }
+        Insert: {
+          inspecao_id: string
+          item: string
+          quantidade: number
+        }
+        Update: {
+          inspecao_id?: string
+          item?: string
+          quantidade?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssma_isp_respostas_inspecao_id_fkey"
+            columns: ["inspecao_id"]
+            isOneToOne: false
+            referencedRelation: "ssma_isp_inspecoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssma_isp_respostas_item_fkey"
+            columns: ["item"]
+            isOneToOne: false
+            referencedRelation: "ssma_isp_itens"
+            referencedColumns: ["codigo"]
+          },
+        ]
+      }
       ssma_rid_atualizacoes: {
         Row: {
           created_at: string
@@ -18698,6 +19130,29 @@ export type Database = {
       salvar_processo_cotacao: { Args: { p_payload: Json }; Returns: Json }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      ssma_oc_pode_acessar: { Args: never; Returns: boolean }
+      ssma_oc_registrar: {
+        Args: { p_dados: Json; p_id: string }
+        Returns: undefined
+      }
+      ssma_ronda_pode_acessar: { Args: never; Returns: boolean }
+      ssma_ronda_registrar: {
+        Args: { p_dados: Json; p_id: string }
+        Returns: undefined
+      }
+      ssma_seg_excluir_registro: {
+        Args: { p_formulario: string; p_id: string; p_motivo: string }
+        Returns: undefined
+      }
+      ssma_seg_restaurar_registro: {
+        Args: { p_formulario: string; p_id: string }
+        Returns: undefined
+      }
+      ssma_isp_pode_acessar: { Args: never; Returns: boolean }
+      ssma_isp_registrar: {
+        Args: { p_dados: Json; p_id: string }
+        Returns: string
+      }
       ssma_book_epis_pode_acessar: { Args: never; Returns: boolean }
       ssma_ficha_epi_assinar: {
         Args: { p_assinatura: string; p_ficha_id: string }

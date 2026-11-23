@@ -11,6 +11,7 @@ import {
   canAccessPage,
   canAccessForm,
   canAccessFormGroup,
+  formularioExclusivoSeguranca,
   isUserVisualizador,
   userBelongsToSector,
   getPageGroups,
@@ -558,6 +559,9 @@ export default function PageAccessModal({ user, onClose, onChanged, usuarios = [
                                       <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5 pl-4">
                                         {formsDoGrupo.map(form => {
                                           const formHasOverride = pageAccess[form.id] !== undefined;
+                                          const exclusivoSeguranca = formularioExclusivoSeguranca(form.id);
+                                          const adminComAcesso = exclusivoSeguranca && user.roles.includes('admin');
+                                          const foraDaSeguranca = exclusivoSeguranca && user.sector_id !== '13' && !adminComAcesso;
                                           const isFormChecked = canAccessForm(
                                             { ...user, page_access: pageAccess },
                                             form.id
@@ -566,7 +570,11 @@ export default function PageAccessModal({ user, onClose, onChanged, usuarios = [
                                           let badgeTexto = '';
                                           let badgeCor = 'text-slate-500 dark:text-slate-500';
 
-                                          if (formHasOverride) {
+                                          if (adminComAcesso) {
+                                            badgeTexto = user.status === 'ativo' ? '(administrador)' : '(perfil inativo)';
+                                          } else if (foraDaSeguranca) {
+                                            badgeTexto = '(exclusivo da Segurança)';
+                                          } else if (formHasOverride) {
                                             badgeTexto = isFormChecked ? '(liberado manual)' : '(bloqueado manual)';
                                             badgeCor = isFormChecked
                                               ? 'text-blue-600 dark:text-blue-400 font-semibold'
@@ -593,6 +601,7 @@ export default function PageAccessModal({ user, onClose, onChanged, usuarios = [
                                                 <input
                                                   type="checkbox"
                                                   checked={isFormChecked}
+                                                  disabled={foraDaSeguranca || adminComAcesso}
                                                   onChange={(e) => handleToggle(form.id, e.target.checked)}
                                                   className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5 shrink-0"
                                                 />

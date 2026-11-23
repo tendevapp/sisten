@@ -257,8 +257,42 @@ export interface FormularioDef {
   universalParaVisualizador?: boolean;
 }
 
+export function formularioExclusivoSeguranca(id: string) {
+  return id === 'form_ssma_isp' || id === 'form_ssma_ronda' || id === 'form_ssma_oc';
+}
+
 export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
   // SSMA
+  {
+    id: 'form_ssma_oc',
+    grupoId: 'ssma',
+    label: 'Observação Comportamental',
+    codigo: 'FRM.SEG-0042',
+    descricao: 'Checklist de práticas e condições, registro de práticas seguras e desvios observados.',
+    path: '/formularios/ssma-observacao-comportamental',
+    defaultRoles: ['admin'],
+    setores: { ids: ['13'] },
+  },
+  {
+    id: 'form_ssma_ronda',
+    grupoId: 'ssma',
+    label: 'Ronda de Segurança do Trabalho',
+    codigo: 'FRM.SEG-0041',
+    descricao: 'Registro de rondas, irregularidades e boas práticas nas frentes de trabalho.',
+    path: '/formularios/ssma-ronda',
+    defaultRoles: ['admin'],
+    setores: { ids: ['13'] },
+  },
+  {
+    id: 'form_ssma_isp',
+    grupoId: 'ssma',
+    label: 'Inspeção de SST (ISP)',
+    codigo: 'FRM.SEG-0036',
+    descricao: 'Inspeção de segurança do trabalho e ações corretivas. Acesso da Segurança e dos administradores.',
+    path: '/formularios/ssma-isp',
+    defaultRoles: ['admin'],
+    setores: { ids: ['13'] },
+  },
   {
     id: 'form_ssma_rid',
     grupoId: 'ssma',
@@ -938,6 +972,7 @@ export function isUserSetorSuprimentos(user: Profile): boolean {
 }
 
 export function canAccessPage(user: Profile, pageId: string): boolean {
+  if (formularioExclusivoSeguranca(pageId)) return canAccessForm(user, pageId);
   if (user.roles.includes('admin')) return true;
 
   // Processamento de NF (aba de Pendências): só o setor Suprimentos, salvo
@@ -1054,7 +1089,8 @@ export function userBelongsToSector(
  * Avalia se o usuário tem permissão para acessar um formulário específico.
  *
  * Regras:
- * 1. Administrador sempre tem acesso total.
+ * 1. O ISP exige perfil ativo da Segurança ou administrador ativo de qualquer setor.
+ *    Os demais formulários concedem acesso total ao administrador.
  * 2. O usuário precisa ter acesso à página geral "Formulários".
  * 3. Override individual do admin em `user.page_access[formId]` tem a maior prioridade.
  * 4. Override no grupo pai (`user.page_access['form_' + grupoId]`): se for false, bloqueia o form (a menos que haja override positivo específico).
@@ -1068,6 +1104,12 @@ export function userBelongsToSector(
  *    - Se o grupo macro estiver liberado e a role estiver permitida, tem acesso.
  */
 export function canAccessForm(user: Profile, formId: string, customSectors?: Sector[]): boolean {
+  if (formularioExclusivoSeguranca(formId)) {
+    if (user.status !== 'ativo') return false;
+    if (user.roles.includes('admin')) return true;
+    return user.sector_id === '13' && user.page_access?.formularios !== false &&
+      (user.page_access?.[formId] ?? user.page_access?.form_ssma ?? true);
+  }
   if (user.roles.includes('admin')) return true;
   if (!canAccessPage(user, 'formularios')) return false;
 
@@ -1140,6 +1182,7 @@ export function canAccessFormGroup(user: Profile, grupoId: string, customSectors
   const sub = FORMULARIO_SUBPERMISSOES.find(s => s.grupoId === grupoId);
   const macroId = sub ? sub.id : `form_${grupoId}`;
   const formsDoGrupo = FORMULARIOS_DETALHADOS.filter(f => f.grupoId === grupoId);
+  if (grupoId === 'ssma' && formsDoGrupo.some(f => formularioExclusivoSeguranca(f.id) && canAccessForm(user, f.id))) return true;
 
   // Se houver algum formulário individual deste grupo com liberação explícita
   const temFormComOverrideAtivo = formsDoGrupo.some(f => user.page_access?.[f.id] === true);

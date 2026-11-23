@@ -35,10 +35,18 @@ describe('espelharPageAccess', () => {
     const destino = perfil('b', ['solicitante'], '1');
     const pa = espelharPageAccess(origem, destino);
     const novo = { ...destino, page_access: pa };
-    // Facilities e RH são travados por pessoa/setor: ficam de fora e não viram override inútil.
+    // O ISP também exige setor Segurança ou papel admin no destino.
     const restantes = itensNaoEspelhados(origem, novo);
-    expect(restantes.length).toBeGreaterThan(0);
-    expect(restantes.every(l => /^(FACILITIES|RH) ›/.test(l))).toBe(true);
+    const isp = 'Formulário › Inspeção de SST (ISP)';
+    expect(restantes).toContain(isp);
+    const ronda = 'Formulário › Ronda de Segurança do Trabalho';
+    expect(restantes).toContain(ronda);
+    const observacao = 'Formulário › Observação Comportamental';
+    expect(restantes).toContain(observacao);
+    expect(restantes.every(l => [isp, ronda, observacao].includes(l) || /^(FACILITIES|RH) ›/.test(l))).toBe(true);
+    expect(pa.form_ssma_oc).toBeUndefined();
+    expect(pa.form_ssma_ronda).toBeUndefined();
+    expect(pa.form_ssma_isp).toBeUndefined();
     expect(Object.keys(pa).some(k => k.startsWith('facilities'))).toBe(false);
   });
 

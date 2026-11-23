@@ -980,6 +980,27 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/formularios/ssma-observacao-comportamental':
+      case '/formularios/ssma/observacao-comportamental':
+        if (canAccessForm(user, 'form_ssma_oc')) {
+          return <SsmaHub user={user} onNavigate={handleNavigate} modo="formularios" initialTab="oc" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/ssma-ronda':
+      case '/formularios/ssma/ronda':
+        if (canAccessForm(user, 'form_ssma_ronda')) {
+          return <SsmaHub user={user} onNavigate={handleNavigate} modo="formularios" initialTab="ronda" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/ssma-isp':
+      case '/formularios/ssma/isp':
+        if (canAccessForm(user, 'form_ssma_isp')) {
+          return <SsmaHub user={user} onNavigate={handleNavigate} modo="formularios" initialTab="isp" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/formularios/ssma-rid/relatorio':
         if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_ssma_rid') && canAccessPage(user, 'ssma_rid_relatorio')) {
           return <SsmaRidRelatorio user={user} onNavigate={handleNavigate} />;

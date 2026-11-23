@@ -34,6 +34,9 @@ import { canAccessForm } from '../../lib/pages';
 import SsmaBookEpisView from './SsmaBookEpisView';
 import SsmaEpiPorFuncaoView from './SsmaEpiPorFuncaoView';
 import SsmaFichaEpiView from './SsmaFichaEpiView';
+import SsmaIspView from './SsmaIspView';
+import SsmaRondaView from './SsmaRondaView';
+import SsmaObservacaoView from './SsmaObservacaoView';
 
 interface SsmaHubProps {
   user: Profile;
@@ -129,6 +132,36 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral', 
 
   const FORMULARIOS_SSMA = [
     {
+      id: 'oc',
+      codigo: 'FRM.SEG-0042',
+      title: 'Observação Comportamental',
+      desc: 'Checklist de campo, práticas seguras e relato de desvios por local e turno.',
+      icon: ClipboardCheck,
+      cor: 'bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:text-teal-400',
+      badge: 'Segurança e administradores',
+      badgeCor: 'border-emerald-200 text-emerald-700 dark:text-emerald-300',
+    },
+    {
+      id: 'ronda',
+      codigo: 'FRM.SEG-0041',
+      title: 'Ronda de Segurança do Trabalho',
+      desc: 'Registro das frentes visitadas, participantes, irregularidades e boas práticas.',
+      icon: ShieldAlert,
+      cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400',
+      badge: 'Segurança e administradores',
+      badgeCor: 'border-emerald-200 text-emerald-700 dark:text-emerald-300',
+    },
+    {
+      id: 'isp',
+      codigo: 'FRM.SEG-0036',
+      title: 'Inspeção de SST (ISP)',
+      desc: 'Verificações de segurança, evidências fotográficas e ações de correção por área.',
+      icon: ClipboardCheck,
+      cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400',
+      badge: 'Segurança e administradores',
+      badgeCor: 'border-emerald-200 text-emerald-700 dark:text-emerald-300',
+    },
+    {
       id: 'rid',
       codigo: 'FRM.SSMA-0001',
       title: 'RID - Registro de Identificação de Desvio',
@@ -186,6 +219,21 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral', 
       return null;
     }
     return <SsmaAlcoolemiaView user={user} onNavigate={handleChildNavigate} />;
+  }
+
+  if (activeTab === 'oc' && canAccessForm(user, 'form_ssma_oc')) {
+    return <SsmaObservacaoView user={user} onBack={() => initialTab === 'oc'
+      ? onNavigate('/formularios/ssma') : setActiveTab('visao_geral')} />;
+  }
+
+  if (activeTab === 'ronda' && canAccessForm(user, 'form_ssma_ronda')) {
+    return <SsmaRondaView user={user} onBack={() => initialTab === 'ronda'
+      ? onNavigate('/formularios/ssma') : setActiveTab('visao_geral')} />;
+  }
+
+  if (activeTab === 'isp' && canAccessForm(user, 'form_ssma_isp')) {
+    return <SsmaIspView user={user} onBack={() => initialTab === 'isp'
+      ? onNavigate('/formularios/ssma') : setActiveTab('visao_geral')} />;
   }
 
   if (activeTab === 'ficha_epi') {

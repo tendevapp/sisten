@@ -291,6 +291,25 @@ const RPCS: Record<string, ConfigRpc> = {
 
   plan_kaizen_validar: { rotulo: 'Aqui TEN Melhoria! — validação do responsável', respostaProvisoria: () => null },
 
+  // Segurança — ISP, Ronda e Observação. O id vem do aparelho e o banco compara
+  // o hash do envio: o reenvio da fila não duplica. Os códigos ISP/RST/OC saem
+  // do índice que o banco reserva no envio. Excluir/restaurar ficam fora (escritório).
+  ssma_isp_registrar: {
+    rotulo: 'Inspeção de SST (ISP)',
+    resumo: args => campos('area', 'inspetor')(args?.p_dados || {}),
+    respostaProvisoria: args => args?.p_id ?? null,
+  },
+  ssma_ronda_registrar: {
+    rotulo: 'Ronda de Segurança do Trabalho',
+    resumo: args => campos('frentes', 'gerente')(args?.p_dados || {}),
+    respostaProvisoria: () => null,
+  },
+  ssma_oc_registrar: {
+    rotulo: 'Observação Comportamental',
+    resumo: args => campos('local', 'nome')(args?.p_dados || {}),
+    respostaProvisoria: () => null,
+  },
+
   ssma_ficha_epi_registrar_devolucao: { rotulo: 'Ficha de EPI — devolução', respostaProvisoria: () => null },
   ssma_ficha_epi_assinar: { rotulo: 'Ficha de EPI — assinatura', respostaProvisoria: () => null },
 };
@@ -302,6 +321,7 @@ const RPCS: Record<string, ConfigRpc> = {
 const BUCKETS: Record<string, ConfigBucket> = {
   'expedicao-fotos': { rotulo: 'Registro de expedição — foto' },
   'ssma-desvios': { rotulo: 'RID — foto' },
+  'ssma-isp': { rotulo: 'Inspeção de SST (ISP) — foto' },
   'plan-kaizen': { rotulo: 'Aqui TEN Melhoria! — foto' },
   'qua-rnc-evidencias': { rotulo: 'RNC — anexo' },
   'alm-recebimento': { rotulo: 'Recebimento — foto' },
