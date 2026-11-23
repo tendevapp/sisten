@@ -301,7 +301,6 @@ class LocalDatabase {
     this.syncPromise = (async () => {
       this.lastSyncAt = Date.now();
       try {
-        console.log('Iniciando sincronização com o Supabase...');
 
         // Carimbos de versão (1 request leve). As bases pesadas abaixo só são
         // rebaixadas quando a versão muda; as tabelas pequenas/interativas
@@ -335,7 +334,6 @@ class LocalDatabase {
           const storageKey = this.storageKeyFor(dataset);
           const forceThis = force && (!datasets || datasets.includes(dataset));
           if (!forceThis && !this.needsSync(dataset, storageKey, markers)) {
-            console.log(`sync: '${dataset}' já na versão corrente; usando cache local (0 egress).`);
             return;
           }
           await task();
@@ -439,7 +437,6 @@ class LocalDatabase {
           console.error('Falha ao aplicar status automático das compras via SAP.', e);
         }
 
-        console.log('Sincronização com o Supabase concluída.');
         this.notifyListeners();
 
         // Avisa a UI (modal de recarregamento) depois das tarefas acima: as bases

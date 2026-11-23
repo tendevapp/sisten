@@ -430,7 +430,6 @@ export default function App() {
 
         // Ouvir mudanças de auth
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-          console.log(`Auth event: ${event}`);
           const inRecovery = isRecovery || 
                              window.location.hash.includes('type=recovery') || 
                              window.location.hash.includes('recovery') || 
