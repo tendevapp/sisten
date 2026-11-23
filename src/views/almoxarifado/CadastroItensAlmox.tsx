@@ -16,7 +16,7 @@ import {
   ArrowLeft, RefreshCw, Search, Camera, ImageIcon, CheckCircle2,
   AlertCircle, X, Download, Filter, Eye, Trash2, Layers,
   Boxes, Sparkles, Tag, ShieldCheck, FileText, Check,
-  ChevronRight, ClipboardPaste, Upload, Plus, Printer, MapPin, SlidersHorizontal
+  ChevronRight, ClipboardPaste, Upload, Plus, Printer, MapPin, SlidersHorizontal, GraduationCap, History
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import {
@@ -77,6 +77,11 @@ import {
 } from '../../lib/inventarioUltimaContagem';
 import { dataHojeLocal } from '../../lib/dataLocal';
 import { confirmar } from '../../lib/confirmar';
+import LogJovensModal from '../../components/almoxarifado/LogJovensModal';
+import {
+  LogJovensIndisponivelError, codigosDaAtividade, jovensDaAtividade, listarAtividadeJovens,
+  type AtividadeJovem,
+} from '../../lib/almoxCatalogoLog';
 
 // A contagem é a mesma do Inventário Cíclico (rodada preparada, controle de
 // movimentação, causa na recontagem); só baixa quando alguém toca em "Contar".
@@ -87,7 +92,9 @@ interface CadastroItensAlmoxProps {
   onNavigate: (path: string) => void;
 }
 
-type FiltroRapido = 'todos' | 'com_foto' | 'sem_foto' | 'com_localizacao';
+type FiltroRapido = 'todos' | 'com_foto' | 'sem_foto' | 'com_localizacao' | 'sem_etiqueta';
+/** 'off' = sem recorte; 'todos' = qualquer Jovem Aprendiz; senão, o id de um jovem. */
+type FiltroJovens = 'off' | 'todos' | string;
 type ModoVisualizacao = 'cards' | 'tabela';
 type FiltroEtiqueta = 'todas' | 'impressa' | 'nao_impressa';
 
@@ -175,7 +182,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [filtroRapido, setFiltroRapido] = useState<FiltroRapido>('todos');
   const [filtroNivel2, setFiltroNivel2] = useState<string>('todos');
   const [filtroGrupo, setFiltroGrupo] = useState<string>('todos');
-  const [filtroLocalizacao, setFiltroLocalizacao] = useState<string>('todas');
+  // Depósito SAP (ZL0024): 'todos', 'sem_deposito' (sem saldo hoje) ou o código.
+  const [filtroDeposito, setFiltroDeposito] = useState<string>('todos');
+  const [filtroJovens, setFiltroJovens] = useState<FiltroJovens>('off');
   const [filtroData, setFiltroData] = useState<FiltroDataAlteracao>('todas');
   const [periodoData, setPeriodoData] = useState({ de: '', ate: '' });
   const [filtroEtiqueta, setFiltroEtiqueta] = useState<FiltroEtiqueta>('todas');
@@ -202,7 +211,12 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   } | null>(null);
   // Quem sai da tela no meio da preparação não deve ver o item entrar no inventário depois.
   const montadoRef = useRef(true);
-  useEffect(() => () => { montadoRef.current = false; }, []);
+  // Volta a true na montagem: o StrictMode desmonta e remonta, e sem isso o
+  // ref ficava false para sempre e o "Contar" saía calado como "cancelado".
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => { montadoRef.current = false; };
+  }, []);
   const hoje = hojeISO();
 
   // Modal de Cadastro de Foto
@@ -256,6 +270,38 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       .catch((err) => console.warn('[CadastroItensAlmox] Últimas contagens indisponíveis:', err));
     return () => { ativo = false; };
   }, []);
+  // Atividade dos Jovens Aprendizes (log do cadastro + contagens do inventário).
+  const [atividadesJovens, setAtividadesJovens] = useState<AtividadeJovem[]>([]);
+  const [carregandoJovens, setCarregandoJovens] = useState(false);
+  const [erroJovens, setErroJovens] = useState<string | null>(null);
+  const [logJovensAberto, setLogJovensAberto] = useState(false);
+  const carregarAtividadeJovens = useCallback(async () => {
+    setCarregandoJovens(true);
+    try {
+      setAtividadesJovens(await listarAtividadeJovens());
+      setErroJovens(null);
+    } catch (err) {
+      console.warn('[CadastroItensAlmox] Log dos Jovens indisponível:', err);
+      setErroJovens(err instanceof LogJovensIndisponivelError
+        ? err.message
+        : 'Não foi possível carregar o log dos Jovens. Tente recarregar.');
+    } finally {
+      setCarregandoJovens(false);
+    }
+  }, []);
+  useEffect(() => { void carregarAtividadeJovens(); }, [carregarAtividadeJovens]);
+  // Ligar o filtro relê o log: pega o que os jovens fizeram desde que a tela abriu.
+  const filtroJovensLigado = filtroJovens !== 'off';
+  useEffect(() => {
+    if (filtroJovensLigado) void carregarAtividadeJovens();
+  }, [filtroJovensLigado, carregarAtividadeJovens]);
+  const jovensComAtividade = useMemo(() => jovensDaAtividade(atividadesJovens), [atividadesJovens]);
+  const codigosJovens = useMemo(
+    () => (filtroJovens === 'off' ? null : codigosDaAtividade(atividadesJovens, filtroJovens === 'todos' ? null : filtroJovens)),
+    [atividadesJovens, filtroJovens],
+  );
+  const totalItensJovens = useMemo(() => codigosDaAtividade(atividadesJovens).size, [atividadesJovens]);
+
   const ultimaDoItem = useCallback(
     (codigo: string) => (ultimasContagens ? ultimasContagens.get(normalizeCode(codigo)) ?? null : undefined),
     [ultimasContagens],
@@ -297,11 +343,12 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     [posicaoDoItem],
   );
 
-  const opcoesLocalizacoes = useMemo(() => {
-    const localizacoes = new Set<string>();
-    itens.forEach(item => localizacoesDoItem(item).forEach(posicao => localizacoes.add(posicao)));
-    return Array.from(localizacoes).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
-  }, [itens, localizacoesDoItem]);
+  // Depósitos SAP em que os itens têm saldo hoje (ZL0024, sem o 0105).
+  const opcoesDepositos = useMemo(() => {
+    const depositos = new Set<string>();
+    itens.forEach(item => item.depositos.forEach(dep => dep && depositos.add(dep)));
+    return Array.from(depositos).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  }, [itens]);
 
   // Itens filtrados
   const itensFiltrados = useMemo(() => {
@@ -315,6 +362,10 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       const etiquetaImpressa = Boolean(it.item_catalogo?.etiqueta_impressa_em);
       if (filtroEtiqueta === 'impressa' && !etiquetaImpressa) return false;
       if (filtroEtiqueta === 'nao_impressa' && etiquetaImpressa) return false;
+      if (filtroRapido === 'sem_etiqueta' && etiquetaImpressa) return false;
+
+      // Jovens: só os itens que eles cadastraram, alteraram, etiquetaram ou contaram.
+      if (codigosJovens && !codigosJovens.has(normalizeCode(it.codigo_sap))) return false;
 
       const localizacoes = localizacoesDoItem(it);
 
@@ -343,10 +394,10 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       // Filtro de Grupo de Mercadorias
       if (filtroGrupo !== 'todos' && it.grupo_mercadorias !== filtroGrupo) return false;
 
-      // Filtro de localização: inclui o material quando uma de suas posições
-      // coincide com a escolhida; "sem localização" destaca o cadastro pendente.
-      if (filtroLocalizacao === 'sem_localizacao' && localizacoes.length > 0) return false;
-      if (filtroLocalizacao !== 'todas' && filtroLocalizacao !== 'sem_localizacao' && !localizacoes.includes(filtroLocalizacao)) return false;
+      // Depósito SAP: o material entra quando tem saldo no depósito escolhido;
+      // "sem saldo em depósito" = zerado na ZL0024 hoje (só no catálogo).
+      if (filtroDeposito === 'sem_deposito' && it.depositos.length > 0) return false;
+      if (filtroDeposito !== 'todos' && filtroDeposito !== 'sem_deposito' && !it.depositos.includes(filtroDeposito)) return false;
 
       return true;
     });
@@ -355,12 +406,12 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     // ordem em que já vinha (sort estável).
     const alteradoEm = (it: ItemConsumivelZl0024) => it.item_catalogo?.updated_at ?? '';
     return filtrados.sort((a, b) => alteradoEm(b).localeCompare(alteradoEm(a)));
-  }, [itens, buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, filtroData, periodoData, filtroEtiqueta, posicaoDoItem, localizacoesDoItem]);
+  }, [itens, buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroDeposito, filtroData, periodoData, filtroEtiqueta, codigosJovens, posicaoDoItem, localizacoesDoItem]);
 
   // Desenha em lotes (como a aba BOM): o catálogo passa de mil itens com foto,
   // e montar todos de uma vez trava o celular e baixa dezenas de MB de imagem.
   const [visiveisQtd, setVisiveisQtd] = useState(LOTE_ITENS);
-  useEffect(() => { setVisiveisQtd(LOTE_ITENS); }, [buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroLocalizacao, filtroData, periodoData, filtroEtiqueta, modoVis]);
+  useEffect(() => { setVisiveisQtd(LOTE_ITENS); }, [buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroDeposito, filtroData, periodoData, filtroEtiqueta, filtroJovens, modoVis]);
   const itensVisiveis = useMemo(() => itensFiltrados.slice(0, visiveisQtd), [itensFiltrados, visiveisQtd]);
 
   // Estatísticas e KPIs
@@ -378,13 +429,13 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
   // Filtros secundários em uso — contados no botão "Filtros" do celular.
   const filtrosSecundariosAtivos = [
-    filtroNivel2 !== 'todos', filtroGrupo !== 'todos', filtroLocalizacao !== 'todas',
+    filtroNivel2 !== 'todos', filtroGrupo !== 'todos', filtroDeposito !== 'todos',
     filtroData !== 'todas', filtroEtiqueta !== 'todas',
   ].filter(Boolean).length;
-  const algumFiltroAtivo = filtrosSecundariosAtivos > 0 || filtroRapido !== 'todos'
+  const algumFiltroAtivo = filtrosSecundariosAtivos > 0 || filtroRapido !== 'todos' || filtroJovens !== 'off'
     || buscaChips.length > 0 || buscaDigitadaAdiada.trim() !== '';
   const limparFiltros = () => {
-    setFiltroNivel2('todos'); setFiltroGrupo('todos'); setFiltroLocalizacao('todas');
+    setFiltroNivel2('todos'); setFiltroGrupo('todos'); setFiltroDeposito('todos'); setFiltroJovens('off');
     setFiltroData('todas'); setPeriodoData({ de: '', ate: '' }); setFiltroEtiqueta('todas');
     setFiltroRapido('todos'); setBuscaChips([]);
   };
@@ -1209,6 +1260,18 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
           <button
             type="button"
+            onClick={() => { setLogJovensAberto(true); void carregarAtividadeJovens(); }}
+            title="O que os Jovens Aprendizes fizeram no cadastro e nas contagens"
+            aria-label="Log dos Jovens Aprendizes"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 sm:px-3 py-2 text-xs font-bold transition cursor-pointer"
+            style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
+          >
+            <History className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+            <span className="hidden sm:inline">Log dos Jovens</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleExportarCsv}
             title="Exportar dados filtrados para planilha CSV"
             className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold transition cursor-pointer"
@@ -1533,6 +1596,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               { valor: 'com_foto', rotulo: 'Com foto', n: kpis.comFoto, ativo: 'bg-emerald-600', icone: Check },
               { valor: 'com_localizacao', rotulo: 'Com localização', n: kpis.comLocalizacao, ativo: 'bg-sky-600', icone: MapPin },
               { valor: 'sem_foto', rotulo: 'Sem foto', n: kpis.semFoto, ativo: 'bg-amber-600', icone: Camera },
+              { valor: 'sem_etiqueta', rotulo: 'Sem etiqueta', n: kpis.total - kpis.etiquetaImpressa, ativo: 'bg-rose-600', icone: Printer },
             ] as const).map(({ valor, rotulo, n, ativo, icone: Icone }) => (
               <button
                 key={valor}
@@ -1547,6 +1611,20 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                 {rotulo} <span className="tabular-nums opacity-80">{n}</span>
               </button>
             ))}
+            {/* Jovens combina com as outras pílulas (ex.: Jovens + Sem foto) */}
+            <span className="mx-0.5 h-4 w-px shrink-0" style={{ background: 'var(--hairline)' }} aria-hidden />
+            <button
+              type="button"
+              onClick={() => setFiltroJovens(v => (v === 'off' ? 'todos' : 'off'))}
+              aria-pressed={filtroJovens !== 'off'}
+              title="Só os itens que os Jovens Aprendizes cadastraram, alteraram, etiquetaram ou contaram"
+              className={`shrink-0 whitespace-nowrap px-2.5 py-1.5 sm:py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1 ${
+                filtroJovens !== 'off' ? 'bg-violet-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              <GraduationCap className="h-3 w-3" />
+              Jovens <span className="tabular-nums opacity-80">{erroJovens ? '—' : totalItensJovens}</span>
+            </button>
           </div>
 
           {/* Alternância Cards vs Tabela — no celular, só cartões */}
@@ -1574,7 +1652,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         </div>
 
         {/* Linha secundária de filtros: recolhida no celular e no tablet até tocar em "Filtros" */}
-        <div className={`${filtrosAbertos ? 'grid' : 'hidden'} lg:grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5 sm:gap-3 pt-2 border-t`} style={{ borderColor: 'var(--hairline)' }}>
+        <div className={`${filtrosAbertos ? 'grid' : 'hidden'} lg:grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3 pt-2 border-t`} style={{ borderColor: 'var(--hairline)' }}>
           <div>
             <label className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
               Subcategoria (Nível 2)
@@ -1610,19 +1688,20 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           </div>
 
           <div>
-            <label className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
-              Localização no estoque
+            <label htmlFor="cadastro-itens-filtro-deposito" className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
+              Depósito (SAP)
             </label>
             <select
-              value={filtroLocalizacao}
-              onChange={(e) => setFiltroLocalizacao(e.target.value)}
+              id="cadastro-itens-filtro-deposito"
+              value={filtroDeposito}
+              onChange={(e) => setFiltroDeposito(e.target.value)}
               className="w-full py-1.5 px-2.5 text-xs rounded-lg border"
               style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
             >
-              <option value="todas">Todas as localizações ({opcoesLocalizacoes.length})</option>
-              <option value="sem_localizacao">Sem localização</option>
-              {opcoesLocalizacoes.map(posicao => (
-                <option key={posicao} value={posicao}>{posicao}</option>
+              <option value="todos">Todos os depósitos ({opcoesDepositos.length})</option>
+              <option value="sem_deposito">Sem saldo em depósito</option>
+              {opcoesDepositos.map(dep => (
+                <option key={dep} value={dep}>Depósito {dep}</option>
               ))}
             </select>
           </div>
@@ -1672,6 +1751,25 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               <option value="todas">Com e sem etiqueta</option>
               <option value="impressa">Etiqueta impressa ({kpis.etiquetaImpressa})</option>
               <option value="nao_impressa">Sem etiqueta impressa ({kpis.total - kpis.etiquetaImpressa})</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="cadastro-itens-filtro-jovens" className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
+              Jovens Aprendizes
+            </label>
+            <select
+              id="cadastro-itens-filtro-jovens"
+              value={filtroJovens}
+              onChange={(e) => setFiltroJovens(e.target.value)}
+              className="w-full py-1.5 px-2.5 text-xs rounded-lg border"
+              style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+            >
+              <option value="off">Todos os itens</option>
+              <option value="todos">Feitos por qualquer jovem ({totalItensJovens})</option>
+              {jovensComAtividade.map(j => (
+                <option key={j.id} value={j.id}>{j.nome}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -2907,6 +3005,24 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       )}
 
       {/* Detalhe do item: tudo o que saiu do cartão, com Editar / Contar / Etiqueta */}
+      {logJovensAberto && (
+        <LogJovensModal
+          atividades={atividadesJovens}
+          carregando={carregandoJovens && atividadesJovens.length === 0}
+          erro={erroJovens}
+          onClose={() => setLogJovensAberto(false)}
+          onAbrirItem={(codigo) => {
+            const alvo = itens.find(it => normalizeCode(it.codigo_sap) === normalizeCode(codigo));
+            if (!alvo) {
+              toast.warning(`O item ${codigo} não está mais na lista do catálogo.`);
+              return;
+            }
+            setLogJovensAberto(false);
+            setDetalheCodigo(alvo.codigo_sap);
+          }}
+        />
+      )}
+
       {itemDetalhe && (
         <CatalogoItemDetalhe
           item={itemDetalhe}
