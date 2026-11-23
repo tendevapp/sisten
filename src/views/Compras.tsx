@@ -77,7 +77,7 @@ import type { CotacaoProcessoItemDraft } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
 import FotoItemMiniatura from '../components/suprimentos/FotoItemMiniatura';
 import {
-  carregarFotosCadastroPorMaterial, chaveMaterialFoto, indexarFotosSolicitacaoPorItem, montarFotosDoItem,
+  carregarFotosCadastroPorMaterial, chaveMaterialFoto, indexarFotosSolicitacaoPorItem, indexarFotosSolicitacaoPorMaterial, montarFotosDoItem,
   type FotoItemCompra,
 } from '../lib/fotosItemCompra';
 import NovidadesModal from '../components/NovidadesModal';
@@ -797,6 +797,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // na falta ou além deles, o Cadastro de Itens (ver `lib/fotosItemCompra.ts`).
   const [fotosSolicitacaoPorItem, setFotosSolicitacaoPorItem] = useState<Map<string, RequestAttachment[]>>(new Map());
   const [fotosCadastroPorMaterial, setFotosCadastroPorMaterial] = useState<Map<string, FotoItemCompra[]>>(new Map());
+  const [fotosOutrasPorMaterial, setFotosOutrasPorMaterial] = useState<Map<string, FotoItemCompra[]>>(new Map());
   const [expandedRMs, setExpandedRMs] = useState<Record<string, boolean>>({});
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
@@ -1869,6 +1870,12 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       const situacaoPorRequest = new Map(compras.map(r => [r.id, situacaoSolicitacaoRm(r, marcasPorRequest.get(r.id))]));
       setVinculosSistenPorRm(indexarVinculosSistenPorRm(compras, itensPorRequest, situacaoPorRequest));
       setFotosSolicitacaoPorItem(indexarFotosSolicitacaoPorItem(compras.flatMap(r => localDb.getAttachments(r.id))));
+      // Foto do mesmo material em qualquer solicitação de compra (inclusive as
+      // já concluídas): quem repete o pedido costuma anexar só na primeira vez.
+      const numeroPorRequest = new Map(localDb.getRequests().map(r => [r.id, r.number]));
+      setFotosOutrasPorMaterial(indexarFotosSolicitacaoPorMaterial(
+        localDb.getAllAttachments(), localDb.getAllRequestItems(), numeroPorRequest,
+      ));
     };
     recalcularVinculos();
     const unsubscribe = localDb.subscribe(recalcularVinculos);
@@ -1885,8 +1892,9 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     montarFotosDoItem({
       anexosSolicitacao: vinculo ? fotosSolicitacaoPorItem.get(vinculo.item.id) : null,
       fotosCadastro: fotosCadastroPorMaterial.get(chaveMaterialFoto(r.material_code)),
+      fotosOutrasSolicitacoes: fotosOutrasPorMaterial.get(chaveMaterialFoto(r.material_code)),
       ehGenerico: !!vinculo?.item.is_generic,
-    }), [fotosSolicitacaoPorItem, fotosCadastroPorMaterial]);
+    }), [fotosSolicitacaoPorItem, fotosCadastroPorMaterial, fotosOutrasPorMaterial]);
 
   // Função para salvar observações, data prevista e status
   const handleSaveFields = async (ri: string) => {

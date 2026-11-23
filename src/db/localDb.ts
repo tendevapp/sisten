@@ -9818,6 +9818,11 @@ class LocalDatabase {
    *   Omitido, devolve todos os da solicitação (é o caso do Cadastro SAP, que
    *   não tem itens, e da galeria geral em Minhas Solicitações).
    */
+  /** Todos os anexos em cache (fotos por material na Central de Compras). */
+  public getAllAttachments(): RequestAttachment[] {
+    return this.getStorageItem<RequestAttachment[]>(this.attachmentsKey, []);
+  }
+
   public getAttachments(reqId: string, itemId?: string): RequestAttachment[] {
     const list = this.getStorageItem<RequestAttachment[]>(this.attachmentsKey, []);
     const daSolicitacao = list.filter(a => a.request_id === reqId);

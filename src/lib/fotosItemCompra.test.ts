@@ -10,7 +10,8 @@ vi.mock('./almoxCatalogoApi', () => ({
 }));
 
 import {
-  assinarFotoItem, chaveMaterialFoto, indexarFotosSolicitacaoPorItem, montarFotosDoItem, type FotoItemCompra,
+  assinarFotoItem, chaveMaterialFoto, indexarFotosSolicitacaoPorItem, indexarFotosSolicitacaoPorMaterial,
+  montarFotosDoItem, type FotoItemCompra,
 } from './fotosItemCompra';
 import { obterUrlsFotosCatalogoLote } from './almoxCatalogoApi';
 import type { RequestAttachment } from '../types';
@@ -65,6 +66,43 @@ describe('indexarFotosSolicitacaoPorItem', () => {
     ]);
     expect(mapa.get('i1')?.map(a => a.id)).toEqual(['1']);
     expect(mapa.get('i2')?.map(a => a.id)).toEqual(['4']);
+  });
+});
+
+describe('indexarFotosSolicitacaoPorMaterial', () => {
+  const itens = [
+    { id: 'i-antigo', request_id: 'r-antigo', sap_code: '1449040' },
+    { id: 'i-gen', request_id: 'r-gen', sap_code: '1449040', is_generic: true },
+  ];
+
+  it('acha a foto do mesmo material em outra solicitação, mais recente primeiro', () => {
+    const mapa = indexarFotosSolicitacaoPorMaterial([
+      anexo({ id: 'a1', request_id: 'r-antigo', request_item_id: 'i-antigo', storage_path: 'r-antigo/1.jpg', created_at: '2026-09-30T00:00:00Z' }),
+      anexo({ id: 'a2', request_id: 'r-antigo', request_item_id: 'i-antigo', storage_path: 'r-antigo/2.jpg', created_at: '2026-10-05T00:00:00Z' }),
+      anexo({ id: 'pdf', request_id: 'r-antigo', request_item_id: 'i-antigo', mime_type: 'application/pdf', storage_path: 'r-antigo/nf.pdf' }),
+      anexo({ id: 'g', request_id: 'r-gen', request_item_id: 'i-gen', storage_path: 'r-gen/g.jpg' }),
+    ], itens, new Map([['r-antigo', '4000022']]));
+    const fotos = mapa.get('1449040') ?? [];
+    expect(fotos.map(f => f.path)).toEqual(['r-antigo/2.jpg', 'r-antigo/1.jpg']);
+    expect(fotos[0]).toMatchObject({ origem: 'outra_solicitacao', legenda: 'Solicitação #4000022' });
+  });
+
+  it('usa o material do anexo quando o item não está em cache, sem zeros à esquerda', () => {
+    const mapa = indexarFotosSolicitacaoPorMaterial(
+      [anexo({ request_item_id: 'sumiu', material_code: '0001449040' } as Partial<RequestAttachment>)], [],
+    );
+    expect(mapa.get('1449040')).toHaveLength(1);
+  });
+
+  it('entra depois do cadastro, só em item não genérico e sem repetir a própria foto', () => {
+    const outras: FotoItemCompra[] = [
+      { path: 'r1/foto.jpg', origem: 'outra_solicitacao', legenda: 'Solicitação #1' },
+      { path: 'r2/x.jpg', origem: 'outra_solicitacao', legenda: 'Solicitação #2' },
+    ];
+    const fotos = montarFotosDoItem({ anexosSolicitacao: [anexo({})], fotosCadastro: cadastro, fotosOutrasSolicitacoes: outras });
+    expect(fotos.map(f => f.origem)).toEqual(['solicitacao', 'cadastro', 'cadastro', 'outra_solicitacao']);
+    expect(montarFotosDoItem({ fotosOutrasSolicitacoes: outras, ehGenerico: true })).toHaveLength(0);
+    expect(montarFotosDoItem({ fotosOutrasSolicitacoes: outras })).toHaveLength(2);
   });
 });
 

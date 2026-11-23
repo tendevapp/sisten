@@ -4,16 +4,19 @@
  *
  * Fotos do item na Central de Compras — miniatura ao lado da descrição.
  *
- * Duas fontes, nesta ordem:
+ * Três fontes, nesta ordem:
  *   1. Solicitação: imagens anexadas ao item da solicitação do SISTEN que
  *      originou a RM (vínculo de `lib/centralComprasSisten.ts`). É a foto do
  *      que foi pedido de fato.
  *   2. Cadastro de Itens: foto principal + fotos adicionais do material
  *      (`alm_catalogo_itens` / `alm_catalogo_item_fotos`). As do Book de EPIs
  *      já entram no cadastro, então não são buscadas à parte.
+ *   3. Outras solicitações do mesmo material: quem repete a compra costuma
+ *      anexar a foto só na primeira vez (ex.: correia 1449040 com foto na
+ *      #4000022 e sem foto na #3001107).
  *
- * Item genérico não usa o cadastro: o código é guarda-chuva para várias coisas
- * parecidas, e a foto dele não mostra o que o solicitante pediu.
+ * Item genérico só usa a própria solicitação: o código é guarda-chuva para
+ * várias coisas parecidas, e a foto de outro pedido não mostra o que foi pedido.
  *
  * Todas as fotos estão no bucket `request-attachments`. A assinatura passa por
  * `obterUrlsFotosCatalogoLote` (cache no aparelho, 22 h) e é agrupada: as
@@ -26,7 +29,7 @@ import { buscarTudo } from './buscarTudo';
 import { BUCKET_CATALOGO, TABELA_CATALOGO, TABELA_FOTOS_ADICIONAIS, obterUrlsFotosCatalogoLote } from './almoxCatalogoApi';
 import type { RequestAttachment } from '../types';
 
-export type OrigemFotoItem = 'solicitacao' | 'cadastro';
+export type OrigemFotoItem = 'solicitacao' | 'cadastro' | 'outra_solicitacao';
 
 export interface FotoItemCompra {
   /** Caminho no bucket `request-attachments`. */
@@ -38,6 +41,7 @@ export interface FotoItemCompra {
 export const ROTULO_ORIGEM_FOTO: Record<OrigemFotoItem, string> = {
   solicitacao: 'Solicitação',
   cadastro: 'Cadastro de Itens',
+  outra_solicitacao: 'Outra solicitação do material',
 };
 
 function limparCaminho(path: string): string {
@@ -66,15 +70,56 @@ export function indexarFotosSolicitacaoPorItem(anexos: RequestAttachment[]): Map
   return mapa;
 }
 
+/** Item de solicitação com o que a indexação por material precisa. */
+export interface ItemSolicitacaoFoto {
+  id: string;
+  request_id: string;
+  sap_code?: string | null;
+  is_generic?: boolean | null;
+  has_no_sap_code?: boolean | null;
+}
+
 /**
- * Junta as fotos do item: solicitação primeiro, depois o cadastro (exceto em
- * item genérico). O mesmo arquivo pode estar nas duas fontes — reaproveitar
- * uma foto do banco de imagens grava outra linha apontando para o mesmo
- * caminho —, então repetidos saem.
+ * Imagens de itens de solicitação por material (chave sem zeros), para
+ * mostrar a foto de um pedido anterior do mesmo código. Item genérico ou sem
+ * código SAP fica de fora; o material vem do item, e na falta dele do anexo.
+ * `numeroPorRequest` vira a legenda ("Solicitação #4000022").
+ */
+export function indexarFotosSolicitacaoPorMaterial(
+  anexos: RequestAttachment[],
+  itens: ItemSolicitacaoFoto[],
+  numeroPorRequest: Map<string, string | number> = new Map(),
+): Map<string, FotoItemCompra[]> {
+  const itemPorId = new Map(itens.map(i => [i.id, i]));
+  const mapa = new Map<string, FotoItemCompra[]>();
+  // Mais recente primeiro: a foto do último pedido tende a ser a do item atual.
+  const ordenados = [...anexos].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  for (const a of ordenados) {
+    if (!a.request_item_id || !ehImagem(a)) continue;
+    const item = itemPorId.get(a.request_item_id);
+    if (item?.is_generic || item?.has_no_sap_code) continue;
+    const chave = chaveMaterialFoto(item?.sap_code || a.material_code);
+    const path = limparCaminho(a.storage_path || a.url || '');
+    if (!chave || !path) continue;
+    const numero = numeroPorRequest.get(a.request_id);
+    const legenda = numero ? `Solicitação #${numero}` : (a.name || 'Foto de outra solicitação');
+    mapa.set(chave, [...(mapa.get(chave) ?? []), { path, origem: 'outra_solicitacao', legenda }]);
+  }
+  return mapa;
+}
+
+/**
+ * Junta as fotos do item: solicitação primeiro, depois o cadastro e as outras
+ * solicitações do mesmo material (essas duas não valem para item genérico).
+ * O mesmo arquivo pode estar em mais de uma fonte — reaproveitar uma foto do
+ * banco de imagens grava outra linha apontando para o mesmo caminho, e a
+ * própria solicitação também aparece no índice por material —, então
+ * repetidos saem.
  */
 export function montarFotosDoItem(params: {
   anexosSolicitacao?: RequestAttachment[] | null;
   fotosCadastro?: FotoItemCompra[] | null;
+  fotosOutrasSolicitacoes?: FotoItemCompra[] | null;
   ehGenerico?: boolean;
 }): FotoItemCompra[] {
   const saida: FotoItemCompra[] = [];
@@ -92,6 +137,7 @@ export function montarFotosDoItem(params: {
   }
   if (!params.ehGenerico) {
     for (const f of params.fotosCadastro ?? []) incluir(f);
+    for (const f of params.fotosOutrasSolicitacoes ?? []) incluir(f);
   }
   return saida;
 }
