@@ -16,7 +16,7 @@ import {
   ArrowLeft, RefreshCw, Search, Camera, ImageIcon, CheckCircle2,
   AlertCircle, X, Download, Filter, Eye, Trash2, Layers,
   Boxes, Sparkles, Tag, ShieldCheck, FileText, Check,
-  ChevronRight, ClipboardPaste, Upload, Plus, Printer, MapPin, SlidersHorizontal, GraduationCap, History, AlertTriangle
+  ChevronRight, ClipboardPaste, Upload, Plus, Printer, MapPin, SlidersHorizontal, GraduationCap, History, AlertTriangle, Crop
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import {
@@ -89,6 +89,17 @@ import { BaixaPendenteTag } from '../../components/almoxarifado/BaixaPendenteTag
 // A contagem é a mesma do Inventário Cíclico (rodada preparada, controle de
 // movimentação, causa na recontagem); só baixa quando alguém toca em "Contar".
 const ModalContagem = lazy(() => import('./InventarioCiclico').then(m => ({ default: m.ModalContagem })));
+const EditorImagem = lazy(() => import('../../components/ui/EditorImagem'));
+
+/** Editor de foto aberto (recortar, girar, luz) e o que fazer com o resultado. */
+interface EdicaoFoto {
+  origem: Blob | string;
+  nome?: string | null;
+  titulo: string;
+  rotuloCancelar?: string;
+  rotuloAplicar?: string;
+  aplicar: (arquivo: File) => void | Promise<void>;
+}
 
 interface CadastroItensAlmoxProps {
   user: Profile;
@@ -240,7 +251,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [substituindoId, setSubstituindoId] = useState<string | null>(null);
 
   // Modal de Visualização da Imagem em Alta Resolução
-  const [imagemZoom, setImagemZoom] = useState<{ url: string; titulo: string; codigo: string } | null>(null);
+  const [imagemZoom, setImagemZoom] = useState<{ url: string; titulo: string; codigo: string; editar?: () => void } | null>(null);
+  const [edicao, setEdicao] = useState<EdicaoFoto | null>(null);
 
   // Referências para input de arquivo e câmera
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -610,6 +622,33 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     setFotoPreviewUrlSap(URL.createObjectURL(file));
   };
 
+  const trocarFotoSap = (file: File) => {
+    setFotoArquivoSap(file);
+    setFotoPreviewUrlSap((anterior) => {
+      if (anterior && anterior.startsWith('blob:')) URL.revokeObjectURL(anterior);
+      return URL.createObjectURL(file);
+    });
+  };
+
+  const editarFotoSap = (origem: Blob | string | null, aposCaptura = false) => {
+    if (!origem) return;
+    setEdicao({
+      origem,
+      nome: origem instanceof File ? origem.name : null,
+      titulo: 'Editar foto do item',
+      rotuloCancelar: aposCaptura ? 'Usar sem editar' : 'Cancelar',
+      aplicar: (arquivo) => { trocarFotoSap(arquivo); setEdicao(null); },
+    });
+  };
+
+  const handleCapturarFotoSap = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    trocarFotoSap(file);
+    editarFotoSap(file, true);
+  };
+
   const colarImagemSap = (file: File) => {
     if (fotoPreviewUrlSap && fotoPreviewUrlSap.startsWith('blob:')) {
       URL.revokeObjectURL(fotoPreviewUrlSap);
@@ -644,6 +683,58 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     }
   };
 
+  /** Troca a foto principal escolhida (antes do Salvar), liberando a prévia anterior. */
+  const trocarFotoPrincipal = (file: File) => {
+    setFotoArquivo(file);
+    setFotoPreviewUrl((anterior) => {
+      if (anterior && anterior.startsWith('blob:')) URL.revokeObjectURL(anterior);
+      return URL.createObjectURL(file);
+    });
+  };
+
+  /** Abre o editor na foto principal (arquivo escolhido ou a foto já gravada). */
+  const editarFotoPrincipal = (origem: Blob | string | null, aposCaptura = false) => {
+    if (!origem) return;
+    setEdicao({
+      origem,
+      nome: origem instanceof File ? origem.name : null,
+      titulo: 'Editar foto do item',
+      rotuloCancelar: aposCaptura ? 'Usar sem editar' : 'Cancelar',
+      aplicar: (arquivo) => { trocarFotoPrincipal(arquivo); setEdicao(null); },
+    });
+  };
+
+  /** Câmera: a foto entra e o editor já abre (recortar/iluminar antes de enviar). */
+  const handleCapturarFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    trocarFotoPrincipal(file);
+    editarFotoPrincipal(file, true);
+  };
+
+  /**
+   * Foto já gravada, aberta no catálogo: edita e leva para o cadastro do item
+   * com a foto editada no lugar — quem confere clica em Salvar.
+   */
+  const editarFotoSalva = (item: ItemConsumivelZl0024) => {
+    if (!item.url_foto) return;
+    setImagemZoom(null);
+    setEdicao({
+      origem: item.url_foto,
+      nome: `material-${item.codigo_sap}.jpg`,
+      titulo: 'Editar foto do item',
+      rotuloAplicar: 'Usar esta foto',
+      aplicar: (arquivo) => {
+        setEdicao(null);
+        setDetalheCodigo(null);
+        handleAbrirCadastroFoto(item);
+        trocarFotoPrincipal(arquivo);
+        toast.info('Foto editada. Confira e clique em Salvar para gravar.');
+      },
+    });
+  };
+
   const limparAdicionaisNovas = () => {
     setAdicionaisNovas((atuais) => {
       atuais.forEach((a) => URL.revokeObjectURL(a.preview));
@@ -651,8 +742,27 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     });
   };
 
+  /** Troca uma foto adicional ainda não salva pela versão editada. */
+  const trocarAdicionalNova = (preview: string, arquivo: File) => {
+    setAdicionaisNovas((atuais) => atuais.map((a) => {
+      if (a.preview !== preview) return a;
+      URL.revokeObjectURL(a.preview);
+      return { file: arquivo, preview: URL.createObjectURL(arquivo) };
+    }));
+  };
+
+  const editarAdicionalNova = (nova: { file: File; preview: string }, aposCaptura = false) => {
+    setEdicao({
+      origem: nova.file,
+      nome: nova.file.name,
+      titulo: 'Editar foto adicional',
+      rotuloCancelar: aposCaptura ? 'Usar sem editar' : 'Cancelar',
+      aplicar: (arquivo) => { trocarAdicionalNova(nova.preview, arquivo); setEdicao(null); },
+    });
+  };
+
   /** Fotos escolhidas (câmera ou galeria): entram numa fila e sobem junto com o "Salvar". */
-  const handleEscolherAdicionais = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEscolherAdicionais = (e: React.ChangeEvent<HTMLInputElement>, aposCaptura = false) => {
     const arquivos = Array.from(e.target.files ?? []);
     e.target.value = '';
     if (arquivos.length === 0) return;
@@ -664,10 +774,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     if (arquivos.length > vagas) {
       toast.warning(`Só cabem mais ${vagas} foto(s) adicional(is); as demais foram ignoradas.`);
     }
-    setAdicionaisNovas((atuais) => [
-      ...atuais,
-      ...arquivos.slice(0, vagas).map((file) => ({ file, preview: URL.createObjectURL(file) })),
-    ]);
+    const novas = arquivos.slice(0, vagas).map((file) => ({ file, preview: URL.createObjectURL(file) }));
+    setAdicionaisNovas((atuais) => [...atuais, ...novas]);
+    if (aposCaptura && novas.length === 1) editarAdicionalNova(novas[0], true);
   };
 
   const removerAdicionalNova = (indice: number) => {
@@ -683,7 +792,24 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     e.target.value = '';
     const alvo = substituirAlvoRef.current;
     substituirAlvoRef.current = null;
-    if (!arquivo || !alvo || !itemSelecionado) return;
+    if (!arquivo || !alvo) return;
+    await substituirAdicionalPor(alvo, arquivo);
+  };
+
+  /** Foto adicional já gravada: editar troca na hora, como o "Substituir". */
+  const editarAdicionalSalva = (foto: FotoAdicionalCatalogo) => {
+    if (!foto.url) return;
+    setImagemZoom(null);
+    setEdicao({
+      origem: foto.url,
+      titulo: 'Editar foto adicional',
+      rotuloAplicar: 'Salvar foto',
+      aplicar: async (arquivo) => { setEdicao(null); await substituirAdicionalPor(foto, arquivo); },
+    });
+  };
+
+  const substituirAdicionalPor = async (alvo: FotoAdicionalCatalogo, arquivo: File) => {
+    if (!itemSelecionado) return;
     setSubstituindoId(alvo.id);
     try {
       const nova = await substituirFotoAdicional(alvo, arquivo, itemSelecionado.codigo_sap, user);
@@ -1951,7 +2077,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                       {item.url_foto ? (
                         <button
                           type="button"
-                          onClick={() => setImagemZoom({ url: item.url_foto!, titulo: item.descricao, codigo: item.codigo_sap })}
+                          onClick={() => setImagemZoom({ url: item.url_foto!, titulo: item.descricao, codigo: item.codigo_sap, editar: () => editarFotoSalva(item) })}
                           className="h-10 w-10 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-700 relative group cursor-pointer"
                         >
                           <img src={item.url_foto} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
@@ -2110,6 +2236,16 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         className="h-full w-full object-contain p-2"
                       />
                       <div className="absolute top-2 right-2 flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => editarFotoPrincipal(fotoArquivo ?? fotoPreviewUrl)}
+                          disabled={salvando}
+                          className="inline-flex items-center gap-1 rounded-lg bg-slate-800/85 px-2 py-1.5 text-xs font-bold text-white shadow-md hover:bg-slate-900 cursor-pointer disabled:opacity-50"
+                          title="Recortar, girar, iluminar"
+                        >
+                          <Crop className="h-4 w-4" aria-hidden="true" />
+                          Editar
+                        </button>
                         <button aria-label="Remover foto selecionada"
                           type="button"
                           onClick={() => {
@@ -2156,7 +2292,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                     accept="image/*"
                     capture="environment"
                     className="hidden"
-                    onChange={handleSelecionarArquivo}
+                    onChange={handleCapturarFoto}
                   />
                   <button
                     type="button"
@@ -2219,7 +2355,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         {foto.url ? (
                           <button
                             type="button"
-                            onClick={() => setImagemZoom({ url: foto.url!, titulo: itemSelecionado.descricao, codigo: itemSelecionado.codigo_sap })}
+                            onClick={() => setImagemZoom({ url: foto.url!, titulo: itemSelecionado.descricao, codigo: itemSelecionado.codigo_sap, editar: () => editarAdicionalSalva(foto) })}
                             className="h-full w-full cursor-zoom-in"
                             title="Ampliar"
                           >
@@ -2250,6 +2386,18 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
+                        {foto.url && (
+                          <button
+                            type="button"
+                            onClick={() => editarAdicionalSalva(foto)}
+                            disabled={salvando || substituindoId !== null}
+                            className="absolute bottom-1 left-1 cursor-pointer rounded-md bg-slate-800/80 p-1 text-white hover:bg-slate-900 disabled:opacity-50"
+                            title="Recortar, girar, iluminar"
+                            aria-label="Editar foto adicional"
+                          >
+                            <Crop className="h-3 w-3" />
+                          </button>
+                        )}
                         {substituindoId === foto.id && (
                           <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
                             <RefreshCw className="h-5 w-5 animate-spin" />
@@ -2267,6 +2415,16 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                         <span className="absolute bottom-1 left-1 rounded bg-amber-600 px-1.5 py-0.5 text-[10px] font-black uppercase text-white">
                           Nova
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => editarAdicionalNova(nova)}
+                          disabled={salvando}
+                          className="absolute bottom-1 right-1 cursor-pointer rounded-md bg-slate-800/80 p-1 text-white hover:bg-slate-900 disabled:opacity-50"
+                          title="Recortar, girar, iluminar"
+                          aria-label="Editar foto adicional nova"
+                        >
+                          <Crop className="h-3 w-3" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => removerAdicionalNova(i)}
@@ -2296,7 +2454,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                     accept="image/*"
                     capture="environment"
                     className="hidden"
-                    onChange={handleEscolherAdicionais}
+                    onChange={(e) => handleEscolherAdicionais(e, true)}
                   />
                   <button
                     type="button"
@@ -2557,13 +2715,26 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                   {imagemZoom.titulo}
                 </span>
               </div>
-              <button aria-label="Fechar"
-                type="button"
-                onClick={() => setImagemZoom(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                {imagemZoom.editar && (
+                  <button
+                    type="button"
+                    onClick={imagemZoom.editar}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-slate-800 cursor-pointer"
+                    title="Recortar, girar, iluminar"
+                  >
+                    <Crop className="h-4 w-4" aria-hidden="true" />
+                    Editar
+                  </button>
+                )}
+                <button aria-label="Fechar"
+                  type="button"
+                  onClick={() => setImagemZoom(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
             <div className="p-2 flex items-center justify-center bg-black/50 overflow-auto max-h-[75vh]">
               <img
@@ -2574,6 +2745,21 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
             </div>
           </div>
         </div>
+      )}
+
+      {/* Editor de foto: recortar, girar, iluminar (antes de enviar e na foto já gravada) */}
+      {edicao && (
+        <Suspense fallback={null}>
+          <EditorImagem
+            origem={edicao.origem}
+            nomeArquivo={edicao.nome}
+            titulo={edicao.titulo}
+            rotuloCancelar={edicao.rotuloCancelar}
+            rotuloAplicar={edicao.rotuloAplicar}
+            onAplicar={edicao.aplicar}
+            onCancelar={() => setEdicao(null)}
+          />
+        </Suspense>
       )}
 
       {/* Modal: Cadastro de Item do Catálogo SAP (Busca por Código/Descrição, Infos Automáticas e Habilitação Somente da Foto) */}
@@ -2862,6 +3048,16 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => editarFotoSap(fotoArquivoSap ?? fotoPreviewUrlSap)}
+                            disabled={salvandoSap}
+                            className="absolute top-3 left-3 inline-flex items-center gap-1 rounded-xl bg-black/60 px-2.5 py-2 text-xs font-bold text-white shadow-md hover:bg-black/80 cursor-pointer disabled:opacity-50"
+                            title="Recortar, girar, iluminar"
+                          >
+                            <Crop className="h-4 w-4" aria-hidden="true" />
+                            Editar
+                          </button>
                         </div>
 
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2878,7 +3074,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                                 type="file"
                                 accept="image/*"
                                 capture="environment"
-                                onChange={handleSelecionarArquivoSap}
+                                onChange={handleCapturarFotoSap}
                                 className="hidden"
                               />
                             </label>
@@ -2917,7 +3113,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                               type="file"
                               accept="image/*"
                               capture="environment"
-                              onChange={handleSelecionarArquivoSap}
+                              onChange={handleCapturarFotoSap}
                               className="hidden"
                             />
                           </label>
@@ -3064,7 +3260,10 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           onEditar={() => { setDetalheCodigo(null); handleAbrirCadastroFoto(itemDetalhe); }}
           onContar={() => void contarItem(itemDetalhe)}
           onEtiqueta={() => prepararEtiquetas([itemDetalhe])}
-          onZoom={(url) => setImagemZoom({ url, titulo: itemDetalhe.descricao, codigo: itemDetalhe.codigo_sap })}
+          onZoom={(url) => setImagemZoom({
+            url, titulo: itemDetalhe.descricao, codigo: itemDetalhe.codigo_sap,
+            editar: url === itemDetalhe.url_foto ? () => editarFotoSalva(itemDetalhe) : undefined,
+          })}
           onClose={() => setDetalheCodigo(null)}
         />
       )}
