@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agruparPorMaterial, atalhosSelecao, podeEntrarNoLote, resumirResultado } from './baixaLoteRetiradas';
+import { agruparPorMaterial, atalhosSelecao, itensQueFicam, itensQueSaem, podeEntrarNoLote, resumirResultado } from './baixaLoteRetiradas';
 import type { SaldoParaRegularizar } from './retiradaSemSaldoBaixa';
 
 const luva = { material: '1355906', descricao: 'LUVA TAM 9', unidade: 'UN', quantidade: 1 };
@@ -38,6 +38,17 @@ describe('baixa em lote', () => {
     expect(a.porMaterial).toEqual([{ material: '1355906', descricao: 'LUVA TAM 9', ids: ['1', '2', '3'] }]);
   });
 
+  it('parcial: sai o que tem saldo e não saiu ainda; fica o resto', () => {
+    const r = reg('9', [luva, pincel, { ...luva, material: '1352181' }]);
+    const cobertura = new Map([['9', [true, false, true]]]);
+    const baixados = new Map([['9', [false, false, true]]]);
+    expect(itensQueSaem(r, cobertura, baixados).map(i => i.material)).toEqual(['1355906']);
+    expect(itensQueFicam(r, cobertura, baixados).map(i => i.material)).toEqual(['1166536']);
+    expect(itensQueSaem(r, null, null)).toHaveLength(3);
+    const saldo = new Map<string, SaldoParaRegularizar>([['9', { prontidao: 'parcial', itensComSaldo: 1, totalItens: 2 }]]);
+    expect(atalhosSelecao([r], saldo).parciais).toEqual(['9']);
+  });
+
   it('sem saldo lido, nenhuma pronta', () => {
     expect(atalhosSelecao([reg('1')], null).prontas).toEqual([]);
   });
@@ -46,8 +57,10 @@ describe('baixa em lote', () => {
     const r = resumirResultado([
       { rss: 'RSS-1', rqb: 'RQB-1', id: 'a', ok: true },
       { rss: 'RSS-2', rqb: 'RQB-2', ok: false, erro: 'Sem PEP' },
+      { rss: 'RSS-3', rqb: 'RQB-3', id: 'c', ok: true, parcial: true, itens_restantes: 1 },
     ]);
-    expect(r.idsConfirmados).toEqual(['a']);
+    expect(r.parciais).toHaveLength(1);
+    expect(r.idsConfirmados).toEqual(['a', 'c']);
     expect(r.falhas).toHaveLength(1);
   });
 });

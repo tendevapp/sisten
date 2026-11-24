@@ -9,7 +9,7 @@
  */
 
 import type { SolExtra } from './solicitacaoExtraApi';
-import type { SaldoParaRegularizar } from './retiradaSemSaldoBaixa';
+import type { ItensBaixadosPorId, SaldoParaRegularizar } from './retiradaSemSaldoBaixa';
 import { normalizeCode } from './almoxarifado';
 
 type RegistroLote = Pick<SolExtra, 'id' | 'codigo' | 'status' | 'itens' | 'aprovacao_status' | 'aplicacao_pep'>;
@@ -46,6 +46,28 @@ export function agruparPorMaterial(registros: Pick<SolExtra, 'itens'>[]): GrupoM
   return [...grupos.values()].sort((a, b) => b.retiradas - a.retiradas || a.material.localeCompare(b.material));
 }
 
+/**
+ * O que sai agora de cada retirada: os itens que o saldo de hoje cobre e que
+ * ainda não saíram numa baixa parcial. Sem a cobertura lida, todos os pendentes.
+ */
+export function itensQueSaem<T extends Pick<SolExtra, 'id' | 'itens'>>(
+  r: T, cobertura: Map<string, boolean[]> | null, baixados: ItensBaixadosPorId | null,
+): T['itens'] {
+  const cob = cobertura?.get(r.id);
+  const jaSaiu = baixados?.get(r.id);
+  return r.itens.filter((_, i) => !jaSaiu?.[i] && (cob ? cob[i] : true));
+}
+
+/** Itens que ficam aguardando saldo depois da baixa (não cobertos e não baixados). */
+export function itensQueFicam<T extends Pick<SolExtra, 'id' | 'itens'>>(
+  r: T, cobertura: Map<string, boolean[]> | null, baixados: ItensBaixadosPorId | null,
+): T['itens'] {
+  const cob = cobertura?.get(r.id);
+  if (!cob) return [];
+  const jaSaiu = baixados?.get(r.id);
+  return r.itens.filter((_, i) => !jaSaiu?.[i] && !cob[i]);
+}
+
 export const semPep = (r: Pick<SolExtra, 'aplicacao_pep'>) => !(r.aplicacao_pep || '').trim();
 export const naoAprovada = (r: Pick<SolExtra, 'aprovacao_status'>) => r.aprovacao_status !== 'APROVADA';
 
@@ -60,6 +82,8 @@ export interface AtalhosSelecao {
   prontas: string[];
   /** Prontas e aprovadas pelo gestor — o padrão sugerido. */
   prontasAprovadas: string[];
+  /** Saldo parcial: a baixa libera os itens com saldo e o resto fica pendente. */
+  parciais: string[];
   /** Prontas de um material só, agrupadas (as maiores primeiro). */
   porMaterial: AtalhoMaterial[];
 }
@@ -83,6 +107,7 @@ export function atalhosSelecao(
   return {
     prontas: prontas.map(r => r.id),
     prontasAprovadas: prontas.filter(r => !naoAprovada(r)).map(r => r.id),
+    parciais: registros.filter(r => podeEntrarNoLote(r) && saldo?.get(r.id)?.prontidao === 'parcial').map(r => r.id),
     porMaterial: [...porMaterial.values()].filter(a => a.ids.length > 1)
       .sort((a, b) => b.ids.length - a.ids.length).slice(0, maxMateriais),
   };
@@ -96,6 +121,11 @@ export interface ResultadoBaixaLote {
   id?: string | null;
   ok: boolean;
   erro?: string | null;
+  /** Baixa parcial: `rqb` é a requisição nova (confirmada); o resto segue em `rqb_pendente`. */
+  parcial?: boolean;
+  itens_baixados?: number;
+  itens_restantes?: number;
+  rqb_pendente?: string | null;
 }
 
 export function resumirResultado(linhas: ResultadoBaixaLote[]) {
@@ -104,6 +134,7 @@ export function resumirResultado(linhas: ResultadoBaixaLote[]) {
   return {
     ok,
     falhas,
+    parciais: ok.filter(l => l.parcial),
     idsConfirmados: ok.map(l => l.id).filter((id): id is string => !!id),
   };
 }

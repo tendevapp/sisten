@@ -97,3 +97,27 @@ describe('dataImportacaoEstoque', () => {
     expect(dataImportacaoEstoque([])).toBeNull();
   });
 });
+
+describe('baixa parcial', () => {
+  it('marca os itens que já saíram pelo material e pela quantidade', async () => {
+    const { marcarItensBaixados } = await import('./retiradaSemSaldoBaixa');
+    expect(marcarItensBaixados(
+      [item('1437274', 2), item('1291134', 1), item('1437274', 2)],
+      [{ material: '01437274', quantidade: 2 }],
+    )).toEqual([true, false, false]);
+  });
+
+  it('item já baixado não consome saldo nem entra na conta da parcial', () => {
+    const estoque = indexarEstoquePorDeposito([est('0001', '1437274', 2)]);
+    const r = {
+      id: 'a', status: 'PENDENTE' as const, data: '2026-11-01', created_at: '2026-11-01T10:00:00Z',
+      itens: [item('1437274', 2), item('1291134', 1)],
+    };
+    const outra = { ...r, id: 'b', data: '2026-11-02', itens: [item('1437274', 2)] };
+    const baixados = new Map([['a', [true, false]]]);
+    const m = prontidaoRegularizacao([r, outra], estoque, () => false, baixados);
+    // 'a' ficou só com o item sem saldo; o saldo de 2 vai para 'b'.
+    expect(m.get('a')).toMatchObject({ prontidao: 'aguardando', itensComSaldo: 0, totalItens: 1, itensBaixados: 1 });
+    expect(m.get('b')?.prontidao).toBe('pronta');
+  });
+});

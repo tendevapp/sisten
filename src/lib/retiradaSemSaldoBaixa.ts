@@ -20,7 +20,7 @@ import {
   DEPOSITO_PADRAO_BALCAO, ORIGEM_RETIRADA_SEM_SALDO, chaveDeposito, semDepositosSemSaida,
   type MaterialDisponivel, type PepAplicacao,
 } from './requisicaoBalcao';
-import { codigoRequisicaoPorOrigem, criarRequisicaoPendenteDeFicha } from './requisicaoBalcaoApi';
+import { codigoRequisicaoPorOrigem, criarRequisicaoPendenteDeFicha, listarItensBaixadosDasRetiradas } from './requisicaoBalcaoApi';
 import { atualizarDepositosRequisicaoDaRetirada, type SolExtra } from './solicitacaoExtraApi';
 import type { ItemSolExtra } from './solicitacaoExtra';
 import { formatarDataBR } from './fichaEpi';
@@ -101,7 +101,37 @@ export interface SaldoParaRegularizar {
   prontidao: ProntidaoSaldo;
   /** Itens que o saldo de hoje cobre, cada um num depósito só (como a baixa exige). */
   itensComSaldo: number;
+  /** Itens que ainda faltam baixar (sem contar os já baixados numa baixa parcial). */
   totalItens: number;
+  /** Itens que já saíram numa baixa parcial (requisição confirmada da mesma retirada). */
+  itensBaixados?: number;
+}
+
+/** Por retirada (id), item a item na ordem de `itens`: já saiu numa baixa parcial? */
+export type ItensBaixadosPorId = Map<string, boolean[]>;
+
+/**
+ * Marca quais itens da retirada já saíram nas requisições confirmadas dela
+ * (baixa parcial), pelo material e pela quantidade — a mesma conta de
+ * `alm_sol_extra_itens_pendentes` no banco.
+ */
+export function marcarItensBaixados(
+  itens: { material: string; quantidade: number }[],
+  baixados: { material: string; quantidade: number }[],
+): boolean[] {
+  const resta = new Map<string, number>();
+  for (const b of baixados) {
+    const k = normalizeCode(b.material);
+    resta.set(k, (resta.get(k) ?? 0) + (Number(b.quantidade) || 0));
+  }
+  return itens.map(it => {
+    const k = normalizeCode(it.material);
+    const qtd = Number(it.quantidade) || 0;
+    const disponivel = resta.get(k) ?? 0;
+    if (qtd <= 0 || disponivel < qtd) return false;
+    resta.set(k, disponivel - qtd);
+    return true;
+  });
 }
 
 /**
@@ -121,15 +151,20 @@ export function prontidaoRegularizacao(
   registros: Pick<SolExtra, 'id' | 'status' | 'data' | 'created_at' | 'itens'>[],
   estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
   depositoInativo: (dep: string) => boolean = isDepositoInativo,
+  baixados?: ItensBaixadosPorId,
 ): Map<string, SaldoParaRegularizar> {
   const out = new Map<string, SaldoParaRegularizar>();
-  for (const [id, cobertos] of coberturaItensPendentes(registros, estoquePorDeposito, depositoInativo)) {
-    const itensComSaldo = cobertos.filter(Boolean).length;
-    const totalItens = cobertos.length;
+  for (const [id, cobertos] of coberturaItensPendentes(registros, estoquePorDeposito, depositoInativo, baixados)) {
+    const jaSaiu = baixados?.get(id);
+    const faltam = cobertos.filter((_, i) => !jaSaiu?.[i]);
+    const itensComSaldo = faltam.filter(Boolean).length;
+    const totalItens = faltam.length;
+    const itensBaixados = cobertos.length - faltam.length;
     out.set(id, {
       prontidao: totalItens > 0 && itensComSaldo === totalItens ? 'pronta' : itensComSaldo > 0 ? 'parcial' : 'aguardando',
       itensComSaldo,
       totalItens,
+      ...(itensBaixados > 0 ? { itensBaixados } : {}),
     });
   }
   return out;
@@ -144,6 +179,8 @@ export function coberturaItensPendentes(
   registros: Pick<SolExtra, 'id' | 'status' | 'data' | 'created_at' | 'itens'>[],
   estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
   depositoInativo: (dep: string) => boolean = isDepositoInativo,
+  /** Item que já saiu numa baixa parcial conta como coberto e não consome saldo. */
+  baixados?: ItensBaixadosPorId,
 ): Map<string, boolean[]> {
   // Saldo que ainda resta por material e depósito, consumido conforme as saídas são cobertas.
   const restante = new Map<string, Map<string, number>>();
@@ -159,7 +196,9 @@ export function coberturaItensPendentes(
 
   const out = new Map<string, boolean[]>();
   for (const r of pendentes) {
-    const cobertos = r.itens.map(it => {
+    const jaSaiu = baixados?.get(r.id);
+    const cobertos = r.itens.map((it, idx) => {
+      if (jaSaiu?.[idx]) return true;
       const qtd = Number(it.quantidade) || 0;
       const porDep = restante.get(normalizeCode(it.material));
       let escolhido: string | null = null;
@@ -217,4 +256,24 @@ export async function requisicaoDaRetirada(registro: SolExtra, linhas: LinhaBaix
   });
   if (criada.offline || !criada.codigo) throw new Error('A requisição ficou na fila offline — abra quando a conexão voltar.');
   return criada.codigo;
+}
+
+/**
+ * Itens de cada retirada sem saldo pendente que já saíram numa baixa parcial.
+ * Falha na leitura = nenhum (a tela segue; o banco confere de novo na baixa).
+ */
+export async function carregarItensBaixados(pendentes: SolExtra[]): Promise<ItensBaixadosPorId> {
+  const out: ItensBaixadosPorId = new Map();
+  const comCodigo = pendentes.filter(r => r.tipo === 'SEM_SALDO' && r.codigo);
+  if (comCodigo.length === 0) return out;
+  try {
+    const porCodigo = await listarItensBaixadosDasRetiradas(comCodigo.map(r => r.codigo!));
+    for (const r of comCodigo) {
+      const baixados = porCodigo.get(r.codigo!);
+      if (baixados?.length) out.set(r.id, marcarItensBaixados(r.itens, baixados));
+    }
+  } catch (err) {
+    console.warn('Baixas parciais das retiradas não lidas:', err);
+  }
+  return out;
 }

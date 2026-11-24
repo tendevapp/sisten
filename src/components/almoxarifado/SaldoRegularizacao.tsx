@@ -22,9 +22,10 @@ import { indexarEstoquePorDeposito } from '../../lib/requisicaoBalcao';
 import { buscarEstoqueBalcao } from '../../lib/requisicaoBalcaoApi';
 import { listarSolicitacoesExtraPendentes } from '../../lib/solicitacaoExtraApi';
 import {
-  PRONTIDAO_SALDO_ROTULO, coberturaItensPendentes, dataImportacaoEstoque, prontidaoRegularizacao,
-  type ProntidaoSaldo, type SaldoParaRegularizar,
+  PRONTIDAO_SALDO_ROTULO, carregarItensBaixados, coberturaItensPendentes, dataImportacaoEstoque, prontidaoRegularizacao,
+  type ItensBaixadosPorId, type ProntidaoSaldo, type SaldoParaRegularizar,
 } from '../../lib/retiradaSemSaldoBaixa';
+
 
 export type FiltroProntidao = ProntidaoSaldo | 'todas';
 
@@ -38,6 +39,8 @@ export interface ProntidaoSaldoEstado {
   porId: Map<string, SaldoParaRegularizar> | null;
   /** Item a item (mesma ordem de `itens`): o saldo de hoje já cobre? */
   cobertura: Map<string, boolean[]> | null;
+  /** Item a item: já saiu numa baixa parcial? */
+  baixados: ItensBaixadosPorId | null;
   importadoEm: string | null;
   carregando: boolean;
   erro: boolean;
@@ -45,19 +48,21 @@ export interface ProntidaoSaldoEstado {
 
 export function useProntidaoSaldo(versao: number): ProntidaoSaldoEstado {
   const [estado, setEstado] = useState<ProntidaoSaldoEstado>(
-    { porId: null, cobertura: null, importadoEm: null, carregando: true, erro: false },
+    { porId: null, cobertura: null, baixados: null, importadoEm: null, carregando: true, erro: false },
   );
   useEffect(() => {
     if (versao === 0) return;
     let vivo = true;
     setEstado(e => ({ ...e, carregando: true }));
     Promise.all([buscarEstoqueBalcao(true), listarSolicitacoesExtraPendentes()])
-      .then(([estoque, pendentes]) => {
+      .then(async ([estoque, pendentes]) => [estoque, pendentes, await carregarItensBaixados(pendentes)] as const)
+      .then(([estoque, pendentes, baixados]) => {
         if (!vivo) return;
         const indice = indexarEstoquePorDeposito(estoque, true);
         setEstado({
-          porId: prontidaoRegularizacao(pendentes, indice),
-          cobertura: coberturaItensPendentes(pendentes, indice),
+          porId: prontidaoRegularizacao(pendentes, indice, undefined, baixados),
+          cobertura: coberturaItensPendentes(pendentes, indice, undefined, baixados),
+          baixados,
           importadoEm: dataImportacaoEstoque(estoque),
           carregando: false,
           erro: false,
@@ -81,9 +86,12 @@ const ESTILO: Record<ProntidaoSaldo, { classe: string; icone: typeof Clock }> = 
 export function SaldoChip({ saldo }: { saldo: SaldoParaRegularizar | undefined }) {
   if (!saldo) return null;
   const { classe, icone: Icone } = ESTILO[saldo.prontidao];
-  const texto = saldo.prontidao === 'parcial'
+  const base = saldo.prontidao === 'parcial'
     ? `Saldo em ${saldo.itensComSaldo} de ${saldo.totalItens} itens`
     : PRONTIDAO_SALDO_ROTULO[saldo.prontidao];
+  const texto = saldo.itensBaixados
+    ? `${base} · ${saldo.itensBaixados} já baixado${saldo.itensBaixados === 1 ? '' : 's'}`
+    : base;
   return (
     <span
       className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${classe}`}

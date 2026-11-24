@@ -217,13 +217,15 @@ export function BotaoPdfRetirada({ registro, className }: { registro: SolExtra; 
  * saldo. Confirmada, a retirada fica baixada sozinha.
  */
 export function BaixaRetiradaModal({
-  registro, user, onClose, onNavigate,
+  registro, user, onClose, onNavigate, onLiberarParcial,
 }: {
   registro: SolExtra;
   user: Profile;
   onClose: () => void;
   onFeito?: () => void;
   onNavigate: (path: string) => void;
+  /** Saldo parcial: libera já os itens com saldo (baixa em lote com esta retirada só). */
+  onLiberarParcial?: () => void;
 }) {
   const toast = useToast();
   const [carregando, setCarregando] = useState(true);
@@ -316,6 +318,7 @@ export function BaixaRetiradaModal({
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 {semSaldo.length === 1 ? 'Um item ainda não tem' : `${semSaldo.length} itens ainda não têm`} saldo na ZL0024 — a requisição no balcão continua pendente
                 e só pode ser confirmada quando a NF for lançada e a ZL0024 for atualizada.
+                {onLiberarParcial && ' Os itens que já têm saldo podem sair agora: use "Liberar itens com saldo".'}
               </p>
             ) : (
               <p className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
@@ -331,6 +334,16 @@ export function BaixaRetiradaModal({
         <button type="button" onClick={onClose} disabled={abrindo} className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-60 dark:text-slate-300 dark:hover:bg-slate-800">
           Fechar
         </button>
+        {onLiberarParcial && (
+          <button
+            type="button"
+            onClick={onLiberarParcial}
+            disabled={abrindo || carregando}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            <PackageCheck className="h-4 w-4" /> Liberar itens com saldo
+          </button>
+        )}
         <button
           type="button"
           onClick={() => void abrirRequisicao()}

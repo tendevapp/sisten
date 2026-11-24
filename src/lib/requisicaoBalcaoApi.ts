@@ -13,7 +13,7 @@
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 import type { EstoqueItem } from '../types';
-import { DEPOSITO_EPI, ORIGEM_FICHA_EPI, type PepAplicacao, type TipoMovimentoBalcao } from './requisicaoBalcao';
+import { DEPOSITO_EPI, ORIGEM_FICHA_EPI, ORIGEM_RETIRADA_SEM_SALDO, type PepAplicacao, type TipoMovimentoBalcao } from './requisicaoBalcao';
 import { ehRespostaOffline } from './offline/configFormularios';
 import { buscarTudo } from './buscarTudo';
 import type { BuscaNoHistorico } from './requisicaoBalcaoHistorico';
@@ -468,14 +468,43 @@ export async function codigoRequisicaoDaFicha(fichaId: string): Promise<string |
 
 /** Código da requisição já gerada por outro formulário (para não gerar duas vezes). */
 export async function codigoRequisicaoPorOrigem(origem: string, origemRef: string): Promise<string | null> {
+  // A retirada sem saldo pode ter, além da pendente, requisições já
+  // confirmadas de baixa parcial: a pendente vem primeiro.
   const { data, error } = await dbReq()
     .select('codigo')
     .eq('origem', origem)
     .eq('origem_ref', origemRef)
     .eq('excluido', false)
+    .order('pendente_confirmacao', { ascending: false })
     .limit(1);
   if (error) throw new Error(error.message);
   return ((data || []) as { codigo: string | null }[])[0]?.codigo ?? null;
+}
+
+/**
+ * Itens que já saíram em baixa parcial: requisições CONFIRMADAS das retiradas
+ * sem saldo informadas (RSS → materiais e quantidades). A pendente fica de fora.
+ */
+export async function listarItensBaixadosDasRetiradas(
+  codigosRss: string[],
+): Promise<Map<string, { material: string; quantidade: number; rqb: string }[]>> {
+  const out = new Map<string, { material: string; quantidade: number; rqb: string }[]>();
+  const codigos = [...new Set(codigosRss.filter(Boolean))];
+  for (let i = 0; i < codigos.length; i += 100) {
+    const { data, error } = await dbReq()
+      .select('codigo, origem_ref, itens:alm_req_balcao_itens(material, quantidade)')
+      .eq('origem', ORIGEM_RETIRADA_SEM_SALDO)
+      .in('origem_ref', codigos.slice(i, i + 100))
+      .eq('excluido', false)
+      .eq('pendente_confirmacao', false);
+    if (error) throw new Error(error.message);
+    for (const r of (data || []) as { codigo: string; origem_ref: string; itens: { material: string; quantidade: number }[] }[]) {
+      const lista = out.get(r.origem_ref) ?? [];
+      for (const it of r.itens || []) lista.push({ material: it.material, quantidade: Number(it.quantidade) || 0, rqb: r.codigo });
+      out.set(r.origem_ref, lista);
+    }
+  }
+  return out;
 }
 
 /** Grava o nº do documento SAP em várias requisições; documento vazio desfaz. */

@@ -20,8 +20,9 @@ import type { Profile } from '../../types';
 import type { SolExtra } from '../../lib/solicitacaoExtraApi';
 import { baixarRetiradasEmLote } from '../../lib/solicitacaoExtraApi';
 import {
-  agruparPorMaterial, naoAprovada, resumirResultado, semPep, type ResultadoBaixaLote,
+  agruparPorMaterial, itensQueFicam, itensQueSaem, naoAprovada, resumirResultado, semPep, type ResultadoBaixaLote,
 } from '../../lib/baixaLoteRetiradas';
+import type { ItensBaixadosPorId } from '../../lib/retiradaSemSaldoBaixa';
 import {
   buscarRequisicoesBalcaoPorIds, listarAplicacoesBalcao, registrarExportacaoBalcao,
 } from '../../lib/requisicaoBalcaoApi';
@@ -31,6 +32,10 @@ import { formatQtd } from '../../lib/almoxarifado';
 
 interface Props {
   registros: SolExtra[];
+  /** Item a item: o saldo de hoje cobre? (null = não lido: considera todos). */
+  cobertura: Map<string, boolean[]> | null;
+  /** Item a item: já saiu numa baixa parcial? */
+  baixados: ItensBaixadosPorId | null;
   user: Profile;
   onClose: () => void;
   /** Depois da baixa (a lista muda). */
@@ -38,12 +43,20 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-export default function BaixaLoteRetiradasModal({ registros, user, onClose, onFeito, onNavigate }: Props) {
+export default function BaixaLoteRetiradasModal({ registros, cobertura, baixados, user, onClose, onFeito, onNavigate }: Props) {
   const toast = useToast();
   const idPep = useId();
   const idNf = useId();
 
-  const grupos = useMemo(() => agruparPorMaterial(registros), [registros]);
+  // Só o que sai agora: na retirada de saldo parcial, os itens com saldo.
+  const grupos = useMemo(
+    () => agruparPorMaterial(registros.map(r => ({ itens: itensQueSaem(r, cobertura, baixados) }))),
+    [registros, cobertura, baixados],
+  );
+  const parciais = useMemo(() => {
+    const lista = registros.map(r => itensQueFicam(r, cobertura, baixados).length).filter(n => n > 0);
+    return { retiradas: lista.length, itensFicam: lista.reduce((s, n) => s + n, 0) };
+  }, [registros, cobertura, baixados]);
   const qtdSemPep = useMemo(() => registros.filter(semPep).length, [registros]);
   const qtdNaoAprovadas = useMemo(() => registros.filter(naoAprovada).length, [registros]);
 
@@ -138,6 +151,14 @@ export default function BaixaLoteRetiradasModal({ registros, user, onClose, onFe
               </ul>
             </div>
 
+            {parciais.retiradas > 0 && (
+              <p className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                {parciais.retiradas} retirada(s) com saldo parcial: saem só os itens que já têm saldo, numa requisição nova.
+                {' '}{parciais.itensFicam} item(ns) sem saldo ficam pendentes na retirada, aguardando a NF.
+              </p>
+            )}
+
             {qtdNaoAprovadas > 0 && (
               <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -184,7 +205,9 @@ export default function BaixaLoteRetiradasModal({ registros, user, onClose, onFe
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40">
                 <p className="text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{resumo!.ok.length}</p>
-                <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">baixadas e regularizadas</p>
+                <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                  baixadas{resumo!.parciais.length > 0 ? ` (${resumo!.parciais.length} parcial${resumo!.parciais.length === 1 ? '' : 'is'} — o resto segue pendente)` : ' e regularizadas'}
+                </p>
               </div>
               <div className={`rounded-xl border p-3 ${resumo!.falhas.length > 0 ? 'border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/40' : 'border-slate-200 dark:border-slate-700'}`}>
                 <p className={`text-2xl font-bold tabular-nums ${resumo!.falhas.length > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-slate-500'}`}>{resumo!.falhas.length}</p>
@@ -207,7 +230,7 @@ export default function BaixaLoteRetiradasModal({ registros, user, onClose, onFe
               <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
                 <p className="text-sm font-bold text-slate-900 dark:text-slate-50">Próximo passo: exportar para o SAP</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Uma planilha com as {resumo!.idsConfirmados.length} requisições, no formato de sempre. Depois de processar no Baixas_SAP,
+                  Uma planilha com as {resumo!.idsConfirmados.length} requisições confirmadas agora, no formato de sempre. Depois de processar no Baixas_SAP,
                   importe o retorno na Requisição no Balcão — o documento SAP entra sozinho.
                 </p>
                 {exportado ? (

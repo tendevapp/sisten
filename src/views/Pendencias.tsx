@@ -180,7 +180,8 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
   const [visao, setVisao] = useState<VisaoBaixa>(visaoBaixaGuardada);
   // Baixa em lote: retiradas marcadas nos cartões.
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
-  const [loteAberto, setLoteAberto] = useState(false);
+  // Lote aberto: as marcadas, ou uma retirada parcial vinda do "Dar baixa".
+  const [lote, setLote] = useState<SolExtra[] | null>(null);
   const trocarVisao = (v: VisaoBaixa) => {
     setVisao(v);
     try { localStorage.setItem(CHAVE_VISAO_BAIXA, v); } catch { /* sem storage: vale só nesta tela */ }
@@ -262,7 +263,10 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
               {visao === 'retirada' && atalhos.prontas.length > 0 && (
                 <AtalhosLote
                   atalhos={atalhos}
-                  onMarcar={(ids) => { setSelecionadas(new Set(ids)); setFiltroSaldo('pronta'); }}
+                  onMarcar={(ids) => {
+                    setSelecionadas(new Set(ids));
+                    setFiltroSaldo(ids.every(id => saldo.porId?.get(id)?.prontidao === 'parcial') ? 'parcial' : 'pronta');
+                  }}
                 />
               )}
             </div>
@@ -282,7 +286,7 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setLoteAberto(true)}
+                  onClick={() => setLote(registrosLote)}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
                 >
                   <PackageCheck className="h-3.5 w-3.5" aria-hidden="true" /> Dar baixa em lote ({registrosLote.length})
@@ -409,12 +413,14 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
         />
       )}
 
-      {loteAberto && (
+      {lote && (
         <BaixaLoteRetiradasModal
-          registros={registrosLote}
+          registros={lote}
+          cobertura={saldo.cobertura}
+          baixados={saldo.baixados}
           user={user}
           onNavigate={onNavigate}
-          onClose={() => setLoteAberto(false)}
+          onClose={() => setLote(null)}
           onFeito={() => { setSelecionadas(new Set()); carregar(); }}
         />
       )}
@@ -426,6 +432,9 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
           onNavigate={onNavigate}
           onClose={() => setBaixando(null)}
           onFeito={carregar}
+          onLiberarParcial={saldo.porId?.get(baixando.id)?.prontidao === 'parcial'
+            ? () => { const r = baixando; setBaixando(null); setLote([r]); }
+            : undefined}
         />
       )}
     </div>
@@ -555,6 +564,11 @@ function AtalhosLote({ atalhos, onMarcar }: {
       {atalhos.prontas.length !== atalhos.prontasAprovadas.length && (
         <button type="button" className={botao} onClick={() => onMarcar(atalhos.prontas)}>
           Todas as prontas ({atalhos.prontas.length})
+        </button>
+      )}
+      {atalhos.parciais.length > 0 && (
+        <button type="button" className={botao} onClick={() => onMarcar(atalhos.parciais)} title="Libera os itens que já têm saldo; o resto fica pendente">
+          Parciais: liberar itens com saldo ({atalhos.parciais.length})
         </button>
       )}
       {atalhos.porMaterial.map(m => (

@@ -13,7 +13,7 @@
 import { normalizeCode } from './almoxarifado';
 import { indexarEstoquePorDeposito } from './requisicaoBalcao';
 import { buscarEstoqueBalcao } from './requisicaoBalcaoApi';
-import { coberturaItensPendentes, dataImportacaoEstoque } from './retiradaSemSaldoBaixa';
+import { carregarItensBaixados, coberturaItensPendentes, dataImportacaoEstoque } from './retiradaSemSaldoBaixa';
 import { listarSolicitacoesExtraPendentes, listarSolicitacoesExtraPeriodo } from './solicitacaoExtraApi';
 import { buscarSituacaoMaterial } from './situacaoMaterial';
 import {
@@ -35,7 +35,8 @@ export async function carregarRelatorioSolExtra(filtro: FiltroRelatorioSolExtra,
     }),
   ]);
 
-  const cobertura = estoque ? coberturaItensPendentes(pendentes, indexarEstoquePorDeposito(estoque, true)) : null;
+  const baixados = estoque ? await carregarItensBaixados(pendentes) : undefined;
+  const cobertura = estoque ? coberturaItensPendentes(pendentes, indexarEstoquePorDeposito(estoque, true), undefined, baixados) : null;
   const linhas = linhasRelatorio(filtrarParaRelatorio(registros, filtro), cobertura);
 
   const pendenciaNf = new Map<string, PendenciaNfMaterial>();

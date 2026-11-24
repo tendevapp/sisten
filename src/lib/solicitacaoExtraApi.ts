@@ -362,11 +362,14 @@ export async function atualizarDepositosRequisicaoDaRetirada(codigoRss: string):
  */
 export async function baixarRetiradasEmLote(
   codigosRss: string[], pep: string | null, por: string,
+  /** Saldo parcial: libera os itens com saldo numa requisição nova e deixa o resto pendente. */
+  parcial = true,
 ): Promise<import('./baixaLoteRetiradas').ResultadoBaixaLote[]> {
   const { data, error } = await (supabase.rpc as any)('alm_sol_extra_baixar_lote', {
     p_rss: codigosRss,
     p_pep: pep,
     p_por: por,
+    p_parcial: parcial,
   });
   if (error) throw new Error(error.message);
   return (data || []) as import('./baixaLoteRetiradas').ResultadoBaixaLote[];
