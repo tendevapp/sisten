@@ -460,6 +460,29 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     }
   };
 
+  /** Selecionadas que já saíram na planilha e não voltaram com doc. SAP — podem voltar para "Não exportadas". */
+  const selecionadasEstornaveis = useMemo(
+    () => requisicoes.filter((r) => selecionadas.has(r.id) && r.exportacao_id && !r.doc_sap).map((r) => r.id),
+    [requisicoes, selecionadas],
+  );
+  const estornarExportacao = async () => {
+    const ids = selecionadasEstornaveis;
+    if (ids.length === 0) return;
+    if (!await confirmar({
+      titulo: 'Estornar para "Não exportadas"?',
+      mensagem: `${ids.length} requisição(ões) voltam para "Não exportadas" e precisarão ser exportadas de novo. Use quando a planilha não foi processada no SAP.`,
+      confirmarLabel: 'Estornar',
+    })) return;
+    try {
+      const n = await reabrirExportacaoBalcao(ids);
+      toast.success(`${n} requisição(ões) de volta para "Não exportadas".`);
+      setSelecionadas(new Set());
+      await recarregarRequisicoes();
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao estornar a exportação.');
+    }
+  };
+
   const alternarSelecao = (ids: string[], marcar: boolean) => {
     setSelecionadas((atual) => {
       const novo = new Set(atual);
@@ -708,6 +731,16 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
             >
               <FileCheck2 className="h-3.5 w-3.5" /> Informar doc. SAP
             </button>
+            {selecionadasEstornaveis.length > 0 && (
+              <button
+                onClick={() => void estornarExportacao()}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold"
+                style={{ borderColor: 'var(--status-serious)', color: 'var(--status-serious)' }}
+                title="Volta as selecionadas para Não exportadas"
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Estornar para não exportada ({selecionadasEstornaveis.length})
+              </button>
+            )}
             <button
               onClick={() => void exportar()}
               disabled={exportando}
