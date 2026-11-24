@@ -12,6 +12,7 @@
  */
 
 import { normalizeCode } from './almoxarifado';
+import { baixaPendenteDoItem, type MovimentoRetrato } from './inventarioBaixaPendente';
 import type { EstoqueGiro, EstoqueItem } from '../types';
 
 export const PREFIXO_INVENTARIO = 'INV';
@@ -143,6 +144,8 @@ export interface ContagemInventario {
   iniciada_em?: string | null;
   duracao_segundos?: number | null;
   movimentacoes_controladas?: boolean | null;
+  /** Retiradas do material sem doc. SAP na hora desta contagem (ver `inventarioBaixaPendente.ts`). */
+  baixa_pendente?: MovimentoRetrato[] | null;
 }
 
 export interface ItemInventario {
@@ -186,21 +189,31 @@ export interface ResumoInventario {
   divergentes: number;
   /** Contados = já têm ao menos uma contagem. */
   contados: number;
-  /** % de itens encerrados que bateram com a ZL0024 (acuracidade). */
+  /** Encerrados cuja última contagem foi feita com baixa pendente — fora da acuracidade. */
+  baixaPendente: number;
+  /**
+   * % de itens encerrados que bateram com a ZL0024 (acuracidade), sem os
+   * contados com baixa pendente: a ZL0024 deles ainda não abateu a saída.
+   */
   acuracidade: number | null;
 }
 
 export function resumirInventario(itens: ItemInventario[]): ResumoInventario {
-  const r = { total: itens.length, pendentes: 0, aguardando: 0, conferidos: 0, divergentes: 0, contados: 0 };
+  const r = { total: itens.length, pendentes: 0, aguardando: 0, conferidos: 0, divergentes: 0, contados: 0, baixaPendente: 0 };
+  let encerradosValidos = 0;
+  let conferidosValidos = 0;
   itens.forEach((i) => {
     if (i.status === 'pendente') r.pendentes += 1;
     else if (i.status === 'aguardando_decisao') r.aguardando += 1;
     else if (i.status === 'conferido') r.conferidos += 1;
     else r.divergentes += 1;
     if (i.contagens.length > 0) r.contados += 1;
+    if (!itemEncerrado(i)) return;
+    if (baixaPendenteDoItem(i)) { r.baixaPendente += 1; return; }
+    encerradosValidos += 1;
+    if (i.status === 'conferido') conferidosValidos += 1;
   });
-  const encerrados = r.conferidos + r.divergentes;
-  return { ...r, acuracidade: encerrados > 0 ? (r.conferidos / encerrados) * 100 : null };
+  return { ...r, acuracidade: encerradosValidos > 0 ? (conferidosValidos / encerradosValidos) * 100 : null };
 }
 
 /** Uma linha do resultado — mesma forma para planilha e PDF. */

@@ -24,6 +24,11 @@
  * "OK" mas com "Diferença" e valor preenchidos (a diferença é contra outra
  * contagem, não contra o saldo); somá-los ao erro o inflaria, então eles
  * ficam à parte, como "conferidos com diferença", para revisão.
+ *
+ * Item cuja última contagem foi feita com "Baixa pendente" (retirada do
+ * balcão sem doc. SAP — ver `inventarioBaixaPendente.ts`) também fica à
+ * parte: não entra na acuracidade, no valor do erro, nos gráficos nem nos
+ * reincidentes, até ser recontado depois da regularização.
  */
 
 import { normalizeCode } from './almoxarifado';
@@ -31,6 +36,7 @@ import {
   chaveItem, diasEntre, historicoPorItem, itemEncerrado,
   type HistoricoItem, type ItemInventario,
 } from './inventarioCiclico';
+import { baixaPendenteDoItem, type MovimentoRetrato } from './inventarioBaixaPendente';
 import type { EstoqueItem } from '../types';
 
 export type OrigemInventario = 'sisten' | 'historico';
@@ -78,6 +84,8 @@ export interface LinhaAnalise {
   contagens: number;
   /** Encerrou na 1ª contagem e bateu. */
   acertouNaPrimeira: boolean;
+  /** Retrato da baixa pendente da última contagem; `null` = conta na acuracidade. */
+  baixaPendente: MovimentoRetrato[] | null;
 }
 
 const numero = (v: unknown): number | null => {
@@ -141,6 +149,7 @@ export function linhasAnalise(
         valorEstimado,
         contagens,
         acertouNaPrimeira: item.status === 'conferido' && contagens <= 1,
+        baixaPendente: baixaPendenteDoItem(item),
       });
     }
   }
@@ -190,6 +199,8 @@ export interface ResumoAnalise {
   divergentes: number;
   /** Ainda sem resultado: pendente ou aguardando decisão. */
   emAberto: number;
+  /** Encerrados com baixa pendente — fora de todos os outros indicadores. */
+  comBaixaPendente: number;
   /** % de encerrados que bateram. `null` sem encerrados. */
   acuracidade: number | null;
   /** % de encerrados que bateram já na 1ª contagem. */
@@ -216,7 +227,7 @@ export interface ResumoAnalise {
 export function resumirAnalise(linhas: LinhaAnalise[]): ResumoAnalise {
   const r: ResumoAnalise = {
     inventarios: new Set(linhas.map((l) => l.inventarioId)).size,
-    encerrados: 0, conferidos: 0, divergentes: 0, emAberto: 0,
+    encerrados: 0, conferidos: 0, divergentes: 0, emAberto: 0, comBaixaPendente: 0,
     acuracidade: null, acertoPrimeira: null, recontados: 0,
     itensDistintos: new Set(linhas.map((l) => l.chave)).size,
     faltas: 0, sobras: 0, conferidosComDiferenca: 0, valorConferidosComDiferenca: 0,
@@ -225,6 +236,7 @@ export function resumirAnalise(linhas: LinhaAnalise[]): ResumoAnalise {
   let acertosPrimeira = 0;
   for (const l of linhas) {
     if (!l.encerrado) { r.emAberto += 1; continue; }
+    if (l.baixaPendente) { r.comBaixaPendente += 1; continue; }
     r.encerrados += 1;
     if (l.status === 'conferido') r.conferidos += 1; else r.divergentes += 1;
     if (l.acertouNaPrimeira) acertosPrimeira += 1;
@@ -259,7 +271,7 @@ export interface GrupoAnalise {
 function agrupar(linhas: LinhaAnalise[], chaveDe: (l: LinhaAnalise) => string): GrupoAnalise[] {
   const mapa = new Map<string, GrupoAnalise>();
   for (const l of linhas) {
-    if (!l.encerrado) continue;
+    if (!l.encerrado || l.baixaPendente) continue;
     const chave = chaveDe(l);
     const g = mapa.get(chave) ?? { chave, encerrados: 0, conferidos: 0, divergentes: 0, acuracidade: null, valor: 0 };
     g.encerrados += 1;
@@ -293,7 +305,7 @@ const porValorDepoisQuantidade = (a: LinhaAnalise, b: LinhaAnalise) =>
 /** Itens que terminaram divergentes, do maior valor para o menor (sem valor: pela quantidade). */
 export function maioresDivergencias(linhas: LinhaAnalise[], limite = 15): LinhaAnalise[] {
   return linhas
-    .filter((l) => l.status === 'divergente' && l.diferenca !== null && l.diferenca !== 0)
+    .filter((l) => !l.baixaPendente && l.status === 'divergente' && l.diferenca !== null && l.diferenca !== 0)
     .sort(porValorDepoisQuantidade)
     .slice(0, limite);
 }
@@ -301,7 +313,7 @@ export function maioresDivergencias(linhas: LinhaAnalise[], limite = 15): LinhaA
 /** Itens fechados como conferidos mas com diferença registrada, os de maior valor primeiro. */
 export function conferidosComDiferenca(linhas: LinhaAnalise[], limite = 15): LinhaAnalise[] {
   return linhas
-    .filter((l) => l.status === 'conferido' && l.diferenca !== null && l.diferenca !== 0)
+    .filter((l) => !l.baixaPendente && l.status === 'conferido' && l.diferenca !== null && l.diferenca !== 0)
     .sort(porValorDepoisQuantidade)
     .slice(0, limite);
 }
@@ -322,7 +334,7 @@ export interface Reincidente {
 export function reincidentes(linhas: LinhaAnalise[], minimo = 2): Reincidente[] {
   const mapa = new Map<string, Reincidente & { datas: Set<string> }>();
   for (const l of linhas) {
-    if (!l.encerrado) continue;
+    if (!l.encerrado || l.baixaPendente) continue;
     const r = mapa.get(l.chave) ?? {
       chave: l.chave, material: l.material, descricao: l.descricao, deposito: l.deposito,
       vezesContado: 0, vezesDivergiu: 0, valor: 0, ultimaData: l.data, datas: new Set<string>(),
@@ -340,6 +352,13 @@ export function reincidentes(linhas: LinhaAnalise[], minimo = 2): Reincidente[] 
     .map(({ datas, ...r }) => ({ ...r, vezesContado: datas.size }))
     .filter((r) => r.vezesDivergiu >= minimo)
     .sort((a, b) => b.vezesDivergiu - a.vezesDivergiu || b.valor - a.valor);
+}
+
+/** Encerrados com baixa pendente (fora da acuracidade), o mais recente primeiro. */
+export function contadosComBaixaPendente(linhas: LinhaAnalise[]): LinhaAnalise[] {
+  return linhas
+    .filter((l) => l.encerrado && l.baixaPendente)
+    .sort((a, b) => b.data.localeCompare(a.data) || a.material.localeCompare(b.material));
 }
 
 // ---------------------------------------------------------------------------

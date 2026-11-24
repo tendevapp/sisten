@@ -35,6 +35,7 @@ import {
   type CandidatoInventario, type ClasseCurva, type CoberturaInventario, type CriterioCurva, type HistoricoItem,
   type ItemInventario, type StatusItemInventario,
 } from '../../lib/inventarioCiclico';
+import { baixaPendenteDoItem, codigosDoRetrato } from '../../lib/inventarioBaixaPendente';
 import {
   adicionarItensInventario, buscarInventario, criarInventario, encerrarItemInventario, excluirInventario, listarInventarios, registrarContagem,
   removerItemInventario, type InventarioRow, type ResultadoContagem,
@@ -630,6 +631,7 @@ function CartaoInventario({
       <p className="mt-1 text-xs" style={{ color: 'var(--ink-secondary)' }}>
         {r.total} item(ns) · {r.conferidos + r.divergentes} encerrado(s)
         {r.acuracidade != null && <> · acuracidade {r.acuracidade.toFixed(0)}%</>}
+        {r.baixaPendente > 0 && <> · {r.baixaPendente} com baixa pendente (fora da %)</>}
         {' · '}{inv.criado_por_nome || '—'}
         {inv.conferente_nome && <> · conferente {inv.conferente_nome}</>}
       </p>
@@ -1242,6 +1244,15 @@ function VistaInventario({
         <Indicador rotulo="Acuracidade" valor={r.acuracidade == null ? '—' : `${r.acuracidade.toFixed(0)}%`} />
       </div>
       <div className="hidden sm:block"><BarraProgresso inv={inv} /></div>
+      {r.baixaPendente > 0 && (
+        <p className="flex items-start gap-1.5 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" style={{ color: 'var(--status-serious)' }} aria-hidden />
+          <span>
+            {r.baixaPendente} item(ns) contado(s) com retirada do balcão sem baixa no SAP: ficam fora da acuracidade.
+            A lista para validar depois da regularização está na Análise de Inventário.
+          </span>
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {/* Celular: chips que quebram linha (nada some para o lado); zerados só aparecem no computador. */}
@@ -1527,6 +1538,13 @@ function LinhaItem({
             {contadoNaFila
               ? <Chip token="var(--status-serious)"><CloudOff className="h-3 w-3" /> Contagem no aparelho</Chip>
               : <ChipStatusItem status={item.status} />}
+            {baixaPendenteDoItem(item) && (
+              <span
+                title={`Contado com retirada sem baixa no SAP (${codigosDoRetrato(baixaPendenteDoItem(item)!)}). Fica fora da acuracidade até recontar depois da regularização.`}
+              >
+                <Chip token="var(--status-serious)"><AlertTriangle className="h-3 w-3" /> Baixa pendente · fora da %</Chip>
+              </span>
+            )}
             {fotoItem?.url_imagem && fotoItem.codigo_registro?.startsWith('EPI-') && (
               <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                 <ShieldCheck className="h-2.5 w-2.5" /> EPI

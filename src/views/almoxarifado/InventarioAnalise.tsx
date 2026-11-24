@@ -25,11 +25,15 @@ import {
 } from '../../lib/inventarioCiclico';
 import {
   FILTRO_VAZIO, ROTULO_FAIXA_IDADE, ROTULO_ORIGEM, SEM_CLASSE, aplicarFiltro, coberturaAnalise, conferidosComDiferenca,
+  contadosComBaixaPendente,
   faixaDeIdade, linhasAnalise, maioresDivergencias, porClasse, porDeposito, porDia, precosPorMaterial, reincidentes,
   resumirAnalise,
   type FaixaIdade, type FiltroAnalise, type LinhaAnalise, type OrigemInventario,
 } from '../../lib/inventarioAnalise';
-import { exportarPlanilhaAnalise } from '../../lib/inventarioAnalisePlanilha';
+import { exportarPlanilhaAnalise, exportarPlanilhaBaixaPendente } from '../../lib/inventarioAnalisePlanilha';
+import { listarBaixasPendentesPorMaterial } from '../../lib/baixasPendentesCatalogoApi';
+import type { BaixaPendenteMaterial } from '../../lib/baixasPendentesCatalogo';
+import BaixaPendenteInventario from '../../components/almoxarifado/inventarioAnalise/BaixaPendenteInventario';
 import { useToast } from '../../components/ui/Toast';
 import KpiCard from '../../components/charts/KpiCard';
 import ChartCard from '../../components/charts/ChartCard';
@@ -103,6 +107,8 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
   const [erro, setErro] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<FiltroAnalise>(FILTRO_VAZIO);
   const [modalComposicao, setModalComposicao] = useState<ComposicaoModalConfig<any> | null>(null);
+  // O que está sem baixa AGORA — diz se a requisição do retrato já foi regularizada.
+  const [pendentesAgora, setPendentesAgora] = useState<Map<string, BaixaPendenteMaterial> | null>(null);
 
   const carregar = useCallback(async (forcar = false) => {
     setLoading(true);
@@ -114,6 +120,9 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
       ]);
       setInventarios(lista);
       setEstoque(est);
+      listarBaixasPendentesPorMaterial()
+        .then(setPendentesAgora)
+        .catch((e) => { console.warn('[InventarioAnalise] Baixas pendentes indisponíveis:', e); setPendentesAgora(null); });
     } catch (err: any) {
       setErro(err?.message || 'Não foi possível carregar os inventários.');
     } finally {
@@ -145,6 +154,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
   const classes = useMemo(() => porClasse(linhas), [linhas]);
   const piores = useMemo(() => maioresDivergencias(linhas, 15), [linhas]);
   const toleradas = useMemo(() => conferidosComDiferenca(linhas, 15), [linhas]);
+  const comBaixaPendente = useMemo(() => contadosComBaixaPendente(linhas), [linhas]);
   const reincidencias = useMemo(() => reincidentes(linhas).slice(0, 15), [linhas]);
   const cobertura = useMemo(
     () => coberturaAnalise(estoque, inventarios, hojeISO(), filtro.depositos),
@@ -393,7 +403,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
   ], []);
 
   const handleSelecionarDia = useCallback((dia: string) => {
-    const items = linhas.filter((l) => l.data === dia);
+    const items = linhas.filter((l) => l.data === dia && !l.baixaPendente);
     const conferidos = items.filter((l) => l.status === 'conferido').length;
     const divergentes = items.filter((l) => l.status === 'divergente').length;
 
@@ -421,7 +431,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
   }, [linhas, colunasLinhaAnalise, filtrosLinhaAnalise]);
 
   const handleSelecionarDeposito = useCallback((deposito: string) => {
-    const items = linhas.filter((l) => l.deposito === deposito);
+    const items = linhas.filter((l) => l.deposito === deposito && !l.baixaPendente);
     setModalComposicao({
       title: `Inventário — ${formatDeposito(deposito)}`,
       badge: 'Acuracidade por Depósito',
@@ -445,7 +455,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
   }, [linhas, colunasLinhaAnalise, filtrosLinhaAnalise]);
 
   const handleSelecionarClasse = useCallback((classe: string) => {
-    const items = linhas.filter((l) => l.classe === classe);
+    const items = linhas.filter((l) => l.classe === classe && !l.baixaPendente);
     setModalComposicao({
       title: `Inventário — ${rotuloClasse(classe)}`,
       badge: 'Acuracidade por Classe',
@@ -575,7 +585,15 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
   const exportar = () => {
     if (linhas.length === 0) { toast.error('Nenhum item no filtro para exportar.'); return; }
     try {
-      exportarPlanilhaAnalise(linhas, resumo, periodo);
+      exportarPlanilhaAnalise(linhas, resumo, periodo, pendentesAgora);
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao exportar a planilha.');
+    }
+  };
+
+  const exportarBaixaPendente = () => {
+    try {
+      if (!exportarPlanilhaBaixaPendente(linhas, pendentesAgora)) toast.error('Nenhum item com baixa pendente no filtro.');
     } catch (err: any) {
       toast.error(err?.message || 'Falha ao exportar a planilha.');
     }
@@ -753,10 +771,11 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
               icon={Target}
               display={pct(resumo.acuracidade)}
               share={resumo.acuracidade == null ? undefined : resumo.acuracidade / 100}
-              detail={`${formatInt(resumo.conferidos)} de ${formatInt(resumo.encerrados)} itens bateram`}
+              detail={`${formatInt(resumo.conferidos)} de ${formatInt(resumo.encerrados)} itens bateram`
+                + (resumo.comBaixaPendente > 0 ? ` · ${formatInt(resumo.comBaixaPendente)} com baixa pendente fora` : '')}
               accent="var(--status-good)"
               emphasize
-              onClick={() => handleAbrirModalKpi('Todos os itens avaliados', linhas.filter((l) => l.encerrado))}
+              onClick={() => handleAbrirModalKpi('Todos os itens avaliados', linhas.filter((l) => l.encerrado && !l.baixaPendente))}
             />
             <KpiCard
               label="Acerto na 1ª contagem"
@@ -765,7 +784,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
               share={resumo.acertoPrimeira == null ? undefined : resumo.acertoPrimeira / 100}
               detail={`${formatInt(resumo.recontados)} itens precisaram recontar`}
               accent="var(--series-2)"
-              onClick={() => handleAbrirModalKpi('Acerto na 1ª contagem', linhas.filter((l) => l.acertouNaPrimeira))}
+              onClick={() => handleAbrirModalKpi('Acerto na 1ª contagem', linhas.filter((l) => l.acertouNaPrimeira && !l.baixaPendente))}
             />
             <KpiCard
               label="Itens divergentes"
@@ -775,7 +794,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
               share={resumo.encerrados > 0 ? resumo.divergentes / resumo.encerrados : 0}
               detail={`${formatInt(resumo.faltas)} faltas · ${formatInt(resumo.sobras)} sobras`}
               accent="var(--status-critical)"
-              onClick={() => handleAbrirModalKpi('Itens divergentes', linhas.filter((l) => l.status === 'divergente'))}
+              onClick={() => handleAbrirModalKpi('Itens divergentes', linhas.filter((l) => l.status === 'divergente' && !l.baixaPendente))}
             />
             <KpiCard
               label="Valor do erro"
@@ -786,7 +805,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
                 + (resumo.valorEstimado > 0 ? ' · inclui estimativa' : '')
               }
               accent="var(--status-serious)"
-              onClick={() => handleAbrirModalKpi('Valor do erro (divergentes)', linhas.filter((l) => l.status === 'divergente'))}
+              onClick={() => handleAbrirModalKpi('Valor do erro (divergentes)', linhas.filter((l) => l.status === 'divergente' && !l.baixaPendente))}
             />
             <KpiCard
               label="Itens contados"
@@ -944,6 +963,8 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
             )}
           </section>
 
+          <BaixaPendenteInventario linhas={comBaixaPendente} agora={pendentesAgora} onExportar={exportarBaixaPendente} />
+
           {/* Conferidos com diferença */}
           {toleradas.length > 0 && (
             <section className="space-y-2">
@@ -1073,7 +1094,7 @@ export default function InventarioAnalise({ user, onNavigate }: Props) {
             <strong>Como ler:</strong> acuracidade = itens conferidos ÷ itens encerrados (pendentes e aguardando decisão ficam de fora).
             “Acerto na 1ª contagem” = encerrou conferido sem precisar recontar. O valor do erro do histórico importado vem da própria planilha;
             nos inventários feitos no SISTEN é a diferença × o preço médio atual da ZL0024 (marcado com ≈). Valor do erro, faltas e sobras
-            contam só os itens que terminaram divergentes; os “conferidos com diferença” aparecem à parte.
+            contam só os itens que terminaram divergentes; os “conferidos com diferença” e os “contados com baixa pendente” aparecem à parte.
           </p>
         </>
       )}

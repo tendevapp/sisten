@@ -47,7 +47,7 @@ export async function ultimoResumoImportacaoInventario(): Promise<ResumoImportac
 }
 
 const COLUNAS_CONTAGEM =
-  'id, numero, quantidade, divergente, endereco_encontrado, validade, observacao, contado_por_nome, created_at, causa, causa_detalhe, preparacao_id, iniciada_em, duracao_segundos, movimentacoes_controladas';
+  'id, numero, quantidade, divergente, endereco_encontrado, validade, observacao, contado_por_nome, created_at, causa, causa_detalhe, preparacao_id, iniciada_em, duracao_segundos, movimentacoes_controladas, baixa_pendente';
 
 export interface InventarioRow {
   id: string;
