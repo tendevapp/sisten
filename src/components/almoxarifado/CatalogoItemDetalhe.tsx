@@ -21,11 +21,15 @@ import { formatarAlteracao } from '../../lib/filtroDataAlteracao';
 import { formatDateBR } from '../../lib/format';
 import type { UltimaContagem } from '../../lib/inventarioUltimaContagem';
 import UltimaContagemInventario from './UltimaContagemInventario';
+import type { BaixaPendenteMaterial } from '../../lib/baixasPendentesCatalogo';
+import { BaixaPendenteQuadro } from './BaixaPendenteTag';
 
 interface Props {
   item: ItemConsumivelZl0024;
   posicao: string;
   ultima: UltimaContagem | null | undefined;
+  /** Retiradas do balcão sem doc. SAP — a contagem vai divergir. */
+  baixaPendente?: BaixaPendenteMaterial | null;
   /** Sobe depois de uma contagem feita pela tela, para reler a última. */
   versaoContagem: number;
   podeContar: boolean;
@@ -49,7 +53,7 @@ function Linha({ rotulo, children, mono }: { rotulo: string; children: React.Rea
 }
 
 export default function CatalogoItemDetalhe({
-  item, posicao, ultima, versaoContagem, podeContar, preparandoContagem, onEditar, onContar, onEtiqueta, onZoom, onClose,
+  item, posicao, ultima, baixaPendente, versaoContagem, podeContar, preparandoContagem, onEditar, onContar, onEtiqueta, onZoom, onClose,
 }: Props) {
   const cat = item.item_catalogo;
   const [adicionais, setAdicionais] = useState<FotoAdicionalCatalogo[]>([]);
@@ -134,6 +138,8 @@ export default function CatalogoItemDetalhe({
             <p className="font-mono text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>{posicao || '—'}</p>
           </div>
         </div>
+
+        {baixaPendente && <BaixaPendenteQuadro baixa={baixaPendente} />}
 
         <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: 'var(--hairline)' }}>
           <UltimaContagemInventario material={item.codigo_sap} ultima={ultima} versao={versaoContagem} />

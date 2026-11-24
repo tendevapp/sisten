@@ -16,7 +16,7 @@ import {
   ArrowLeft, RefreshCw, Search, Camera, ImageIcon, CheckCircle2,
   AlertCircle, X, Download, Filter, Eye, Trash2, Layers,
   Boxes, Sparkles, Tag, ShieldCheck, FileText, Check,
-  ChevronRight, ClipboardPaste, Upload, Plus, Printer, MapPin, SlidersHorizontal, GraduationCap, History
+  ChevronRight, ClipboardPaste, Upload, Plus, Printer, MapPin, SlidersHorizontal, GraduationCap, History, AlertTriangle
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import {
@@ -82,6 +82,9 @@ import {
   LogJovensIndisponivelError, codigosDaAtividade, jovensDaAtividade, listarAtividadeJovens,
   type AtividadeJovem,
 } from '../../lib/almoxCatalogoLog';
+import { listarBaixasPendentesPorMaterial } from '../../lib/baixasPendentesCatalogoApi';
+import type { BaixaPendenteMaterial } from '../../lib/baixasPendentesCatalogo';
+import { BaixaPendenteTag } from '../../components/almoxarifado/BaixaPendenteTag';
 
 // A contagem é a mesma do Inventário Cíclico (rodada preparada, controle de
 // movimentação, causa na recontagem); só baixa quando alguém toca em "Contar".
@@ -92,7 +95,7 @@ interface CadastroItensAlmoxProps {
   onNavigate: (path: string) => void;
 }
 
-type FiltroRapido = 'todos' | 'com_foto' | 'sem_foto' | 'com_localizacao' | 'sem_etiqueta';
+type FiltroRapido = 'todos' | 'com_foto' | 'sem_foto' | 'com_localizacao' | 'sem_etiqueta' | 'baixa_pendente';
 /** 'off' = sem recorte; 'todos' = qualquer Jovem Aprendiz; senão, o id de um jovem. */
 type FiltroJovens = 'off' | 'todos' | string;
 type ModoVisualizacao = 'cards' | 'tabela';
@@ -307,6 +310,21 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     [ultimasContagens],
   );
 
+  // Retiradas do balcão (normal ou extraordinária) sem doc. SAP: a ZL0024 ainda
+  // não abateu, então a contagem desses itens vai divergir. Sem rede ou sem a
+  // RPC, o cadastro segue sem a tag.
+  const [baixasPendentes, setBaixasPendentes] = useState<Map<string, BaixaPendenteMaterial>>(new Map());
+  const carregarBaixasPendentes = useCallback(() => {
+    listarBaixasPendentesPorMaterial()
+      .then((mapa) => { if (montadoRef.current) setBaixasPendentes(mapa); })
+      .catch((err) => console.warn('[CadastroItensAlmox] Baixas pendentes indisponíveis:', err));
+  }, []);
+  useEffect(() => { carregarBaixasPendentes(); }, [carregarBaixasPendentes]);
+  const baixaDoItem = useCallback(
+    (codigo: string) => baixasPendentes.get(normalizeCode(codigo)) ?? null,
+    [baixasPendentes],
+  );
+
   // Lista única de Níveis 2 presentes nos itens
   const opcoesNivel2 = useMemo(() => {
     const set = new Set<string>();
@@ -387,6 +405,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       if (filtroRapido === 'com_foto' && !it.tem_foto) return false;
       if (filtroRapido === 'sem_foto' && it.tem_foto) return false;
       if (filtroRapido === 'com_localizacao' && localizacoes.length === 0) return false;
+      if (filtroRapido === 'baixa_pendente' && !baixaDoItem(it.codigo_sap)) return false;
 
       // Filtro de Nível 2
       if (filtroNivel2 !== 'todos' && it.classificacao_nivel2 !== filtroNivel2) return false;
@@ -406,7 +425,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     // ordem em que já vinha (sort estável).
     const alteradoEm = (it: ItemConsumivelZl0024) => it.item_catalogo?.updated_at ?? '';
     return filtrados.sort((a, b) => alteradoEm(b).localeCompare(alteradoEm(a)));
-  }, [itens, buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroDeposito, filtroData, periodoData, filtroEtiqueta, codigosJovens, posicaoDoItem, localizacoesDoItem]);
+  }, [itens, buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroDeposito, filtroData, periodoData, filtroEtiqueta, codigosJovens, posicaoDoItem, localizacoesDoItem, baixaDoItem]);
 
   // Desenha em lotes (como a aba BOM): o catálogo passa de mil itens com foto,
   // e montar todos de uma vez trava o celular e baixa dezenas de MB de imagem.
@@ -423,9 +442,10 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     const pctCobertura = total > 0 ? (comFoto / total) * 100 : 0;
     const saldoTotal = arredondarSaldo(itens.reduce((acc, i) => acc + (Number(i.saldo_total) || 0), 0));
     const etiquetaImpressa = itens.filter(i => i.item_catalogo?.etiqueta_impressa_em).length;
+    const baixaPendente = itens.filter(i => baixaDoItem(i.codigo_sap)).length;
 
-    return { total, comFoto, semFoto, comLocalizacao, pctCobertura, saldoTotal, etiquetaImpressa };
-  }, [itens, localizacoesDoItem]);
+    return { total, comFoto, semFoto, comLocalizacao, pctCobertura, saldoTotal, etiquetaImpressa, baixaPendente };
+  }, [itens, localizacoesDoItem, baixaDoItem]);
 
   // Filtros secundários em uso — contados no botão "Filtros" do celular.
   const filtrosSecundariosAtivos = [
@@ -1247,6 +1267,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
             disabled={atualizando || carregando}
             onClick={() => {
               setAtualizando(true);
+              carregarBaixasPendentes();
               void carregarDados().finally(() => setAtualizando(false));
             }}
             title="Recarregar catálogo e fotos"
@@ -1597,12 +1618,16 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               { valor: 'com_localizacao', rotulo: 'Com localização', n: kpis.comLocalizacao, ativo: 'bg-sky-600', icone: MapPin },
               { valor: 'sem_foto', rotulo: 'Sem foto', n: kpis.semFoto, ativo: 'bg-amber-600', icone: Camera },
               { valor: 'sem_etiqueta', rotulo: 'Sem etiqueta', n: kpis.total - kpis.etiquetaImpressa, ativo: 'bg-rose-600', icone: Printer },
+              { valor: 'baixa_pendente', rotulo: 'Baixa pendente', n: kpis.baixaPendente, ativo: 'bg-orange-600', icone: AlertTriangle },
             ] as const).map(({ valor, rotulo, n, ativo, icone: Icone }) => (
               <button
                 key={valor}
                 type="button"
                 onClick={() => setFiltroRapido(valor)}
                 aria-pressed={filtroRapido === valor}
+                title={valor === 'baixa_pendente'
+                  ? 'Itens com Requisição no Balcão ou Solicitação Extraordinária ainda sem baixa no SAP — a contagem vai divergir da ZL0024'
+                  : undefined}
                 className={`shrink-0 whitespace-nowrap px-2.5 py-1.5 sm:py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1 ${
                   filtroRapido === valor ? `${ativo} text-white shadow-xs` : 'text-slate-600 dark:text-slate-300'
                 }`}
@@ -1871,6 +1896,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               item={item}
               posicao={posicaoDoItem(item)}
               ultima={ultimaDoItem(item.codigo_sap)}
+              baixaPendente={baixaDoItem(item.codigo_sap)}
               hoje={hoje}
               marcado={selecionados.has(item.codigo_sap)}
               podeContar={podeContar}
@@ -1944,11 +1970,14 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                     </td>
                     <td className="py-2 px-3 font-semibold max-w-xs" style={{ color: 'var(--ink-primary)' }}>
                       <div className="truncate font-semibold" title={item.descricao}>{item.descricao}</div>
-                      {item.origem_foto === 'book_epi' && (
-                        <div className="mt-0.5">
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                            <ShieldCheck className="h-2.5 w-2.5" /> Book EPI {item.ca_epi ? `CA ${item.ca_epi}` : ''}
-                          </span>
+                      {(item.origem_foto === 'book_epi' || baixaDoItem(item.codigo_sap)) && (
+                        <div className="mt-0.5 flex flex-wrap gap-1">
+                          {item.origem_foto === 'book_epi' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                              <ShieldCheck className="h-2.5 w-2.5" /> Book EPI {item.ca_epi ? `CA ${item.ca_epi}` : ''}
+                            </span>
+                          )}
+                          {baixaDoItem(item.codigo_sap) && <BaixaPendenteTag baixa={baixaDoItem(item.codigo_sap)!} />}
                         </div>
                       )}
                     </td>
@@ -3028,6 +3057,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           item={itemDetalhe}
           posicao={posicaoDoItem(itemDetalhe)}
           ultima={ultimaDoItem(itemDetalhe.codigo_sap)}
+          baixaPendente={baixaDoItem(itemDetalhe.codigo_sap)}
           versaoContagem={versaoContagem}
           podeContar={podeContar}
           preparandoContagem={preparandoCodigo === itemDetalhe.codigo_sap}
