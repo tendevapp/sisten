@@ -8,7 +8,7 @@ import { recordRecentPage } from './lib/homePrefs';
 import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, isUserAndre, pageIdForPath, tituloAba } from './lib/pages';
 import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia, usuarioSessaoPermanente } from './lib/sessaoDiaria';
 import { limparCenaSessao } from './lib/cenaInicio';
-import { pareceFalhaDeRede } from './lib/rede';
+import { pareceFalhaDeRede, comPrazo, PRAZO_ESGOTADO } from './lib/rede';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -32,6 +32,9 @@ import { ROTA_CURTA_QR, ROTA_REQUISICAO_BALCAO, guardarItemQrEscolha, guardarIte
 import { ROTA_CADASTRO_ITENS, ROTA_CURTA_QR_BOM, pecaDaRota } from './lib/etiquetaBom';
 /** Perfil relido no máximo a cada 10 min por eventos de sessão (ver onAuthStateChange). */
 const PERFIL_TTL_MS = 10 * 60 * 1000;
+// Quanto a abertura espera a sessão/perfil do servidor antes de seguir com o
+// perfil guardado no aparelho (ver o useEffect de autenticação).
+const PRAZO_ABERTURA_MS = 10_000;
 
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const Materials = lazy(() => import('./views/Materials'));
@@ -347,15 +350,23 @@ export default function App() {
         let perfilUid: string | null = null;
         let perfilBuscadoEm = 0;
 
-        // Obter sessão inicial
-        let { data: { session }, error: erroSessao } = await supabase.auth.getSession();
+        // Obter sessão inicial — com prazo: em 24/11/2026 o banco travou e a
+        // renovação do token/busca do perfil não voltavam nunca, deixando todo
+        // mundo em "Iniciando SISTEN...". Esgotado o prazo, abre com o perfil
+        // guardado no aparelho; quando o servidor responder, o
+        // onAuthStateChange abaixo confirma a sessão e atualiza o perfil.
+        const respostaSessao = await comPrazo(supabase.auth.getSession(), PRAZO_ABERTURA_MS);
+        const sessaoEsgotou = respostaSessao === PRAZO_ESGOTADO;
+        let session = sessaoEsgotou ? null : respostaSessao.data.session;
+        const erroSessao = sessaoEsgotou ? null : respostaSessao.error;
+        if (sessaoEsgotou) console.warn(`Servidor não respondeu à sessão em ${PRAZO_ABERTURA_MS / 1000} s; abrindo com o perfil do aparelho.`);
 
         // Sem rede e com o token de acesso vencido, o supabase-js não consegue
         // renovar e devolve sessão nula — mas mantém a sessão guardada e renova
         // sozinho quando a rede volta. Quem abre o app em campo sem sinal
         // (checklists da Qualidade offline) segue com o perfil em cache em vez
-        // de cair no login.
-        const usuarioOffline = !session && !isRecovery && erroSessao && pareceFalhaDeRede(erroSessao)
+        // de cair no login. Servidor que não responde no prazo conta igual.
+        const usuarioOffline = !session && !isRecovery && (sessaoEsgotou || (erroSessao && pareceFalhaDeRede(erroSessao)))
           ? localDb.getCurrentUser()
           : null;
 
@@ -365,7 +376,7 @@ export default function App() {
         // Usuários fixos/TV (como tv.fin) NUNCA expiram a sessão.
         const isTvSession = session?.user?.email && usuarioSessaoPermanente(session.user.email);
         if (session && session.user && !isRecovery && !isTvSession && sessaoExpirouNoDia(new Date(), session.user.email)) {
-          await supabase.auth.signOut().catch(() => {});
+          await comPrazo(supabase.auth.signOut().catch(() => {}), PRAZO_ABERTURA_MS);
           limparDiaSessao();
           limparCenaSessao();
           session = null;
@@ -378,12 +389,16 @@ export default function App() {
             localDb.setCurrentUser(null);
             setUser(null);
           } else {
-            // Buscar profile atualizado
-            const { data: profile, error: profileError } = await supabase
-              .from('core_perfis')
-              .select('*')
-              .eq('id', session.user.id)
-              .maybeSingle();
+            // Buscar profile atualizado (com prazo; esgotado = falha de rede abaixo)
+            const respostaPerfil = await comPrazo(
+              supabase.from('core_perfis').select('*').eq('id', session.user.id).maybeSingle(),
+              PRAZO_ABERTURA_MS,
+            );
+            const perfilEsgotou = respostaPerfil === PRAZO_ESGOTADO;
+            const profile = perfilEsgotou ? null : respostaPerfil.data;
+            const profileError = perfilEsgotou
+              ? new Error(`Servidor não respondeu ao perfil em ${PRAZO_ABERTURA_MS / 1000} s`)
+              : respostaPerfil.error;
 
             if (profile && profile.status === 'ativo') {
               const mapped = { ...profile, roles: profile.roles || [], tours_seen: profile.tours_seen || {} };
@@ -409,7 +424,8 @@ export default function App() {
                 setUser(cached);
                 marcarDiaSessao();
               } else {
-                await supabase.auth.signOut();
+                // Servidor travado: o signOut também ficaria esperando.
+                if (!perfilEsgotou) await supabase.auth.signOut();
                 localDb.setCurrentUser(null);
                 setUser(null);
               }

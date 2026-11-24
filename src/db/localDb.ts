@@ -47,6 +47,7 @@ import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval'
 import { dataHojeLocal } from '../lib/dataLocal';
 import { buscarPorChave, buscarPorGrupo } from '../lib/paginacaoChave';
 import { buscarTudo } from '../lib/buscarTudo';
+import { liberadoEm, type AdiamentoDownload } from '../lib/espalhamentoDownload';
 import {
   STATUS_DERIVADOS_DO_ATRASO, alertaAtrasoComprador, diasUteisEntre, faixaAtrasoComprador, statusPorAtraso,
 } from '../lib/diasUteis';
@@ -78,6 +79,9 @@ class LocalDatabase {
   // cada polling de 5 min enquanto o dataset não estiver em cache local (bases
   // sob demanda, cujo meta só é atualizado quando a tela correspondente é aberta).
   private announcedDataVersions = new Map<string, number>();
+  // Bases com versão nova esperando a vez deste aparelho (ver espalhamentoDownload.ts).
+  private adiamentosDownload = new Map<string, AdiamentoDownload>();
+  private timerAdiamento: { alvo: number; id: ReturnType<typeof setTimeout> } | null = null;
   // A primeira sincronização da sessão só estabelece a linha de base: qualquer
   // defasagem aí é "dados que mudaram desde a última visita", não "mudaram
   // enquanto eu estava com a tela aberta". O modal de recarregamento só interessa
@@ -312,7 +316,9 @@ class LocalDatabase {
         // sync automático — num sync forçado o próprio usuário pediu os dados
         // novos e não precisa de aviso. A notificação sai depois que as tarefas
         // abaixo atualizam o cache local (ver notifyDataUpdate no fim do try).
-        const staleDatasets: string[] = [];
+        // O aviso só sai depois das tarefas: base ainda esperando a vez deste
+        // aparelho (download espalhado) não é anunciada antes de chegar.
+        const candidatosAviso: Array<[string, number]> = [];
         if (!force && markers && this.hasSyncedThisSession) {
           markers.forEach((marker, dataset) => {
             const meta = this.getDatasetMeta(dataset);
@@ -321,8 +327,7 @@ class LocalDatabase {
             if (!meta || !this.cache.has(this.storageKeyFor(dataset))) return;
             const alreadyAnnounced = this.announcedDataVersions.get(dataset) ?? 0;
             if (marker.version > meta.version && marker.version > alreadyAnnounced) {
-              staleDatasets.push(dataset);
-              this.announcedDataVersions.set(dataset, marker.version);
+              candidatosAviso.push([dataset, marker.version]);
             }
           });
         }
@@ -336,8 +341,12 @@ class LocalDatabase {
           if (!forceThis && !this.needsSync(dataset, storageKey, markers)) {
             return;
           }
+          if (!forceThis && this.downloadAdiado(dataset, storageKey, markers)) {
+            return;
+          }
           await task();
           this.commitDatasetMeta(dataset, markers);
+          this.adiamentosDownload.delete(dataset);
         };
 
         // Rodada das tabelas pequenas: no 1º sync da sessão, no forçado, ou a
@@ -367,7 +376,11 @@ class LocalDatabase {
           // Ordena por `ri_po`, não por `ri`: um item de RM com dois pedidos tem duas
           // linhas com o mesmo `ri`, e ordenar por coluna não única pode pular ou
           // repetir linhas entre páginas de 1000.
-          ['vw_sap_requisicoes_enriquecidas', gatedSap('requisicoes', () => this.syncSimpleTable('vw_sap_requisicoes_enriquecidas', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po'))],
+          // Lê a cópia pronta da view (`sap_requisicoes_enriquecidas_sync`,
+          // migration 20261124190000): a página da view reordenava ~10 MB em
+          // disco a cada 1.000 linhas (10–24 s sob carga; banco caiu em 24/11);
+          // a da cópia é leitura da PK (~2 ms). Mesmas colunas e linhas.
+          ['vw_sap_requisicoes_enriquecidas', gatedSap('requisicoes', () => this.syncSimpleTable('sap_requisicoes_enriquecidas_sync', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po', true))],
           ['vw_sap_pedidos_enriquecidos', gatedSap('pedidos', () => this.syncSimpleTable('vw_sap_pedidos_enriquecidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01'), 'ri'))],
           // Estas três fazem merge em vez de substituir: o motor de solicitações
           // ainda é local-first (só a criação sobe; status, atendente e
@@ -444,6 +457,12 @@ class LocalDatabase {
         // rebaixadas aqui, então o "Recarregar agora" só remonta a tela; as bases
         // sob demanda (estoque, contas a pagar…) são rebaixadas pela própria tela
         // ao recarregar.
+        const staleDatasets: string[] = [];
+        for (const [dataset, versao] of candidatosAviso) {
+          if (this.adiamentosDownload.has(dataset)) continue;
+          staleDatasets.push(dataset);
+          this.announcedDataVersions.set(dataset, versao);
+        }
         if (staleDatasets.length > 0) {
           this.notifyDataUpdate(staleDatasets);
         }
@@ -735,6 +754,43 @@ class LocalDatabase {
     const marker = markers?.get(dataset);
     if (!marker) return false; // modo degradado, mas já temos um download real
     return marker.version !== meta.version;
+  }
+
+  /**
+   * Versão nova de uma base que o aparelho já tem: espera a vez dele em vez de
+   * baixar junto com todo mundo (ver `lib/espalhamentoDownload.ts`). Devolve
+   * true enquanto deve esperar e agenda uma sincronização para quando liberar.
+   */
+  private downloadAdiado(
+    dataset: string,
+    storageKey: string,
+    markers: Map<string, { version: number; updatedAt: string | null }> | null,
+  ): boolean {
+    const marker = markers?.get(dataset);
+    const meta = this.getDatasetMeta(dataset);
+    // Primeiro download do aparelho (ou cache semente): não espera.
+    if (!marker || !meta || !this.cache.has(storageKey)) return false;
+    let adiamento = this.adiamentosDownload.get(dataset);
+    if (!adiamento) {
+      adiamento = { fracao: Math.random(), vistoEm: Date.now() };
+      this.adiamentosDownload.set(dataset, adiamento);
+    }
+    const quando = liberadoEm(marker.updatedAt, adiamento);
+    if (quando === null || quando <= Date.now()) return false;
+    this.agendarSyncAdiado(quando);
+    return true;
+  }
+
+  private agendarSyncAdiado(quando: number): void {
+    if (this.timerAdiamento && this.timerAdiamento.alvo <= quando) return;
+    if (this.timerAdiamento) clearTimeout(this.timerAdiamento.id);
+    const id = setTimeout(() => {
+      this.timerAdiamento = null;
+      // Aba escondida: o retorno à aba (focus/visibilitychange) sincroniza.
+      if (typeof document !== 'undefined' && document.hidden) return;
+      this.syncFromSupabase().catch(err => console.warn('Falha na sincronização adiada:', err));
+    }, Math.max(0, quando - Date.now()) + 2_000);
+    this.timerAdiamento = { alvo: quando, id };
   }
 
   // Persiste o carimbo local após um download bem-sucedido.
