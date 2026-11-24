@@ -145,6 +145,8 @@ const ALERTA_EXPORTADA_MS = 24 * 3600 * 1000;
 export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const toast = useToast();
   const [requisicoes, setRequisicoes] = useState<ReqBalcaoRow[]>([]);
+  // Liberação da Gestão de Acessos: editar/excluir requisições de outras pessoas (o banco confere igual).
+  const editaTodas = canAccessPage(user, 'almox_requisicao_balcao_editar_todas');
   const [estoque, setEstoque] = useState<EstoqueItem[]>([]);
   const [pessoas, setPessoas] = useState<RhPessoa[]>([]);
   const [peps, setPeps] = useState<PepAplicacao[]>([]);
@@ -848,7 +850,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
                     exportadaEm={r.exportacao_id ? exportadaEmPorLote.get(r.exportacao_id) ?? null : null}
                     conferenciaMb51={confSemSap?.mapa.get(r.id) ?? null}
                     selecionada={selecionadas.has(r.id)}
-                    podeEditar={podeEditarFormulario(user, r) || !!r.pendente_confirmacao}
+                    podeEditar={podeEditarFormulario(user, r) || editaTodas || !!r.pendente_confirmacao}
                     onSelecionar={(v) => alternarSelecao([r.id], v)}
                     onAbrir={() => setDetalhe(r)}
                     onEditar={() => void editar(r)}
@@ -890,7 +892,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
       {detalhe && (
         <ModalDetalhe
           r={detalhe}
-          podeEditar={podeEditarFormulario(user, detalhe) || !!detalhe.pendente_confirmacao}
+          podeEditar={podeEditarFormulario(user, detalhe) || editaTodas || !!detalhe.pendente_confirmacao}
           exportacao={exportacoes.find((e) => e.id === detalhe.exportacao_id) ?? null}
           onReabrir={() => void reabrir([detalhe.id], detalhe.codigo)}
           onClose={() => setDetalhe(null)}

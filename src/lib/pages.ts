@@ -635,6 +635,15 @@ export const FEATURE_FLAGS: PageDef[] = [
     label: 'Controle de Estoque: editar parâmetros e exceções',
     defaultRoles: [],
   },
+  // Requisição no Balcão confirmada só é editada/excluída por quem a lançou
+  // (ou o admin). Esta flag libera as de outras pessoas — espelhada no banco
+  // (`alm_req_balcao_salvar`/`_excluir`, has_page_access). Sem role padrão.
+  {
+    id: 'almox_requisicao_balcao_editar_todas',
+    group: 'ALMOXARIFADO',
+    label: 'Requisição no Balcão: editar e excluir requisições de outras pessoas',
+    defaultRoles: [],
+  },
   // Projetos separa CONSULTAR de LANÇAR. Quem abre o módulo vê a BOM, a
   // posição e os painéis; movimentar estoque é ato de quem está no balcão, na
   // bancada ou na linha — três pessoas diferentes. Sem role padrão: o admin
