@@ -20,6 +20,7 @@ import {
   rotuloStatusComprador,
   validarStatusComprador,
   type StatusComprador,
+  type CompradorDoPo,
   type LinhaPendencia,
   type DadosAjustePedido,
   type MetaPendencia,
@@ -45,6 +46,26 @@ export async function proximoIndiceProtocoloDia(dataISO: string): Promise<number
   }
   const distintos = new Set((data as { protocolo: string }[]).map(r => r.protocolo));
   return distintos.size + 1;
+}
+
+/**
+ * Comprador que colocou cada PO (ZL0132 → sup_compradores → perfil; na falta,
+ * grupo da RC). Chave = PO sem espaços. Sem rede ou erro → mapa vazio (a
+ * planilha vale, e o gatilho no banco resolve ao gravar).
+ */
+export async function compradoresDosPos(pos: string[]): Promise<Map<string, CompradorDoPo>> {
+  const mapa = new Map<string, CompradorDoPo>();
+  const unicos = [...new Set(pos.map(p => p.trim()).filter(Boolean))];
+  if (!supabase || unicos.length === 0) return mapa;
+  const { data, error } = await (supabase as any).rpc('sup_pend_compradores_dos_pos', { p_pos: unicos });
+  if (error) {
+    console.error('Falha ao buscar o comprador dos POs:', error);
+    return mapa;
+  }
+  for (const r of (data || []) as { po: string; grupo: string; comprador_id: string | null; comprador_nome: string | null }[]) {
+    mapa.set(r.po, { grupo: r.grupo, comprador_id: r.comprador_id, comprador_nome: r.comprador_nome });
+  }
+  return mapa;
 }
 
 /** Grava, em lote, as linhas de NF de um chamado recém-criado. */

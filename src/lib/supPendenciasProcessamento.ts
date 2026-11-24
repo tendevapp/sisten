@@ -428,10 +428,25 @@ export interface RegistroExibivel {
   chegou?: string | null;
   documento_compras?: string | null;
   comprador?: string | null;
+  comprador_grupo?: string | null;
+  comprador_planilha?: string | null;
   data_envio?: string | null;
 }
 
 const txt = (v?: string | null) => (v == null ? '' : v);
+
+/** "GIULIA VIEIRA DE AQUINO (610)" — o grupo de compras quando veio do PO. */
+function rotuloComprador(l: RegistroExibivel): string {
+  const nome = txt(l.comprador);
+  return nome && l.comprador_grupo ? `${nome} (${l.comprador_grupo})` : nome;
+}
+
+/** O que a planilha dizia, quando difere do comprador do PO (às vezes é a área: "CENTRAL FISCAL"). */
+function compradorPlanilhaDiferente(l: RegistroExibivel): string {
+  const planilha = txt(l.comprador_planilha).trim();
+  if (!planilha || !l.comprador_grupo) return '';
+  return semAcento(planilha) === semAcento(txt(l.comprador)) ? '' : planilha;
+}
 
 /** Todos os campos de um registro, rotulados e na ordem de exibição. */
 export function camposExibicao(l: RegistroExibivel): { label: string; value: string }[] {
@@ -455,7 +470,8 @@ export function camposExibicao(l: RegistroExibivel): { label: string; value: str
       { label: 'Nome do Fornecedor', value: txt(l.nome_fornecedor) },
       { label: 'Documento de compras', value: txt(l.documento_compras) },
       { label: 'Observações', value: txt(l.observacao) },
-      { label: 'Comprador', value: txt(l.comprador) },
+      { label: 'Comprador', value: rotuloComprador(l) },
+      ...(compradorPlanilhaDiferente(l) ? [{ label: 'Comprador na planilha', value: compradorPlanilhaDiferente(l) }] : []),
       { label: 'Data envio', value: txt(l.data_envio) },
     ];
   }
@@ -485,7 +501,7 @@ export function resumoValores(l: RegistroExibivel): string[] {
     return [txt(l.numero_nfse), txt(l.documento_compras), fornecedor, txt(l.comprador), txt(l.observacao)];
   }
   return l.modelo === 'documento'
-    ? [txt(l.numero_nfse), txt(l.data_emissao_nfse), fornecedor, txt(l.documento_compras), txt(l.comprador)]
+    ? [txt(l.numero_nfse), txt(l.data_emissao_nfse), fornecedor, txt(l.documento_compras), rotuloComprador(l)]
     : [
         txt(l.numero_nfse),
         txt(l.data_emissao_nfse),
@@ -606,6 +622,127 @@ export function montarCorpoEmailPendencias(params: {
   if (linkChamado) rodape.push('', `Acompanhe o chamado: ${linkChamado}`);
 
   return [...cabecalho, montarRelacaoPendencias(linhas), ...rodape].join('\n');
+}
+
+/* -------------------------------------------------------------------------- */
+/* Um chamado por documento, vinculado ao comprador do PO                     */
+/* -------------------------------------------------------------------------- */
+
+/** Comprador que colocou o PO — RPC `sup_pend_compradores_dos_pos` (regra de `sup_receb_comprador_do_po`). */
+export interface CompradorDoPo {
+  grupo: string;
+  comprador_id: string | null;
+  comprador_nome: string | null;
+}
+
+export type LinhaPendenciaComComprador = LinhaPendencia & {
+  comprador_id?: string | null;
+  comprador_grupo?: string | null;
+  comprador_planilha?: string | null;
+};
+
+/**
+ * Troca o comprador digitado na planilha pelo do PO (lançamentos SAP). É a
+ * mesma regra do gatilho no banco — aqui só para a prévia, o e-mail e o
+ * vínculo do chamado. PO fora da ZL0132 ("SN") mantém o nome da planilha.
+ */
+export function aplicarCompradoresDoPo(
+  linhas: LinhaPendencia[],
+  mapa: Map<string, CompradorDoPo>,
+): LinhaPendenciaComComprador[] {
+  return linhas.map(l => {
+    if (l.modelo !== 'documento') return l;
+    const planilha = l.comprador.trim() || null;
+    const c = mapa.get(l.documento_compras.trim());
+    if (!c) return { ...l, comprador_planilha: planilha };
+    return {
+      ...l,
+      comprador: c.comprador_nome || l.comprador,
+      comprador_id: c.comprador_id,
+      comprador_grupo: c.grupo,
+      comprador_planilha: planilha,
+    };
+  });
+}
+
+/** Texto do chamado de um documento: "Documento 000123456 · FORNECEDOR · PO 4100477772 · comprador GIULIA (610)". */
+export function justificativaPendenciaDocumento(protocolo: string, l: LinhaPendenciaComComprador): string {
+  const partes = [`${rotuloNumero(l.modelo)} ${l.numero_nfse}`];
+  const fornecedor = l.nome_fornecedor || l.fornecedor;
+  if (fornecedor) partes.push(fornecedor);
+  if (l.documento_compras) partes.push(`PO ${l.documento_compras}`);
+  const comprador = rotuloComprador(l);
+  if (comprador) partes.push(`comprador ${comprador}`);
+  return `${partes.join(' · ')} — pendente de processamento (protocolo ${protocolo}).`;
+}
+
+export interface ChamadoPendenciaEmail {
+  protocolo: string;
+  numeroChamado: string;
+  linkChamado?: string;
+  linha: LinhaPendenciaComComprador;
+}
+
+export function assuntoEmailChamadosPendencia(chamados: ChamadoPendenciaEmail[]): string {
+  if (chamados.length === 1) {
+    const { protocolo, linha } = chamados[0];
+    const po = linha.documento_compras ? ` · PO ${linha.documento_compras}` : '';
+    return `[${protocolo}] - Pendência de Processamento - ${rotuloNumero(linha.modelo)} ${linha.numero_nfse}${po}`;
+  }
+  const primeiro = chamados[0]?.protocolo ?? '';
+  const ultimo = chamados[chamados.length - 1]?.protocolo ?? '';
+  return `[${primeiro} a ${ultimo}] - Pendências de Processamento (${chamados.length} chamados)`;
+}
+
+/**
+ * Um e-mail só para todos os chamados abertos de uma vez (o navegador abre um
+ * mailto por vez): um bloco por chamado, com protocolo, nº e comprador.
+ */
+export function montarCorpoEmailChamadosPendencia(params: {
+  solicitante: string;
+  chamados: ChamadoPendenciaEmail[];
+  meta?: MetaPendencia;
+}): string {
+  const { solicitante, chamados, meta } = params;
+  const modelo: ModeloPendencia = chamados[0]?.linha.modelo ?? 'nfse';
+  const linhas = [
+    modelo === 'nfse'
+      ? 'PENDÊNCIAS DE PROCESSAMENTO DE NOTAS FISCAIS'
+      : 'PENDÊNCIAS DE PROCESSAMENTO — LANÇAMENTOS COM ERRO / AÇÃO NECESSÁRIA',
+    '',
+    `Solicitante: ${solicitante}`,
+    chamados.length === 1 ? 'Um chamado aberto no SISTEN.' : `${chamados.length} chamados abertos no SISTEN, um por documento.`,
+  ];
+  if (modelo === 'nfse') {
+    linhas.push(`Valor total: R$ ${formatarBRL(somarValores(chamados.map(c => c.linha)))}`);
+  }
+  const classificacao = montarClassificacaoTexto(meta);
+  if (classificacao) linhas.push('', '------------------------------------------------------------', classificacao);
+  linhas.push('', '------------------------------------------------------------', '');
+
+  const rotuloNum = modelo === 'nfse' ? 'Número da NFS-e' : 'Documento';
+  const blocos = chamados.map((c, i) => {
+    const campos = camposExibicao(c.linha).filter(f => f.value && f.label !== rotuloNum);
+    const largura = campos.reduce((max, f) => Math.max(max, f.label.length), 0);
+    const bloco = [
+      `${i + 1}. [${c.protocolo}] Chamado #${c.numeroChamado} — ${rotuloNumero(c.linha.modelo)} ${c.linha.numero_nfse}`,
+      ...campos.map(f => `   ${f.label.padEnd(largura)}  ${f.value}`),
+    ];
+    if (c.linkChamado) bloco.push(`   ${'Chamado'.padEnd(largura)}  ${c.linkChamado}`);
+    return bloco.join('\n');
+  });
+
+  return [
+    ...linhas,
+    blocos.join('\n\n'),
+    '',
+    '------------------------------------------------------------',
+    '',
+    modelo === 'documento'
+      ? 'Cada documento é um chamado próprio, vinculado ao comprador que colocou o PO.'
+      : 'Cada nota é um chamado próprio.',
+    'O solicitante é notificado quando o Suprimentos dá a baixa.',
+  ].join('\n');
 }
 
 /* -------------------------------------------------------------------------- */

@@ -56,6 +56,13 @@ import {
   gerarProtocoloSup,
   assuntoEmailPendencias,
   montarCorpoEmailPendencias,
+  assuntoEmailChamadosPendencia,
+  montarCorpoEmailChamadosPendencia,
+  aplicarCompradoresDoPo,
+  justificativaPendenciaDocumento,
+  rotuloNumero,
+  type CompradorDoPo,
+  type ChamadoPendenciaEmail,
   assuntoEmailAjustePedido,
   montarCorpoEmailAjustePedido,
   CLASSIF_CAUSA,
@@ -63,7 +70,7 @@ import {
   CLASSIF_IMPACTO,
   CLASSIF_RECORRENCIA,
 } from '../lib/supPendenciasProcessamento';
-import { proximoIndiceProtocoloDia, criarPendencias, criarAjustePedido, salvarImagensAjuste } from '../lib/supPendenciasApi';
+import { proximoIndiceProtocoloDia, criarPendencias, criarAjustePedido, salvarImagensAjuste, compradoresDosPos } from '../lib/supPendenciasApi';
 import { justificativaAjustePedido } from '../lib/chamadosSuprimentosGrupo';
 import { listarNomesServicosFacilities, SERVICOS_FACILITIES_PADRAO } from '../lib/facilitiesApi';
 import ImagesPasteInput from '../components/ui/ImagesPasteInput';
@@ -1129,6 +1136,29 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     () => parseColagemPlanilha(pendenciasTexto),
     [pendenciasTexto],
   );
+  // Comprador de cada PO colado (lançamentos SAP): sai de quem colocou o PO,
+  // não da coluna COMPRADOR da planilha. O gatilho no banco aplica a mesma regra.
+  const [compradoresPo, setCompradoresPo] = useState<Map<string, CompradorDoPo>>(new Map());
+  const [buscandoCompradores, setBuscandoCompradores] = useState(false);
+  const posColados = isSupPendencia && pendenciasParse.modelo === 'documento'
+    ? [...new Set(pendenciasParse.linhas.map(l => l.documento_compras.trim()).filter(Boolean))].sort().join('|')
+    : '';
+  useEffect(() => {
+    if (!posColados) { setCompradoresPo(new Map()); return; }
+    let vivo = true;
+    setBuscandoCompradores(true);
+    const t = setTimeout(() => {
+      compradoresDosPos(posColados.split('|'))
+        .then(m => { if (vivo) setCompradoresPo(m); })
+        .finally(() => { if (vivo) setBuscandoCompradores(false); });
+    }, 300);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [posColados]);
+  const linhasPendencia = useMemo(
+    () => aplicarCompradoresDoPo(pendenciasParse.linhas, compradoresPo),
+    [pendenciasParse.linhas, compradoresPo],
+  );
+
   const pendenciasProntas = isSupPendencia
     && pendenciasParse.linhas.length > 0
     && pendenciasParse.erros.length === 0
@@ -1369,6 +1399,105 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     }
   };
 
+  /**
+   * "Pendência de Processamento": cada documento colado vira um chamado próprio
+   * (protocolo SUP-DDMMAA-NN próprio), vinculado ao comprador que colocou o PO
+   * — `comprador_id` do chamado + notificação para ele. Um e-mail só ao
+   * Suprimentos com todos os chamados (o navegador abre um mailto por vez).
+   */
+  const enviarPendenciasPorDocumento = async () => {
+    const meta = {
+      observacao: pendObservacao.trim() || undefined,
+      classif_causa: pendCausa || undefined,
+      classif_responsavel: pendResponsavel || undefined,
+      classif_impacto: pendImpacto || undefined,
+      classif_recorrencia: pendRecorrencia || undefined,
+    };
+    // Busca de novo no envio: a prévia pode não ter terminado (ou estar sem rede).
+    const mapa = posColados ? await compradoresDosPos(posColados.split('|')) : new Map<string, CompradorDoPo>();
+    const linhas = aplicarCompradoresDoPo(pendenciasParse.linhas, mapa.size > 0 ? mapa : compradoresPo);
+
+    const hojeISO = dataHojeLocal();
+    const indiceInicial = await proximoIndiceProtocoloDia(hojeISO);
+    const abertos: ChamadoPendenciaEmail[] = [];
+    const semRelacao: string[] = [];
+    let primeiroId = '';
+
+    for (let i = 0; i < linhas.length; i++) {
+      const linha = linhas[i];
+      const protocolo = gerarProtocoloSup(indiceInicial + i, hojeISO);
+      let req;
+      try {
+        req = await localDb.submitRequest({
+          type: 'chamado',
+          criticality,
+          justificativa: justificativaPendenciaDocumento(protocolo, linha),
+          solicitante_sector_id: chamadoSectorId,
+          target_sector_id: helpdeskSectorId,
+          category_id: helpdeskCategory,
+          local: '',
+          titulo: protocolo,
+          comprador_id: linha.comprador_id || undefined,
+        }, false);
+      } catch (err) {
+        console.error('Falha ao abrir o chamado do documento', linha.numero_nfse, err);
+        break;
+      }
+      if (!primeiroId) { primeiroId = req.id; clearDraft(); }
+      try {
+        await criarPendencias(req.id, protocolo, [linha], meta);
+      } catch {
+        semRelacao.push(`#${req.number}`);
+      }
+      if (linha.comprador_id && linha.comprador_id !== user.id) {
+        localDb.createNotification(
+          linha.comprador_id,
+          `Pendência de processamento — PO ${linha.documento_compras}`,
+          `${protocolo} · ${rotuloNumero(linha.modelo)} ${linha.numero_nfse}${linha.nome_fornecedor ? ` (${linha.nome_fornecedor})` : ''} aberto por ${user.name}. Você é o comprador do PO.`,
+          criticality >= 4 ? 'critical' : 'alert',
+          req.id,
+          req.number,
+        );
+      }
+      abertos.push({
+        protocolo,
+        numeroChamado: req.number,
+        linkChamado: `${window.location.origin}/#/solicitacoes?id=${req.id}`,
+        linha,
+      });
+    }
+
+    if (abertos.length === 0) {
+      alert('Não foi possível abrir os chamados. Tente novamente.');
+      return;
+    }
+    if (abertos.length < linhas.length) {
+      alert(
+        `Foram abertos ${abertos.length} de ${linhas.length} chamados (até o documento ${abertos[abertos.length - 1].linha.numero_nfse}). ` +
+        'Cole de novo só os documentos que faltaram.',
+      );
+    }
+    if (semRelacao.length > 0) {
+      alert(`Os chamados ${semRelacao.join(', ')} foram criados, mas o documento não pôde ser gravado neles. Contate o suporte.`);
+    }
+
+    const configEmail = await obterConfigEmail('helpdesk_suprimentos');
+    window.location.href = montarMailtoComConfig({
+      destinatarios: configEmail?.destinatarios || 'suprimentosten@ten.ind.br',
+      copia: configEmail?.copia,
+      copiaOculta: configEmail?.copia_oculta,
+      assunto: assuntoEmailChamadosPendencia(abertos),
+      corpo: montarCorpoEmailChamadosPendencia({ solicitante: user.name, chamados: abertos, meta }),
+    });
+
+    if (abertos.length === 1) {
+      onNavigate(`/solicitacoes?id=${primeiroId}`);
+    } else {
+      toast.success(`${abertos.length} chamados abertos (${abertos[0].protocolo} a ${abertos[abertos.length - 1].protocolo}), um por documento.`);
+      onNavigate('/solicitacoes');
+    }
+  };
+
   const handleSubmit = async (e?: React.FormEvent, confirmarObsoletoPassado = false) => {
     e?.preventDefault();
 
@@ -1528,6 +1657,18 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     }
 
     setUploadProgress(true);
+
+    if (activeTab === 'chamado' && isSupPendencia && !editandoId) {
+      try {
+        await enviarPendenciasPorDocumento();
+      } catch (err) {
+        console.error('Falha ao abrir os chamados de pendência.', err);
+        alert('Não foi possível abrir os chamados. Tente novamente.');
+      } finally {
+        setUploadProgress(false);
+      }
+      return;
+    }
 
     // Protocolo SUP-DDMMAA-NN do chamado de pendências — gerado antes do payload
     // para já entrar em `titulo` e acompanhar a solicitação nas listagens.
@@ -3436,6 +3577,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           {pendenciasParse.linhas.length} registro(s) reconhecido(s)
                           {' · '}
                           {pendenciasParse.modelo === 'documento' ? 'Lançamentos SAP' : 'NFS-e'}
+                          {' · '}
+                          {pendenciasParse.linhas.length === 1 ? 'abre 1 chamado' : `abre ${pendenciasParse.linhas.length} chamados, um por documento`}
                         </span>
                         {pendenciasParse.modelo === 'nfse' && (
                           <span>Total: {formatBRL(somarValores(pendenciasParse.linhas))}</span>
@@ -3451,7 +3594,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                             </tr>
                           </thead>
                           <tbody>
-                            {pendenciasParse.linhas.map((l, i) => (
+                            {linhasPendencia.map((l, i) => (
                               <tr key={i} className="border-t" style={{ borderColor: 'var(--hairline)' }}>
                                 {resumoValores(l).map((val, c) => (
                                   <td
@@ -3468,13 +3611,24 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           </tbody>
                         </table>
                       </div>
+                      {pendenciasParse.modelo === 'documento' && (
+                        <p className="px-3 py-1.5 text-[11px] border-t" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                          {buscandoCompradores
+                            ? 'Buscando o comprador de cada PO…'
+                            : `Comprador = quem colocou o PO (ZL0132), com o grupo de compras. ${
+                                linhasPendencia.filter(l => !l.comprador_grupo).length > 0
+                                  ? `${linhasPendencia.filter(l => !l.comprador_grupo).length} PO(s) não encontrado(s): fica o nome da planilha.`
+                                  : ''
+                              }`}
+                        </p>
+                      )}
                     </div>
                   )}
 
                   <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                    Ao enviar, abre um e-mail para <strong>suprimentosten@ten.ind.br</strong> com a relação e a
-                    classificação em texto organizado, e os itens ficam disponíveis para o Suprimentos dar baixa um a um —
-                    você é notificado a cada conclusão.
+                    Ao enviar, cada documento vira um chamado próprio, vinculado ao comprador que colocou o PO (ele é
+                    notificado). Abre um e-mail para <strong>suprimentosten@ten.ind.br</strong> com todos os chamados e a
+                    classificação — você é notificado a cada baixa.
                   </p>
                 </div>
               ) : isAjustePedido ? (

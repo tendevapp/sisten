@@ -2474,7 +2474,13 @@ export interface SupPendenciaProcessamentoNF {
   uf_emissor?: string | null;
   chegou?: string | null;
   documento_compras?: string | null;
+  /** Modelo `documento`: nome do comprador que colocou o PO (gatilho no banco); sem PO na ZL0132, o da planilha. */
   comprador?: string | null;
+  /** Perfil do comprador do PO (`sup_receb_comprador_do_po`); null = PO não encontrado. */
+  comprador_id?: string | null;
+  comprador_grupo?: string | null;
+  /** Coluna COMPRADOR como veio na planilha colada. */
+  comprador_planilha?: string | null;
   data_envio?: string | null;
   /* Só no modelo `ajuste_pedido` — caminhos das imagens no bucket request-attachments. */
   imagem_paths?: string[] | null;
