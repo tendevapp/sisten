@@ -18,7 +18,9 @@ import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import { TableShell, TableHeadRow, TableBody, Td, TableCards, TableDesktop } from '../components/ui/DataTable';
 import FiltrosSheet, { BotaoFiltros, CampoFiltro, classeCampoFiltro } from '../components/ui/FiltrosSheet';
 import { LinhaPartida } from '../components/financeiro/ContasPagarMobile';
-import { hojeISO, somarDias } from '../lib/contasPagar';
+import { estaCompensada, hojeISO, somarDias } from '../lib/contasPagar';
+import type { PartidaSimulacao } from '../lib/simulacaoAtraso';
+import SimulacaoAtrasoModal from '../components/financeiro/SimulacaoAtrasoModal';
 import { useTelaEstreita } from '../lib/useTelaEstreita';
 import { cortarRotulo } from '../lib/rotuloEixo';
 
@@ -26,21 +28,9 @@ interface ContasPagarAnaliseProps {
   user: Profile;
 }
 
-interface Fbl1nAnaliseLinha {
-  id: number;
-  numero_documento: string | null;
-  fornecedor: string | null;
-  empresa: string | null;
-  razao_social_fornecedor: string | null;
-  montante_moeda_doc: number | null;
-  doc_compensacao: string | null;
-  data_compensacao: string | null;
+interface Fbl1nAnaliseLinha extends PartidaSimulacao {
   data_pagamento: string | null;
-  vencimento_liquido: string | null;
-  data_lancamento: string | null;
   tipo_documento_categoria_modulo: string | null;
-  tipo_documento_descricao: string | null;
-  tipo_documento: string | null;
 }
 
 // 'aberto' = todo o saldo em aberto (usado pelos gráficos de categoria/fornecedor/aging).
@@ -63,13 +53,6 @@ const METRIC_META: Record<ModalMetric, { label: string; color: string }> = {
 };
 
 const PAGE_SIZE = 1000;
-
-function estaCompensada(l: Fbl1nAnaliseLinha): boolean {
-  return Boolean(
-    (l.doc_compensacao && l.doc_compensacao.trim() !== '' && l.doc_compensacao.trim() !== '—') ||
-    l.data_compensacao
-  );
-}
 
 function estaAberta(l: Fbl1nAnaliseLinha): boolean {
   return !estaCompensada(l);
@@ -174,6 +157,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
   const [periodoDe, setPeriodoDe] = useState(`${ANO_ATUAL}-01-01`);
   const [periodoAte, setPeriodoAte] = useState(`${ANO_ATUAL}-12-31`);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const [simulacaoAberta, setSimulacaoAberta] = useState(false);
   const estreita = useTelaEstreita();
   const [periodoVisao, setPeriodoVisao] = useState<'mes' | 'semana'>('mes');
 
@@ -200,7 +184,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       let from = 0;
       while (true) {
         const { data, error: fetchError } = await (supabase.from as any)('vw_fin_fbl1n_analise_deduplicada')
-          .select('id, numero_documento, fornecedor, empresa, razao_social_fornecedor, montante_moeda_doc, doc_compensacao, data_compensacao, data_pagamento, vencimento_liquido, data_lancamento, tipo_documento_categoria_modulo, tipo_documento_descricao, tipo_documento')
+          .select('id, numero_documento, fornecedor, empresa, razao_social_fornecedor, montante_moeda_doc, moeda_documento, referencia, parcela, doc_compensacao, data_compensacao, data_pagamento, vencimento_liquido, data_lancamento, tipo_documento_categoria_modulo, tipo_documento_descricao, tipo_documento')
           .order('id', { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
         if (fetchError) throw fetchError;
@@ -799,6 +783,10 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             <span>{localDb.getDatasetUpdateBadge('contas_pagar')}</span>
           </div>
         )}
+        <button type="button" disabled={loading || !!error} onClick={() => setSimulacaoAberta(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:opacity-50">
+          <CalendarClock className="h-4 w-4" /> Simulação
+        </button>
         <a
           href="#/financeiro/contas-pagar/analise/fornecedores-itens"
           className="inline-flex items-center gap-1.5 px-3 h-10 lg:h-auto lg:py-2 rounded-lg text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
@@ -807,6 +795,8 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
           Fornecedor × Item
         </a>
       </div>
+
+      {simulacaoAberta && <SimulacaoAtrasoModal linhas={linhas} base={hoje} cargaFbl1n={lastUpdated} onClose={() => setSimulacaoAberta(false)} />}
 
       {/* Filtros no celular: atalho de período à vista, o resto no painel. */}
       <div className="lg:hidden space-y-2">
