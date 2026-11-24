@@ -92,6 +92,11 @@ export interface ItemSolExtra {
   quantidade: number;
 }
 
+/** Como a retirada sem saldo baixa no balcão (vai para a Requisição no Balcão). */
+export type TipoMovimentoRetirada = 'saida' | 'transferencia';
+/** Destino padrão da transferência: 0105 — Transferência Produção. */
+export const DESTINO_PADRAO_RETIRADA = '0105';
+
 export interface DadosSolExtra {
   tipo: TipoSolExtra;
   data: string;
@@ -118,6 +123,9 @@ export interface DadosSolExtra {
   /** PEP da saída (lista do Balcão). Na Sem Saldo já vai para a Requisição no Balcão da baixa. */
   aplicacao_pep?: string | null;
   aplicacao?: string | null;
+  /** Sem Saldo: saída (com PEP) ou transferência (para `deposito_destino`). */
+  tipo_movimento?: TipoMovimentoRetirada;
+  deposito_destino?: string | null;
   /** Aberta por outro formulário (ex.: 'ficha_epi' + código da ficha); ausente = lançada à mão. */
   origem?: string | null;
   origem_ref?: string | null;
@@ -182,6 +190,10 @@ export function validarSolExtra(d: DadosSolExtra): string[] {
     if (!d.retirante_nome?.trim()) erros.push('Informe quem está retirando (matrícula ou nome).');
     if (!d.setor_solicitante_id) erros.push('Escolha o setor solicitante.');
     if (!d.hora) erros.push('Informe a hora da retirada.');
+    if ((d.tipo_movimento ?? 'saida') === 'saida' && !d.aplicacao_pep?.trim()) {
+      erros.push('Escolha o PEP / aplicação da saída — ele vai pronto para a baixa.');
+    }
+    if (d.tipo_movimento === 'transferencia' && !d.deposito_destino?.trim()) erros.push('Escolha o depósito de destino da transferência.');
   }
   if (d.itens.length === 0) erros.push('Inclua pelo menos um material.');
   d.itens.forEach((it, i) => {
@@ -204,9 +216,14 @@ export function validarSolExtra(d: DadosSolExtra): string[] {
  */
 export function normalizarPorMotivo(d: DadosSolExtra): DadosSolExtra {
   if (d.tipo === 'SEM_SALDO') {
+    const transferencia = d.tipo_movimento === 'transferencia';
     return {
       ...d, turno: null, projeto: null, tramo: null,
       motivo: null, motivo_detalhe: null, area_reparada_m2: null, rugosidade_um: null,
+      tipo_movimento: transferencia ? 'transferencia' : 'saida',
+      // Transferência não leva PEP; saída não leva destino.
+      deposito_destino: transferencia ? d.deposito_destino?.trim() || DESTINO_PADRAO_RETIRADA : null,
+      ...(transferencia ? { aplicacao_pep: null, aplicacao: null } : {}),
     };
   }
   const usaDetalhe = d.motivo === 'REPARO_PINTURA' || d.motivo === 'OUTROS';

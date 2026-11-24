@@ -20,7 +20,8 @@ import type { Profile } from '../../types';
 import type { SolExtra } from '../../lib/solicitacaoExtraApi';
 import { baixarRetiradasEmLote } from '../../lib/solicitacaoExtraApi';
 import {
-  agruparPorMaterial, itensQueFicam, itensQueSaem, naoAprovada, resumirResultado, semPep, type ResultadoBaixaLote,
+  agruparPorMaterial, chaveGrupoBaixa, itensQueFicam, itensQueSaem, naoAprovada, resumirResultado, rotuloGrupoBaixa, semPep,
+  type ResultadoBaixaLote,
 } from '../../lib/baixaLoteRetiradas';
 import type { ItensBaixadosPorId } from '../../lib/retiradaSemSaldoBaixa';
 import {
@@ -49,10 +50,20 @@ export default function BaixaLoteRetiradasModal({ registros, cobertura, baixados
   const idNf = useId();
 
   // Só o que sai agora: na retirada de saldo parcial, os itens com saldo.
-  const grupos = useMemo(
-    () => agruparPorMaterial(registros.map(r => ({ itens: itensQueSaem(r, cobertura, baixados) }))),
-    [registros, cobertura, baixados],
-  );
+  // Por tipo de baixa e PEP (destino, na transferência) — como o SAP lança —,
+  // e dentro de cada um os materiais que saem agora.
+  const grupos = useMemo(() => {
+    const porChave = new Map<string, { chave: string; rotulo: string; retiradas: SolExtra[] }>();
+    for (const r of registros) {
+      const chave = chaveGrupoBaixa(r);
+      const g = porChave.get(chave) ?? { chave, rotulo: rotuloGrupoBaixa(r), retiradas: [] };
+      g.retiradas.push(r);
+      porChave.set(chave, g);
+    }
+    return [...porChave.values()]
+      .sort((a, b) => b.retiradas.length - a.retiradas.length)
+      .map(g => ({ ...g, materiais: agruparPorMaterial(g.retiradas.map(r => ({ itens: itensQueSaem(r, cobertura, baixados) }))) }));
+  }, [registros, cobertura, baixados]);
   const parciais = useMemo(() => {
     const lista = registros.map(r => itensQueFicam(r, cobertura, baixados).length).filter(n => n > 0);
     return { retiradas: lista.length, itensFicam: lista.reduce((s, n) => s + n, 0) };
@@ -131,24 +142,28 @@ export default function BaixaLoteRetiradasModal({ registros, cobertura, baixados
       <ModalBody className="space-y-4">
         {!resultado ? (
           <>
-            <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
-              <div className="flex items-center justify-between bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
-                <span>{grupos.length} material(is)</span>
-                <span>Retiradas · Qtd</span>
-              </div>
-              <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
-                {grupos.map(g => (
-                  <li key={g.material} className="flex items-center justify-between gap-3 px-3 py-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{g.descricao || g.material}</p>
-                      <p className="font-mono text-[11px] text-slate-500">{g.material}</p>
-                    </div>
-                    <p className="shrink-0 text-right text-sm tabular-nums text-slate-700 dark:text-slate-200">
-                      {g.retiradas} · <strong>{formatQtd(g.quantidade)} {g.unidade}</strong>
-                    </p>
-                  </li>
-                ))}
-              </ul>
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {grupos.map(g => (
+                <div key={g.chave} className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
+                    <span className="min-w-0 truncate">{g.rotulo}</span>
+                    <span className="shrink-0 text-slate-500">{g.retiradas.length} retirada{g.retiradas.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {g.materiais.map(m => (
+                      <li key={m.material} className="flex items-center justify-between gap-3 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{m.descricao || m.material}</p>
+                          <p className="font-mono text-[11px] text-slate-500">{m.material}</p>
+                        </div>
+                        <p className="shrink-0 text-right text-sm tabular-nums text-slate-700 dark:text-slate-200">
+                          {m.retiradas} · <strong>{formatQtd(m.quantidade)} {m.unidade}</strong>
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
 
             {parciais.retiradas > 0 && (

@@ -38,6 +38,8 @@ const semSaldo: DadosSolExtra = {
   motivo: null,
   retirante_id: 'p1',
   retirante_nome: 'JOSÉ DA SILVA',
+  aplicacao_pep: 'TEN001134003000',
+  aplicacao: 'EPI',
   retirante_matricula: '12345',
   setor_solicitante_id: '9',
   setor_solicitante_nome: 'Manutenção',
@@ -151,6 +153,18 @@ describe('retirada sem saldo', () => {
       'Escolha o setor solicitante.',
       'Informe a hora da retirada.',
     ]);
+  });
+
+  it('saída exige PEP; transferência exige destino e não leva PEP', () => {
+    expect(validarSolExtra({ ...semSaldo, aplicacao_pep: null })).toEqual([
+      'Escolha o PEP / aplicação da saída — ele vai pronto para a baixa.',
+    ]);
+    const transf = { ...semSaldo, aplicacao_pep: null, tipo_movimento: 'transferencia' as const, deposito_destino: null };
+    expect(validarSolExtra(transf)).toEqual(['Escolha o depósito de destino da transferência.']);
+    const d = normalizarPorMotivo({ ...semSaldo, tipo_movimento: 'transferencia', deposito_destino: '' });
+    expect([d.tipo_movimento, d.deposito_destino, d.aplicacao_pep]).toEqual(['transferencia', '0105', null]);
+    const s2 = normalizarPorMotivo({ ...semSaldo, deposito_destino: '0105' });
+    expect([s2.tipo_movimento, s2.deposito_destino, s2.aplicacao_pep]).toEqual(['saida', null, 'TEN001134003000']);
   });
 
   it('normalizar limpa os campos da folha de Projeto e mantém o retirante', () => {

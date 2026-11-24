@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { agruparPorMaterial, atalhosSelecao, itensQueFicam, itensQueSaem, podeEntrarNoLote, resumirResultado } from './baixaLoteRetiradas';
+import {
+  agruparPorMaterial, atalhosSelecao, chaveGrupoBaixa, itensQueFicam, itensQueSaem, podeEntrarNoLote, resumirResultado, semPep,
+} from './baixaLoteRetiradas';
 import type { SaldoParaRegularizar } from './retiradaSemSaldoBaixa';
 
 const luva = { material: '1355906', descricao: 'LUVA TAM 9', unidade: 'UN', quantidade: 1 };
@@ -35,7 +37,7 @@ describe('baixa em lote', () => {
     const a = atalhosSelecao(registros, saldo);
     expect(a.prontas).toEqual(['1', '2', '3', '4', '5']);
     expect(a.prontasAprovadas).toEqual(['1', '2', '4', '5']);
-    expect(a.porMaterial).toEqual([{ material: '1355906', descricao: 'LUVA TAM 9', ids: ['1', '2', '3'] }]);
+    expect(a.porGrupo).toEqual([{ chave: 'saida|TEN001', rotulo: 'Saída · TEN001', ids: ['1', '2', '3', '4', '5'] }]);
   });
 
   it('parcial: sai o que tem saldo e não saiu ainda; fica o resto', () => {
@@ -47,6 +49,20 @@ describe('baixa em lote', () => {
     expect(itensQueSaem(r, null, null)).toHaveLength(3);
     const saldo = new Map<string, SaldoParaRegularizar>([['9', { prontidao: 'parcial', itensComSaldo: 1, totalItens: 2 }]]);
     expect(atalhosSelecao([r], saldo).parciais).toEqual(['9']);
+  });
+
+  it('grupos por tipo de baixa e PEP/destino', () => {
+    const registros = [
+      reg('1'), reg('2', [luva], { aplicacao_pep: 'TEN002', aplicacao: 'EPI' }),
+      reg('3', [luva], { tipo_movimento: 'transferencia', deposito_destino: '0105', aplicacao_pep: null }),
+      reg('4', [luva], { aplicacao_pep: null }),
+    ];
+    const saldo = new Map<string, SaldoParaRegularizar>(registros.map(r => [r.id, pronta()]));
+    const rotulos = atalhosSelecao(registros, saldo).porGrupo.map(g => g.rotulo).sort();
+    expect(rotulos).toEqual(['Saída · EPI (TEN002)', 'Saída · TEN001', 'Saída · sem PEP', 'Transferência → 0105']);
+    expect(semPep(registros[2])).toBe(false);
+    expect(semPep(registros[3])).toBe(true);
+    expect(chaveGrupoBaixa(registros[2])).toBe('transferencia|0105');
   });
 
   it('sem saldo lido, nenhuma pronta', () => {

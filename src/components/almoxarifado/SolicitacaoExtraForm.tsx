@@ -29,7 +29,7 @@
  * fica para a pessoa preencher.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, Plus, Save, Search, Trash2 } from 'lucide-react';
 import type { Profile, RhPessoa, Sector } from '../../types';
 import { useToast } from '../ui/Toast';
@@ -44,7 +44,7 @@ import {
   MENSAGEM_EPI_PELA_FICHA, ORIGEM_FICHA_EPI, episRecusados, type MaterialDisponivel, type PepAplicacao,
 } from '../../lib/requisicaoBalcao';
 import { carregarCodigosEpiBook, listarAplicacoesBalcao } from '../../lib/requisicaoBalcaoApi';
-import { normalizeCode } from '../../lib/almoxarifado';
+import { DEPOSITO_DESCRICAO, formatDeposito, isDepositoInativo, normalizeCode } from '../../lib/almoxarifado';
 import {
   MENSAGEM_SEM_RM, buscarComRmAberta, materiaisSemRmAberta, rotuloRmAberta, type RmAbertaMaterial,
 } from '../../lib/rmAberta';
@@ -52,7 +52,7 @@ import { carregarRmAbertas } from '../../lib/rmAbertaApi';
 import {
   MOTIVOS_SOL_EXTRA, completarDescricoesDoCadastro, itemDoCadastroPorCodigo, lerNumero, normalizarPorMotivo,
   turnoDaHora, validarSolExtra,
-  type DadosSolExtra, type FotoSolExtra, type MotivoSolExtra, type TipoSolExtra, type TurnoSolExtra,
+  type DadosSolExtra, type FotoSolExtra, type MotivoSolExtra, type TipoSolExtra, type TurnoSolExtra, DESTINO_PADRAO_RETIRADA, type TipoMovimentoRetirada,
 } from '../../lib/solicitacaoExtra';
 import {
   atualizarSolicitacaoExtra, buscarMaterialSapPorCodigo, criarSolicitacaoExtra, listarCatalogoParaSolicitacao, subirFotoSolExtra, type SolExtra,
@@ -108,6 +108,9 @@ function lembrarProjeto(projeto: string) {
   }
 }
 
+/** Destinos da transferência: depósitos ativos do cadastro. */
+const DEPOSITOS_DESTINO = Object.keys(DEPOSITO_DESCRICAO).filter(d => !isDepositoInativo(d));
+
 const qtdTexto = (n: number) => String(n).replace('.', ',');
 
 export default function SolicitacaoExtraForm({
@@ -146,6 +149,10 @@ export default function SolicitacaoExtraForm({
     registro?.aplicacao_pep ? { wbs: registro.aplicacao_pep, nome: registro.aplicacao || registro.aplicacao_pep } : null,
   );
   const [peps, setPeps] = useState<PepAplicacao[]>([]);
+  /** Sem Saldo: saída (com PEP) ou transferência — vai assim para a Requisição no Balcão. */
+  const [tipoMov, setTipoMov] = useState<TipoMovimentoRetirada>(registro?.tipo_movimento === 'transferencia' ? 'transferencia' : 'saida');
+  const [destino, setDestino] = useState(registro?.deposito_destino || DESTINO_PADRAO_RETIRADA);
+  const idDestino = useId();
   const [pessoas, setPessoas] = useState<RhPessoa[]>([]);
   const setores = useMemo<Sector[]>(
     () => (semSaldo ? [...localDb.getSectors()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) : []),
@@ -244,6 +251,7 @@ export default function SolicitacaoExtraForm({
     setRetirante({ id: null, nome: '', registro: null });
     fotosNovas.forEach(f => URL.revokeObjectURL(f.previewUrl));
     setFotosNovas([]); setFotosGravadas([]); setAssinatura(null); setPep(null);
+    setTipoMov('saida'); setDestino(DESTINO_PADRAO_RETIRADA);
     const h = horaAgora();
     setData(hojeISO()); setHora(h); setTurno(turnoDaHora(h));
   };
@@ -314,6 +322,8 @@ export default function SolicitacaoExtraForm({
       assinatura_retirante: assinatura,
       aplicacao_pep: pep?.wbs ?? null,
       aplicacao: pep?.nome ?? null,
+      tipo_movimento: semSaldo ? tipoMov : 'saida',
+      deposito_destino: semSaldo && tipoMov === 'transferencia' ? destino : null,
       assinatura_retirante_em: assinatura === (registro?.assinatura_retirante ?? null)
         ? registro?.assinatura_retirante_em ?? null
         : assinatura ? new Date().toISOString() : null,
@@ -387,7 +397,42 @@ export default function SolicitacaoExtraForm({
             </select>
           </div>
           <div className="col-span-2">
-            <CampoPep valor={pep} peps={peps} onChange={setPep} dica="Já vai preenchido na Requisição no Balcão da baixa." />
+            <span className={rotulo}>
+              Tipo de baixa <span className="text-red-500">*</span>
+            </span>
+            <div className="inline-flex rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800" role="group" aria-label="Tipo de baixa">
+              {([['saida', 'Saída'], ['transferencia', 'Transferência']] as const).map(([valor, texto]) => (
+                <button
+                  key={valor}
+                  type="button"
+                  aria-pressed={tipoMov === valor}
+                  onClick={() => setTipoMov(valor)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
+                    tipoMov === valor
+                      ? 'bg-white text-blue-700 shadow-2xs dark:bg-slate-700 dark:text-blue-300'
+                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {texto}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] text-slate-500">Vai assim para a Requisição no Balcão da baixa.</p>
+          </div>
+          <div className="col-span-2">
+            {tipoMov === 'saida' ? (
+              <CampoPep valor={pep} peps={peps} onChange={setPep} obrigatorio dica="Já vai preenchido na Requisição no Balcão da baixa." />
+            ) : (
+              <>
+                <label htmlFor={idDestino} className={rotulo}>
+                  Depósito de destino <span className="text-red-500">*</span>
+                </label>
+                <select id={idDestino} value={destino} onChange={e => setDestino(e.target.value)} className={campo}>
+                  {DEPOSITOS_DESTINO.map(d => <option key={d} value={d}>{formatDeposito(d)}</option>)}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">Transferência não leva PEP.</p>
+              </>
+            )}
           </div>
           <div>
             <label className={rotulo}>
@@ -765,24 +810,30 @@ function LinhaMaterial({
   );
 }
 
-/** PEP opcional da saída — a mesma lista do Balcão. Vazio = definir na baixa. */
+/** PEP da saída — a mesma lista do Balcão. Opcional no Projeto; obrigatório na saída sem saldo. */
 function CampoPep({
-  valor, peps, onChange, dica,
+  valor, peps, onChange, dica, obrigatorio = false,
 }: {
   valor: PepAplicacao | null;
   peps: PepAplicacao[];
   onChange: (pep: PepAplicacao | null) => void;
   dica: string;
+  obrigatorio?: boolean;
 }) {
+  const id = useId();
   return (
     <>
-      <label className={rotulo}>PEP / aplicação <span className="font-normal text-slate-500">(opcional)</span></label>
+      <label htmlFor={id} className={rotulo}>
+        PEP / aplicação{' '}
+        {obrigatorio ? <span className="text-red-500">*</span> : <span className="font-normal text-slate-500">(opcional)</span>}
+      </label>
       <select
+        id={id}
         value={valor?.wbs ?? ''}
         onChange={e => onChange(peps.find(p => p.wbs === e.target.value) ?? null)}
         className={campo}
       >
-        <option value="">A definir na baixa</option>
+        <option value="">{obrigatorio ? 'Escolha o PEP…' : 'A definir na baixa'}</option>
         {valor && !peps.some(p => p.wbs === valor.wbs) && (
           <option value={valor.wbs}>{valor.nome} — {valor.wbs}</option>
         )}

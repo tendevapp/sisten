@@ -75,6 +75,9 @@ export interface SolExtra {
   /** PEP escolhido no registro (null = a definir na baixa). */
   aplicacao_pep?: string | null;
   aplicacao?: string | null;
+  /** Sem Saldo: como baixa no balcão (padrão saída). */
+  tipo_movimento?: 'saida' | 'transferencia' | null;
+  deposito_destino?: string | null;
   origem?: string | null;
   origem_ref?: string | null;
   criado_por: string | null;

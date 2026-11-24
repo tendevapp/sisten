@@ -537,6 +537,7 @@ function CartaoRetirada({
         <p className="line-clamp-2 text-sm text-slate-700 dark:text-slate-200">{resumoItensRetirada(r)}</p>
         <p className="truncate text-xs text-slate-500">
           {r.setor_solicitante_nome} · {formatarDataBR(r.data)} {r.hora?.slice(0, 5)}
+          {r.tipo_movimento === 'transferencia' && <> · <strong className="font-semibold text-slate-700 dark:text-slate-200">Transferência → {r.deposito_destino}</strong></>}
         </p>
       </button>
       </div>
@@ -571,9 +572,9 @@ function AtalhosLote({ atalhos, onMarcar }: {
           Parciais: liberar itens com saldo ({atalhos.parciais.length})
         </button>
       )}
-      {atalhos.porMaterial.map(m => (
-        <button key={m.material} type="button" className={botao} onClick={() => onMarcar(m.ids)} title={`${m.material} — ${m.descricao}`}>
-          <span className="max-w-[12rem] truncate">{m.descricao || m.material}</span> ({m.ids.length})
+      {atalhos.porGrupo.length > 1 && atalhos.porGrupo.map(g => (
+        <button key={g.chave} type="button" className={botao} onClick={() => onMarcar(g.ids)} title={`Prontas de ${g.rotulo}`}>
+          <span className="max-w-[16rem] truncate">{g.rotulo}</span> ({g.ids.length})
         </button>
       ))}
     </div>

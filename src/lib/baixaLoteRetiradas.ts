@@ -12,7 +12,31 @@ import type { SolExtra } from './solicitacaoExtraApi';
 import type { ItensBaixadosPorId, SaldoParaRegularizar } from './retiradaSemSaldoBaixa';
 import { normalizeCode } from './almoxarifado';
 
-type RegistroLote = Pick<SolExtra, 'id' | 'codigo' | 'status' | 'itens' | 'aprovacao_status' | 'aplicacao_pep'>;
+type RegistroLote = Pick<SolExtra, 'id' | 'codigo' | 'status' | 'itens' | 'aprovacao_status' | 'aplicacao_pep'>
+  & Partial<Pick<SolExtra, 'aplicacao' | 'tipo_movimento' | 'deposito_destino'>>;
+
+type RegistroGrupo = Pick<SolExtra, 'aplicacao_pep'> & Partial<Pick<SolExtra, 'aplicacao' | 'tipo_movimento' | 'deposito_destino'>>;
+
+const ehTransferencia = (r: RegistroGrupo) => r.tipo_movimento === 'transferencia';
+
+/**
+ * Grupo da baixa: o tipo (saída ou transferência) e, na saída, o PEP; na
+ * transferência, o depósito de destino. É como o SAP lança — cada grupo vira
+ * linhas com o mesmo movimento e a mesma aplicação.
+ */
+export function chaveGrupoBaixa(r: RegistroGrupo): string {
+  return ehTransferencia(r)
+    ? `transferencia|${(r.deposito_destino || '').trim()}`
+    : `saida|${(r.aplicacao_pep || '').trim().toUpperCase()}`;
+}
+
+export function rotuloGrupoBaixa(r: RegistroGrupo): string {
+  if (ehTransferencia(r)) return `Transferência → ${(r.deposito_destino || '').trim() || 'destino a definir'}`;
+  const pep = (r.aplicacao_pep || '').trim();
+  if (!pep) return 'Saída · sem PEP';
+  const nome = (r.aplicacao || '').trim();
+  return `Saída · ${nome && nome !== pep ? `${nome} (${pep})` : pep}`;
+}
 
 /** Só entra no lote retirada pendente e já sincronizada (com código RSS). */
 export function podeEntrarNoLote(r: Pick<SolExtra, 'codigo' | 'status'>): boolean {
@@ -68,12 +92,13 @@ export function itensQueFicam<T extends Pick<SolExtra, 'id' | 'itens'>>(
   return r.itens.filter((_, i) => !jaSaiu?.[i] && !cob[i]);
 }
 
-export const semPep = (r: Pick<SolExtra, 'aplicacao_pep'>) => !(r.aplicacao_pep || '').trim();
+/** Saída sem PEP (transferência não leva PEP). */
+export const semPep = (r: RegistroGrupo) => !ehTransferencia(r) && !(r.aplicacao_pep || '').trim();
 export const naoAprovada = (r: Pick<SolExtra, 'aprovacao_status'>) => r.aprovacao_status !== 'APROVADA';
 
-export interface AtalhoMaterial {
-  material: string;
-  descricao: string;
+export interface AtalhoGrupo {
+  chave: string;
+  rotulo: string;
   ids: string[];
 }
 
@@ -84,32 +109,28 @@ export interface AtalhosSelecao {
   prontasAprovadas: string[];
   /** Saldo parcial: a baixa libera os itens com saldo e o resto fica pendente. */
   parciais: string[];
-  /** Prontas de um material só, agrupadas (as maiores primeiro). */
-  porMaterial: AtalhoMaterial[];
+  /** Prontas por tipo de baixa e PEP/destino (os maiores grupos primeiro). */
+  porGrupo: AtalhoGrupo[];
 }
 
 export function atalhosSelecao(
   registros: RegistroLote[],
   saldo: Map<string, SaldoParaRegularizar> | null,
-  maxMateriais = 4,
+  maxGrupos = 6,
 ): AtalhosSelecao {
   const prontas = registros.filter(r => podeEntrarNoLote(r) && saldo?.get(r.id)?.prontidao === 'pronta');
-  const porMaterial = new Map<string, AtalhoMaterial>();
+  const grupos = new Map<string, AtalhoGrupo>();
   for (const r of prontas) {
-    const materiais = new Set(r.itens.map(i => normalizeCode(i.material)));
-    if (materiais.size !== 1) continue;
-    const it = r.itens[0];
-    const chave = normalizeCode(it.material);
-    const a = porMaterial.get(chave) ?? { material: it.material, descricao: it.descricao || '', ids: [] };
-    a.ids.push(r.id);
-    porMaterial.set(chave, a);
+    const chave = chaveGrupoBaixa(r);
+    const g = grupos.get(chave) ?? { chave, rotulo: rotuloGrupoBaixa(r), ids: [] };
+    g.ids.push(r.id);
+    grupos.set(chave, g);
   }
   return {
     prontas: prontas.map(r => r.id),
     prontasAprovadas: prontas.filter(r => !naoAprovada(r)).map(r => r.id),
     parciais: registros.filter(r => podeEntrarNoLote(r) && saldo?.get(r.id)?.prontidao === 'parcial').map(r => r.id),
-    porMaterial: [...porMaterial.values()].filter(a => a.ids.length > 1)
-      .sort((a, b) => b.ids.length - a.ids.length).slice(0, maxMateriais),
+    porGrupo: [...grupos.values()].sort((a, b) => b.ids.length - a.ids.length).slice(0, maxGrupos),
   };
 }
 
