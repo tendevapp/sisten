@@ -354,3 +354,20 @@ export async function atualizarDepositosRequisicaoDaRetirada(codigoRss: string):
   if (error) throw new Error(error.message);
   return (data as string | null) ?? null;
 }
+
+/**
+ * Baixa em lote (Geral › Pendências): confirma no banco as Requisições no
+ * Balcão das retiradas escolhidas, com as regras do "Dar baixa" individual.
+ * `pep` vai para as que estão sem PEP. Uma falha não derruba as outras.
+ */
+export async function baixarRetiradasEmLote(
+  codigosRss: string[], pep: string | null, por: string,
+): Promise<import('./baixaLoteRetiradas').ResultadoBaixaLote[]> {
+  const { data, error } = await (supabase.rpc as any)('alm_sol_extra_baixar_lote', {
+    p_rss: codigosRss,
+    p_pep: pep,
+    p_por: por,
+  });
+  if (error) throw new Error(error.message);
+  return (data || []) as import('./baixaLoteRetiradas').ResultadoBaixaLote[];
+}

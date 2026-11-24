@@ -326,6 +326,22 @@ export async function listarRequisicoesBalcaoDoPeriodo(f: { de?: string; ate: st
   return saida.map(comItensOrdenados);
 }
 
+/** Requisições pelos ids, com os itens (ex.: as confirmadas na baixa em lote, para exportar). */
+export async function buscarRequisicoesBalcaoPorIds(ids: string[]): Promise<ReqBalcaoRow[]> {
+  const saida: ReqBalcaoRow[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await dbReq()
+      .select('*, itens:alm_req_balcao_itens(*)')
+      .in('id', ids.slice(i, i + 100))
+      .eq('excluido', false);
+    if (error) throw new Error(error.message);
+    saida.push(...((data || []) as ReqBalcaoRow[]));
+  }
+  return saida
+    .sort((a, b) => a.data.localeCompare(b.data) || (a.codigo || '').localeCompare(b.codigo || ''))
+    .map(comItensOrdenados);
+}
+
 /** Uma requisição pelo código, com os itens — para abrir uma que esteja fora da lista. */
 export async function buscarRequisicaoBalcaoPorCodigo(codigo: string): Promise<ReqBalcaoRow | null> {
   const { data, error } = await dbReq()

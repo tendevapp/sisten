@@ -21,7 +21,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertOctagon, ArrowRight, CheckCircle2, LayoutGrid, ListTodo, PackageCheck, PackageOpen, ReceiptText, RefreshCw, Truck, XCircle } from 'lucide-react';
+import { AlertOctagon, ArrowRight, CheckCircle2, LayoutGrid, ListChecks, ListTodo, PackageCheck, PackageOpen, ReceiptText, RefreshCw, Truck, X, XCircle } from 'lucide-react';
 import type { Profile } from '../types';
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
@@ -44,6 +44,8 @@ import {
 } from '../components/almoxarifado/SaldoRegularizacao';
 import type { SaldoParaRegularizar } from '../lib/retiradaSemSaldoBaixa';
 import RetiradasPorPo from '../components/almoxarifado/RetiradasPorPo';
+import BaixaLoteRetiradasModal from '../components/almoxarifado/BaixaLoteRetiradas';
+import { atalhosSelecao, podeEntrarNoLote } from '../lib/baixaLoteRetiradas';
 
 interface Props {
   user: Profile;
@@ -176,6 +178,9 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
   const saldo = useProntidaoSaldo(ehAlmox ? versaoSaldo : 0);
   const [filtroSaldo, setFiltroSaldo] = useState<FiltroProntidao>('todas');
   const [visao, setVisao] = useState<VisaoBaixa>(visaoBaixaGuardada);
+  // Baixa em lote: retiradas marcadas nos cartões.
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const [loteAberto, setLoteAberto] = useState(false);
   const trocarVisao = (v: VisaoBaixa) => {
     setVisao(v);
     try { localStorage.setItem(CHAVE_VISAO_BAIXA, v); } catch { /* sem storage: vale só nesta tela */ }
@@ -191,6 +196,9 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
       ]);
       // Mais antigas primeiro: é a fila de trabalho.
       setAguardandoBaixa([...baixa].reverse());
+      // A marcação só vale para o que ainda está na lista.
+      const ainda = new Set(baixa.map(r => r.id));
+      setSelecionadas(atual => new Set([...atual].filter(id => ainda.has(id))));
       setAguardandoAprovacao([...aprovacao].reverse());
     } catch (err) {
       toast.error(`Falha ao carregar as pendências: ${err instanceof Error ? err.message : String(err)}`);
@@ -205,6 +213,16 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
 
   const nada = !carregando && aguardandoBaixa.length === 0 && aguardandoAprovacao.length === 0;
   const contagemSaldo = useMemo(() => contarProntidao(aguardandoBaixa.map(r => r.id), saldo.porId), [aguardandoBaixa, saldo.porId]);
+  const atalhos = useMemo(() => atalhosSelecao(aguardandoBaixa, saldo.porId), [aguardandoBaixa, saldo.porId]);
+  const registrosLote = useMemo(
+    () => aguardandoBaixa.filter(r => selecionadas.has(r.id) && podeEntrarNoLote(r)),
+    [aguardandoBaixa, selecionadas],
+  );
+  const alternarSelecao = (id: string) => setSelecionadas(atual => {
+    const nova = new Set(atual);
+    if (nova.has(id)) nova.delete(id); else nova.add(id);
+    return nova;
+  });
   const baixaVisivel = useMemo(
     () => (filtroSaldo === 'todas' ? aguardandoBaixa : aguardandoBaixa.filter(r => saldo.porId?.get(r.id)?.prontidao === filtroSaldo)),
     [aguardandoBaixa, filtroSaldo, saldo.porId],
@@ -241,8 +259,37 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
               <VisaoBaixaSeletor valor={visao} onChange={trocarVisao} />
               {visao === 'retirada' && <FiltroSaldo valor={filtroSaldo} onChange={setFiltroSaldo} contagem={contagemSaldo} />}
               <LegendaZl0024 importadoEm={saldo.importadoEm} carregando={saldo.carregando} erro={saldo.erro} />
+              {visao === 'retirada' && atalhos.prontas.length > 0 && (
+                <AtalhosLote
+                  atalhos={atalhos}
+                  onMarcar={(ids) => { setSelecionadas(new Set(ids)); setFiltroSaldo('pronta'); }}
+                />
+              )}
             </div>
           }
+          rodape={visao === 'retirada' && registrosLote.length > 0 ? (
+            <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 shadow-lg dark:border-emerald-800 dark:bg-slate-900">
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {registrosLote.length} retirada{registrosLote.length === 1 ? '' : 's'} marcada{registrosLote.length === 1 ? '' : 's'}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelecionadas(new Set())}
+                  className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" /> Limpar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLoteAberto(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                >
+                  <PackageCheck className="h-3.5 w-3.5" aria-hidden="true" /> Dar baixa em lote ({registrosLote.length})
+                </button>
+              </div>
+            </div>
+          ) : undefined}
           corpo={visao === 'po' ? (
             <RetiradasPorPo
               registros={aguardandoBaixa}
@@ -258,7 +305,13 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
             </li>
           )}
           {baixaVisivel.map(r => (
-            <CartaoRetirada key={r.id} registro={r} saldo={saldo.porId?.get(r.id)} onAbrir={() => setAberto(r)}>
+            <CartaoRetirada
+              key={r.id}
+              registro={r}
+              saldo={saldo.porId?.get(r.id)}
+              onAbrir={() => setAberto(r)}
+              selecao={podeEntrarNoLote(r) ? { marcado: selecionadas.has(r.id), onAlternar: () => alternarSelecao(r.id) } : undefined}
+            >
               <BotaoPdfRetirada
                 registro={r}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-blue-400 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -356,6 +409,16 @@ function RetiradasPendentes({ user, onNavigate }: Props) {
         />
       )}
 
+      {loteAberto && (
+        <BaixaLoteRetiradasModal
+          registros={registrosLote}
+          user={user}
+          onNavigate={onNavigate}
+          onClose={() => setLoteAberto(false)}
+          onFeito={() => { setSelecionadas(new Set()); carregar(); }}
+        />
+      )}
+
       {baixando && (
         <BaixaRetiradaModal
           registro={baixando}
@@ -391,7 +454,7 @@ function VisaoBaixaSeletor({ valor, onChange }: { valor: VisaoBaixa; onChange: (
 }
 
 function Bloco({
-  icone: Icone, titulo, descricao, total, acao, filtro, corpo, children,
+  icone: Icone, titulo, descricao, total, acao, filtro, corpo, rodape, children,
 }: {
   icone: typeof ListTodo;
   titulo: string;
@@ -402,6 +465,8 @@ function Bloco({
   filtro?: ReactNode;
   /** No lugar da grade de cartões (outra visão da mesma lista). */
   corpo?: ReactNode;
+  /** Depois da lista (ex.: barra da baixa em lote, presa ao pé da tela). */
+  rodape?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -420,22 +485,37 @@ function Bloco({
       </header>
       {filtro}
       {corpo ?? <ul className="grid gap-2 lg:grid-cols-2">{children}</ul>}
+      {rodape}
     </section>
   );
 }
 
 function CartaoRetirada({
-  registro: r, saldo, onAbrir, children,
+  registro: r, saldo, onAbrir, selecao, children,
 }: {
   registro: SolExtra;
   /** Situação frente à ZL0024 — só no bloco de baixa do almoxarifado. */
   saldo?: SaldoParaRegularizar;
   onAbrir: () => void;
+  /** Caixa da baixa em lote. */
+  selecao?: { marcado: boolean; onAlternar: () => void };
   children?: ReactNode;
 }) {
   return (
-    <li className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 transition hover:border-blue-300 dark:border-slate-800">
-      <button type="button" onClick={onAbrir} className="block min-w-0 space-y-1 text-left">
+    <li className={`flex flex-col gap-2 rounded-xl border p-3 transition hover:border-blue-300 ${
+      selecao?.marcado ? 'border-emerald-400 bg-emerald-50/40 dark:border-emerald-700 dark:bg-emerald-950/20' : 'border-slate-200 dark:border-slate-800'
+    }`}>
+      <div className="flex min-w-0 items-start gap-2.5">
+      {selecao && (
+        <input
+          type="checkbox"
+          checked={selecao.marcado}
+          onChange={selecao.onAlternar}
+          aria-label={`Marcar ${r.codigo || 'retirada'} para a baixa em lote`}
+          className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-emerald-600"
+        />
+      )}
+      <button type="button" onClick={onAbrir} className="block min-w-0 flex-1 space-y-1 text-left">
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-400">{r.codigo || 'Pendente de sincronização'}</span>
           <AprovacaoChip status={r.aprovacao_status} />
@@ -450,7 +530,38 @@ function CartaoRetirada({
           {r.setor_solicitante_nome} · {formatarDataBR(r.data)} {r.hora?.slice(0, 5)}
         </p>
       </button>
+      </div>
       {children && <div className="flex flex-wrap justify-end gap-2">{children}</div>}
     </li>
+  );
+}
+
+/** Atalhos da baixa em lote: marcar as prontas (aprovadas ou todas) ou as de um material. */
+function AtalhosLote({ atalhos, onMarcar }: {
+  atalhos: ReturnType<typeof atalhosSelecao>;
+  onMarcar: (ids: string[]) => void;
+}) {
+  const botao = 'inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-emerald-950/40';
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-300">
+        <ListChecks className="h-3.5 w-3.5" aria-hidden="true" /> Baixa em lote:
+      </span>
+      {atalhos.prontasAprovadas.length > 0 && (
+        <button type="button" className={botao} onClick={() => onMarcar(atalhos.prontasAprovadas)}>
+          Prontas aprovadas ({atalhos.prontasAprovadas.length})
+        </button>
+      )}
+      {atalhos.prontas.length !== atalhos.prontasAprovadas.length && (
+        <button type="button" className={botao} onClick={() => onMarcar(atalhos.prontas)}>
+          Todas as prontas ({atalhos.prontas.length})
+        </button>
+      )}
+      {atalhos.porMaterial.map(m => (
+        <button key={m.material} type="button" className={botao} onClick={() => onMarcar(m.ids)} title={`${m.material} — ${m.descricao}`}>
+          <span className="max-w-[12rem] truncate">{m.descricao || m.material}</span> ({m.ids.length})
+        </button>
+      ))}
+    </div>
   );
 }
