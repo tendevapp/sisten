@@ -23,6 +23,8 @@ import type { UltimaContagem } from '../../lib/inventarioUltimaContagem';
 import UltimaContagemInventario from './UltimaContagemInventario';
 import type { BaixaPendenteMaterial } from '../../lib/baixasPendentesCatalogo';
 import { BaixaPendenteQuadro } from './BaixaPendenteTag';
+import { rotuloTipoSaida, type UltimoMovimentoMaterial } from '../../lib/ultimoMovimentoCatalogo';
+import { UltimoMovimentoTag } from './UltimoMovimentoTag';
 
 interface Props {
   item: ItemConsumivelZl0024;
@@ -30,6 +32,9 @@ interface Props {
   ultima: UltimaContagem | null | undefined;
   /** Retiradas do balcão sem doc. SAP — a contagem vai divergir. */
   baixaPendente?: BaixaPendenteMaterial | null;
+  /** Ultima saida/consumo na MB51 (undefined = ainda carregando). */
+  ultimoMovimento?: UltimoMovimentoMaterial | null;
+  hoje: string;
   /** Sobe depois de uma contagem feita pela tela, para reler a última. */
   versaoContagem: number;
   podeContar: boolean;
@@ -53,7 +58,7 @@ function Linha({ rotulo, children, mono }: { rotulo: string; children: React.Rea
 }
 
 export default function CatalogoItemDetalhe({
-  item, posicao, ultima, baixaPendente, versaoContagem, podeContar, preparandoContagem, onEditar, onContar, onEtiqueta, onZoom, onClose,
+  item, posicao, ultima, baixaPendente, ultimoMovimento, hoje, versaoContagem, podeContar, preparandoContagem, onEditar, onContar, onEtiqueta, onZoom, onClose,
 }: Props) {
   const cat = item.item_catalogo;
   const [adicionais, setAdicionais] = useState<FotoAdicionalCatalogo[]>([]);
@@ -150,6 +155,22 @@ export default function CatalogoItemDetalhe({
         )}
 
         <dl className="divide-y divide-[var(--hairline)]">
+          {ultimoMovimento !== undefined && (
+            <Linha rotulo="Última saída (MB51)">
+              <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                <UltimoMovimentoTag movimento={ultimoMovimento} hoje={hoje} />
+                {ultimoMovimento ? (
+                  <span className="font-normal" style={{ color: 'var(--ink-secondary)' }}>
+                    {formatDateBR(ultimoMovimento.ultimaData)} · {rotuloTipoSaida(ultimoMovimento.tipoMovimento)}
+                  </span>
+                ) : (
+                  <span className="font-normal" style={{ color: 'var(--ink-muted)' }}>
+                    Sem saída registrada
+                  </span>
+                )}
+              </span>
+            </Linha>
+          )}
           <Linha rotulo="Depósitos" mono>{item.depositos.join(', ') || '—'}</Linha>
           {minimo !== null && minimo !== undefined && (
             <Linha rotulo="Estoque mínimo" mono>{Number(minimo).toLocaleString('pt-BR')} {item.umb}</Linha>

@@ -17,6 +17,8 @@ import { formatarSaldo, type ItemConsumivelZl0024 } from '../../lib/almoxCatalog
 import { resumoUltimaContagem, type UltimaContagem } from '../../lib/inventarioUltimaContagem';
 import type { BaixaPendenteMaterial } from '../../lib/baixasPendentesCatalogo';
 import { BaixaPendenteTag } from './BaixaPendenteTag';
+import type { UltimoMovimentoMaterial } from '../../lib/ultimoMovimentoCatalogo';
+import { UltimoMovimentoTag } from './UltimoMovimentoTag';
 
 const COR_CONTAGEM: Record<UltimaContagem['status'], string> = {
   conferido: 'var(--status-good)',
@@ -31,6 +33,8 @@ interface Props {
   ultima: UltimaContagem | null | undefined;
   /** Retiradas do balcão sem doc. SAP — a contagem vai divergir. */
   baixaPendente?: BaixaPendenteMaterial | null;
+  /** Ultima saida/consumo na MB51 (undefined = ainda carregando). */
+  ultimoMovimento?: UltimoMovimentoMaterial | null;
   hoje: string;
   marcado: boolean;
   podeContar: boolean;
@@ -42,7 +46,7 @@ interface Props {
 }
 
 function CatalogoItemTile({
-  item, posicao, ultima, baixaPendente, hoje, marcado, podeContar, preparandoContagem, onAbrir, onEditar, onContar, onMarcar,
+  item, posicao, ultima, baixaPendente, ultimoMovimento, hoje, marcado, podeContar, preparandoContagem, onAbrir, onEditar, onContar, onMarcar,
 }: Props) {
   const bookEpi = item.tem_foto && item.origem_foto === 'book_epi';
 
@@ -90,7 +94,10 @@ function CatalogoItemTile({
         </div>
 
         <div className="flex flex-1 flex-col gap-1 px-3 py-2 sm:p-2">
-          <span className="font-mono text-xs sm:text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>{item.codigo_sap}</span>
+          <div className="flex items-center justify-between gap-1.5">
+            <span className="truncate font-mono text-xs sm:text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>{item.codigo_sap}</span>
+            <UltimoMovimentoTag movimento={ultimoMovimento} hoje={hoje} />
+          </div>
           <h4 className="line-clamp-2 text-sm sm:text-xs font-bold leading-snug" style={{ color: 'var(--ink-primary)' }}>
             {item.descricao || '—'}
           </h4>

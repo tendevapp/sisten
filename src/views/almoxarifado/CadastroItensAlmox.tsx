@@ -85,6 +85,19 @@ import {
 import { listarBaixasPendentesPorMaterial } from '../../lib/baixasPendentesCatalogoApi';
 import type { BaixaPendenteMaterial } from '../../lib/baixasPendentesCatalogo';
 import { BaixaPendenteTag } from '../../components/almoxarifado/BaixaPendenteTag';
+import { listarUltimosMovimentosPorMaterial } from '../../lib/ultimoMovimentoCatalogoApi';
+import {
+  classificarGiroMovimento,
+  compararPorUltimoMovimento,
+  diasDesdeUltimoMovimento,
+  OPCOES_ORDENACAO_CATALOGO,
+  ROTULO_FAIXA_GIRO,
+  type FiltroGiroMovimento,
+  type OrdenacaoCatalogo,
+  type UltimoMovimentoMaterial,
+} from '../../lib/ultimoMovimentoCatalogo';
+import { UltimoMovimentoTag } from '../../components/almoxarifado/UltimoMovimentoTag';
+import { formatDateBR } from '../../lib/format';
 
 // A contagem é a mesma do Inventário Cíclico (rodada preparada, controle de
 // movimentação, causa na recontagem); só baixa quando alguém toca em "Contar".
@@ -202,6 +215,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [filtroData, setFiltroData] = useState<FiltroDataAlteracao>('todas');
   const [periodoData, setPeriodoData] = useState({ de: '', ate: '' });
   const [filtroEtiqueta, setFiltroEtiqueta] = useState<FiltroEtiqueta>('todas');
+  const [filtroGiro, setFiltroGiro] = useState<FiltroGiroMovimento>('todos');
+  const [ordenacao, setOrdenacao] = useState<OrdenacaoCatalogo>('alteracao');
   const [modoVis, setModoVis] = useState<ModoVisualizacao>('cards');
   // Texto ainda não confirmado no campo de busca: filtra enquanto digita.
   const [buscaDigitada, setBuscaDigitada] = useState('');
@@ -337,6 +352,20 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     [baixasPendentes],
   );
 
+  // Ultima saida/consumo na MB51 (baixas 201..291 + transf. 311 para producao).
+  // Sem rede ou sem acesso, o cadastro segue normalmente sem exibir a tag.
+  const [ultimosMovimentos, setUltimosMovimentos] = useState<Map<string, UltimoMovimentoMaterial> | null>(null);
+  const carregarUltimosMovimentos = useCallback((forcar = false) => {
+    listarUltimosMovimentosPorMaterial(forcar)
+      .then((mapa) => { if (montadoRef.current) setUltimosMovimentos(mapa); })
+      .catch((err) => console.warn('[CadastroItensAlmox] Ultimos movimentos indisponiveis:', err));
+  }, []);
+  useEffect(() => { carregarUltimosMovimentos(); }, [carregarUltimosMovimentos]);
+  const ultimoMovimentoDoItem = useCallback(
+    (codigo: string) => (ultimosMovimentos ? ultimosMovimentos.get(normalizeCode(codigo)) ?? null : undefined),
+    [ultimosMovimentos],
+  );
+
   // Lista única de Níveis 2 presentes nos itens
   const opcoesNivel2 = useMemo(() => {
     const set = new Set<string>();
@@ -430,19 +459,36 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       if (filtroDeposito === 'sem_deposito' && it.depositos.length > 0) return false;
       if (filtroDeposito !== 'todos' && filtroDeposito !== 'sem_deposito' && !it.depositos.includes(filtroDeposito)) return false;
 
+      // Giro por ultima saida na MB51 (semaforo 30/90 dias).
+      if (filtroGiro !== 'todos' && ultimosMovimentos) {
+        const dias = diasDesdeUltimoMovimento(ultimoMovimentoDoItem(it.codigo_sap), hoje);
+        if (classificarGiroMovimento(dias) !== filtroGiro) return false;
+      }
+
       return true;
     });
 
-    // Último alterado primeiro; quem nunca foi cadastrado vai para o fim, na
-    // ordem em que já vinha (sort estável).
+    // Padrao: ultimo alterado primeiro; quem nunca foi cadastrado vai para o fim.
+    // Quando ordenado por giro, usa a alteracao como desempate.
     const alteradoEm = (it: ItemConsumivelZl0024) => it.item_catalogo?.updated_at ?? '';
+    if (ordenacao === 'movimento_recente' || ordenacao === 'movimento_antigo') {
+      const direcao = ordenacao === 'movimento_recente' ? 'recente' : 'antigo';
+      return filtrados.sort((a, b) => {
+        const cmp = compararPorUltimoMovimento(
+          diasDesdeUltimoMovimento(ultimoMovimentoDoItem(a.codigo_sap), hoje),
+          diasDesdeUltimoMovimento(ultimoMovimentoDoItem(b.codigo_sap), hoje),
+          direcao,
+        );
+        return cmp !== 0 ? cmp : alteradoEm(b).localeCompare(alteradoEm(a));
+      });
+    }
     return filtrados.sort((a, b) => alteradoEm(b).localeCompare(alteradoEm(a)));
-  }, [itens, buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroDeposito, filtroData, periodoData, filtroEtiqueta, codigosJovens, posicaoDoItem, localizacoesDoItem, baixaDoItem]);
+  }, [itens, buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroDeposito, filtroData, periodoData, filtroEtiqueta, filtroGiro, ordenacao, codigosJovens, ultimosMovimentos, hoje, posicaoDoItem, localizacoesDoItem, baixaDoItem, ultimoMovimentoDoItem]);
 
   // Desenha em lotes (como a aba BOM): o catálogo passa de mil itens com foto,
   // e montar todos de uma vez trava o celular e baixa dezenas de MB de imagem.
   const [visiveisQtd, setVisiveisQtd] = useState(LOTE_ITENS);
-  useEffect(() => { setVisiveisQtd(LOTE_ITENS); }, [buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroDeposito, filtroData, periodoData, filtroEtiqueta, filtroJovens, modoVis]);
+  useEffect(() => { setVisiveisQtd(LOTE_ITENS); }, [buscaChips, buscaDigitadaAdiada, filtroRapido, filtroNivel2, filtroGrupo, filtroDeposito, filtroData, periodoData, filtroEtiqueta, filtroGiro, ordenacao, filtroJovens, modoVis]);
   const itensVisiveis = useMemo(() => itensFiltrados.slice(0, visiveisQtd), [itensFiltrados, visiveisQtd]);
 
   // Estatísticas e KPIs
@@ -455,20 +501,37 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     const saldoTotal = arredondarSaldo(itens.reduce((acc, i) => acc + (Number(i.saldo_total) || 0), 0));
     const etiquetaImpressa = itens.filter(i => i.item_catalogo?.etiqueta_impressa_em).length;
     const baixaPendente = itens.filter(i => baixaDoItem(i.codigo_sap)).length;
+    let giroAlto = 0;
+    let giroMedio = 0;
+    let giroBaixo = 0;
+    let giroSemMov = 0;
+    if (ultimosMovimentos) {
+      for (const i of itens) {
+        const faixa = classificarGiroMovimento(diasDesdeUltimoMovimento(ultimoMovimentoDoItem(i.codigo_sap), hoje));
+        if (faixa === 'alto') giroAlto += 1;
+        else if (faixa === 'medio') giroMedio += 1;
+        else if (faixa === 'baixo') giroBaixo += 1;
+        else giroSemMov += 1;
+      }
+    }
 
-    return { total, comFoto, semFoto, comLocalizacao, pctCobertura, saldoTotal, etiquetaImpressa, baixaPendente };
-  }, [itens, localizacoesDoItem, baixaDoItem]);
+    return {
+      total, comFoto, semFoto, comLocalizacao, pctCobertura, saldoTotal, etiquetaImpressa, baixaPendente,
+      giroAlto, giroMedio, giroBaixo, giroSemMov,
+    };
+  }, [itens, ultimosMovimentos, hoje, localizacoesDoItem, baixaDoItem, ultimoMovimentoDoItem]);
 
   // Filtros secundários em uso — contados no botão "Filtros" do celular.
   const filtrosSecundariosAtivos = [
     filtroNivel2 !== 'todos', filtroGrupo !== 'todos', filtroDeposito !== 'todos',
-    filtroData !== 'todas', filtroEtiqueta !== 'todas',
+    filtroData !== 'todas', filtroEtiqueta !== 'todas', filtroGiro !== 'todos', ordenacao !== 'alteracao',
   ].filter(Boolean).length;
   const algumFiltroAtivo = filtrosSecundariosAtivos > 0 || filtroRapido !== 'todos' || filtroJovens !== 'off'
     || buscaChips.length > 0 || buscaDigitadaAdiada.trim() !== '';
   const limparFiltros = () => {
     setFiltroNivel2('todos'); setFiltroGrupo('todos'); setFiltroDeposito('todos'); setFiltroJovens('off');
     setFiltroData('todas'); setPeriodoData({ de: '', ate: '' }); setFiltroEtiqueta('todas');
+    setFiltroGiro('todos'); setOrdenacao('alteracao');
     setFiltroRapido('todos'); setBuscaChips([]);
   };
 
@@ -630,13 +693,13 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     });
   };
 
-  const editarFotoSap = (origem: Blob | string | null, aposCaptura = false) => {
+  const editarFotoSap = (origem: Blob | string | null) => {
     if (!origem) return;
     setEdicao({
       origem,
       nome: origem instanceof File ? origem.name : null,
       titulo: 'Editar foto do item',
-      rotuloCancelar: aposCaptura ? 'Usar sem editar' : 'Cancelar',
+      rotuloCancelar: 'Cancelar',
       aplicar: (arquivo) => { trocarFotoSap(arquivo); setEdicao(null); },
     });
   };
@@ -646,7 +709,6 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     e.target.value = '';
     if (!file) return;
     trocarFotoSap(file);
-    editarFotoSap(file, true);
   };
 
   const colarImagemSap = (file: File) => {
@@ -693,24 +755,23 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   };
 
   /** Abre o editor na foto principal (arquivo escolhido ou a foto já gravada). */
-  const editarFotoPrincipal = (origem: Blob | string | null, aposCaptura = false) => {
+  const editarFotoPrincipal = (origem: Blob | string | null) => {
     if (!origem) return;
     setEdicao({
       origem,
       nome: origem instanceof File ? origem.name : null,
       titulo: 'Editar foto do item',
-      rotuloCancelar: aposCaptura ? 'Usar sem editar' : 'Cancelar',
+      rotuloCancelar: 'Cancelar',
       aplicar: (arquivo) => { trocarFotoPrincipal(arquivo); setEdicao(null); },
     });
   };
 
-  /** Câmera: a foto entra e o editor já abre (recortar/iluminar antes de enviar). */
+  /** Camera: aplica a foto direto na previa; edicao fica opcional pelo botao Editar. */
   const handleCapturarFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
     trocarFotoPrincipal(file);
-    editarFotoPrincipal(file, true);
   };
 
   /**
@@ -751,18 +812,18 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     }));
   };
 
-  const editarAdicionalNova = (nova: { file: File; preview: string }, aposCaptura = false) => {
+  const editarAdicionalNova = (nova: { file: File; preview: string }) => {
     setEdicao({
       origem: nova.file,
       nome: nova.file.name,
       titulo: 'Editar foto adicional',
-      rotuloCancelar: aposCaptura ? 'Usar sem editar' : 'Cancelar',
+      rotuloCancelar: 'Cancelar',
       aplicar: (arquivo) => { trocarAdicionalNova(nova.preview, arquivo); setEdicao(null); },
     });
   };
 
-  /** Fotos escolhidas (câmera ou galeria): entram numa fila e sobem junto com o "Salvar". */
-  const handleEscolherAdicionais = (e: React.ChangeEvent<HTMLInputElement>, aposCaptura = false) => {
+  /** Fotos escolhidas (camera ou galeria): entram na fila e sobem junto com o Salvar. */
+  const handleEscolherAdicionais = (e: React.ChangeEvent<HTMLInputElement>) => {
     const arquivos = Array.from(e.target.files ?? []);
     e.target.value = '';
     if (arquivos.length === 0) return;
@@ -776,7 +837,6 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
     }
     const novas = arquivos.slice(0, vagas).map((file) => ({ file, preview: URL.createObjectURL(file) }));
     setAdicionaisNovas((atuais) => [...atuais, ...novas]);
-    if (aposCaptura && novas.length === 1) editarAdicionalNova(novas[0], true);
   };
 
   const removerAdicionalNova = (indice: number) => {
@@ -1394,6 +1454,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
             onClick={() => {
               setAtualizando(true);
               carregarBaixasPendentes();
+              carregarUltimosMovimentos(true);
               void carregarDados().finally(() => setAtualizando(false));
             }}
             title="Recarregar catálogo e fotos"
@@ -1803,7 +1864,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
         </div>
 
         {/* Linha secundária de filtros: recolhida no celular e no tablet até tocar em "Filtros" */}
-        <div className={`${filtrosAbertos ? 'grid' : 'hidden'} lg:grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3 pt-2 border-t`} style={{ borderColor: 'var(--hairline)' }}>
+        <div className={`${filtrosAbertos ? 'grid' : 'hidden'} lg:grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 pt-2 border-t`} style={{ borderColor: 'var(--hairline)' }}>
           <div>
             <label className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
               Subcategoria (Nível 2)
@@ -1923,6 +1984,43 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               ))}
             </select>
           </div>
+
+          <div>
+            <label htmlFor="cadastro-itens-filtro-giro" className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
+              Giro (Últ. saída MB51)
+            </label>
+            <select
+              id="cadastro-itens-filtro-giro"
+              value={filtroGiro}
+              onChange={(e) => setFiltroGiro(e.target.value as FiltroGiroMovimento)}
+              disabled={!ultimosMovimentos}
+              className="w-full py-1.5 px-2.5 text-xs rounded-lg border disabled:opacity-60"
+              style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+            >
+              <option value="todos">Todos os giros</option>
+              <option value="alto">{ROTULO_FAIXA_GIRO.alto}{ultimosMovimentos ? ` (${kpis.giroAlto})` : ''}</option>
+              <option value="medio">{ROTULO_FAIXA_GIRO.medio}{ultimosMovimentos ? ` (${kpis.giroMedio})` : ''}</option>
+              <option value="baixo">{ROTULO_FAIXA_GIRO.baixo}{ultimosMovimentos ? ` (${kpis.giroBaixo})` : ''}</option>
+              <option value="sem_movimento">{ROTULO_FAIXA_GIRO.sem_movimento}{ultimosMovimentos ? ` (${kpis.giroSemMov})` : ''}</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="cadastro-itens-ordenacao" className="text-[10px] font-bold block mb-1 " style={{ color: 'var(--ink-muted)' }}>
+              Ordenar por
+            </label>
+            <select
+              id="cadastro-itens-ordenacao"
+              value={ordenacao}
+              onChange={(e) => setOrdenacao(e.target.value as OrdenacaoCatalogo)}
+              className="w-full py-1.5 px-2.5 text-xs rounded-lg border"
+              style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+            >
+              {OPCOES_ORDENACAO_CATALOGO.map(op => (
+                <option key={op.valor} value={op.valor}>{op.rotulo}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -2023,6 +2121,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
               posicao={posicaoDoItem(item)}
               ultima={ultimaDoItem(item.codigo_sap)}
               baixaPendente={baixaDoItem(item.codigo_sap)}
+              ultimoMovimento={ultimoMovimentoDoItem(item.codigo_sap)}
               hoje={hoje}
               marcado={selecionados.has(item.codigo_sap)}
               podeContar={podeContar}
@@ -2057,6 +2156,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                   <th className="py-2.5 px-3 font-bold" style={{ color: 'var(--ink-muted)' }}>Texto Técnico</th>
                   <th className="py-2.5 px-3 font-bold" style={{ color: 'var(--ink-muted)' }}>Grupo & Subcategoria (Nível 2)</th>
                   <th className="py-2.5 px-3 font-bold" style={{ color: 'var(--ink-muted)' }}>Posição</th>
+                  <th className="py-2.5 px-3 font-bold text-center whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>Últ. Saída</th>
                   <th className="py-2.5 px-3 font-bold text-right" style={{ color: 'var(--ink-muted)' }}>Saldo ZL0024</th>
                   <th className="py-2.5 px-3 font-bold text-center" style={{ color: 'var(--ink-muted)' }}>Ações</th>
                 </tr>
@@ -2120,6 +2220,22 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                     </td>
                     <td className="py-2 px-3 font-mono text-[11px] font-bold whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
                       {posicaoDoItem(item) || '—'}
+                    </td>
+                    <td className="py-2 px-3 text-center whitespace-nowrap">
+                      {(() => {
+                        const mov = ultimoMovimentoDoItem(item.codigo_sap);
+                        if (mov === undefined) return <span style={{ color: 'var(--ink-muted)' }}>—</span>;
+                        return (
+                          <div className="inline-flex flex-col items-center gap-0.5">
+                            <UltimoMovimentoTag movimento={mov} hoje={hoje} />
+                            {mov && (
+                              <span className="text-[10px] tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+                                {formatDateBR(mov.ultimaData)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="py-2 px-3 text-right tabular-nums">
                       <span className="font-bold text-slate-800 dark:text-slate-100">
@@ -2454,7 +2570,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
                     accept="image/*"
                     capture="environment"
                     className="hidden"
-                    onChange={(e) => handleEscolherAdicionais(e, true)}
+                    onChange={handleEscolherAdicionais}
                   />
                   <button
                     type="button"
@@ -3254,6 +3370,8 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
           posicao={posicaoDoItem(itemDetalhe)}
           ultima={ultimaDoItem(itemDetalhe.codigo_sap)}
           baixaPendente={baixaDoItem(itemDetalhe.codigo_sap)}
+          ultimoMovimento={ultimoMovimentoDoItem(itemDetalhe.codigo_sap)}
+          hoje={hoje}
           versaoContagem={versaoContagem}
           podeContar={podeContar}
           preparandoContagem={preparandoCodigo === itemDetalhe.codigo_sap}
