@@ -61,6 +61,19 @@ import ConfirmDialog from '../components/ui/ConfirmDialog';
 import SeletorColaboradoresModal from '../components/rh/SeletorColaboradoresModal';
 import CampoHorarioAse from '../components/rh/CampoHorarioAse';
 import { ATALHOS_ENTRADA_ASE, ATALHOS_SAIDA_ASE, diaSeguinteAse, formatarPeriodoAse, validarPeriodoAse, viraDiaAse } from '../lib/aseHorarios';
+import {
+  buscarDuplicidadesColaborador,
+  construirIndiceDuplicidadeAse,
+  formatarResumoOcorrenciaAse,
+  type AseMesmoDiaResumo,
+  type OcorrenciaColaboradorAse,
+} from '../lib/aseDuplicidade';
+
+interface ConflitoDuplicidadeAse {
+  nome: string;
+  registro: string;
+  ocorrencias: OcorrenciaColaboradorAse[];
+}
 
 // Carregado sob demanda: o relatorio traz o Recharts junto, e quem só vai
 // preencher uma ASE não deveria pagar esse download.
@@ -964,6 +977,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   const [setores, setSetores] = useState<RhSetor[]>([]);
   const [turnos, setTurnos] = useState<RhTurno[]>([]);
   const [pessoas, setPessoas] = useState<RhPessoa[]>([]);
+  const [outrasAsesDia, setOutrasAsesDia] = useState<AseMesmoDiaResumo[]>([]);
   const [salvandoSelecao, setSalvandoSelecao] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sujo, setSujo] = useState(false);
@@ -973,6 +987,9 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     | { tipo: 'excluir' }
     | { tipo: 'remover-item'; itemId: string; nome: string }
     | { tipo: 'sair' }
+    | { tipo: 'duplicidade-lote'; novos: RhPessoa[]; conflitos: ConflitoDuplicidadeAse[] }
+    | { tipo: 'duplicidade-manual'; info: { nome: string; registro: string; cargo: string }; ocorrencias: OcorrenciaColaboradorAse[] }
+    | { tipo: 'duplicidade-enviar'; conflitos: ConflitoDuplicidadeAse[] }
     | null
   >(null);
   const [processando, setProcessando] = useState(false);
@@ -1031,6 +1048,62 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [sujo]);
+
+  const recarregarOutrasAsesDia = useCallback(async (
+    dataExecucao: string,
+    aseId: string,
+  ): Promise<AseMesmoDiaResumo[] | null> => {
+    if (!dataExecucao || !aseId) {
+      setOutrasAsesDia([]);
+      return [];
+    }
+    try {
+      const lista = await api.listarSolicitacoesASEPorData(dataExecucao, aseId);
+      setOutrasAsesDia(lista);
+      return lista;
+    } catch (e) {
+      console.warn('Falha ao consultar outras ASEs da data:', e);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!dados?.id || !dados?.data_execucao) {
+      setOutrasAsesDia([]);
+      return;
+    }
+    let ativo = true;
+    api.listarSolicitacoesASEPorData(dados.data_execucao, dados.id)
+      .then(lista => { if (ativo) setOutrasAsesDia(lista); })
+      .catch(e => { console.warn('Falha ao consultar outras ASEs da data:', e); });
+    return () => { ativo = false; };
+  }, [dados?.id, dados?.data_execucao]);
+
+  const indiceDuplicidade = useMemo(
+    () => construirIndiceDuplicidadeAse(outrasAsesDia, dados?.id || ''),
+    [outrasAsesDia, dados?.id],
+  );
+
+  const duplicidadesPorItemId = useMemo(() => {
+    const mapa = new Map<string, OcorrenciaColaboradorAse[]>();
+    if (!dados) return mapa;
+    for (const it of dados.itens) {
+      const ocorrencias = buscarDuplicidadesColaborador(indiceDuplicidade, {
+        pessoa_id: it.pessoa_id,
+        registro: it.registro,
+        nome: it.nome,
+      });
+      if (ocorrencias.length > 0) mapa.set(it.id, ocorrencias);
+    }
+    return mapa;
+  }, [dados, indiceDuplicidade]);
+
+  const itensDuplicadosNaAse = useMemo(() => {
+    if (!dados) return [];
+    return dados.itens
+      .map(item => ({ item, ocorrencias: duplicidadesPorItemId.get(item.id) || [] }))
+      .filter(entry => entry.ocorrencias.length > 0);
+  }, [dados, duplicidadesPorItemId]);
 
   const alterarCabecalho = (patch: Partial<AseHoraExtraCompleta>) => {
     let deveBuscarProtocolo = false;
@@ -1130,20 +1203,8 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     }
   }, [dados, setores, toast]);
 
-  /**
-   * Confirma o "carrinho" do seletor: grava todos os escolhidos de uma vez.
-   * O percentual de HE é buscado uma vez só — é o mesmo para a data inteira.
-   */
-  const adicionarColaboradoresEmLote = async (escolhidos: RhPessoa[]) => {
-    if (!dados || escolhidos.length === 0) return;
-    const jaNaAse = new Set(dados.itens.map(it => it.pessoa_id).filter(Boolean));
-    const novos = escolhidos.filter(p => !jaNaAse.has(p.id));
-    if (novos.length === 0) {
-      toast.info('Os colaboradores selecionados já estão nesta ASE.');
-      setBuscaAberta(false);
-      return;
-    }
-
+  const inserirColaboradoresEmLote = async (novos: RhPessoa[]) => {
+    if (!dados || novos.length === 0) return;
     setSalvandoSelecao(true);
     try {
       let percentualSugerido: number | null = null;
@@ -1178,12 +1239,53 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     }
   };
 
-  // Colaborador digitado à mão ("Outro"): entra sem vínculo com rh_pessoas
-  // (pessoa_id null). Nome/registro/função ficam editáveis na linha.
-  const adicionarColaboradorManual = async (info: { nome: string; registro: string; cargo: string }) => {
+  /**
+   * Confirma o "carrinho" do seletor: checa duplicidade em outras ASEs da data
+   * antes de gravar todos os escolhidos de uma vez.
+   */
+  const adicionarColaboradoresEmLote = async (escolhidos: RhPessoa[]) => {
+    if (!dados || escolhidos.length === 0) return;
+    const jaNaAse = new Set(dados.itens.map(it => it.pessoa_id).filter(Boolean));
+    const novos = escolhidos.filter(p => !jaNaAse.has(p.id));
+    if (novos.length === 0) {
+      toast.info('Os colaboradores selecionados já estão nesta ASE.');
+      setBuscaAberta(false);
+      return;
+    }
+
+    setSalvandoSelecao(true);
+    let conflitos: ConflitoDuplicidadeAse[] = [];
+    try {
+      const recentes = (await recarregarOutrasAsesDia(dados.data_execucao, dados.id)) ?? outrasAsesDia;
+      const indiceAtual = construirIndiceDuplicidadeAse(recentes, dados.id);
+      conflitos = novos
+        .map(p => ({
+          nome: p.nome,
+          registro: p.registro,
+          ocorrencias: buscarDuplicidadesColaborador(indiceAtual, {
+            pessoa_id: p.id,
+            registro: p.registro,
+            nome: p.nome,
+          }),
+        }))
+        .filter(c => c.ocorrencias.length > 0);
+    } finally {
+      setSalvandoSelecao(false);
+    }
+
+    if (conflitos.length > 0) {
+      setConfirmacao({ tipo: 'duplicidade-lote', novos, conflitos });
+      return;
+    }
+
+    await inserirColaboradoresEmLote(novos);
+  };
+
+  const inserirColaboradorManual = async (info: { nome: string; registro: string; cargo: string }) => {
     if (!dados) return;
     const nome = info.nome.trim();
     if (!nome) return;
+    setSalvandoSelecao(true);
     let percentualSugerido: number | null = null;
     try {
       percentualSugerido = await api.buscarPercentualHE(dados.data_execucao);
@@ -1209,7 +1311,38 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       setBuscaAberta(false);
     } catch (e) {
       toast.error(`Não foi possível adicionar o colaborador: ${(e as Error).message}`);
+    } finally {
+      setSalvandoSelecao(false);
     }
+  };
+
+  // Colaborador digitado à mão ("Outro"): entra sem vínculo com rh_pessoas
+  // (pessoa_id null). Nome/registro/função ficam editáveis na linha.
+  const adicionarColaboradorManual = async (info: { nome: string; registro: string; cargo: string }) => {
+    if (!dados) return;
+    const nome = info.nome.trim();
+    if (!nome) return;
+
+    setSalvandoSelecao(true);
+    let ocorrencias: OcorrenciaColaboradorAse[] = [];
+    try {
+      const recentes = (await recarregarOutrasAsesDia(dados.data_execucao, dados.id)) ?? outrasAsesDia;
+      const indiceAtual = construirIndiceDuplicidadeAse(recentes, dados.id);
+      ocorrencias = buscarDuplicidadesColaborador(indiceAtual, {
+        pessoa_id: null,
+        registro: info.registro,
+        nome,
+      });
+    } finally {
+      setSalvandoSelecao(false);
+    }
+
+    if (ocorrencias.length > 0) {
+      setConfirmacao({ tipo: 'duplicidade-manual', info: { ...info, nome }, ocorrencias });
+      return;
+    }
+
+    await inserirColaboradorManual({ ...info, nome });
   };
 
   const removerItem = async (it: AseHoraExtraItem) => {
@@ -1267,6 +1400,17 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           },
           6000
         );
+      } else if (confirmacao.tipo === 'duplicidade-lote') {
+        const { novos } = confirmacao;
+        setConfirmacao(null);
+        await inserirColaboradoresEmLote(novos);
+      } else if (confirmacao.tipo === 'duplicidade-manual') {
+        const { info } = confirmacao;
+        setConfirmacao(null);
+        await inserirColaboradorManual(info);
+      } else if (confirmacao.tipo === 'duplicidade-enviar') {
+        setConfirmacao(null);
+        await enviar(true);
       }
     } catch (e) {
       toast.error(`Falha ao excluir: ${(e as Error).message}`);
@@ -1275,7 +1419,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     }
   };
 
-  const enviar = async () => {
+  const enviar = async (ignorarAlertaDuplicidade = false) => {
     if (!dados) return;
     // Setor, turno e data do expediente identificam a ASE — sem eles o e-mail
     // ao RH sai com "-" no lugar do que define a autorização.
@@ -1299,6 +1443,25 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     if (semHorario) {
       toast.warning('Preencha o horário de entrada e saída de todos os colaboradores.');
       return;
+    }
+    if (!ignorarAlertaDuplicidade) {
+      const recentes = (await recarregarOutrasAsesDia(dados.data_execucao, dados.id)) ?? outrasAsesDia;
+      const indiceAtual = construirIndiceDuplicidadeAse(recentes, dados.id);
+      const conflitos = dados.itens
+        .map(it => ({
+          nome: it.nome,
+          registro: it.registro,
+          ocorrencias: buscarDuplicidadesColaborador(indiceAtual, {
+            pessoa_id: it.pessoa_id,
+            registro: it.registro,
+            nome: it.nome,
+          }),
+        }))
+        .filter(c => c.ocorrencias.length > 0);
+      if (conflitos.length > 0) {
+        setConfirmacao({ tipo: 'duplicidade-enviar', conflitos });
+        return;
+      }
     }
     const protPersistido = await salvar(true);
     if (!protPersistido) return;
@@ -1553,6 +1716,34 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         </div>
       )}
 
+      {itensDuplicadosNaAse.length > 0 && dados.status !== 'CANCELADO' && (
+        <div
+          role="alert"
+          className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-200"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0 space-y-1">
+            <p className="font-bold">
+              {itensDuplicadosNaAse.length === 1
+                ? `1 colaborador já consta em outra ASE em ${formatDataBR(dados.data_execucao)}:`
+                : `${itensDuplicadosNaAse.length} colaboradores já constam em outra ASE em ${formatDataBR(dados.data_execucao)}:`}
+            </p>
+            <ul className="space-y-0.5 text-[11px]">
+              {itensDuplicadosNaAse.map(({ item, ocorrencias }) => (
+                <li key={item.id}>
+                  <strong>{item.nome}</strong>
+                  {item.registro ? ` (${item.registro})` : ''}:{' '}
+                  {ocorrencias.map(formatarResumoOcorrenciaAse).join(' | ')}
+                </li>
+              ))}
+            </ul>
+            <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90">
+              Alinhe com o outro gestor para evitar lançamento duplicado do mesmo colaborador.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Dados gerais */}
       <section data-tour="ase-edicao-dados" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -1632,7 +1823,10 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             <div data-tour="ase-edicao-adicionar" className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => setBuscaAberta(true)}
+                onClick={() => {
+                  setBuscaAberta(true);
+                  if (dados.data_execucao) void recarregarOutrasAsesDia(dados.data_execucao, dados.id);
+                }}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 cursor-pointer"
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -1739,6 +1933,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                   item={it}
                   somenteLeitura={somenteLeitura}
                   dataExecucao={dados.data_execucao}
+                  duplicidades={duplicidadesPorItemId.get(it.id)}
                   onChange={patch => alterarItem(it.id, patch)}
                   onRemover={() => removerItem(it)}
                 />
@@ -1929,6 +2124,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                       item={it}
                       somenteLeitura={somenteLeitura}
                       dataExecucao={dados.data_execucao}
+                      duplicidades={duplicidadesPorItemId.get(it.id)}
                       onChange={patch => alterarItem(it.id, patch)}
                       onRemover={() => removerItem(it)}
                     />
@@ -2073,7 +2269,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                 </button>
                 <button
                   type="button"
-                  onClick={enviar}
+                  onClick={() => { void enviar(); }}
                   disabled={salvando}
                   className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60 cursor-pointer"
                 >
@@ -2103,7 +2299,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                 </button>
                 <button
                   type="button"
-                  onClick={enviar}
+                  onClick={() => { void enviar(); }}
                   disabled={salvando}
                   className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60 cursor-pointer"
                 >
@@ -2120,10 +2316,117 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         <SeletorColaboradoresModal
           pessoas={pessoas}
           jaAdicionados={new Set(dados.itens.map(it => it.pessoa_id).filter(Boolean) as string[])}
+          indiceDuplicidade={indiceDuplicidade}
           onConfirmar={adicionarColaboradoresEmLote}
           onAdicionarManual={adicionarColaboradorManual}
           onFechar={() => setBuscaAberta(false)}
           salvando={salvandoSelecao}
+        />
+      )}
+
+      {confirmacao?.tipo === 'duplicidade-lote' && (
+        <ConfirmDialog
+          titulo={
+            confirmacao.conflitos.length === 1
+              ? 'Colaborador já está em outra ASE nesta data'
+              : `${confirmacao.conflitos.length} colaboradores já estão em outra ASE nesta data`
+          }
+          mensagem={(
+            <div className="space-y-2">
+              <p>
+                {confirmacao.conflitos.length === 1
+                  ? `O colaborador abaixo já foi incluído em outra ASE para ${formatDataBR(dados.data_execucao)}:`
+                  : `Os colaboradores abaixo já foram incluídos em outra ASE para ${formatDataBR(dados.data_execucao)}:`}
+              </p>
+              <ul className="max-h-48 space-y-1.5 overflow-y-auto rounded-lg border border-amber-200 bg-amber-50/70 p-2.5 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                {confirmacao.conflitos.map(c => (
+                  <li key={`${c.registro}-${c.nome}`}>
+                    <p className="font-bold">
+                      {c.nome}{c.registro ? ` (${c.registro})` : ''}
+                    </p>
+                    {c.ocorrencias.map(oc => (
+                      <p key={oc.solicitacaoId} className="text-[11px] text-amber-800 dark:text-amber-300">
+                        {formatarResumoOcorrenciaAse(oc)}
+                      </p>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Deseja adicionar mesmo assim (por exemplo, para horários diferentes) ou voltar para ajustar a seleção?
+              </p>
+            </div>
+          )}
+          confirmarLabel="Adicionar mesmo assim"
+          cancelarLabel="Voltar e revisar"
+          confirmando={processando || salvandoSelecao}
+          onConfirmar={confirmarAcao}
+          onCancelar={() => setConfirmacao(null)}
+        />
+      )}
+
+      {confirmacao?.tipo === 'duplicidade-manual' && (
+        <ConfirmDialog
+          titulo="Colaborador já está em outra ASE nesta data"
+          mensagem={(
+            <div className="space-y-2">
+              <p>
+                <strong>{confirmacao.info.nome}</strong>
+                {confirmacao.info.registro ? ` (${confirmacao.info.registro})` : ''} já consta em outra ASE para{' '}
+                {formatDataBR(dados.data_execucao)}:
+              </p>
+              <ul className="space-y-1 rounded-lg border border-amber-200 bg-amber-50/70 p-2.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                {confirmacao.ocorrencias.map(oc => (
+                  <li key={oc.solicitacaoId}>{formatarResumoOcorrenciaAse(oc)}</li>
+                ))}
+              </ul>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Deseja adicionar mesmo assim ou voltar para conferir?
+              </p>
+            </div>
+          )}
+          confirmarLabel="Adicionar mesmo assim"
+          cancelarLabel="Voltar e revisar"
+          confirmando={processando || salvandoSelecao}
+          onConfirmar={confirmarAcao}
+          onCancelar={() => setConfirmacao(null)}
+        />
+      )}
+
+      {confirmacao?.tipo === 'duplicidade-enviar' && (
+        <ConfirmDialog
+          titulo="Enviar ASE com colaborador em outra ASE?"
+          mensagem={(
+            <div className="space-y-2">
+              <p>
+                {confirmacao.conflitos.length === 1
+                  ? `1 colaborador desta ASE também consta em outra ASE em ${formatDataBR(dados.data_execucao)}:`
+                  : `${confirmacao.conflitos.length} colaboradores desta ASE também constam em outra ASE em ${formatDataBR(dados.data_execucao)}:`}
+              </p>
+              <ul className="max-h-48 space-y-1.5 overflow-y-auto rounded-lg border border-amber-200 bg-amber-50/70 p-2.5 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                {confirmacao.conflitos.map(c => (
+                  <li key={`${c.registro}-${c.nome}`}>
+                    <p className="font-bold">
+                      {c.nome}{c.registro ? ` (${c.registro})` : ''}
+                    </p>
+                    {c.ocorrencias.map(oc => (
+                      <p key={oc.solicitacaoId} className="text-[11px] text-amber-800 dark:text-amber-300">
+                        {formatarResumoOcorrenciaAse(oc)}
+                      </p>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Confirme se não há duplicidade com o outro gestor antes de enviar.
+              </p>
+            </div>
+          )}
+          confirmarLabel="Enviar mesmo assim"
+          cancelarLabel="Revisar lista"
+          confirmando={processando || salvando}
+          onConfirmar={confirmarAcao}
+          onCancelar={() => setConfirmacao(null)}
         />
       )}
 
@@ -2189,11 +2492,12 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
 // =====================================================================
 
 function CardColaboradorMobile({
-  item, somenteLeitura, dataExecucao, onChange, onRemover,
+  item, somenteLeitura, dataExecucao, duplicidades, onChange, onRemover,
 }: {
   item: AseHoraExtraItem;
   somenteLeitura: boolean;
   dataExecucao?: string | null;
+  duplicidades?: OcorrenciaColaboradorAse[];
   onChange: (patch: Partial<AseHoraExtraItem>) => void;
   onRemover: () => void;
 }) {
@@ -2202,12 +2506,17 @@ function CardColaboradorMobile({
     ? `Saída ${diaSeguinteAse(dataExecucao) ? `em ${diaSeguinteAse(dataExecucao)} ` : ''}(dia seguinte)`
     : null;
   const excedeLimiteClt = (item.total_horas || 0) > LIMITE_DIARIO_CLT_HORAS;
+  const temDuplicidade = Boolean(duplicidades && duplicidades.length > 0);
   const inputStyle = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50';
   const manual = item.pessoa_id === null;
   const editavelManual = manual && !somenteLeitura;
 
   return (
-    <div className="relative rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-3 dark:border-slate-800 dark:bg-slate-900/60 shadow-sm">
+    <div className={`relative rounded-xl border p-3.5 space-y-3 shadow-sm ${
+      temDuplicidade
+        ? 'border-amber-300 bg-amber-50/50 dark:border-amber-800/80 dark:bg-amber-950/20'
+        : 'border-slate-200 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-900/60'
+    }`}>
       {/* Topo: Nome, Matrícula e Ações */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -2235,6 +2544,19 @@ function CardColaboradorMobile({
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.cargo}</p>
               )}
             </>
+          )}
+
+          {/* Alerta de duplicidade em outra ASE na mesma data */}
+          {temDuplicidade && duplicidades && (
+            <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-amber-100/80 px-2 py-1 text-[10px] font-semibold text-amber-900 dark:bg-amber-950/60 dark:text-amber-300">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-700 dark:text-amber-400" />
+              <div className="min-w-0 space-y-0.5">
+                <span>Já em outra ASE nesta data:</span>
+                {duplicidades.map(oc => (
+                  <p key={oc.solicitacaoId} className="font-normal">{formatarResumoOcorrenciaAse(oc)}</p>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Rota / Ponto / Contato quando transporte marcado */}
@@ -2382,11 +2704,12 @@ function CardColaboradorMobile({
 // =====================================================================
 
 function LinhaColaborador({
-  item, somenteLeitura, dataExecucao, onChange, onRemover,
+  item, somenteLeitura, dataExecucao, duplicidades, onChange, onRemover,
 }: {
   item: AseHoraExtraItem;
   somenteLeitura: boolean;
   dataExecucao?: string | null;
+  duplicidades?: OcorrenciaColaboradorAse[];
   onChange: (patch: Partial<AseHoraExtraItem>) => void;
   onRemover: () => void;
 }) {
@@ -2395,12 +2718,17 @@ function LinhaColaborador({
     ? `Saída ${diaSeguinteAse(dataExecucao) ? `em ${diaSeguinteAse(dataExecucao)} ` : ''}(dia seguinte)`
     : null;
   const excedeLimiteClt = (item.total_horas || 0) > LIMITE_DIARIO_CLT_HORAS;
+  const temDuplicidade = Boolean(duplicidades && duplicidades.length > 0);
   const cellInput = 'h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50';
   const manual = item.pessoa_id === null;
   const editavelManual = manual && !somenteLeitura;
 
   return (
-    <tr className="border-b border-slate-100 align-middle hover:bg-slate-50/50 dark:border-slate-800/70 dark:hover:bg-slate-800/30">
+    <tr className={`border-b border-slate-100 align-middle dark:border-slate-800/70 ${
+      temDuplicidade
+        ? 'bg-amber-50/50 hover:bg-amber-50/80 dark:bg-amber-950/15 dark:hover:bg-amber-950/25'
+        : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
+    }`}>
       {!somenteLeitura && (
         <td className="w-10 px-2 py-2 text-center">
           <button aria-label="Excluir da ASE"
@@ -2428,6 +2756,14 @@ function LinhaColaborador({
           <span className="ml-1.5 whitespace-nowrap rounded bg-amber-100 px-1 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
             NÃO CADASTRADO
           </span>
+        )}
+        {temDuplicidade && duplicidades && (
+          <div className="mt-1 flex items-start gap-1 text-[10px] text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
+            <span className="font-semibold">
+              Em outra ASE: {duplicidades.map(formatarResumoOcorrenciaAse).join(' | ')}
+            </span>
+          </div>
         )}
         {item.transporte && (item.rota_transporte || item.ponto_embarque_transporte) && (
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">

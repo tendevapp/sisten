@@ -22,6 +22,7 @@ import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from '
 import { buscarTudo } from './buscarTudo';
 import { situacaoParaAtivo, type PessoaImportada } from './rhPessoasImport';
 import { corrigirTextoTreinamento, diaSemanaPtBr, normalizarHorarioTreinamento, type TreinamentoImportado } from './rhTreinamentosImport';
+import type { AseMesmoDiaResumo } from './aseDuplicidade';
 
 export interface RhImportSummary {
   lidos: number;
@@ -1212,6 +1213,61 @@ export async function obterSolicitacaoASE(id: string, incluirExcluidos = false):
     solicitante_nome: row.solicitante?.name ?? null,
     itens: semExcluidos(row.itens, incluirExcluidos).map((it: any) => normalizarItem(it, rotasMap)),
   } as AseHoraExtraCompleta;
+}
+
+/**
+ * Consulta leve das outras ASEs ativas (RASCUNHO e ENVIADO) da mesma data de execucao,
+ * usada para alertar quando um colaborador ja foi incluido por outro gestor.
+ */
+export async function listarSolicitacoesASEPorData(
+  dataExecucao: string,
+  excluirSolicitacaoId?: string,
+): Promise<AseMesmoDiaResumo[]> {
+  if (!dataExecucao) return [];
+
+  let query = supabase
+    .from('rh_ase_solicitacoes')
+    .select(`
+      id,
+      numero_protocolo,
+      status,
+      data_execucao,
+      excluido_em,
+      setor:rh_setores (nome),
+      turno:rh_turnos (nome),
+      solicitante:profiles!rh_ase_solicitacoes_solicitante_id_fkey (name),
+      itens:rh_ase_itens (id, pessoa_id, registro, nome, hora_entrada, hora_saida, excluido_em)
+    `)
+    .eq('data_execucao', dataExecucao)
+    .in('status', ['RASCUNHO', 'ENVIADO'])
+    .is('excluido_em', null);
+
+  if (excluirSolicitacaoId) {
+    query = query.neq('id', excluirSolicitacaoId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    numero_protocolo: row.numero_protocolo,
+    status: row.status,
+    data_execucao: row.data_execucao,
+    excluido_em: row.excluido_em ?? null,
+    setor_nome: row.setor?.nome ?? null,
+    turno_nome: row.turno?.nome ?? null,
+    solicitante_nome: row.solicitante?.name ?? null,
+    itens: semExcluidos(row.itens, false).map((it: any) => ({
+      id: it.id,
+      pessoa_id: it.pessoa_id ?? null,
+      registro: it.registro ?? '',
+      nome: it.nome ?? '',
+      hora_entrada: it.hora_entrada ? String(it.hora_entrada).slice(0, 5) : '',
+      hora_saida: it.hora_saida ? String(it.hora_saida).slice(0, 5) : '',
+      excluido_em: it.excluido_em ?? null,
+    })),
+  })) as AseMesmoDiaResumo[];
 }
 
 /** Cria o cabeçalho já no banco com o padrão ASE-DDMMAA-SETOR. Concorrência segura com resolução de sufixo sequencial. */

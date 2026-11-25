@@ -16,14 +16,21 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Search, Users, X, Plus, Check, ShoppingCart, Filter, UserPlus } from 'lucide-react';
+import { Search, Users, X, Plus, Check, ShoppingCart, Filter, UserPlus, AlertTriangle } from 'lucide-react';
 import type { RhPessoa } from '../../types';
+import {
+  buscarDuplicidadesColaborador,
+  formatarResumoOcorrenciaAse,
+  type IndiceDuplicidadeAse,
+} from '../../lib/aseDuplicidade';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 
 interface SeletorColaboradoresModalProps {
   pessoas: RhPessoa[];
   /** Ids de `rh_pessoas` já presentes na ASE — aparecem marcados e travados. */
   jaAdicionados: Set<string>;
+  /** Indice de colaboradores ja incluidos em outras ASEs na mesma data. */
+  indiceDuplicidade?: IndiceDuplicidadeAse;
   onConfirmar: (escolhidos: RhPessoa[]) => void;
   onAdicionarManual: (dados: { nome: string; registro: string; cargo: string }) => void;
   onFechar: () => void;
@@ -47,6 +54,7 @@ const semAcento = (v: string) => v.normalize('NFD').replace(/\p{Diacritic}/gu, '
 export default function SeletorColaboradoresModal({
   pessoas,
   jaAdicionados,
+  indiceDuplicidade,
   onConfirmar,
   onAdicionarManual,
   onFechar,
@@ -125,6 +133,16 @@ export default function SeletorColaboradoresModal({
 
   const filtrosAtivos = CAMPOS.filter(c => filtros[c]).length + (termo.trim() ? 1 : 0);
 
+  const duplicidadesManual = useMemo(() => {
+    if (!indiceDuplicidade) return [];
+    if (manual.nome.trim().length < 3 && manual.registro.trim().length < 2) return [];
+    return buscarDuplicidadesColaborador(indiceDuplicidade, {
+      pessoa_id: null,
+      registro: manual.registro,
+      nome: manual.nome,
+    });
+  }, [indiceDuplicidade, manual.nome, manual.registro]);
+
   const selectClass = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 cursor-pointer';
   const campoManual = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs uppercase text-slate-900 placeholder:normal-case focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50';
 
@@ -198,17 +216,26 @@ export default function SeletorColaboradoresModal({
                 />
               </div>
             </div>
+            {duplicidadesManual.length > 0 && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="min-w-0 space-y-0.5">
+                  <p className="font-bold">Colaborador já consta em outra ASE nesta data:</p>
+                  {duplicidadesManual.map(oc => (
+                    <p key={oc.solicitacaoId} className="truncate">{formatarResumoOcorrenciaAse(oc)}</p>
+                  ))}
+                </div>
+              </div>
+            )}
             <button
               type="button"
-              disabled={!manual.nome.trim()}
+              disabled={!manual.nome.trim() || salvando}
               onClick={() => {
                 onAdicionarManual({
                   nome: manual.nome.trim(),
                   registro: manual.registro.trim(),
                   cargo: manual.cargo.trim(),
                 });
-                setManual({ nome: '', registro: '', cargo: '' });
-                setModoManual(false);
               }}
               className="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
@@ -300,6 +327,14 @@ export default function SeletorColaboradoresModal({
                   const jaNaAse = jaAdicionados.has(p.id);
                   const marcado = idsCarrinho.has(p.id);
                   const detalhes = [p.cargo, p.area || p.subsetor, p.turno].filter(Boolean).join(' · ');
+                  const ocorrenciasOutraAse = !jaNaAse && indiceDuplicidade
+                    ? buscarDuplicidadesColaborador(indiceDuplicidade, {
+                        pessoa_id: p.id,
+                        registro: p.registro,
+                        nome: p.nome,
+                      })
+                    : [];
+                  const emOutraAse = ocorrenciasOutraAse.length > 0;
                   return (
                     <li key={p.id}>
                       <button
@@ -310,13 +345,19 @@ export default function SeletorColaboradoresModal({
                           jaNaAse
                             ? 'cursor-not-allowed opacity-50'
                             : marcado
-                              ? 'bg-blue-50/70 dark:bg-blue-950/25 cursor-pointer'
-                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer'
+                              ? emOutraAse
+                                ? 'bg-amber-50/90 dark:bg-amber-950/35 cursor-pointer'
+                                : 'bg-blue-50/70 dark:bg-blue-950/25 cursor-pointer'
+                              : emOutraAse
+                                ? 'bg-amber-50/40 hover:bg-amber-50/80 dark:bg-amber-950/15 dark:hover:bg-amber-950/30 cursor-pointer'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer'
                         }`}
                       >
                         <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
                           marcado || jaNaAse
-                            ? 'border-blue-600 bg-blue-600 text-white'
+                            ? emOutraAse
+                              ? 'border-amber-600 bg-amber-600 text-white'
+                              : 'border-blue-600 bg-blue-600 text-white'
                             : 'border-slate-300 dark:border-slate-600'
                         }`}>
                           {(marcado || jaNaAse) && <Check className="h-3.5 w-3.5" />}
@@ -326,10 +367,24 @@ export default function SeletorColaboradoresModal({
                           <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">
                             {p.registro}{detalhes ? ` · ${detalhes}` : ''}
                           </span>
+                          {emOutraAse && (
+                            <span className="mt-0.5 block truncate text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                              Já em: {ocorrenciasOutraAse.map(formatarResumoOcorrenciaAse).join(' | ')}
+                            </span>
+                          )}
                         </span>
                         {jaNaAse && (
                           <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                             Já na ASE
+                          </span>
+                        )}
+                        {emOutraAse && (
+                          <span
+                            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-800 dark:bg-amber-950/70 dark:text-amber-300"
+                            title={ocorrenciasOutraAse.map(formatarResumoOcorrenciaAse).join('\n')}
+                          >
+                            <AlertTriangle className="h-3 w-3" />
+                            {ocorrenciasOutraAse.length > 1 ? `Em ${ocorrenciasOutraAse.length} ASEs` : 'Em outra ASE'}
                           </span>
                         )}
                       </button>
@@ -360,22 +415,40 @@ export default function SeletorColaboradoresModal({
               <span className="text-[11px] text-slate-500">Nenhum colaborador selecionado.</span>
             ) : (
               <div className="flex max-h-16 min-w-0 flex-1 flex-wrap gap-1 overflow-y-auto">
-                {carrinho.map(p => (
-                  <span
-                    key={p.id}
-                    className="inline-flex max-w-full items-center gap-1 rounded-full bg-blue-50 py-0.5 pl-2 pr-1 text-[10px] font-bold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"
-                  >
-                    <span className="truncate">{p.nome}</span>
-                    <button
-                      type="button"
-                      onClick={() => alternar(p)}
-                      aria-label={`Remover ${p.nome}`}
-                      className="shrink-0 rounded-full p-0.5 hover:bg-blue-200/70 dark:hover:bg-blue-900 cursor-pointer"
+                {carrinho.map(p => {
+                  const duplicado = Boolean(
+                    indiceDuplicidade && buscarDuplicidadesColaborador(indiceDuplicidade, {
+                      pessoa_id: p.id,
+                      registro: p.registro,
+                      nome: p.nome,
+                    }).length > 0,
+                  );
+                  return (
+                    <span
+                      key={p.id}
+                      className={`inline-flex max-w-full items-center gap-1 rounded-full py-0.5 pl-2 pr-1 text-[10px] font-bold ${
+                        duplicado
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                          : 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'
+                      }`}
                     >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  </span>
-                ))}
+                      {duplicado && <AlertTriangle className="h-2.5 w-2.5 shrink-0" />}
+                      <span className="truncate">{p.nome}</span>
+                      <button
+                        type="button"
+                        onClick={() => alternar(p)}
+                        aria-label={`Remover ${p.nome}`}
+                        className={`shrink-0 rounded-full p-0.5 cursor-pointer ${
+                          duplicado
+                            ? 'hover:bg-amber-200/70 dark:hover:bg-amber-900'
+                            : 'hover:bg-blue-200/70 dark:hover:bg-blue-900'
+                        }`}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             )}
           </div>
