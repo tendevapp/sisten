@@ -84,11 +84,22 @@ const ETAPAS: Record<Request['type'], { key: string; label: string }[]> = {
   ],
 };
 
+/** Serviço não passa por cotação no SISTEN: termina com a RM aberta no SAP. */
+const ETAPAS_SERVICO = [
+  { key: 'pendente', label: 'Aprovação do gestor' },
+  { key: 'aprovada', label: 'Abertura da RM' },
+  { key: 'concluida', label: 'Concluída' },
+];
+
+function etapasDe(r: Request): { key: string; label: string }[] {
+  return tipoNaFila(r) === 'servico' ? ETAPAS_SERVICO : ETAPAS[r.type];
+}
+
 /** Status que saem do trilho: a solicitação parou antes do fim. */
 const INTERROMPIDOS = ['rejeitada', 'cancelada'];
 
 function etapaAtual(r: Request): number {
-  const idx = ETAPAS[r.type].findIndex(e => e.key === r.status);
+  const idx = etapasDe(r).findIndex(e => e.key === r.status);
   if (idx !== -1) return idx;
   if (INTERROMPIDOS.includes(r.status)) return -1;
   return 0;
@@ -497,7 +508,7 @@ export default function RequestDetailPanel({
           </p>
         ) : (
           <ol className="flex items-start gap-1">
-            {ETAPAS[request.type].map((etapa, i) => {
+            {etapasDe(request).map((etapa, i) => {
               const atual = etapaAtual(request);
               const concluida = i < atual;
               const ativa = i === atual;
@@ -872,7 +883,9 @@ export default function RequestDetailPanel({
               )}
               {request.tipo_compra && <Campo rotulo="Tipo de compra" valor={request.tipo_compra} />}
               {request.linked_rm_number && <Campo rotulo="RM vinculada" valor={request.linked_rm_number} />}
-              {request.atendente_name && <Campo rotulo="Atendente" valor={request.atendente_name} />}
+              {request.atendente_name && (
+                <Campo rotulo={ehServico ? 'Finalizado por' : 'Atendente'} valor={request.atendente_name} />
+              )}
               {request.target_sector_id && <Campo rotulo="Setor de destino" valor={nomeSetor(request.target_sector_id)} />}
               {request.local && <Campo rotulo="Local" valor={request.local} />}
               {request.registration_type && <Campo rotulo="Tipo de cadastro" valor={request.registration_type} />}
@@ -1447,6 +1460,11 @@ function ItemLinha({
           {ehGenerico && (
             <span className="ml-2 rounded px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-2xs">
               ITEM GENÉRICO
+            </span>
+          )}
+          {item.regularizacao_servico && (
+            <span className="ml-2 rounded px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-amber-600 text-white shadow-2xs">
+              REGULARIZAÇÃO DE SERVIÇO
             </span>
           )}
         </p>

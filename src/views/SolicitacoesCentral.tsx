@@ -9,7 +9,7 @@
  * criticidade e período.
  */
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ClipboardList, Clock, Download, FileEdit, FileSpreadsheet, Loader2, PlusCircle, Search,
   HelpCircle, Bug, Lightbulb, List, LayoutGrid,
@@ -144,6 +144,7 @@ const ROTULOS_STATUS_COLUNA: string[] = [
   'Em cotação',
   'Pedido emitido',
   'Entregue',
+  'Concluída',
   'Resolvida',
   'Fechada',
   'Cancelada',
@@ -173,6 +174,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
     setor: 'todos',
     statusFiltro: 'todas',
     dataFiltro: 'todas',
+    finalizadoPor: 'todos',
     visao: visaoPadrao(),
     ordenacao: null as Ordenacao | null,
   });
@@ -191,6 +193,9 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
     ROTULOS_STATUS_COLUNA.includes(cache.statusFiltro) ? cache.statusFiltro : 'todas',
   );
   const [dataFiltro, setDataFiltro] = useState<string>(cache.dataFiltro || 'todas');
+  // Serviço concluído: quem informou a RM aberta no SAP (atendente_name).
+  const [finalizadoPor, setFinalizadoPor] = useState<string>(cache.finalizadoPor || 'todos');
+  const idFinalizadoPor = useId();
   const [visao, setVisao] = useState<ModoVisao>((cache.visao as ModoVisao) || visaoPadrao());
   // null = ordem da fila (pendências primeiro); clique no cabeçalho troca.
   const [ordenacao, setOrdenacao] = useState<Ordenacao | null>(cache.ordenacao ?? null);
@@ -209,9 +214,9 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
   useEffect(() => {
     localDb.setPageCache('solicitacoes_central', {
-      escopo, busca, tipo, criticidade, setor, statusFiltro, dataFiltro, visao, ordenacao,
+      escopo, busca, tipo, criticidade, setor, statusFiltro, dataFiltro, finalizadoPor, visao, ordenacao,
     });
-  }, [escopo, busca, tipo, criticidade, setor, statusFiltro, dataFiltro, visao, ordenacao]);
+  }, [escopo, busca, tipo, criticidade, setor, statusFiltro, dataFiltro, finalizadoPor, visao, ordenacao]);
 
   const carregar = () => {
     setTodas(localDb.getRequests());
@@ -311,8 +316,22 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
   /* Filtros e Linhas -------------------------------------------------------- */
 
+  /** Quem já finalizou serviço (informou a RM): opções do filtro "Finalizado por". */
+  const finalizadoresServico = useMemo(() => {
+    const nomes = new Set<string>();
+    for (const r of universo) {
+      if (tipoNaFila(r) === 'servico' && r.status === 'concluida' && r.atendente_name) nomes.add(r.atendente_name);
+    }
+    return [...nomes].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [universo]);
+
   const antesDoTipo = useMemo(() => {
     let lista = filtrarPorEscopo(universo, user, escopo, pendencias);
+
+    if (finalizadoPor !== 'todos') {
+      lista = lista.filter(r =>
+        tipoNaFila(r) === 'servico' && r.status === 'concluida' && r.atendente_name === finalizadoPor);
+    }
 
     // Filtro por status: o valor é o próprio rótulo da coluna Status, então o
     // que se escolhe aqui é exatamente o que aparece na linha.
@@ -393,7 +412,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
       }
     }
     return lista;
-  }, [universo, user, escopo, pendencias, statusFiltro, criticidade, setor, dataFiltro, busca, sectors, itensPorRequestId]);
+  }, [universo, user, escopo, pendencias, statusFiltro, criticidade, setor, dataFiltro, finalizadoPor, busca, sectors, itensPorRequestId]);
 
   const contagemPorTipo = useMemo(() => {
     const contagem = { total: antesDoTipo.length, compra: 0, servico: 0, cadastro_sap: 0, chamado: 0 };
@@ -459,6 +478,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
     setCriticidade('todas');
     setSetor('todos');
     setDataFiltro('todas');
+    setFinalizadoPor('todos');
     setTipo('todos');
   };
 
@@ -756,6 +776,24 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
               <option value="este_mes">Este mês</option>
             </select>
           </div>
+
+          {/* Finalizado por (serviço concluído com a RM do SAP) */}
+          {(finalizadoresServico.length > 0 || finalizadoPor !== 'todos') && (
+            <div>
+              <label htmlFor={idFinalizadoPor} className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Serviço finalizado por</label>
+              <select
+                id={idFinalizadoPor}
+                value={finalizadoPor}
+                onChange={e => setFinalizadoPor(e.target.value)}
+                className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:border-emerald-600 focus:outline-none cursor-pointer"
+              >
+                <option value="todos">Todos</option>
+                {[...new Set([...finalizadoresServico, ...(finalizadoPor !== 'todos' ? [finalizadoPor] : [])])].map(nome => (
+                  <option key={nome} value={nome}>{nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Limpar filtros */}
           <button

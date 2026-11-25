@@ -82,6 +82,7 @@ export function solicitacoesVisiveis(todas: Request[], user: Profile): Request[]
  */
 export function rotuloStatus(r: Request): string {
   if (r.type === 'compra' && r.status === 'pendente') return 'Aguardando aprovação';
+  if (r.status === 'concluida' && tipoNaFila(r) === 'servico') return 'Concluída';
 
   const rotulos: Record<string, string> = {
     rascunho: 'Rascunho',
@@ -403,6 +404,7 @@ export async function exportarSolicitacoes(selecionadas: Request[], sectors: Sec
       'Código SAP': it.sap_code || '',
       'Sem código SAP': sim(it.has_no_sap_code),
       'Item genérico': sim(it.is_generic),
+      'Regularização de serviço': sim(it.regularizacao_servico),
       'Quantidade': it.quantity,
       'Unidade': it.unit,
       'Marca': it.brand || '',

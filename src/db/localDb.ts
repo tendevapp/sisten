@@ -4137,9 +4137,22 @@ class LocalDatabase {
     this.setStorageItem(this.commentsKey, [
       ...this.getAllRequestComments().filter(c => c.id !== comentario.id), comentario,
     ]);
-    this.setStorageItem(this.requestsKey, this.getRequests().map(r =>
-      r.id === reqId ? { ...r, linked_rm_number: numeroRm } : r,
-    ));
+    // Espelha o que a RPC gravou: a RM conclui o serviço e registra quem finalizou.
+    const user = this.getCurrentUser();
+    const agora = new Date().toISOString();
+    this.setStorageItem(this.requestsKey, this.getRequests().map(r => {
+      if (r.id !== reqId) return r;
+      const jaConcluida = r.status === 'concluida';
+      return {
+        ...r,
+        linked_rm_number: numeroRm,
+        status: 'concluida' as RequestStatus,
+        atendente_id: jaConcluida ? (r.atendente_id ?? user?.id) : user?.id,
+        atendente_name: jaConcluida ? (r.atendente_name ?? user?.name) : user?.name,
+        resolved_at: jaConcluida ? (r.resolved_at ?? agora) : agora,
+        updated_at: agora,
+      };
+    }));
     this.notifyListeners();
   }
 

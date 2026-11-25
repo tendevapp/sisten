@@ -192,6 +192,8 @@ export interface RequestItem {
   sap_code?: string; // Optional, can trigger autocomplete
   has_no_sap_code: boolean;
   is_generic?: boolean;
+  /** Serviço já executado, aberto só para regularizar (exige documento anexado). */
+  regularizacao_servico?: boolean;
   sugere_estoque_minimo?: boolean;
   /** Compra direta: setor (cadastro de setores do RH, o da ASE) que recebe o material. */
   setor_destinatario?: string | null;
@@ -2065,6 +2067,9 @@ export interface PortControleEquipamento {
   vigilante_saida: string | null;
   status: PortEquipamentoStatus;
   observacoes: string | null;
+  fotos?: PortAlcoolemiaFoto[];
+  assinatura_responsavel?: string | null;
+  assinatura_responsavel_em?: string | null;
   criado_por: string | null;
   created_at: string;
   updated_at: string;

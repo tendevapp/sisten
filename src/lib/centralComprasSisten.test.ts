@@ -99,6 +99,23 @@ describe('buscarVinculoSistenRm', () => {
     const indice = indexarVinculosSistenPorRm([], new Map());
     expect(buscarVinculoSistenRm(indice, '4500001234', '1456972')).toBeNull();
   });
+
+  it('serviço casa só pela RM, com qualquer material ou sem material', () => {
+    const r = req({ number: '5001065', tipo_compra: 'Serviço', linked_rm_number: '1700417576', titulo: 'Locação' });
+    const indice = indexarVinculosSistenPorRm([r], new Map([[r.id, []]]));
+
+    const semMaterial = buscarVinculoSistenRm(indice, '1700417576', null);
+    expect(semMaterial?.requestNumber).toBe('5001065');
+    expect(semMaterial?.item).toMatchObject({ id: 'servico_r1', description: 'Locação' });
+    expect(buscarVinculoSistenRm(indice, '001700417576', '9999999')?.requestNumber).toBe('5001065');
+    expect(buscarVinculoSistenRm(indice, '1700417577', null)).toBeNull();
+  });
+
+  it('compra de material continua exigindo o material da solicitação', () => {
+    const r = req({ tipo_compra: 'Direta' });
+    const indice = indexarVinculosSistenPorRm([r], new Map([[r.id, [item()]]]));
+    expect(buscarVinculoSistenRm(indice, '4500001234', '9999999')).toBeNull();
+  });
 });
 
 describe('textoTecnicoParaCotacao', () => {

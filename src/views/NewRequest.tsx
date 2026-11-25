@@ -199,6 +199,8 @@ interface PurchaseItemState {
   brand: string;
   is_similar_allowed: boolean;
   is_generic?: boolean;
+  /** Serviço: "Regularização de Serviço" — exige documento anexado. */
+  regularizacao_servico?: boolean;
   /** Item de imobilizado (código SAP de 5 dígitos): confirmação do solicitante. */
   imobilizado_confirmado?: boolean;
   /** Item de imobilizado: solicitante já avisou a contabilidade. */
@@ -683,6 +685,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         brand: it.brand || '',
         is_similar_allowed: it.is_similar_allowed ?? true,
         is_generic: it.is_generic || false,
+        regularizacao_servico: it.regularizacao_servico || false,
         imobilizado_confirmado: temMarcaImobilizado(it.observation),
         contabilidade_avisada: temMarcaImobilizado(it.observation),
         observation: it.observation || '',
@@ -1269,7 +1272,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     items.forEach((it, i) => {
       linhas.push(
         '',
-        `${i + 1}. ${it.description || '—'}${it.is_generic ? ' [GENÉRICO]' : ''}`,
+        `${i + 1}. ${it.description || '—'}${it.is_generic ? ' [GENÉRICO]' : ''}${it.regularizacao_servico ? ' [REGULARIZAÇÃO]' : ''}`,
         `   Quantidade: ${it.quantity || '—'}`,
         `   Prestador sugerido: ${it.suggested_supplier || '—'}`,
         `   Estimativa: ${it.estimated_value ? `R$ ${Number(it.estimated_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—'}`,
@@ -1563,6 +1566,19 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         return;
       }
 
+      // Regularização de serviço: o serviço já aconteceu, então a prova vem anexada.
+      if (ehServico) {
+        const semDocumento = items.findIndex(it =>
+          it.regularizacao_servico
+          && (it.attachments?.length ?? 0) === 0
+          && (it.reusedAttachments?.length ?? 0) === 0
+          && (!editandoId || localDb.getAttachments(editandoId, it.id).length === 0));
+        if (semDocumento !== -1) {
+          alert(`Serviço ${semDocumento + 1}: na Regularização de Serviço é obrigatório anexar um documento (cotação, NF, print do e-mail...).`);
+          return;
+        }
+      }
+
       // Código SAP de 5 dígitos = item de imobilizado: exige as duas confirmações.
       const imobPendente = items.findIndex(
         it => !it.is_generic
@@ -1698,7 +1714,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           tipo_compra: tipoCompra,
           data_necessidade: dataNecessidade,
           items: items.map(it => {
-            const ehGen = Boolean(it.is_generic);
+            const ehGen = !ehServico && Boolean(it.is_generic);
             let observation = ehGen ? formatarObservacaoItemGenerico(it.observation) : (it.observation || '');
             // Item de imobilizado (código de 5 dígitos): carimba a confirmação na
             // observação, para o comprador e a contabilidade verem no chamado e no PDF.
@@ -1713,6 +1729,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               sap_code: it.sap_code,
               has_no_sap_code: !it.sap_code || it.sap_code.trim().length !== 8,
               is_generic: ehGen,
+              regularizacao_servico: ehServico && Boolean(it.regularizacao_servico),
               sugere_estoque_minimo: tipoCompra === 'Direta' && !ehGen && sugereEstoqueMinimo,
               setor_destinatario: tipoCompra === 'Direta' ? (it.setor_destinatario?.trim() || null) : null,
               observation,
@@ -2172,11 +2189,16 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                             setBuscaModalIndex(null);
                             setItems(prev => prev.map(it => ({
                               ...it,
+                              // Item genérico é do catálogo de material; no serviço vale a Regularização.
+                              is_generic: false,
+                              observation: it.is_generic ? desformatarObservacaoItemGenerico(it.observation) : it.observation,
                               sap_code: '',
                               technical_text: '',
                               sinais: undefined,
                               unit: '',
                             })));
+                          } else {
+                            setItems(prev => prev.map(it => ({ ...it, regularizacao_servico: false })));
                           }
                         }}
                         aria-pressed={tipoCompra === type}
@@ -2351,8 +2373,25 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                             ITEM GENÉRICO
                           </span>
                         )}
+                        {ehServico && it.regularizacao_servico && (
+                          <span className="text-[10px] bg-amber-600 text-white font-black px-2 py-0.5 rounded uppercase tracking-wider shadow-2xs">
+                            REGULARIZAÇÃO
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3">
+                        {ehServico ? (
+                        <label className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer select-none" style={{ color: it.regularizacao_servico ? 'var(--status-warning)' : 'var(--ink-secondary)' }}>
+                          <input
+                            type="checkbox"
+                            checked={it.regularizacao_servico || false}
+                            onChange={(e) => patchItem(index, { regularizacao_servico: e.target.checked })}
+                            className="rounded cursor-pointer"
+                            style={{ accentColor: 'var(--brand)' }}
+                          />
+                          Regularização de Serviço
+                        </label>
+                        ) : (
                         <label data-tour="novasol-item-generico" className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer select-none" style={{ color: it.is_generic ? 'var(--status-critical)' : 'var(--ink-secondary)' }}>
                           <input
                             type="checkbox"
@@ -2379,6 +2418,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           />
                           Item Genérico
                         </label>
+                        )}
                         {items.length > 1 && (
                           <button
                             type="button"
@@ -2906,8 +2946,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         ficha técnica. O comprador vê a imagem ao lado do item
                         certo, não solta na solicitação. */}
                     <div>
-                      <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
-                        {ehServico ? 'Fotos / documentos do serviço' : 'Fotos / documentos do item'}
+                      <label className="text-[11px] font-bold block mb-1" style={{ color: ehServico && it.regularizacao_servico ? 'var(--status-warning)' : 'var(--ink-muted)' }}>
+                        {ehServico
+                          ? it.regularizacao_servico
+                            ? 'Documento da regularização * (cotação, NF, print do e-mail...)'
+                            : 'Fotos / documentos do serviço'
+                          : 'Fotos / documentos do item'}
                       </label>
                       {/* Em edição, os anexos já enviados aparecem como
                           somente-leitura; os novos entram pelo seletor abaixo. */}

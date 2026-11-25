@@ -157,6 +157,9 @@ describe('solicitacoesTabelaHelpers', () => {
     expect(obterEstilosStatus('aberto', 'chamado').rotulo).toBe('Aberta');
     expect(obterEstilosStatus('em_atendimento', 'chamado').rotulo).toBe('Em análise');
     expect(obterEstilosStatus('pendente', 'compra').rotulo).toBe('Aguardando aprovação');
+    // Serviço termina com a RM aberta no SAP; compra de material, com a MIGO.
+    expect(obterEstilosStatus('concluida', 'compra', true, 'Serviço').rotulo).toBe('Concluída');
+    expect(obterEstilosStatus('concluida', 'compra', true, 'Direta').rotulo).toBe('Entregue');
   });
 
   it('obterEstilosStatus distingue compra aprovada sem e com RM vinculada', () => {

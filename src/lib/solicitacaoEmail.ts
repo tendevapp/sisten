@@ -26,7 +26,7 @@ const linha = (rotulo: string, valor?: string | number | null): string[] => {
 };
 
 function linhasDoItem(it: RequestItem, indice: number): string[] {
-  const cabecalho = `${indice + 1}. ${it.description || '—'}${it.is_generic ? ' [GENÉRICO]' : ''}`;
+  const cabecalho = `${indice + 1}. ${it.description || '—'}${it.is_generic ? ' [GENÉRICO]' : ''}${it.regularizacao_servico ? ' [REGULARIZAÇÃO]' : ''}`;
   const valor = it.estimated_value ? formatBRL(it.estimated_value) : '';
   return [
     '',

@@ -347,6 +347,14 @@ export function obterEstilosStatus(
     };
   }
 
+  // Serviço termina quando a RM é aberta no SAP (`finalizar_servico_rm_sap`).
+  if (tipo === 'compra' && status === 'concluida' && ehSolicitacaoServico(tipoCompra)) {
+    return {
+      rotulo: 'Concluída',
+      classes: 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+    };
+  }
+
   if (tipo === 'compra' && status === 'aprovada') {
     if (ehSolicitacaoServico(tipoCompra)) {
       return {

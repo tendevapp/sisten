@@ -2107,6 +2107,7 @@ export type Database = {
           observation: string | null
           quantity: number
           reference_link: string | null
+          regularizacao_servico: boolean
           request_id: string | null
           sap_code: string | null
           suggested_supplier: string | null
@@ -2123,6 +2124,7 @@ export type Database = {
           observation?: string | null
           quantity: number
           reference_link?: string | null
+          regularizacao_servico?: boolean
           request_id?: string | null
           sap_code?: string | null
           suggested_supplier?: string | null
@@ -2139,6 +2141,7 @@ export type Database = {
           observation?: string | null
           quantity?: number
           reference_link?: string | null
+          regularizacao_servico?: boolean
           request_id?: string | null
           sap_code?: string | null
           suggested_supplier?: string | null

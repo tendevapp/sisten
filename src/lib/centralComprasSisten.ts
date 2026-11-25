@@ -20,6 +20,7 @@ import type { Request, RequestItem } from '../types';
 import type { SituacaoSolicitacaoRm } from './rmSolicitacaoAlterada';
 import { desformatarObservacaoItemGenerico } from './solicitacoes';
 import { sanitizeTechnicalText } from './materiais';
+import { ehSolicitacaoServico } from './tipoSolicitacao';
 
 export interface VinculoSistenRm {
   requestId?: string;
@@ -42,6 +43,14 @@ function chaveVinculo(rm: string | null | undefined, materialCode: string | null
 }
 
 /**
+ * Serviço casa só pela RM: a RM 17... sai do SAP sem material, ou com um código
+ * que não é o da solicitação (serviço nem tem item com código no SISTEN).
+ */
+function chaveServico(rm: string | null | undefined): string {
+  return `${normalizarChave(rm)}::*`;
+}
+
+/**
  * Monta o índice `RM + material` → solicitação/item do SISTEN.
  *
  * Só entram solicitações de compra com RM vinculada. Quando duas linhas
@@ -57,15 +66,39 @@ export function indexarVinculosSistenPorRm(
   const indice = new Map<string, VinculoSistenRm>();
 
   for (const request of requests) {
-    if (!request.linked_rm_number) continue;
+    if (!request.linked_rm_number?.trim()) continue;
 
     const itens = itensPorRequest.get(request.id) || [];
+    const situacao = situacaoPorRequest?.get(request.id);
+
+    if (ehSolicitacaoServico(request.tipo_compra)) {
+      const chave = chaveServico(request.linked_rm_number);
+      if (!indice.has(chave)) {
+        indice.set(chave, {
+          requestId: request.id,
+          requestNumber: request.number,
+          solicitanteName: request.solicitante_name,
+          // Sem item próprio: o primeiro (quando houver) ou um marcador do serviço.
+          item: itens[0] ?? {
+            id: `servico_${request.id}`,
+            request_id: request.id,
+            description: request.titulo || 'Serviço',
+            has_no_sap_code: true,
+            quantity: 0,
+            unit: '',
+            estimated_value: 0,
+          },
+          ...(situacao ? { situacao } : {}),
+        });
+      }
+      continue;
+    }
+
     for (const item of itens) {
       if (!item.sap_code) continue;
 
       const chave = chaveVinculo(request.linked_rm_number, item.sap_code);
       if (!indice.has(chave)) {
-        const situacao = situacaoPorRequest?.get(request.id);
         indice.set(chave, {
           requestId: request.id,
           requestNumber: request.number,
@@ -80,13 +113,16 @@ export function indexarVinculosSistenPorRm(
   return indice;
 }
 
-/** Busca o vínculo pela RM e código de material, com a mesma tolerância a zero à esquerda. */
+/**
+ * Busca o vínculo pela RM e código de material, com a mesma tolerância a zero
+ * à esquerda; sem par exato, aceita o serviço vinculado à mesma RM.
+ */
 export function buscarVinculoSistenRm(
   indice: Map<string, VinculoSistenRm>,
   rm: string | null | undefined,
   materialCode: string | null | undefined,
 ): VinculoSistenRm | null {
-  return indice.get(chaveVinculo(rm, materialCode)) || null;
+  return indice.get(chaveVinculo(rm, materialCode)) || indice.get(chaveServico(rm)) || null;
 }
 
 /**
