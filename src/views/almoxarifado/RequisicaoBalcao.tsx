@@ -42,7 +42,7 @@ import {
   type GrupoPepBalcao, type LinhaBalcao, type MaterialDisponivel, type MaterialNoDeposito, type PepAplicacao, type TipoMovimentoBalcao,
 } from '../../lib/requisicaoBalcao';
 import {
-  buscarEstoqueBalcao, buscarRequisicaoBalcaoPorCodigo, excluirRequisicaoBalcao, importarSapBalcao, informarDocSap, listarAlteracoesBalcao, listarAplicacoesBalcao,
+  buscarEstoqueBalcao, buscarRequisicaoBalcaoPorCodigo, buscarRequisicoesBalcaoPorCodigos, excluirRequisicaoBalcao, importarSapBalcao, informarDocSap, listarAlteracoesBalcao, listarAplicacoesBalcao,
   listarExportacoesBalcao, listarRequisicoesBalcao, reabrirExportacaoBalcao, registrarExportacaoBalcao,
   buscarRequisicoesBalcaoNoHistorico, listarRequisicoesBalcaoDoPeriodo,
   buscarOriginalExportacaoBalcao, originalBalcaoDisponivel,
@@ -50,7 +50,7 @@ import {
   type ReqBalcaoAlteracao, type ReqBalcaoExportacao, type ReqBalcaoRow,
 } from '../../lib/requisicaoBalcaoApi';
 import {
-  baixarPlanilhaBalcao, classificarImportacao, gerarPlanilhaBalcao, lerArquivoBalcaoConcluido,
+  baixarPlanilhaBalcao, classificarImportacao, codigosForaDaLista, gerarPlanilhaBalcao, lerArquivoBalcaoConcluido,
   type LeituraPlanilhaBalcao, type SituacaoImportacao,
 } from '../../lib/requisicaoBalcaoPlanilha';
 import { listarRhPessoas, listarRhTurnos } from '../../lib/rhApi';
@@ -170,7 +170,8 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const [exportacoes, setExportacoes] = useState<ReqBalcaoExportacao[]>([]);
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [exportando, setExportando] = useState(false);
-  const [importacao, setImportacao] = useState<{ arquivo: string; leitura: LeituraPlanilhaBalcao } | null>(null);
+  const [importacao, setImportacao] = useState<{ arquivo: string; leitura: LeituraPlanilhaBalcao; extras: ReqBalcaoRow[] } | null>(null);
+  const [lendoImportacao, setLendoImportacao] = useState(false);
   /** Conferência das últimas importações com a MB51, fora do fluxo de importação. */
   const [conferirImportacoes, setConferirImportacoes] = useState(false);
   const arquivoImportRef = useRef<HTMLInputElement>(null);
@@ -398,7 +399,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     }
     const jaExportadas = sel.filter((r) => r.exportacao_id).length;
     if (jaExportadas > 0
-        && !await confirmar({ titulo: 'Exportar de novo?', mensagem: `${jaExportadas} das selecionadas já foram exportadas. Exportar de novo mesmo assim?`, confirmarLabel: 'Exportar de novo' })) return;
+      && !await confirmar({ titulo: 'Exportar de novo?', mensagem: `${jaExportadas} das selecionadas já foram exportadas. Exportar de novo mesmo assim?`, confirmarLabel: 'Exportar de novo' })) return;
 
     // Alerta de itens sem saldo na ZL0024 para confirmação prévia antes de importar no SAP
     const comSemSaldo = sel.filter((r) =>
@@ -415,10 +416,10 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
         confirmarLabel: 'Exportar mesmo assim',
         cancelarLabel: 'Voltar e revisar',
         mensagem:
-        `Foram selecionadas ${comSemSaldo.length} requisição(ões) contendo ${itensSemSaldo.length} item(ns) sem saldo na ZL0024 (possível defasagem de importação):\n\n` +
-        itensSemSaldo.slice(0, 6).join('\n') +
-        (itensSemSaldo.length > 6 ? `\n... e mais ${itensSemSaldo.length - 6} item(ns)` : '') +
-        `\n\nConfirme se estes itens estão autorizados antes de importar no SAP. Deseja prosseguir com a exportação da planilha?`,
+          `Foram selecionadas ${comSemSaldo.length} requisição(ões) contendo ${itensSemSaldo.length} item(ns) sem saldo na ZL0024 (possível defasagem de importação):\n\n` +
+          itensSemSaldo.slice(0, 6).join('\n') +
+          (itensSemSaldo.length > 6 ? `\n... e mais ${itensSemSaldo.length - 6} item(ns)` : '') +
+          `\n\nConfirme se estes itens estão autorizados antes de importar no SAP. Deseja prosseguir com a exportação da planilha?`,
       });
       if (!conf) return;
     }
@@ -439,15 +440,26 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   };
 
   const lerArquivoImportacao = async (file: File) => {
+    setLendoImportacao(true);
     try {
       const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-      setImportacao({ arquivo: file.name, leitura: lerArquivoBalcaoConcluido(wb) });
+      const leitura = lerArquivoBalcaoConcluido(wb);
+      // Busca no banco os codigos da planilha ausentes na tela (ex.: concluidas fora das 500 recentes).
+      const faltam = codigosForaDaLista(leitura.linhas, requisicoes);
+      const extras = faltam.length > 0 ? await buscarRequisicoesBalcaoPorCodigos(faltam) : [];
+      setImportacao({ arquivo: file.name, leitura, extras });
     } catch (err: any) {
       toast.error(err?.message || 'Não foi possível ler a planilha.');
     } finally {
+      setLendoImportacao(false);
       if (arquivoImportRef.current) arquivoImportRef.current.value = '';
     }
   };
+
+  const requisicoesImportacao = useMemo(
+    () => (importacao?.extras.length ? mesclarRequisicoes(importacao.extras, requisicoes) : requisicoes),
+    [importacao, requisicoes],
+  );
 
   const reabrir = async (ids: string[], rotulo: string) => {
     if (ids.length === 0) return;
@@ -604,11 +616,13 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
           />
           <button
             onClick={() => arquivoImportRef.current?.click()}
+            disabled={lendoImportacao}
             title="Planilha exportada daqui, devolvida com o nº do documento SAP na última coluna"
-            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold cursor-pointer disabled:opacity-50"
             style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
           >
-            <Upload className="h-3.5 w-3.5" /> Importar planilha concluída
+            {lendoImportacao ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+            {lendoImportacao ? 'Lendo planilha…' : 'Importar planilha concluída'}
           </button>
           <button
             onClick={() => setConferirImportacoes(true)}
@@ -907,7 +921,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
           visivel={!detalhe}
           arquivo={importacao.arquivo}
           leitura={importacao.leitura}
-          requisicoes={requisicoes}
+          requisicoes={requisicoesImportacao}
           podeImportarMb51={canAccessPage(user, 'almox_importar_planilhas')}
           podeAbrirRelatorio={canAccessPage(user, 'almox_requisicao_balcao_relatorio')}
           onAbrirRelatorio={() => { setImportacao(null); onNavigate('/almoxarifado/requisicao-balcao-relatorio?visao=documento'); }}
@@ -2251,98 +2265,98 @@ function AdicionarItem({
 
   return (
     <div className="flex items-stretch gap-2">
-    {leitor}
-    <button
-      type="button"
-      onClick={() => setLendoQr(true)}
-      title="Ler o QR da etiqueta da prateleira com a câmera"
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-white"
-      style={{ background: 'var(--brand)' }}
-    >
-      <QrCode className="h-4 w-4" />
-      <span>Ler QR</span>
-    </button>
-    <div className="relative min-w-0 flex-1">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
-      <input
-        ref={inputEfetivo}
-        value={texto}
-        onChange={(e) => { setTexto(e.target.value); setAberto(true); setAtivo(0); }}
-        onFocus={() => setAberto(true)}
-        onBlur={() => setTimeout(() => setAberto(false), 150)}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowDown') { e.preventDefault(); setAtivo((a) => Math.min(a + 1, maxAtivo)); }
-          if (e.key === 'ArrowUp') { e.preventDefault(); setAtivo((a) => Math.max(a - 1, 0)); }
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            if (ativo < resultados.length) {
-              escolher(resultados[ativo]);
-            } else if (temSugestaoAvulsa) {
-              escolher({
-                material: texto.trim().toUpperCase(),
-                descricao: `Material ${texto.trim().toUpperCase()}`,
-                unidade: 'UN',
-                saldo: 0,
-                deposito: depositoFixo || depositoPadrao || '0002',
-              });
+      {leitor}
+      <button
+        type="button"
+        onClick={() => setLendoQr(true)}
+        title="Ler o QR da etiqueta da prateleira com a câmera"
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-white"
+        style={{ background: 'var(--brand)' }}
+      >
+        <QrCode className="h-4 w-4" />
+        <span>Ler QR</span>
+      </button>
+      <div className="relative min-w-0 flex-1">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
+        <input
+          ref={inputEfetivo}
+          value={texto}
+          onChange={(e) => { setTexto(e.target.value); setAberto(true); setAtivo(0); }}
+          onFocus={() => setAberto(true)}
+          onBlur={() => setTimeout(() => setAberto(false), 150)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setAtivo((a) => Math.min(a + 1, maxAtivo)); }
+            if (e.key === 'ArrowUp') { e.preventDefault(); setAtivo((a) => Math.max(a - 1, 0)); }
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (ativo < resultados.length) {
+                escolher(resultados[ativo]);
+              } else if (temSugestaoAvulsa) {
+                escolher({
+                  material: texto.trim().toUpperCase(),
+                  descricao: `Material ${texto.trim().toUpperCase()}`,
+                  unidade: 'UN',
+                  saldo: 0,
+                  deposito: depositoFixo || depositoPadrao || '0002',
+                });
+              }
             }
-          }
-        }}
-        placeholder={depositoFixo
-          ? `Código ou descrição do material (${totalMateriais} materiais em ${depositoFixo})`
-          : `Código ou descrição do material (${totalMateriais} materiais) — o depósito vem do item`}
-        className={`${inputCls} pl-8`}
-      />
-      {aberto && texto.trim() && (
-        <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-lg border shadow-lg" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
-          {resultados.map((m, i) => (
-            <li key={`${m.deposito}-${m.material}`}>
-              <button
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); escolher(m); }}
-                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs"
-                style={{ background: i === ativo ? 'color-mix(in srgb, var(--brand) 10%, transparent)' : undefined }}
-              >
-                <span className="min-w-0">
-                  <span className="font-mono font-bold" style={{ color: 'var(--ink-primary)' }}>{m.material}</span>
-                  <span style={{ color: 'var(--ink-secondary)' }}> · {m.descricao}</span>
-                </span>
-                <span className="shrink-0 text-right">
-                  <span className={`block tabular-nums font-bold ${m.saldo <= 0 ? 'text-amber-700 dark:text-amber-400' : ''}`} style={{ color: m.saldo <= 0 ? undefined : 'var(--ink-muted)' }}>
-                    {m.saldo <= 0 ? '0 UN (sem saldo)' : `${formatQtd(m.saldo)} ${m.unidade}`}
+          }}
+          placeholder={depositoFixo
+            ? `Código ou descrição do material (${totalMateriais} materiais em ${depositoFixo})`
+            : `Código ou descrição do material (${totalMateriais} materiais) — o depósito vem do item`}
+          className={`${inputCls} pl-8`}
+        />
+        {aberto && texto.trim() && (
+          <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-lg border shadow-lg" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+            {resultados.map((m, i) => (
+              <li key={`${m.deposito}-${m.material}`}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); escolher(m); }}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs"
+                  style={{ background: i === ativo ? 'color-mix(in srgb, var(--brand) 10%, transparent)' : undefined }}
+                >
+                  <span className="min-w-0">
+                    <span className="font-mono font-bold" style={{ color: 'var(--ink-primary)' }}>{m.material}</span>
+                    <span style={{ color: 'var(--ink-secondary)' }}> · {m.descricao}</span>
                   </span>
-                  <span className="block text-[10px]" style={{ color: 'var(--ink-muted)' }}>{formatDeposito(m.deposito)}</span>
-                </span>
-              </button>
-            </li>
-          ))}
-          {temSugestaoAvulsa && (
-            <li>
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  escolher({
-                    material: texto.trim().toUpperCase(),
-                    descricao: `Material ${texto.trim().toUpperCase()}`,
-                    unidade: 'UN',
-                    saldo: 0,
-                    deposito: depositoFixo || depositoPadrao || '0002',
-                  });
-                }}
-                className="block w-full px-3 py-2 text-left text-xs italic"
-                style={{
-                  background: ativo === resultados.length ? 'color-mix(in srgb, var(--brand) 10%, transparent)' : undefined,
-                  color: 'var(--ink-secondary)',
-                }}
-              >
-                Adicionar “{texto.trim().toUpperCase()}” sem saldo na ZL0024
-              </button>
-            </li>
-          )}
-        </ul>
-      )}
-    </div>
+                  <span className="shrink-0 text-right">
+                    <span className={`block tabular-nums font-bold ${m.saldo <= 0 ? 'text-amber-700 dark:text-amber-400' : ''}`} style={{ color: m.saldo <= 0 ? undefined : 'var(--ink-muted)' }}>
+                      {m.saldo <= 0 ? '0 UN (sem saldo)' : `${formatQtd(m.saldo)} ${m.unidade}`}
+                    </span>
+                    <span className="block text-[10px]" style={{ color: 'var(--ink-muted)' }}>{formatDeposito(m.deposito)}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+            {temSugestaoAvulsa && (
+              <li>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    escolher({
+                      material: texto.trim().toUpperCase(),
+                      descricao: `Material ${texto.trim().toUpperCase()}`,
+                      unidade: 'UN',
+                      saldo: 0,
+                      deposito: depositoFixo || depositoPadrao || '0002',
+                    });
+                  }}
+                  className="block w-full px-3 py-2 text-left text-xs italic"
+                  style={{
+                    background: ativo === resultados.length ? 'color-mix(in srgb, var(--brand) 10%, transparent)' : undefined,
+                    color: 'var(--ink-secondary)',
+                  }}
+                >
+                  Adicionar “{texto.trim().toUpperCase()}” sem saldo na ZL0024
+                </button>
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
@@ -2783,69 +2797,69 @@ function ModalImportacaoSap({
         )}
         {etapa === 'previa' && fase && <ProgressoGravacao fase={fase} linhas={aGravar.length + naoEnviadas.length} />}
         {etapa === 'previa' && !fase && <>
-        {leitura.exigeConferenciaSap && (
-          <p className="mb-3 text-xs" style={{ color: 'var(--ink-secondary)' }}>
-            Conferência MB03 lida da planilha Baixas SAP. Só entram na gravação as linhas com documento SAP e Conferência SAP igual a CONFIRMADO.
-          </p>
-        )}
-        {leitura.linhasBloqueadas.length > 0 && (
-          <div className="mb-3 rounded-lg border p-3" style={{ borderColor: 'var(--status-serious)', color: 'var(--ink-primary)' }}>
-            <p className="text-xs font-bold">{leitura.linhasBloqueadas.length} linha(s) bloqueada(s) na conferência MB03</p>
-            <ul className="mt-2 space-y-2 text-xs">
-              {leitura.linhasBloqueadas.map((l, k) => (
-                <li key={k}>
-                  <p><span className="font-mono">{l.codigo} · {l.material} · SAP {l.docSap || '—'}</span> · {l.motivo}</p>
-                  {l.conferenciaSap && <ConferenciaMb03Planilha dados={l.conferenciaSap} />}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <div className="mb-3 flex flex-wrap gap-2">
-          {(Object.keys(ROTULO_SITUACAO) as SituacaoImportacao[]).map((s) => (
-            <span
-              key={s}
-              className="rounded-full px-2 py-0.5 text-[10px] font-bold"
-              style={{ background: `color-mix(in srgb, ${ROTULO_SITUACAO[s].token} 14%, transparent)`, color: ROTULO_SITUACAO[s].token }}
-            >
-              {ROTULO_SITUACAO[s].texto}: {conta(s)}
-            </span>
-          ))}
-        </div>
-        {classificadas.length === 0 ? (
-          <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>Nenhuma linha com doc. SAP para importar.</p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
-            <table className="w-full text-xs">
-              <thead>
-                <tr style={{ color: 'var(--ink-muted)' }}>
-                  <th className="px-3 py-2 text-left font-bold">Requisição</th>
-                  <th className="px-3 py-2 text-left font-bold">Material</th>
-                  <th className="px-3 py-2 text-left font-bold">Doc. SAP</th>
-                  {leitura.exigeConferenciaSap && <th className="px-3 py-2 text-left font-bold">Conferência MB03</th>}
-                  <th className="px-3 py-2 text-left font-bold">Situação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {classificadas.map((l, k) => (
-                  <tr key={k} className="border-t" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-primary)' }}>
-                    <td className="px-3 py-2 font-mono">{l.codigo}</td>
-                    <td className="px-3 py-2 font-mono">{l.material}</td>
-                    <td className="px-3 py-2 font-mono">
-                      {l.situacao === 'diferente' && <span className="line-through mr-1" style={{ color: 'var(--ink-muted)' }}>{l.docAtual}</span>}
-                      {l.docSap || '—'}
-                      {l.status && <span className="block font-sans text-[10px]" style={{ color: 'var(--ink-muted)' }}>{l.status}</span>}
-                    </td>
-                    {leitura.exigeConferenciaSap && (
-                      <td className="px-3 py-2">{l.conferenciaSap && <ConferenciaMb03Planilha dados={l.conferenciaSap} />}</td>
-                    )}
-                    <td className="px-3 py-2 font-bold" style={{ color: ROTULO_SITUACAO[l.situacao].token }}>{ROTULO_SITUACAO[l.situacao].texto}</td>
-                  </tr>
+          {leitura.exigeConferenciaSap && (
+            <p className="mb-3 text-xs" style={{ color: 'var(--ink-secondary)' }}>
+              Conferência MB03 lida da planilha Baixas SAP. Só entram na gravação as linhas com documento SAP e Conferência SAP igual a CONFIRMADO.
+            </p>
+          )}
+          {leitura.linhasBloqueadas.length > 0 && (
+            <div className="mb-3 rounded-lg border p-3" style={{ borderColor: 'var(--status-serious)', color: 'var(--ink-primary)' }}>
+              <p className="text-xs font-bold">{leitura.linhasBloqueadas.length} linha(s) bloqueada(s) na conferência MB03</p>
+              <ul className="mt-2 space-y-2 text-xs">
+                {leitura.linhasBloqueadas.map((l, k) => (
+                  <li key={k}>
+                    <p><span className="font-mono">{l.codigo} · {l.material} · SAP {l.docSap || '—'}</span> · {l.motivo}</p>
+                    {l.conferenciaSap && <ConferenciaMb03Planilha dados={l.conferenciaSap} />}
+                  </li>
                 ))}
-              </tbody>
-            </table>
+              </ul>
+            </div>
+          )}
+          <div className="mb-3 flex flex-wrap gap-2">
+            {(Object.keys(ROTULO_SITUACAO) as SituacaoImportacao[]).map((s) => (
+              <span
+                key={s}
+                className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                style={{ background: `color-mix(in srgb, ${ROTULO_SITUACAO[s].token} 14%, transparent)`, color: ROTULO_SITUACAO[s].token }}
+              >
+                {ROTULO_SITUACAO[s].texto}: {conta(s)}
+              </span>
+            ))}
           </div>
-        )}
+          {classificadas.length === 0 ? (
+            <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>Nenhuma linha com doc. SAP para importar.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ color: 'var(--ink-muted)' }}>
+                    <th className="px-3 py-2 text-left font-bold">Requisição</th>
+                    <th className="px-3 py-2 text-left font-bold">Material</th>
+                    <th className="px-3 py-2 text-left font-bold">Doc. SAP</th>
+                    {leitura.exigeConferenciaSap && <th className="px-3 py-2 text-left font-bold">Conferência MB03</th>}
+                    <th className="px-3 py-2 text-left font-bold">Situação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {classificadas.map((l, k) => (
+                    <tr key={k} className="border-t" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-primary)' }}>
+                      <td className="px-3 py-2 font-mono">{l.codigo}</td>
+                      <td className="px-3 py-2 font-mono">{l.material}</td>
+                      <td className="px-3 py-2 font-mono">
+                        {l.situacao === 'diferente' && <span className="line-through mr-1" style={{ color: 'var(--ink-muted)' }}>{l.docAtual}</span>}
+                        {l.docSap || '—'}
+                        {l.status && <span className="block font-sans text-[10px]" style={{ color: 'var(--ink-muted)' }}>{l.status}</span>}
+                      </td>
+                      {leitura.exigeConferenciaSap && (
+                        <td className="px-3 py-2">{l.conferenciaSap && <ConferenciaMb03Planilha dados={l.conferenciaSap} />}</td>
+                      )}
+                      <td className="px-3 py-2 font-bold" style={{ color: ROTULO_SITUACAO[l.situacao].token }}>{ROTULO_SITUACAO[l.situacao].texto}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>}
       </ModalBody>
       <ModalFooter>

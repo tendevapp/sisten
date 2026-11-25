@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import {
-  BALCAO_COLUNAS, classificarImportacao, gerarPlanilhaBalcao, lerArquivoBalcaoConcluido, lerPlanilhaBalcaoConcluida, montarLinhasBalcao, nomeArquivoBalcao,
+  BALCAO_COLUNAS, classificarImportacao, codigosForaDaLista, gerarPlanilhaBalcao, lerArquivoBalcaoConcluido, lerPlanilhaBalcaoConcluida, montarLinhasBalcao, nomeArquivoBalcao,
 } from './requisicaoBalcaoPlanilha';
 
 it('preserva no XLSX arquivado a quantidade anterior a uma edição da requisição', async () => {
@@ -36,7 +36,7 @@ describe('Baixas_SAP.xlsm', () => {
     'Concluído', 'RQB-171126-35', '4904116967', 'OK', '2026', 'CONFIRMADO',
     46343.499502314815, 1,
     'MB03: documento 4904116967/2026 encontrado (consulta 1); 1 de 1 material(is) da planilha vistos nele'];
-  const matriz = [ ['BAIXAS · cole a exportação'], ['Instruções'], ['EXPORTAÇÃO DO SISTEMA'], cabecalho, linha, [], Array(20).fill('') ];
+  const matriz = [['BAIXAS · cole a exportação'], ['Instruções'], ['EXPORTAÇÃO DO SISTEMA'], cabecalho, linha, [], Array(20).fill('')];
 
   it('seleciona BAIXAS depois do PAINEL e lê o cabeçalho na linha 4 após salvar como XLSM', () => {
     const wb = XLSX.utils.book_new();
@@ -47,8 +47,10 @@ describe('Baixas_SAP.xlsm', () => {
     expect(leitura).toMatchObject({ totalLinhas: 1, colunaSap: 'SAP', exigeConferenciaSap: true, linhasBloqueadas: [] });
     expect(leitura.linhas[0]).toMatchObject({
       codigo: 'RQB-171126-35', material: '1322870', docSap: '4904116967', status: 'Concluído',
-      conferenciaSap: { pronto: 'OK', ano: '2026', resultado: 'CONFIRMADO',
-        conferidoEm: '17/11/2026 11:59:17', tempoSegundos: '1', mensagem: linha[19] },
+      conferenciaSap: {
+        pronto: 'OK', ano: '2026', resultado: 'CONFIRMADO',
+        conferidoEm: '17/11/2026 11:59:17', tempoSegundos: '1', mensagem: linha[19]
+      },
     });
   });
 
@@ -148,6 +150,39 @@ describe('classificarImportacao', () => {
     const r = classificarImportacao([l('1', '999'), l('2', '111'), l('2', '222'), l('3', '1')], reqs);
     expect(r.map((x) => x.situacao)).toEqual(['novo', 'igual', 'diferente', 'nao_encontrado']);
     expect(r[2].docAtual).toBe('111');
+  });
+
+  it('classifica RQB concluida fora da lista inicial como igual ou diferente apos buscar extras', () => {
+    const linhas = [
+      { codigo: 'RQB-131126-64', material: '1487913', docSap: '4904123591', status: 'Concluído' },
+      { codigo: 'RQB-131126-64', material: '1487908', docSap: '4904123599', status: 'Concluído' },
+      { codigo: 'RQB-241126-13', material: '1148447', docSap: '4904123853', status: 'Concluído' },
+    ];
+    const recentes = [{ codigo: 'RQB-241126-13', itens: [{ material: '1148447', doc_sap: '4904123853', status_processamento: 'Concluído' }] }];
+    expect(codigosForaDaLista(linhas, recentes)).toEqual(['RQB-131126-64']);
+
+    const extras = [{
+      codigo: 'RQB-131126-64',
+      itens: [
+        { material: '1487913', doc_sap: '4904123591', status_processamento: 'Concluído' },
+        { material: '1487908', doc_sap: '4904123591', status_processamento: 'Concluído' },
+      ],
+    }];
+    const r = classificarImportacao(linhas, [...recentes, ...extras]);
+    expect(r.map((x) => x.situacao)).toEqual(['igual', 'diferente', 'igual']);
+    expect(r[1].docAtual).toBe('4904123591');
+  });
+});
+
+describe('codigosForaDaLista', () => {
+  it('retorna codigos unicos em maiusculas ausentes na lista carregada', () => {
+    const linhas = [
+      { codigo: 'RQB-131126-64' },
+      { codigo: 'rqb-131126-64' },
+      { codigo: 'RQB-311026-11' },
+      { codigo: 'RQB-241126-13' },
+    ];
+    expect(codigosForaDaLista(linhas, [{ codigo: 'rqb-241126-13' }])).toEqual(['RQB-131126-64', 'RQB-311026-11']);
   });
 });
 

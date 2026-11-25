@@ -354,6 +354,21 @@ export async function buscarRequisicaoBalcaoPorCodigo(codigo: string): Promise<R
   return r ? comItensOrdenados(r) : null;
 }
 
+/** Requisicoes pelos codigos, com os itens (previa da importacao para codigos fora da lista). */
+export async function buscarRequisicoesBalcaoPorCodigos(codigos: string[]): Promise<ReqBalcaoRow[]> {
+  const unicos = [...new Set(codigos.map((c) => c.trim().toUpperCase()).filter(Boolean))];
+  const saida: ReqBalcaoRow[] = [];
+  for (let i = 0; i < unicos.length; i += 100) {
+    const { data, error } = await dbReq()
+      .select('*, itens:alm_req_balcao_itens(*)')
+      .in('codigo', unicos.slice(i, i + 100))
+      .eq('excluido', false);
+    if (error) throw new Error(error.message);
+    saida.push(...((data || []) as ReqBalcaoRow[]));
+  }
+  return saida.map(comItensOrdenados);
+}
+
 export interface ReqBalcaoItemInput {
   material: string;
   quantidade: number;

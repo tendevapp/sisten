@@ -268,6 +268,20 @@ export function lerPlanilhaBalcaoConcluida(matriz: unknown[][], exigirConferenci
 
 export type SituacaoImportacao = 'novo' | 'igual' | 'diferente' | 'nao_encontrado';
 
+/** Codigos da planilha ausentes na lista carregada na tela (ex.: concluidas fora das 500 recentes). */
+export function codigosForaDaLista(
+  linhas: Pick<LinhaImportadaBalcao, 'codigo'>[],
+  requisicoes: { codigo: string }[],
+): string[] {
+  const naLista = new Set(requisicoes.map((r) => r.codigo.toUpperCase()));
+  const faltam = new Set<string>();
+  for (const l of linhas) {
+    const codigo = l.codigo.trim().toUpperCase();
+    if (codigo && !naLista.has(codigo)) faltam.add(codigo);
+  }
+  return [...faltam];
+}
+
 /**
  * Compara cada linha com o que o item já tem, para a prévia: nada é escrito
  * sem o almoxarife ver o que muda, e doc. SAP diferente do já gravado aparece
