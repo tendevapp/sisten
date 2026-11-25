@@ -124,6 +124,100 @@ export interface ConferenciaSemSap {
   docPorItem: Record<string, string>;
 }
 
+export interface RequisicaoParaVinculoDocConfere {
+  id: string;
+  codigo: string;
+  pendente_confirmacao?: boolean | null;
+  itens: {
+    id: string;
+    material: string;
+    doc_sap?: string | null;
+  }[];
+}
+
+export interface LinhaVinculoDocConfere {
+  requisicaoId: string;
+  codigo: string;
+  itemId: string;
+  material: string;
+  doc_sap: string;
+  status: string;
+}
+
+export interface ResumoVinculoDocConfere {
+  requisicoes: { id: string; codigo: string; docs: string[]; itens: number }[];
+  linhas: LinhaVinculoDocConfere[];
+  docsDistintos: string[];
+}
+
+export const STATUS_VINCULO_DOC_CONFERE = 'Conferido na MB51';
+export const ARQUIVO_VINCULO_DOC_CONFERE = 'Conferência MB51 (Doc. confere)';
+
+/**
+ * Monta as linhas item a item para gravar o doc. SAP de requisicoes em "Doc. confere".
+ * Ignora qualquer requisicao fora de `doc_confere`, pendente de confirmacao ou sem
+ * mapeamento completo de todos os seus itens ainda sem doc. SAP.
+ */
+export function montarVinculoDocConfere(
+  requisicoes: RequisicaoParaVinculoDocConfere[],
+  mapa: Map<string, ConferenciaSemSap> | null | undefined,
+): ResumoVinculoDocConfere {
+  if (!mapa || requisicoes.length === 0) {
+    return { requisicoes: [], linhas: [], docsDistintos: [] };
+  }
+
+  const reqsOk: ResumoVinculoDocConfere['requisicoes'] = [];
+  const linhas: LinhaVinculoDocConfere[] = [];
+  const docsSet = new Set<string>();
+
+  for (const r of requisicoes) {
+    if (r.pendente_confirmacao) continue;
+    const conf = mapa.get(r.id);
+    if (!conf || conf.situacao !== 'doc_confere' || conf.docs.length === 0) continue;
+
+    const itensSemDoc = r.itens.filter((it) => !it.doc_sap?.trim());
+    if (itensSemDoc.length === 0) continue;
+
+    const linhasReq: LinhaVinculoDocConfere[] = [];
+    let completo = true;
+    const docsReq = new Set<string>();
+
+    for (const it of itensSemDoc) {
+      const doc = conf.docPorItem[it.id]?.trim();
+      if (!doc) {
+        completo = false;
+        break;
+      }
+      docsReq.add(doc);
+      linhasReq.push({
+        requisicaoId: r.id,
+        codigo: r.codigo,
+        itemId: it.id,
+        material: it.material,
+        doc_sap: doc,
+        status: STATUS_VINCULO_DOC_CONFERE,
+      });
+    }
+
+    if (!completo || linhasReq.length === 0) continue;
+
+    for (const d of docsReq) docsSet.add(d);
+    reqsOk.push({
+      id: r.id,
+      codigo: r.codigo,
+      docs: [...docsReq].sort(),
+      itens: linhasReq.length,
+    });
+    linhas.push(...linhasReq);
+  }
+
+  return {
+    requisicoes: reqsOk,
+    linhas,
+    docsDistintos: [...docsSet].sort(),
+  };
+}
+
 /** Diferença de relógio aceita entre o SAP e o SISTEN (17/11: exportação 08:21, documento 08:21). */
 const TOLERANCIA_MS = 5 * 60_000;
 /** Depois de uma exportação, até quando um lançamento ainda é dela. */

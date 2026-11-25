@@ -74,7 +74,8 @@ import { etapaSapBalcao, itensSemDocParcial, type EtapaSapBalcao } from '../../l
 import { formatarIntervalo } from '../../lib/logRequisicaoBalcao';
 import { PERIODO_VAZIO, dataLocalDeTimestamp, dentroDoPeriodo, type FiltroPeriodo } from '../../lib/requisicaoBalcaoAuditoria';
 import {
-  DICA_SITUACAO_SEM_SAP, ROTULO_SITUACAO_SEM_SAP, type ConferenciaSemSap, type SituacaoSemSap,
+  ARQUIVO_VINCULO_DOC_CONFERE, DICA_SITUACAO_SEM_SAP, montarVinculoDocConfere, ROTULO_SITUACAO_SEM_SAP,
+  type ConferenciaSemSap, type SituacaoSemSap,
 } from '../../lib/requisicaoBalcaoDocProvavel';
 import { sugerirDocsExportadasSemSap } from '../../lib/requisicaoBalcaoAuditoriaApi';
 import { buscaNoHistorico, faixaForaDaLista, lotesNoPeriodo, mesclarRequisicoes } from '../../lib/requisicaoBalcaoHistorico';
@@ -170,6 +171,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
   const [exportacoes, setExportacoes] = useState<ReqBalcaoExportacao[]>([]);
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [exportando, setExportando] = useState(false);
+  const [vinculandoMb51, setVinculandoMb51] = useState(false);
   const [importacao, setImportacao] = useState<{ arquivo: string; leitura: LeituraPlanilhaBalcao; extras: ReqBalcaoRow[] } | null>(null);
   const [lendoImportacao, setLendoImportacao] = useState(false);
   /** Conferência das últimas importações com a MB51, fora do fluxo de importação. */
@@ -512,6 +514,93 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     alternarSelecao(idsFiltradas, !todasFiltradasSelecionadas);
   };
 
+  /** Requisicoes visiveis (ou selecionadas) em "Doc. confere" prontas para gravar o doc. SAP da MB51. */
+  const vinculoDocConfereFiltradas = useMemo(
+    () => (filtroExportacao === 'exportadas' ? montarVinculoDocConfere(filtradas, confSemSap?.mapa) : { requisicoes: [], linhas: [], docsDistintos: [] }),
+    [filtroExportacao, filtradas, confSemSap],
+  );
+  const idsDocConfereFiltradas = useMemo(
+    () => vinculoDocConfereFiltradas.requisicoes.map((r) => r.id),
+    [vinculoDocConfereFiltradas],
+  );
+  const todasDocConfereSelecionadas = idsDocConfereFiltradas.length > 0 && idsDocConfereFiltradas.every((id) => selecionadas.has(id));
+  const vinculoSelecionadasConfere = useMemo(
+    () => (filtroExportacao === 'exportadas'
+      ? montarVinculoDocConfere(requisicoes.filter((r) => selecionadas.has(r.id)), confSemSap?.mapa)
+      : { requisicoes: [], linhas: [], docsDistintos: [] }),
+    [filtroExportacao, requisicoes, selecionadas, confSemSap],
+  );
+
+  const vincularDocConfere = async (alvo?: ReqBalcaoRow[]) => {
+    const listaAlvo = alvo ?? requisicoes.filter((r) => selecionadas.has(r.id));
+    const resumo = montarVinculoDocConfere(listaAlvo, confSemSap?.mapa);
+    if (resumo.requisicoes.length === 0) return;
+
+    const ignoradas = listaAlvo.length - resumo.requisicoes.length;
+    const docsPreview = resumo.docsDistintos.slice(0, 8).join(', ')
+      + (resumo.docsDistintos.length > 8 ? ` e mais ${resumo.docsDistintos.length - 8}` : '');
+
+    const ok = await confirmar({
+      titulo: `Vincular doc. SAP em ${resumo.requisicoes.length} requisição(ões)?`,
+      confirmarLabel: `Vincular ${resumo.requisicoes.length} requisição(ões)`,
+      mensagem:
+        `Serão gravados ${resumo.linhas.length} item(ns) de ${resumo.requisicoes.length} requisição(ões) com "Doc. confere", distribuídos em ${resumo.docsDistintos.length} documento(s) SAP da MB51:\n\n` +
+        `Documentos: ${docsPreview}\n\n` +
+        (ignoradas > 0
+          ? `Observação: ${ignoradas} requisição(ões) selecionada(s) não está(ão) em "Doc. confere" e não será(ão) alterada(s).\n\n`
+          : '') +
+        'Os documentos ficam gravados item a item com registro no histórico e as requisições passam para Concluído SAP.',
+    });
+    if (!ok) return;
+
+    setVinculandoMb51(true);
+    try {
+      const r = await importarSapBalcao(
+        resumo.linhas.map((l) => ({
+          codigo: l.codigo,
+          material: l.material,
+          doc_sap: l.doc_sap,
+          status: l.status,
+        })),
+        ARQUIVO_VINCULO_DOC_CONFERE,
+        user.name,
+        {
+          coluna_sap: 'MB51 (Doc. confere)',
+          total_linhas: resumo.linhas.length,
+          sem_codigo: 0,
+          sem_doc_sap: 0,
+          nao_enviadas: [],
+        },
+      );
+      toast.success(
+        r.itens > 0
+          ? `Doc. SAP vinculado em ${r.itens} item(ns) de ${r.requisicoes} requisição(ões).`
+          : 'Nenhum item novo precisou ser gravado.',
+      );
+      if (r.nao_encontrados?.length) {
+        toast.error(`Não encontrados: ${r.nao_encontrados.join(', ')}`);
+      }
+      const vinculadas = new Set(resumo.requisicoes.map((x) => x.id));
+      setSelecionadas((atual) => {
+        const proximo = new Set(atual);
+        vinculadas.forEach((id) => proximo.delete(id));
+        return proximo;
+      });
+      await recarregarRequisicoes();
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao vincular os documentos SAP.');
+    } finally {
+      setVinculandoMb51(false);
+    }
+  };
+
+  const selecionarTodosDocConfereEVincular = () => {
+    if (idsDocConfereFiltradas.length === 0) return;
+    alternarSelecao(idsDocConfereFiltradas, true);
+    const idSet = new Set(idsDocConfereFiltradas);
+    void vincularDocConfere(filtradas.filter((r) => idSet.has(r.id)));
+  };
+
   /**
    * Requisição exportada não se altera (a planilha já saiu com ela). Em vez de
    * esconder o botão, pergunta e reabre a exportação antes — é o que o
@@ -736,13 +825,26 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
           <span className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
             {selecionadas.size} requisição(ões) selecionada(s)
           </span>
-          <div className="flex gap-2">
-            <button onClick={() => setSelecionadas(new Set())} className="text-[11px] font-bold hover:underline" style={{ color: 'var(--ink-muted)' }}>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => setSelecionadas(new Set())} className="text-[11px] font-bold hover:underline cursor-pointer" style={{ color: 'var(--ink-muted)' }}>
               Limpar
             </button>
+            {vinculoSelecionadasConfere.requisicoes.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void vincularDocConfere()}
+                disabled={vinculandoMb51}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                style={{ background: 'var(--status-good)' }}
+                title={`Gravar o doc. SAP conferido na MB51 em ${vinculoSelecionadasConfere.requisicoes.length} requisição(ões) (${vinculoSelecionadasConfere.docsDistintos.length} doc.)`}
+              >
+                {vinculandoMb51 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                {vinculandoMb51 ? 'Vinculando…' : `Vincular doc. SAP (${vinculoSelecionadasConfere.requisicoes.length})`}
+              </button>
+            )}
             <button
               onClick={() => setDocSapAberto([...selecionadas])}
-              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold"
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold cursor-pointer"
               style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
             >
               <FileCheck2 className="h-3.5 w-3.5" /> Informar doc. SAP
@@ -825,7 +927,37 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
         </div>
       )}
       {filtroExportacao === 'exportadas' && filtroSemSap !== 'todas' && confSemSap && (
-        <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>{DICA_SITUACAO_SEM_SAP[filtroSemSap]}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>{DICA_SITUACAO_SEM_SAP[filtroSemSap]}</p>
+          {filtroSemSap === 'doc_confere' && idsDocConfereFiltradas.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => alternarSelecao(idsDocConfereFiltradas, !todasDocConfereSelecionadas)}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-bold transition-colors hover:opacity-90 cursor-pointer"
+                style={{
+                  borderColor: todasDocConfereSelecionadas ? 'var(--status-good)' : 'var(--hairline)',
+                  background: todasDocConfereSelecionadas ? 'color-mix(in srgb, var(--status-good) 12%, transparent)' : 'var(--surface-raised)',
+                  color: todasDocConfereSelecionadas ? 'var(--status-good)' : 'var(--ink-secondary)',
+                }}
+              >
+                {todasDocConfereSelecionadas ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                {todasDocConfereSelecionadas ? 'Desmarcar todos' : `Selecionar todos (${idsDocConfereFiltradas.length})`}
+              </button>
+              <button
+                type="button"
+                onClick={selecionarTodosDocConfereEVincular}
+                disabled={vinculandoMb51}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-[11px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                style={{ background: 'var(--status-good)' }}
+                title={`Seleciona todas as ${idsDocConfereFiltradas.length} requisição(ões) com Doc. confere e vincula os documentos SAP da MB51`}
+              >
+                {vinculandoMb51 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                {vinculandoMb51 ? 'Vinculando…' : `Selecionar todos e vincular (${idsDocConfereFiltradas.length})`}
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {loading && requisicoes.length === 0 ? (

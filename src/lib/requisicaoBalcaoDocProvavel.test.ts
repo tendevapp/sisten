@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { sugerirDocsSemSap, type CandidatosSemSap, type ItemSemDocMb51, type LinhaDocMb51 } from './requisicaoBalcaoDocProvavel';
+import {
+  montarVinculoDocConfere,
+  STATUS_VINCULO_DOC_CONFERE,
+  sugerirDocsSemSap,
+  type CandidatosSemSap,
+  type ItemSemDocMb51,
+  type LinhaDocMb51,
+} from './requisicaoBalcaoDocProvavel';
 
 /** "DD HH:MM" de novembro/2026 no horário de Brasília. */
 const em = (dh: string) => `2026-11-${dh.slice(0, 2)}T${dh.slice(3)}:00-03:00`;
@@ -211,5 +218,116 @@ describe('doc. SAP mais provável — regras', () => {
   it('exportada depois do último lançamento importado: MB51 não importada', () => {
     const r = sugerirDocsSemSap(base({ itens: itens('RQB-A|12:00|S|1|0002|-|1|19 12:30', '19') }));
     expect(r.get('RQB-A')?.situacao).toBe('mb51_pendente');
+  });
+});
+
+describe('montarVinculoDocConfere', () => {
+  it('monta linhas somente para requisicoes em doc_confere com todos os itens sem doc mapeados', () => {
+    const mapa = sugerirDocsSemSap(base({ itens: itens(ITENS_1711), linhas: linhas(LINHAS_1711) }));
+    const reqs = [
+      // doc_confere -> 4904116637
+      {
+        id: 'RQB-171126-25',
+        codigo: 'RQB-171126-25',
+        itens: [{ id: 'RQB-171126-25#38', material: '0001020178', doc_sap: null }],
+      },
+      // doc_confere -> 4904116638 (transferencia)
+      {
+        id: 'RQB-171126-13',
+        codigo: 'RQB-171126-13',
+        itens: [{ id: 'RQB-171126-13#21', material: '1354640', doc_sap: null }],
+      },
+      // doc_provavel -> deve ser ignorada
+      {
+        id: 'RQB-171126-05',
+        codigo: 'RQB-171126-05',
+        itens: [{ id: 'RQB-171126-05#5', material: '1132570', doc_sap: null }],
+      },
+      // em_parte -> deve ser ignorada
+      {
+        id: 'RQB-171126-01',
+        codigo: 'RQB-171126-01',
+        itens: [
+          { id: 'RQB-171126-01#0', material: '1357022', doc_sap: null },
+          { id: 'RQB-171126-01#1', material: '1044965', doc_sap: null },
+        ],
+      },
+    ];
+
+    const resumo = montarVinculoDocConfere(reqs, mapa);
+    expect(resumo.requisicoes.map((r) => r.codigo)).toEqual(['RQB-171126-25', 'RQB-171126-13']);
+    expect(resumo.docsDistintos).toEqual(['4904116637', '4904116638']);
+    expect(resumo.linhas).toEqual([
+      {
+        requisicaoId: 'RQB-171126-25',
+        codigo: 'RQB-171126-25',
+        itemId: 'RQB-171126-25#38',
+        material: '0001020178',
+        doc_sap: '4904116637',
+        status: STATUS_VINCULO_DOC_CONFERE,
+      },
+      {
+        requisicaoId: 'RQB-171126-13',
+        codigo: 'RQB-171126-13',
+        itemId: 'RQB-171126-13#21',
+        material: '1354640',
+        doc_sap: '4904116638',
+        status: STATUS_VINCULO_DOC_CONFERE,
+      },
+    ]);
+  });
+
+  it('pula itens ja vinculados em importacao parcial e ignora requisicao com mapeamento incompleto', () => {
+    const mapa = new Map([
+      ['req-parcial', {
+        situacao: 'doc_confere' as const,
+        itens: 1,
+        encontrados: 1,
+        docs: ['4904999001'],
+        docFecha: true,
+        sobraNoDoc: 0,
+        alternativas: [],
+        ambigua: false,
+        pepDiferente: 0,
+        minutosAposExportacao: 1,
+        docPorItem: { 'it-2': '4904999001' },
+      }],
+      ['req-incompleta', {
+        situacao: 'doc_confere' as const,
+        itens: 2,
+        encontrados: 2,
+        docs: ['4904999002'],
+        docFecha: true,
+        sobraNoDoc: 0,
+        alternativas: [],
+        ambigua: false,
+        pepDiferente: 0,
+        minutosAposExportacao: 1,
+        docPorItem: { 'it-a': '4904999002' },
+      }],
+    ]);
+
+    const resumo = montarVinculoDocConfere([
+      {
+        id: 'req-parcial',
+        codigo: 'RQB-01',
+        itens: [
+          { id: 'it-1', material: '111', doc_sap: '4904000001' },
+          { id: 'it-2', material: '222', doc_sap: null },
+        ],
+      },
+      {
+        id: 'req-incompleta',
+        codigo: 'RQB-02',
+        itens: [
+          { id: 'it-a', material: '333', doc_sap: null },
+          { id: 'it-b', material: '444', doc_sap: null },
+        ],
+      },
+    ], mapa);
+
+    expect(resumo.requisicoes).toEqual([{ id: 'req-parcial', codigo: 'RQB-01', docs: ['4904999001'], itens: 1 }]);
+    expect(resumo.linhas).toHaveLength(1);
+    expect(resumo.linhas[0].itemId).toBe('it-2');
   });
 });
