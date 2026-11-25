@@ -26,12 +26,8 @@ interface Props {
   /** Nota de resolução já escrita (Cadastro SAP); vira o "O que foi feito". */
   conclusaoInicial?: string;
   codigoSap?: string | null;
-  /**
-   * Grava a conclusão como comentário público antes de abrir o e-mail. Usado no
-   * Serviço, que não tem passo de fechamento próprio (o status segue o SAP).
-   * No Cadastro SAP o fechamento já gravou o comentário.
-   */
-  registrarConclusao?: boolean;
+  numeroRmServico?: string;
+  primeiroAvisoServico?: boolean;
   onClose: () => void;
   onConcluido?: () => void;
 }
@@ -51,7 +47,7 @@ function emailDoSolicitante(r: Request): string {
 }
 
 export default function AvisarConclusaoModal({
-  request, user, conclusaoInicial = '', codigoSap, registrarConclusao = false, onClose, onConcluido,
+  request, user, conclusaoInicial = '', codigoSap, numeroRmServico, primeiroAvisoServico = false, onClose, onConcluido,
 }: Props) {
   const toast = useToast();
   const idPara = useId();
@@ -76,12 +72,14 @@ export default function AvisarConclusaoModal({
     itens,
     conclusao,
     codigoSap,
+    numeroRmServico,
     atendente: user.name,
     origem: window.location.origin,
-  }), [request, itens, conclusao, codigoSap, user.name]);
+  }), [request, itens, conclusao, codigoSap, numeroRmServico, user.name]);
 
   const assunto = assuntoEditado ?? gerado.assunto;
-  const corpo = corpoEditado ?? gerado.corpo;
+  const mensagem = corpoEditado ?? gerado.mensagem;
+  const corpo = gerado.destaque ? `${gerado.destaque}\n\n${mensagem}` : mensagem;
 
   const copiar = async () => {
     try {
@@ -97,18 +95,18 @@ export default function AvisarConclusaoModal({
       toast.error('Informe o e-mail do solicitante.');
       return;
     }
-    if (registrarConclusao && !conclusao.trim()) {
-      toast.error('Descreva o que foi feito para finalizar.');
+    if (numeroRmServico !== undefined && !/^\d+$/.test(numeroRmServico)) {
+      toast.error('Informe o número da RM aberta no SAP.');
       return;
     }
 
-    if (registrarConclusao) {
+    if (numeroRmServico !== undefined) {
       setSalvando(true);
       try {
-        await localDb.addComment(request.id, user.id, `${MARCA_SERVICO_FINALIZADO}: ${conclusao.trim()}`, 'public');
+        await localDb.finalizarServicoComRm(request.id, numeroRmServico);
       } catch (err) {
         console.error('Falha ao registrar a conclusão do serviço.', err);
-        toast.error('Não foi possível registrar a conclusão. Tente novamente.');
+        toast.error(err instanceof Error ? err.message : 'Não foi possível registrar a RM. Tente novamente.');
         setSalvando(false);
         return;
       }
@@ -120,10 +118,20 @@ export default function AvisarConclusaoModal({
       window.location.href = mailto;
       toast.success('Abrindo o e-mail para o solicitante no Outlook...');
     } else {
-      // Mensagem longa não cabe no mailto: abre só o cabeçalho e deixa o texto copiado.
-      await navigator.clipboard.writeText(corpo).catch(() => null);
-      window.location.href = montarMailtoComConfig({ destinatarios: para, copia, assunto: assunto.trim(), corpo: '' });
-      toast.warning('Mensagem longa: o texto foi copiado. Cole no Outlook com Ctrl+V.');
+      // No e-mail longo, a RM já vai no rascunho e o restante segue pela área de transferência.
+      let copiado = false;
+      try {
+        await navigator.clipboard.writeText(mensagem);
+        copiado = true;
+      } catch {
+        toast.warning('Copie a mensagem nesta janela e cole no Outlook.');
+      }
+      window.location.href = montarMailtoComConfig({ destinatarios: para, copia, assunto: assunto.trim(), corpo: gerado.destaque });
+      if (!copiado) {
+        onConcluido?.();
+        return;
+      }
+      toast.warning('Mensagem longa. Cole o texto copiado no fim do e-mail com Ctrl+V.');
     }
     onConcluido?.();
     onClose();
@@ -174,9 +182,9 @@ export default function AvisarConclusaoModal({
               style={campo}
             />
           </div>
-          <div>
+          {numeroRmServico === undefined && <div>
             <label htmlFor={idConclusao} className="mb-1 block text-xs font-bold" style={{ color: 'var(--ink-secondary)' }}>
-              O que foi feito {registrarConclusao && '*'}
+              O que foi feito
             </label>
             <textarea
               id={idConclusao}
@@ -187,12 +195,7 @@ export default function AvisarConclusaoModal({
               className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-2 focus:outline-offset-1"
               style={campo}
             />
-            {registrarConclusao && (
-              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                Fica registrado na conversa da solicitação, visível ao solicitante.
-              </p>
-            )}
-          </div>
+          </div>}
           <div>
             <label htmlFor={idAssunto} className="mb-1 block text-xs font-bold" style={{ color: 'var(--ink-secondary)' }}>Assunto</label>
             <input
@@ -205,9 +208,10 @@ export default function AvisarConclusaoModal({
           </div>
           <div>
             <label htmlFor={idCorpo} className="mb-1 block text-xs font-bold" style={{ color: 'var(--ink-secondary)' }}>Mensagem</label>
+            {gerado.destaque && <p className="mb-2 rounded-lg bg-emerald-50 px-3 py-2 font-mono font-bold text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">{gerado.destaque}</p>}
             <textarea
               id={idCorpo}
-              value={corpo}
+              value={mensagem}
               onChange={e => setCorpoEditado(e.target.value)}
               rows={12}
               className="w-full rounded-lg border px-3 py-2 font-mono text-xs leading-relaxed focus:outline-2 focus:outline-offset-1"
@@ -233,7 +237,7 @@ export default function AvisarConclusaoModal({
           className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 py-1.5 text-xs font-bold text-white cursor-pointer hover:bg-emerald-800 disabled:opacity-60"
         >
           {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-          {registrarConclusao ? 'Finalizar e abrir no Outlook' : 'Abrir no Outlook'}
+          {primeiroAvisoServico ? 'Finalizar e abrir no Outlook' : 'Abrir no Outlook'}
         </button>
       </ModalFooter>
     </Modal>

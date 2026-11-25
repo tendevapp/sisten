@@ -16,32 +16,43 @@
  * esta tabela, então o tipo tem a mesma cara em toda a Central.
  */
 
-import { Database, LifeBuoy, ShoppingCart, type LucideIcon } from 'lucide-react';
-import type { RequestType } from '../../types';
+import { Database, LifeBuoy, ShoppingCart, Wrench, type LucideIcon } from 'lucide-react';
+import type { TipoSolicitacaoFila } from '../../lib/tipoSolicitacao';
 
 export interface TipoVisual {
   rotulo: string;
   /** Plural, para os contadores de filtro ("3 compras"). */
   plural: string;
   icone: LucideIcon;
+  fundoFiltroAtivo: string;
   /** Token de cor da paleta categórica. */
   cor: string;
   /** Fundo do chip do ícone: a mesma cor rebaixada, para não competir com o texto. */
   fundo: string;
 }
 
-export const TIPO_VISUAL: Record<RequestType, TipoVisual> = {
+export const TIPO_VISUAL: Record<TipoSolicitacaoFila, TipoVisual> = {
   compra: {
     rotulo: 'Compra',
     plural: 'Compras',
     icone: ShoppingCart,
+    fundoFiltroAtivo: 'bg-blue-600',
     cor: 'var(--series-1)',
     fundo: 'color-mix(in srgb, var(--series-1) 14%, transparent)',
+  },
+  servico: {
+    rotulo: 'Serviço',
+    plural: 'Serviços',
+    icone: Wrench,
+    fundoFiltroAtivo: 'bg-teal-700',
+    cor: 'var(--series-3)',
+    fundo: 'color-mix(in srgb, var(--series-3) 14%, transparent)',
   },
   cadastro_sap: {
     rotulo: 'Cadastro SAP',
     plural: 'Cadastros SAP',
     icone: Database,
+    fundoFiltroAtivo: 'bg-purple-600',
     cor: 'var(--series-7)',
     fundo: 'color-mix(in srgb, var(--series-7) 14%, transparent)',
   },
@@ -49,10 +60,11 @@ export const TIPO_VISUAL: Record<RequestType, TipoVisual> = {
     rotulo: 'Chamado',
     plural: 'Chamados',
     icone: LifeBuoy,
+    fundoFiltroAtivo: 'bg-orange-600',
     cor: 'var(--series-2)',
     fundo: 'color-mix(in srgb, var(--series-2) 14%, transparent)',
   },
 };
 
 /** Ordem fixa nos filtros — a mesma do formulário de Nova Solicitação. */
-export const TIPOS_EM_ORDEM: RequestType[] = ['compra', 'cadastro_sap', 'chamado'];
+export const TIPOS_EM_ORDEM: TipoSolicitacaoFila[] = ['compra', 'servico', 'cadastro_sap', 'chamado'];

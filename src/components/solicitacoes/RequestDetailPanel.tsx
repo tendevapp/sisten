@@ -45,6 +45,7 @@ import HelpdeskSatisfactionCard from '../helpdesk/HelpdeskSatisfactionCard';
 import ReenviarEmailModal from './ReenviarEmailModal';
 import AvisarConclusaoModal, { MARCA_SERVICO_FINALIZADO } from './AvisarConclusaoModal';
 import { ehResponsavelPelaSolicitacao } from '../../lib/responsaveisSolicitacoes';
+import { tipoNaFila } from '../../lib/tipoSolicitacao';
 import { aoMudarConfigsEmail, listarConfigsEmail } from '../../lib/emailConfigApi';
 import { EditarChamadoSuprimentosModal, ReabrirChamadoSuprimentosModal } from './ChamadoSuprimentosModais';
 import { podeEditarChamadoSuprimentos, podeReabrirChamadoSuprimentos } from '../../lib/chamadosSuprimentosGrupo';
@@ -152,6 +153,7 @@ export default function RequestDetailPanel({
   const [itensCopiados, setItensCopiados] = useState(false);
   const [reenviandoEmail, setReenviandoEmail] = useState(false);
   const [avisandoConclusao, setAvisandoConclusao] = useState(false);
+  const [rmDigitada, setRmDigitada] = useState('');
   const [, setVersaoConfigs] = useState(0);
   const [modalChamadoSup, setModalChamadoSup] = useState<'editar' | 'reabrir' | null>(null);
   const [sinais, setSinais] = useState<Record<string, SinalChip[]>>({});
@@ -185,6 +187,7 @@ export default function RequestDetailPanel({
     setModalCancelarAberta(false);
     setReenviandoEmail(false);
     setAvisandoConclusao(false);
+    setRmDigitada('');
     setModalChamadoSup(null);
     setNovaDecisaoJustificativa('');
     setMotivoCancelamento('');
@@ -224,7 +227,8 @@ export default function RequestDetailPanel({
     return aoMudarConfigsEmail(() => setVersaoConfigs(v => v + 1));
   }, []);
 
-  const ehServico = request.type === 'compra' && request.tipo_compra === 'Serviço';
+  const ehServico = tipoNaFila(request) === 'servico';
+  const rmServico = request.linked_rm_number?.trim() || rmDigitada.trim();
   const responsavel = user.roles.includes('admin') || ehResponsavelPelaSolicitacao(request, user);
   const finalizacaoServico = ehServico
     ? [...comentarios].reverse().find(c => c.content.startsWith(MARCA_SERVICO_FINALIZADO))
@@ -577,13 +581,36 @@ export default function RequestDetailPanel({
             </BotaoSecundario>
           )}
 
-          {(podeFinalizarServico || podeAvisarCadastro) && (
+          {podeFinalizarServico && (
+            <form
+              onSubmit={e => { e.preventDefault(); setAvisandoConclusao(true); }}
+              className="flex flex-wrap items-end gap-2"
+            >
+              <label className="flex flex-col gap-1 text-xs font-semibold">
+                Número da RM aberta no SAP
+                <input
+                  type="text" inputMode="numeric" pattern="[0-9]+" required
+                  title="Informe apenas os dígitos da RM aberta no SAP."
+                  value={request.linked_rm_number?.trim() || rmDigitada}
+                  readOnly={!!request.linked_rm_number?.trim()}
+                  onChange={e => setRmDigitada(e.target.value.trim())}
+                  className="w-44 rounded-lg border px-3 py-1.5 font-mono text-sm"
+                  style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
+                />
+              </label>
+              <button type="submit" className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-[13px] font-bold text-white hover:bg-emerald-800">
+                <CheckCircle className="h-4 w-4" />
+                {finalizacaoServico && request.linked_rm_number ? 'Avisar o solicitante' : 'Finalizar e avisar solicitante'}
+              </button>
+            </form>
+          )}
+          {podeAvisarCadastro && (
             <BotaoSecundario
               onClick={() => setAvisandoConclusao(true)}
               title="Abrir o Outlook para o solicitante informando que a solicitação foi finalizada"
             >
               <CheckCircle className="h-4 w-4 text-emerald-600" />
-              {podeFinalizarServico && !finalizacaoServico ? 'Finalizar e avisar solicitante' : 'Avisar o solicitante'}
+              Avisar o solicitante
             </BotaoSecundario>
           )}
 
@@ -1244,13 +1271,14 @@ export default function RequestDetailPanel({
         <ReabrirChamadoSuprimentosModal request={request} onClose={() => setModalChamadoSup(null)} onReaberto={onChanged} />
       )}
 
-      {avisandoConclusao && (
+      {avisandoConclusao && (podeFinalizarServico || podeAvisarCadastro) && (
         <AvisarConclusaoModal
           request={request}
           user={user}
           conclusaoInicial={request.type === 'cadastro_sap' ? resolucaoCadastro() : ''}
           codigoSap={request.codigo_fornecedor_sap || request.codigo_sap_gerado}
-          registrarConclusao={podeFinalizarServico && !finalizacaoServico}
+          numeroRmServico={ehServico ? rmServico : undefined}
+          primeiroAvisoServico={podeFinalizarServico && !(finalizacaoServico && request.linked_rm_number)}
           onClose={() => setAvisandoConclusao(false)}
           onConcluido={onChanged}
         />

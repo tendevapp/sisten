@@ -12,6 +12,8 @@
  */
 
 import * as XLSX from 'xlsx';
+import { ehSolicitacaoServico } from './tipoSolicitacao';
+export { ehSolicitacaoServico } from './tipoSolicitacao';
 import type { Request, RequestItem, Sector } from '../types';
 import { ESTAGIOS_AUTOMATICOS_COMPRA } from './statusAutomaticoCompra';
 
@@ -103,19 +105,6 @@ export function depositoRm(tipoCompra?: string | null): string {
   return (tipoCompra || '').trim().toLowerCase() === 'estoque'
     ? RM_DEPOSITO_ESTOQUE
     : RM_DEPOSITO_DIRETA;
-}
-
-/**
- * Verifica se uma compra é do tipo Serviço.
- * Compras de serviço não geram RM de materiais no Almoxarifado.
- */
-export function ehSolicitacaoServico(tipoCompra?: string | null): boolean {
-  const normalizado = (tipoCompra || '')
-    .trim()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase();
-  return normalizado === 'servico';
 }
 
 /**

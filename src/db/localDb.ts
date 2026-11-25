@@ -4127,6 +4127,22 @@ class LocalDatabase {
     return true;
   }
 
+  public async finalizarServicoComRm(reqId: string, numeroRm: string): Promise<void> {
+    const { data, error } = await supabase.rpc('finalizar_servico_rm_sap', {
+      p_request_id: reqId, p_numero_rm: numeroRm,
+    }).single();
+    if (error || !data) throw new Error(error?.message || 'Não foi possível registrar a RM.');
+
+    const comentario = data as RequestComment;
+    this.setStorageItem(this.commentsKey, [
+      ...this.getAllRequestComments().filter(c => c.id !== comentario.id), comentario,
+    ]);
+    this.setStorageItem(this.requestsKey, this.getRequests().map(r =>
+      r.id === reqId ? { ...r, linked_rm_number: numeroRm } : r,
+    ));
+    this.notifyListeners();
+  }
+
   public async updateLinkedRM(reqId: string, rmNumber: string | null): Promise<boolean> {
     const requests = this.getRequests();
     const idx = requests.findIndex(r => r.id === reqId);

@@ -1,6 +1,7 @@
 import type { Request, RequestItem } from '../types';
 import { formatBRL, formatDateBR, formatQtd } from './format';
 import { rotuloCriticidade, rotuloStatus, rotuloTipo } from './solicitacoes';
+import { tipoNaFila } from './tipoSolicitacao';
 
 export interface ParametrosEmailSolicitacao {
   request: Request;
@@ -115,6 +116,7 @@ export interface ParametrosEmailConclusao {
   conclusao: string;
   /** Código SAP gerado no Cadastro SAP (material ou fornecedor), quando houver. */
   codigoSap?: string | null;
+  numeroRmServico?: string;
   /** Quem finalizou e assina a mensagem. */
   atendente: string;
   /** Endereço do SISTEN, sem barra final. */
@@ -132,15 +134,18 @@ function primeiroNome(nome?: string | null): string {
  * SAP ou uma solicitação de Serviço: avisa que terminou e repete o conteúdo,
  * para quem lê não precisar abrir o SISTEN para saber do que se trata.
  */
-export function montarEmailConclusao(p: ParametrosEmailConclusao): EmailSolicitacao {
+export function montarEmailConclusao(p: ParametrosEmailConclusao) {
   const { request: r, itens, conclusao, codigoSap, atendente, origem } = p;
   const ehCadastro = r.type === 'cadastro_sap';
+  const ehServico = tipoNaFila(r) === 'servico';
+  const rm = ehServico ? (p.numeroRmServico ?? r.linked_rm_number)?.trim() : '';
+  const destaque = rm ? `RM ABERTA NO SAP: ${rm}` : '';
   const ehFornecedor = r.registration_type === 'Fornecedor';
   const nomeTipo = ehCadastro
     ? `Cadastro SAP — ${ehFornecedor ? 'Fornecedor' : 'Item'}`
-    : r.type === 'compra' && r.tipo_compra === 'Serviço' ? 'Solicitação de Serviço' : rotuloTipo(r.type);
+    : ehServico ? 'Solicitação de Serviço' : rotuloTipo(r.type);
 
-  const assunto = `${nomeTipo} #${r.number} — finalizada`;
+  const assunto = `${nomeTipo} #${r.number} — finalizada${rm ? ` — RM ${rm}` : ''}`;
   const nome = primeiroNome(r.solicitante_name);
   const codigo = (codigoSap || '').trim();
 
@@ -158,13 +163,10 @@ export function montarEmailConclusao(p: ParametrosEmailConclusao): EmailSolicita
     );
   }
 
-  corpo.push(
-    'O que foi feito:',
-    conclusao.trim() || '—',
-  );
+  if (conclusao.trim() || !rm) corpo.push('O que foi feito:', conclusao.trim() || '—');
 
   if (itens.length > 0) {
-    corpo.push('', `${r.tipo_compra === 'Serviço' ? 'Serviços' : 'Itens'} da solicitação (${itens.length}):`);
+    corpo.push('', `${ehServico ? 'Serviços' : 'Itens'} da solicitação (${itens.length}):`);
     itens.forEach((it, i) => {
       corpo.push(`${i + 1}. ${it.description || '—'}${it.quantity ? ` — ${formatQtd(it.quantity)} ${it.unit ?? ''}`.trimEnd() : ''}`);
     });
@@ -184,5 +186,6 @@ export function montarEmailConclusao(p: ParametrosEmailConclusao): EmailSolicita
     atendente,
   );
 
-  return { assunto, corpo: corpo.join('\n') };
+  const mensagem = corpo.join('\n');
+  return { assunto, destaque, mensagem, corpo: destaque ? `${destaque}\n\n${mensagem}` : mensagem };
 }

@@ -8,6 +8,7 @@
 import { Request, RequestItem, RequestStatus, RequestType } from '../../types';
 import { formatDateBR, toDate } from '../../lib/format';
 import { paraISOLocal } from '../../lib/dataLocal';
+import { ehSolicitacaoServico, tipoNaFila } from '../../lib/tipoSolicitacao';
 import { diasUteisEntre, rotuloDiasUteis, somarDiasUteis } from '../../lib/diasUteis';
 
 /** Extrai ate duas letras iniciais para o avatar do solicitante. */
@@ -207,7 +208,7 @@ export function ordenarSolicitacoes<T>(
 export function chaveOrdenacaoBasica(r: Request, coluna: ColunaOrdenacao): string | number | null {
   switch (coluna) {
     case 'numero': return r.number || null;
-    case 'tipo': return r.type;
+    case 'tipo': return tipoNaFila(r);
     case 'solicitante': return r.solicitante_name || null;
     case 'abertura': return toDate(r.created_at)?.getTime() ?? null;
     case 'prazo': return calcularPrazoSolicitacao(r).dataPrazo?.getTime() ?? null;
@@ -244,7 +245,7 @@ export function obterTituloEJustificativa(
         titulo = partes[0].slice(0, 48);
         subtitulo = partes.slice(1).join(' ') || req.justificativa;
       } else {
-        titulo = 'Solicitação de Compra';
+        titulo = tipoNaFila(req) === 'servico' ? 'Solicitação de Serviço' : 'Solicitação de Compra';
         const setorNome = nomeSetorFn ? nomeSetorFn(req.solicitante_sector_id) : '';
         subtitulo = setorNome ? `${req.solicitante_name} · ${setorNome}` : req.solicitante_name;
       }
@@ -347,13 +348,7 @@ export function obterEstilosStatus(
   }
 
   if (tipo === 'compra' && status === 'aprovada') {
-    const ehServico = (tipoCompra || '')
-      .trim()
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .toLowerCase() === 'servico';
-
-    if (ehServico) {
+    if (ehSolicitacaoServico(tipoCompra)) {
       return {
         rotulo: 'Aprovada',
         classes: 'bg-emerald-50 text-emerald-700 border border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/80',

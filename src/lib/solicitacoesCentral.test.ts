@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Profile, Request, RequestComment, RequestStatusHistory } from '../types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ConfigEnvioEmail, Profile, Request, RequestComment, RequestStatusHistory } from '../types';
+import * as emailConfigApi from './emailConfigApi';
+import { tipoNaFila } from './tipoSolicitacao';
 
 /** Armazenamento em memória no lugar do IndexedDB do localDb. */
 const memoria = new Map<string, unknown>();
@@ -62,6 +64,62 @@ function evento(over: Partial<RequestStatusHistory> = {}): RequestStatusHistory 
 const semConversa = indexarConversas([]);
 
 beforeEach(() => memoria.clear());
+afterEach(() => vi.restoreAllMocks());
+
+describe('Precisa de mim por destinatário em Cadastros Gerais', () => {
+  const operador = perfil({ id: 'lourivan', email: 'Lourivan@teste.invalid', roles: ['solicitante'], sector_id: 'outro' });
+  const item = req({ id: 'item', type: 'cadastro_sap', registration_type: 'Item', status: 'aberto' });
+  const fornecedor = req({ ...item, id: 'forn', registration_type: 'Fornecedor' });
+  const servico = req({ id: 'serv', tipo_compra: 'Serviço', status: 'aprovada' });
+  const config = (chave: string, destinatarios: string) => ({ chave, destinatarios } as ConfigEnvioEmail);
+  function fila(registros: Request[], usuario = operador) {
+    const universo = universoVisivel(registros, usuario);
+    return filtrarPorEscopo(universo, usuario, 'acao', indexarPendencias(universo, usuario, semConversa)).map(r => r.id);
+  }
+
+  it('usa o Para de cada tipo, inclusive com vários usuários e após trocar os responsáveis', () => {
+    const outra = perfil({ ...operador, id: 'ana', email: 'ana@teste.invalid' });
+    const configs = vi.spyOn(emailConfigApi, 'configsEmailConhecidas').mockReturnValue([
+      config('compra_servico', operador.email),
+      config('cadastro_sap', 'externo@teste.invalid; LOURIVAN@teste.invalid'),
+      config('cadastro_sap_fornecedor', outra.email),
+    ]);
+    const dados = [item, fornecedor, servico, req({ ...servico, id: 'rm', linked_rm_number: '123' })];
+    expect(fila(dados)).toEqual(['item', 'serv']);
+    expect(fila(dados, outra)).toEqual(['forn']);
+    configs.mockReturnValue([config('cadastro_sap', outra.email), config('cadastro_sap_fornecedor', operador.email)]);
+    expect(fila(dados)).toEqual(['forn']);
+    expect(fila(dados, outra)).toEqual(['item']);
+  });
+
+  it('mantém o atendimento com quem assumiu e devolve a pendência de esclarecimento ao solicitante', () => {
+    vi.spyOn(emailConfigApi, 'configsEmailConhecidas').mockReturnValue([config('cadastro_sap', operador.email)]);
+    const dados = [
+      req({ ...item, id: 'meu', status: 'em_atendimento', atendente_id: operador.id }),
+      req({ ...item, id: 'outro', status: 'em_atendimento', atendente_id: 'colega' }),
+      req({ ...item, id: 'aguarda', status: 'aguardando_solicitante', atendente_id: operador.id }),
+      req({ ...item, id: 'resolvido', status: 'resolvido' }),
+      req({ ...item, id: 'cancelado', status: 'cancelada' }),
+      req({ ...item, id: 'rascunho', status: 'rascunho' }),
+    ];
+    expect(fila(dados)).toEqual(['meu']);
+    expect(fila(dados, perfil({ roles: ['solicitante'] }))).toEqual(['aguarda']);
+  });
+});
+
+describe('tipo na fila de solicitações', () => {
+  it('separa serviços de compras diretas, de estoque e legadas pelo subtipo registrado', () => {
+    const fila = [
+      req({ number: '5001065', tipo_compra: 'Serviço' }),
+      req({ tipo_compra: 'Direta', titulo: 'Material para serviço de recuperação' }),
+      req({ tipo_compra: 'Estoque' }),
+      req(),
+      req({ type: 'cadastro_sap' }),
+      req({ type: 'chamado' }),
+    ];
+    expect(fila.map(tipoNaFila)).toEqual(['servico', 'compra', 'compra', 'compra', 'cadastro_sap', 'chamado']);
+  });
+});
 
 describe('visibilidade', () => {
   it('rascunho só aparece para quem o escreveu', () => {
@@ -141,6 +199,14 @@ describe('pendências', () => {
     const comprador = perfil({ id: 'u-cp', roles: ['comprador'] });
     expect(pendencia(req({ status: 'aprovada' }), comprador, semConversa)?.rotulo).toBe('Assumir a compra');
     expect(pendencia(req({ status: 'aprovada', comprador_id: 'outro' }), comprador, semConversa)).toBeNull();
+  });
+
+  it('serviço aprovado pede RM ao admin e a pendência termina ao vincular a RM', () => {
+    const admin = perfil({ roles: ['admin'] });
+    const servico = req({ tipo_compra: 'Serviço', status: 'aprovada' });
+    expect(pendencia(servico, admin, semConversa)?.rotulo).toBe('Informar a RM aberta no SAP');
+    expect(pendencia(servico, perfil({ roles: ['comprador'] }), semConversa)).toBeNull();
+    expect(pendencia({ ...servico, linked_rm_number: '00123456' }, admin, semConversa)).toBeNull();
   });
 
   it('solicitação encerrada não gera pendência para ninguém', () => {

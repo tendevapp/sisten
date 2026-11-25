@@ -25,6 +25,7 @@ import { canAccessPage } from './pages';
 import { estaEmAberto, solicitacoesVisiveis } from './solicitacoes';
 import { ehChamadoDoGrupoFiscal, ehSetorGrupoFiscal } from './chamadosSuprimentosGrupo';
 import { ehResponsavelPelaSolicitacao } from './responsaveisSolicitacoes';
+import { tipoNaFila } from './tipoSolicitacao';
 
 /* Escopos ----------------------------------------------------------------- */
 
@@ -199,6 +200,7 @@ export function podeVer(r: Request, user: Profile): boolean {
   if (r.status === 'rascunho') return r.solicitante_id === user.id;
   if (r.solicitante_id === user.id) return true;
   if (user.roles.includes('admin')) return true;
+  if (r.type === 'cadastro_sap' && r.atendente_id === user.id) return true;
   if (podeAprovar(r, user)) return true;
   if (setoresAcompanhados(user).includes(r.solicitante_sector_id)) return true;
   if (ehChamadoDoGrupoFiscal(r, user, localDb.getSectors())) return true;
@@ -313,6 +315,22 @@ export function pendencia(r: Request, user: Profile, ctx: ContextoConversa): Pen
     }
   }
 
+  if (tipoNaFila(r) === 'servico' && r.status === 'aprovada') {
+    return !r.linked_rm_number?.trim() && (user.roles.includes('admin') || ehResponsavelPelaSolicitacao(r, user))
+      ? { rotulo: 'Informar a RM aberta no SAP', papel: 'operador', ordem: 1 }
+      : null;
+  }
+
+  if (r.type === 'cadastro_sap') {
+    const emTriagem = AGUARDA_TRIAGEM_SAP.includes(r.status);
+    if (!emTriagem && r.status !== 'em_atendimento') return null;
+    const atende = r.atendente_id
+      ? r.atendente_id === user.id
+      : ehResponsavelPelaSolicitacao(r, user) || ehOperador(r, user);
+    if (!atende) return null;
+    return { rotulo: emTriagem ? 'Triar o cadastro' : 'Continuar atendimento do cadastro', papel: 'operador', ordem: 1 };
+  }
+
   if (!ehOperador(r, user)) return null;
 
   if (r.type === 'chamado') {
@@ -325,10 +343,6 @@ export function pendencia(r: Request, user: Profile, ctx: ContextoConversa): Pen
       return { rotulo: 'Responder o solicitante', papel: 'operador', ordem: 2 };
     }
     return null;
-  }
-
-  if (r.type === 'cadastro_sap' && AGUARDA_TRIAGEM_SAP.includes(r.status)) {
-    return { rotulo: 'Triar o cadastro', papel: 'operador', ordem: 1 };
   }
 
   if (r.type === 'compra' && r.status === 'aprovada' && !r.comprador_id) {

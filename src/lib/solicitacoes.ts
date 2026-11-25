@@ -16,6 +16,7 @@ import { localDb } from '../db/localDb';
 import { formatDateBR, formatDateTimeBR } from './format';
 import { isChamadoSuprimentosPendencia } from './supPendenciasProcessamento';
 import { dataHojeLocal } from './dataLocal';
+import { tipoNaFila, type TipoSolicitacaoFila } from './tipoSolicitacao';
 
 /** Papéis que enxergam a fila coletiva. Espelha os defaultRoles da página. */
 export const PAPEIS_FILA: string[] = [
@@ -102,8 +103,8 @@ export function rotuloStatus(r: Request): string {
   return rotulos[r.status] || r.status;
 }
 
-export const rotuloTipo = (t: RequestType): string =>
-  ({ compra: 'Compra', cadastro_sap: 'Cadastro SAP', chamado: 'Chamado' }[t] || t);
+export const rotuloTipo = (t: TipoSolicitacaoFila): string =>
+  ({ compra: 'Compra', servico: 'Serviço', cadastro_sap: 'Cadastro SAP', chamado: 'Chamado' }[t] || t);
 
 const ROTULO_CRITICIDADE: Record<number, string> = {
   1: '1 - Baixa',
@@ -351,7 +352,7 @@ export async function exportarSolicitacoes(selecionadas: Request[], sectors: Sec
   const linhas: Linha[] = selecionadas.flatMap<Linha>(r => {
     const cabecalho = {
       'Número': r.number,
-      'Tipo': rotuloTipo(r.type),
+      'Tipo': rotuloTipo(tipoNaFila(r)),
       'Status': rotuloStatus(r),
       'Criticidade': rotuloCriticidade(r.criticality),
       'Solicitante': r.solicitante_name,

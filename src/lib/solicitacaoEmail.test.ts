@@ -54,6 +54,15 @@ describe('montarEmailSolicitacao', () => {
 });
 
 describe('montarEmailConclusao', () => {
+  it('destaca a RM do serviço na primeira linha e no assunto, inclusive no reenvio', () => {
+    const parametros = { request, itens: [item()], conclusao: '', atendente: 'Lourivan', origem: base.origem };
+    const novo = montarEmailConclusao({ ...parametros, numeroRmServico: '00123456' });
+    expect(novo.assunto).toContain('RM 00123456');
+    expect(novo.corpo).toMatch(/^RM ABERTA NO SAP: 00123456\n\nOlá, Bianca!/);
+    expect(novo.corpo).not.toContain('O que foi feito:');
+    expect(montarEmailConclusao({ ...parametros, request: { ...request, linked_rm_number: '00123456' } })).toEqual(novo);
+  });
+
   it('avisa o solicitante que o serviço terminou e repete o conteúdo', () => {
     const { assunto, corpo } = montarEmailConclusao({
       request, itens: [item()], conclusao: 'Prestador contratado, PO 4500012345.',

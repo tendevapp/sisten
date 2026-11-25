@@ -11,6 +11,7 @@
 
 import type { ConfigEnvioEmail, Profile, Request } from '../types';
 import { configsEmailConhecidas, normalizarListaEmails } from './emailConfigApi';
+import { tipoNaFila } from './tipoSolicitacao';
 
 export interface GatilhoResponsavel {
   chave: string;
@@ -39,7 +40,7 @@ export const GATILHOS_RESPONSAVEIS: GatilhoResponsavel[] = [
 
 /** Gatilho (e responsável) que corresponde à solicitação, quando ela tem um. */
 export function chaveGatilhoDaSolicitacao(r: Pick<Request, 'type' | 'tipo_compra' | 'registration_type'>): string | null {
-  if (r.type === 'compra' && r.tipo_compra === 'Serviço') return 'compra_servico';
+  if (tipoNaFila(r) === 'servico') return 'compra_servico';
   if (r.type === 'cadastro_sap') return r.registration_type === 'Fornecedor' ? 'cadastro_sap_fornecedor' : 'cadastro_sap';
   return null;
 }

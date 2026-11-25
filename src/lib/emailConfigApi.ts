@@ -324,6 +324,7 @@ export async function listarConfigsEmail(apenasAtivos = false): Promise<ConfigEn
     );
 
     let listaFinal = [...configsDb];
+    let persistidas = configsDb;
     if (faltantes.length > 0) {
       try {
         const registrosParaInserir = faltantes.map(item => ({
@@ -345,6 +346,7 @@ export async function listarConfigsEmail(apenasAtivos = false): Promise<ConfigEn
 
         if (!insertErr && inseridos && inseridos.length > 0) {
           listaFinal = [...configsDb, ...(inseridos as ConfigEnvioEmail[])];
+          persistidas = listaFinal;
         } else {
           listaFinal = [...configsDb, ...faltantes];
         }
@@ -361,7 +363,8 @@ export async function listarConfigsEmail(apenasAtivos = false): Promise<ConfigEn
     if (!apenasAtivos) {
       cacheConfigs = listaFinal;
       cacheTime = now;
-      guardarConfigsLidas(listaFinal);
+      // Só destinatários confirmados no banco atribuem pendências na Central.
+      guardarConfigsLidas(persistidas);
     }
 
     return listaFinal;

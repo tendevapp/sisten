@@ -18618,6 +18618,10 @@ export type Database = {
       }
     }
     Functions: {
+      finalizar_servico_rm_sap: {
+        Args: { p_request_id: string; p_numero_rm: string }
+        Returns: Database["public"]["Tables"]["core_solicitacoes_comentarios"]["Row"][]
+      }
       _usage_require_admin: { Args: never; Returns: undefined }
       alm_inv_adicionar_itens: {
         Args: { p_id: string; p_itens: Json }
