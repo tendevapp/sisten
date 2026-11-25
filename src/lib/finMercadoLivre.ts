@@ -16,6 +16,7 @@
 import { lerValorMl } from './detalheCompraMl';
 import { ehNumeroPedidoSap } from './compraMercadoLivre';
 import { recompraPendenteMl, valorOcorrenciaMl, type OcorrenciaMl } from './ocorrenciasMl';
+import { paraISOLocal } from './dataLocal';
 
 /** Linha de `vw_fin_ml_itens`: item do ML com PO, recebimento, MIGO e baixado. */
 export interface ItemFinMl {
@@ -306,18 +307,93 @@ export function passaFiltroCompraFinMl(r: ResumoCompraFinMl, filtro: FiltroCompr
 
 /** Busca livre: nº da compra, RM, PO, NF, material, descrição ou loja. */
 export function casaBuscaCompraFinMl(r: ResumoCompraFinMl, termo: string): boolean {
-  const q = termo.trim().toLowerCase();
+  const q = normalizarTexto(termo);
   if (!q) return true;
-  const digitos = q.replace(/\D/g, '');
+  const data = lerDataBusca(termo);
+  const valor = ehTermoDeValor(termo) ? lerValorBRL(termo) : null;
+  // Data e valor não entram no atalho por dígitos ("10/11/2026" viraria 10112026).
+  const digitos = data || valor != null ? '' : q.replace(/\D/g, '');
   if (digitos.length >= 4 && r.numero.includes(digitos)) return true;
   const textos = [
     r.numero, ...r.rms, ...r.fornecedores,
+    ...r.itens.flatMap(i => i.fornecedores ?? []),
     ...r.baixas.flatMap(b => [b.nota_fiscal, b.doc_compensacao]),
     r.compra?.doc_adiantamento, r.compra?.numero_pagamento,
     ...(r.compra?.pacotes ?? []).map(p => p.descricao),
     ...r.itens.flatMap(i => [i.ri, i.material_code, i.texto_breve, ...(i.pedidos ?? []), ...(i.notas_fiscais ?? [])]),
   ];
-  return textos.some(t => t && t.toLowerCase().includes(q));
+  if (textos.some(t => t && normalizarTexto(t).includes(q))) return true;
+
+  // A mesma caixa aceita data ("10/11/2026", "10/11") e valor ("118,80", "R$ 1.234,56").
+  if (data && datasDaCompraFinMl(r).some(d => (data.ano ? d === `${data.ano}-${data.mesDia}` : d.endsWith(data.mesDia)))) {
+    return true;
+  }
+  return valor != null && casaValorCompraFinMl(r, valor);
+}
+
+function normalizarTexto(t: string | null | undefined): string {
+  return (t ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
+}
+
+/** "dd/mm/aaaa", "dd/mm/aa" ou "dd/mm"; sem ano, casa o dia em qualquer ano. */
+function lerDataBusca(termo: string): { mesDia: string; ano: string | null } | null {
+  const m = termo.trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/);
+  if (!m) return null;
+  const [, d, mes, a] = m;
+  if (+d < 1 || +d > 31 || +mes < 1 || +mes > 12) return null;
+  const ano = a ? (a.length === 2 ? `20${a}` : a) : null;
+  return { mesDia: `${mes.padStart(2, '0')}-${d.padStart(2, '0')}`, ano };
+}
+
+/**
+ * Só vira busca por valor o que tem cara de dinheiro — "R$", vírgula ou
+ * centavos — para um PO ou NF digitado não casar com um valor qualquer.
+ */
+function ehTermoDeValor(termo: string): boolean {
+  const t = termo.trim();
+  return /^R\$/i.test(t) || /^[\d.]+,\d{1,2}$/.test(t) || /^\d+\.\d{2}$/.test(t);
+}
+
+/**
+ * Todo valor em R$ que identifica a compra: boleto, total/produtos/frete/
+ * reembolso do ML, PO de cada item, cada baixa válida, cada pacote e os
+ * saldos mostrados no cartão.
+ */
+export function valoresDaCompraFinMl(r: ResumoCompraFinMl): number[] {
+  const c = r.compra;
+  const valores = [
+    c?.valor_boleto, c?.valor_total, c?.valor_produtos, c?.valor_frete, c?.valor_reembolso,
+    r.valorPedidos, r.saldoAdiantamento, r.prontoParaBaixa, r.valorBaixado,
+    ...r.itens.map(i => i.valor_pedido),
+    ...r.baixas.filter(b => !b.estornado_em).map(b => b.valor),
+    ...(c?.pacotes ?? []).map(p => p.valor),
+  ];
+  return valores.filter((v): v is number => v != null && Number.isFinite(v) && v !== 0);
+}
+
+/** Algum valor da compra bate com o procurado, com um centavo de tolerância. */
+export function casaValorCompraFinMl(r: ResumoCompraFinMl, valor: number): boolean {
+  // Em centavos inteiros: 118,81 − 118,80 em ponto flutuante passa de 0,01.
+  const alvo = Math.round(valor * 100);
+  return valoresDaCompraFinMl(r).some(v => Math.abs(Math.round(Math.abs(v) * 100) - alvo) <= 1);
+}
+
+/** Datas da compra (YYYY-MM-DD local): compra (ou registro), vencimento, pagamento e baixas válidas. */
+export function datasDaCompraFinMl(r: ResumoCompraFinMl): string[] {
+  const c = r.compra;
+  const brutas = [
+    c?.data_compra ?? r.registradaEm, c?.vencimento, c?.pago_em,
+    ...r.baixas.filter(b => !b.estornado_em).map(b => b.data_baixa),
+  ];
+  return brutas.map(diaLocal).filter((d): d is string => !!d);
+}
+
+/** Data pura é fatiada (nunca `new Date`, que volta um dia em UTC-3); timestamp vira dia local. */
+function diaLocal(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) return valor;
+  const d = new Date(valor);
+  return Number.isNaN(d.getTime()) ? valor.slice(0, 10) : paraISOLocal(d);
 }
 
 /**

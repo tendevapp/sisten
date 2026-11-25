@@ -14,7 +14,7 @@ import { assinarArquivoCotacao } from '../../lib/cotacoesApi';
 import { useLightbox } from '../ui/Lightbox';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import {
-  ehLinkMercadoLivre, ehNumeroPedidoSap, normalizarLinkMl, normalizarNumeroCompraMl, rotuloCompraMl,
+  ehLinkMercadoLivre, ehNumeroPedidoSap, normalizarLinkMl, normalizarNumeroCompraMl, rotuloCompraMl, temPedidoSapColado,
   type ItemMercadoLivre,
 } from '../../lib/compraMercadoLivre';
 import { interpretarDetalheCompraMl, lerValorMl } from '../../lib/detalheCompraMl';
@@ -278,7 +278,9 @@ export function MercadoLivreCompraModal({ quantidadeItens, rms, foraDoMl, onConf
             <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">
               {ehNumeroPedidoSap(texto.replace(/\D/g, ''))
                 ? 'Isso é um número de pedido (PO) do SAP. Aqui vai o número da compra no ML: 16 dígitos depois do #, começando em 2000.'
-                : 'Número incompleto — o ML mostra 16 dígitos depois do #.'}
+                : temPedidoSapColado(texto.replace(/\D/g, ''))
+                  ? 'Tem um número de pedido (PO) colado no fim. Deixe só o número da compra no ML: 16 dígitos depois do #, começando em 2000.'
+                  : 'Número incompleto — o ML mostra 16 dígitos depois do #.'}
             </p>
           )}
           {edicao ? (

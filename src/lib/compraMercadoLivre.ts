@@ -60,8 +60,16 @@ const MIN_DIGITOS_COMPRA = 10;
  */
 export function normalizarNumeroCompraMl(texto: string): string | null {
   const digitos = (texto ?? '').replace(/\D/g, '');
-  if (digitos.length < MIN_DIGITOS_COMPRA || ehNumeroPedidoSap(digitos)) return null;
+  if (digitos.length < MIN_DIGITOS_COMPRA || ehNumeroPedidoSap(digitos) || temPedidoSapColado(digitos)) return null;
   return digitos;
+}
+
+/**
+ * Nº da compra com o PO grudado no fim ("2000015778845939" + "4100476419"):
+ * já foi gravado assim e separou o item da compra no Financeiro.
+ */
+export function temPedidoSapColado(digitos: string): boolean {
+  return digitos.length > 16 && ehNumeroPedidoSap(digitos.slice(-10));
 }
 
 /**

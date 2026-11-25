@@ -115,6 +115,38 @@ describe('resumirComprasFinMl', () => {
   });
 });
 
+describe('busca por valor, fornecedor e data', () => {
+  const [r] = resumirComprasFinMl(
+    [item({ pedidos: ['4100474237'], valor_pedido: 118.8, fornecedores: ['LOJA ÁGIL LTDA'] })],
+    [compra({ valor_boleto: 250.5, data_compra: '2026-11-10' })],
+    [baixa({ valor: 42.1, data_baixa: '2026-11-20' }), baixa({ id: 'b2', valor: 77, data_baixa: '2026-11-21', estornado_em: '2026-11-22T10:00:00Z' })],
+  );
+
+  it('valor casa com boleto, PO do item ou baixa válida, com centavo de tolerância', () => {
+    expect(casaBuscaCompraFinMl(r, '250,50')).toBe(true);
+    expect(casaBuscaCompraFinMl(r, 'R$ 118,80')).toBe(true);
+    expect(casaBuscaCompraFinMl(r, '118.81')).toBe(true);
+    expect(casaBuscaCompraFinMl(r, '42,10')).toBe(true);
+    expect(casaBuscaCompraFinMl(r, '77,00')).toBe(false); // baixa estornada
+    expect(casaBuscaCompraFinMl(r, '999,99')).toBe(false);
+  });
+
+  it('fornecedor ignora acento e caixa', () => {
+    expect(casaBuscaCompraFinMl(r, 'loja agil')).toBe(true);
+    expect(casaBuscaCompraFinMl(r, 'Ágil')).toBe(true);
+    expect(casaBuscaCompraFinMl(r, 'outra loja')).toBe(false);
+  });
+
+  it('data casa com compra, vencimento, pagamento ou baixa válida', () => {
+    expect(casaBuscaCompraFinMl(r, '10/11/2026')).toBe(true); // compra
+    expect(casaBuscaCompraFinMl(r, '30/10/26')).toBe(true);  // vencimento
+    expect(casaBuscaCompraFinMl(r, '29/10')).toBe(true);     // pagamento, sem ano
+    expect(casaBuscaCompraFinMl(r, '20/11/2026')).toBe(true); // baixa
+    expect(casaBuscaCompraFinMl(r, '21/11/2026')).toBe(false); // só a estornada
+    expect(casaBuscaCompraFinMl(r, '10/11/2025')).toBe(false);
+  });
+});
+
 describe('lerValorBRL', () => {
   it('aceita formato brasileiro e com ponto decimal', () => {
     expect(lerValorBRL('1.234,56')).toBe(1234.56);

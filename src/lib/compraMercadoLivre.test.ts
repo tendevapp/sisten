@@ -26,6 +26,10 @@ describe('normalizarNumeroCompraMl', () => {
     expect(normalizarNumeroCompraMl('4500012345')).toBeNull();
     expect(ehNumeroPedidoSap('2000015616071149')).toBe(false);
   });
+  it('recusa o nº da compra com o PO colado no fim', () => {
+    expect(normalizarNumeroCompraMl('20000157788459394100476419')).toBeNull();
+    expect(normalizarNumeroCompraMl('# 2000015778845939')).toBe('2000015778845939');
+  });
 });
 
 describe('resumirComprasMl × número de PO', () => {
