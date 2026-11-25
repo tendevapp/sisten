@@ -524,7 +524,7 @@ export default function RequestDetailPanel({
           </ol>
         )}
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           {podeEditar(request, user) && (
             <BotaoSecundario
               onClick={() => onNavigate(`/solicitacoes/nova?editar=${request.id}`)}
@@ -562,48 +562,12 @@ export default function RequestDetailPanel({
             </BotaoSecundario>
           )}
 
-          {podeCancelar(request, user) && (
-            <BotaoSecundario
-              onClick={() => {
-                setMotivoCancelamento('');
-                setErroModalCancelar('');
-                setModalCancelarAberta(true);
-              }}
-              title="Excluir esta solicitação"
-            >
-              <Trash2 className="h-4 w-4 text-rose-500" /> Excluir
-            </BotaoSecundario>
-          )}
-
           {request.type === 'compra' && (
             <BotaoSecundario onClick={exportarPdf}>
               <FileText className="h-4 w-4" /> Visualizar PDF
             </BotaoSecundario>
           )}
 
-          {podeFinalizarServico && (
-            <form
-              onSubmit={e => { e.preventDefault(); setAvisandoConclusao(true); }}
-              className="flex flex-wrap items-end gap-2"
-            >
-              <label className="flex flex-col gap-1 text-xs font-semibold">
-                Número da RM aberta no SAP
-                <input
-                  type="text" inputMode="numeric" pattern="[0-9]+" required
-                  title="Informe apenas os dígitos da RM aberta no SAP."
-                  value={request.linked_rm_number?.trim() || rmDigitada}
-                  readOnly={!!request.linked_rm_number?.trim()}
-                  onChange={e => setRmDigitada(e.target.value.trim())}
-                  className="w-44 rounded-lg border px-3 py-1.5 font-mono text-sm"
-                  style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
-                />
-              </label>
-              <button type="submit" className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-[13px] font-bold text-white hover:bg-emerald-800">
-                <CheckCircle className="h-4 w-4" />
-                {finalizacaoServico && request.linked_rm_number ? 'Avisar o solicitante' : 'Finalizar e avisar solicitante'}
-              </button>
-            </form>
-          )}
           {podeAvisarCadastro && (
             <BotaoSecundario
               onClick={() => setAvisandoConclusao(true)}
@@ -623,7 +587,55 @@ export default function RequestDetailPanel({
               <ExternalLink className="h-4 w-4" /> {modulo.rotulo}
             </BotaoSecundario>
           )}
+
+          {podeCancelar(request, user) && (
+            <BotaoSecundario
+              onClick={() => {
+                setMotivoCancelamento('');
+                setErroModalCancelar('');
+                setModalCancelarAberta(true);
+              }}
+              title="Excluir esta solicitação"
+            >
+              <Trash2 className="h-4 w-4 text-rose-500" /> Excluir
+            </BotaoSecundario>
+          )}
         </div>
+
+        {podeFinalizarServico && (
+          <form
+            onSubmit={e => { e.preventDefault(); setAvisandoConclusao(true); }}
+            className="flex flex-col gap-2 rounded-xl border p-2.5 sm:flex-row sm:items-end sm:justify-between"
+            style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken)' }}
+          >
+            <label
+              className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold"
+              style={{ color: 'var(--ink-secondary)' }}
+            >
+              Número da RM aberta no SAP
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]+"
+                required
+                placeholder="Ex.: 10045678"
+                title="Informe apenas os dígitos da RM aberta no SAP."
+                value={request.linked_rm_number?.trim() || rmDigitada}
+                readOnly={!!request.linked_rm_number?.trim()}
+                onChange={e => setRmDigitada(e.target.value.trim())}
+                className="h-9 w-full rounded-lg border px-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/25 sm:max-w-xs"
+                style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
+              />
+            </label>
+            <button
+              type="submit"
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-3.5 text-[13px] font-bold text-white shadow-2xs transition-colors hover:bg-emerald-800 cursor-pointer"
+            >
+              <CheckCircle className="h-4 w-4 shrink-0" />
+              {finalizacaoServico && request.linked_rm_number ? 'Avisar o solicitante' : 'Finalizar e avisar solicitante'}
+            </button>
+          </form>
+        )}
       </header>
 
       {finalizacaoServico && (
@@ -1394,7 +1406,7 @@ function BotaoSecundario({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] font-bold cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-[13px] font-bold transition-colors hover:brightness-95 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
       style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
     >
       {children}
