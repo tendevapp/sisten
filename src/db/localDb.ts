@@ -61,6 +61,19 @@ const FEEDBACK_BUCKET = 'feedback-screenshots';
 /** Validade da URL assinada de um anexo: 1 hora. */
 const SIGNED_URL_TTL_SEGUNDOS = 3600;
 
+/**
+ * Pedidos de 2026 da view `vw_sap_pedidos_enriquecidos`, numa ordem única.
+ * A ordem era só por `ri`, que se repete: um item de RM com dois pedidos tem
+ * duas linhas. Com OFFSET, a linha da divisa entre páginas podia vir duas
+ * vezes ou nenhuma. `(ri, doc_compra, itm_liberacao)` é a chave única da
+ * ZL0132 (índice `pedidosforn_ri_doc_item_unique`).
+ */
+const filtroPedidosEnriquecidos = (q: any) => q
+  .gte('data_rc', '2026-01-01')
+  .order('ri', { ascending: true })
+  .order('doc_compra', { ascending: true })
+  .order('itm_liberacao', { ascending: true });
+
 
 class LocalDatabase {
   // Espelho em memória de tudo que está no IndexedDB. Toda leitura (getStorageItem)
@@ -381,7 +394,7 @@ class LocalDatabase {
           // disco a cada 1.000 linhas (10–24 s sob carga; banco caiu em 24/11);
           // a da cópia é leitura da PK (~2 ms). Mesmas colunas e linhas.
           ['vw_sap_requisicoes_enriquecidas', gatedSap('requisicoes', () => this.syncSimpleTable('sap_requisicoes_enriquecidas_sync', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po', true))],
-          ['vw_sap_pedidos_enriquecidos', gatedSap('pedidos', () => this.syncSimpleTable('vw_sap_pedidos_enriquecidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01'), 'ri'))],
+          ['vw_sap_pedidos_enriquecidos', gatedSap('pedidos', () => this.syncSimpleTable('vw_sap_pedidos_enriquecidos', this.pedidosKey, true, filtroPedidosEnriquecidos))],
           // Estas três fazem merge em vez de substituir: o motor de solicitações
           // ainda é local-first (só a criação sobe; status, atendente e
           // comentários seguem locais). Com `syncSimpleTable`, a primeira linha
@@ -2011,6 +2024,21 @@ class LocalDatabase {
       if (depois !== null) query = query.gt(chave, depois);
       return query.order(chave, { ascending: true }).limit(limite);
     }, (linha: any) => linha[chave]);
+  }
+
+  /**
+   * Requisições de 2026 lidas da cópia pronta da view
+   * (`sap_requisicoes_enriquecidas_sync`), pela chave `ri_po`.
+   *
+   * Os importadores releem as requisições logo depois de gravar, que é quando
+   * o banco está mais carregado. Ler a view ali (OFFSET, ~10 MB reordenados
+   * por página) foi a consulta que mais pesou no minuto anterior à queda de
+   * 24/11. A cópia é atualizada no fim de `refresh_sap_requisicoes_po`, que
+   * todos os importadores chamam antes de reler: a ME5A direto e a
+   * ZL0132/ME2L via `refresh_historico_pedidos`.
+   */
+  private baixarRequisicoesEnriquecidas(): Promise<any[]> {
+    return this.fetchAllPorChave<any>('sap_requisicoes_enriquecidas_sync', 'ri_po', q => q.gte('data_da_solicitacao', '2026-01-01'));
   }
 
   /**
@@ -6313,7 +6341,7 @@ class LocalDatabase {
       await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(90);
 
-      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po');
+      const updatedReqs = await this.baixarRequisicoesEnriquecidas();
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
           ...ur,
@@ -6373,7 +6401,9 @@ class LocalDatabase {
     // também sejam atualizados no banco quando excluídos/modificados no SAP.
     let current = this.getPedidos();
     try {
-      const remotePeds = await this.fetchAllFromTable<any>('sap_zl0132_po', '*', 1000, undefined, 'id');
+      // Tabela inteira (~68 mil linhas, todos os anos): pela chave, não por
+      // OFFSET — a página 68 obrigava o banco a pular 67 mil linhas.
+      const remotePeds = await this.fetchAllPorChave<any>('sap_zl0132_po', 'id');
       if (remotePeds.length > 0) current = remotePeds.map(p => this.normalizePedidoRow(p));
     } catch (err) {
       console.warn('Não foi possível buscar os pedidos atuais (sap_zl0132_po) do Supabase antes da importação; usando cache local.', err);
@@ -6719,7 +6749,7 @@ class LocalDatabase {
       onProgress?.(90);
 
       // Sincroniza a tabela local de pedidosforn e vw_historico_pedidos
-      await this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
+      await this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'), 'id');
       // refresh_historico_pedidos também recalcula a parte SAP das requisições;
       // os sinais de material vêm depois porque leem essa view.
       await this.refreshPedidosMatViews();
@@ -6727,8 +6757,8 @@ class LocalDatabase {
       this.refreshControleEstoque();
       this.setStorageItem(this.historicoPedidosKey, await this.baixarHistoricoPedidos());
 
-      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po');
-      const updatedPeds = await this.fetchAllFromTable<any>('vw_sap_pedidos_enriquecidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
+      const updatedReqs = await this.baixarRequisicoesEnriquecidas();
+      const updatedPeds = await this.fetchAllFromTable<any>('vw_sap_pedidos_enriquecidos', '*', 1000, filtroPedidosEnriquecidos);
 
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
@@ -7166,7 +7196,7 @@ class LocalDatabase {
       
       // Sincroniza a tabela local e recalcula a materialized view do Histórico de Pedidos
       onProgress?.(95, 'Sincronizando cache local...');
-      await this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
+      await this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'), 'id');
       // Também recalcula a parte SAP das requisições (mv_sap_requisicoes_po).
       await this.refreshPedidosMatViews();
       // "Pedido a caminho" da busca de material vem da ZL0132; o recálculo
@@ -7179,8 +7209,8 @@ class LocalDatabase {
       // 'pedidos' aqui, essa importação atualiza o PO no Supabase mas nenhum cliente (nem o que
       // importou) nota, porque o gate de sincronização só olha a versão de 'requisicoes'.
       onProgress?.(96, 'Atualizando requisições e pedidos com os novos POs...');
-      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po');
-      const updatedPeds = await this.fetchAllFromTable<any>('vw_sap_pedidos_enriquecidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
+      const updatedReqs = await this.baixarRequisicoesEnriquecidas();
+      const updatedPeds = await this.fetchAllFromTable<any>('vw_sap_pedidos_enriquecidos', '*', 1000, filtroPedidosEnriquecidos);
 
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
