@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ArrowLeft, Plus, Search, FileDown, CheckCircle2, AlertTriangle,
   RotateCcw, Trash2, Edit3, X, Loader2, Wrench, Shield, Building, User, Calendar,
-  HelpCircle, Bug, Lightbulb,
+  HelpCircle, Bug, Lightbulb, Camera, PenTool,
 } from 'lucide-react';
 import TourSpotlight from '../../components/help/TourSpotlight';
 import { usePageTour } from '../../components/help/TourRegistryContext';
@@ -26,6 +26,9 @@ import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import CampoFaraBafometro from '../../components/portaria/CampoFaraBafometro';
+import FotosOcorrenciaCampo, { type FotoNova } from '../../components/portaria/FotosOcorrenciaCampo';
+import CampoAssinatura from '../../components/portaria/CampoAssinatura';
+import { useLightbox } from '../../components/ui/Lightbox';
 import { MostrarExcluidosToggle, BadgeExcluido, RestaurarButton, classeLinhaExcluida } from '../../components/ui/ExcluidosControls';
 import AvisoRascunho from '../../components/ui/AvisoRascunho';
 import { useRascunhoFormulario } from '../../hooks/useRascunhoFormulario';
@@ -188,6 +191,46 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
   // "Fará teste de bafômetro?" do funcionário do terceiro que entra com o equipamento.
   const [faraBafometro, setFaraBafometro] = useState(false);
 
+  // Fotos e assinatura digital do responsavel na entrada (ambas opcionais).
+  const [fotosNovas, setFotosNovas] = useState<FotoNova[]>([]);
+  const [assinaturaResponsavel, setAssinaturaResponsavel] = useState<string | null>(null);
+  const [assinaturaResponsavelEm, setAssinaturaResponsavelEm] = useState<string | null>(null);
+  const lightbox = useLightbox();
+
+  const limparFotosNovas = useCallback(() => {
+    setFotosNovas((atuais) => {
+      atuais.forEach((f) => URL.revokeObjectURL(f.url));
+      return [];
+    });
+  }, []);
+
+  const adicionarFotosNovas = (arquivos: File[]) => {
+    const adicionadas: FotoNova[] = arquivos.map((file) => ({
+      key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      file,
+      url: URL.createObjectURL(file),
+    }));
+    setFotosNovas((atuais) => [...atuais, ...adicionadas]);
+  };
+
+  const removerFotoNova = (key: string) => {
+    setFotosNovas((atuais) => {
+      const alvo = atuais.find((f) => f.key === key);
+      if (alvo) URL.revokeObjectURL(alvo.url);
+      return atuais.filter((f) => f.key !== key);
+    });
+  };
+
+  const abrirFotosItem = (item: PortControleEquipamento, indice = 0) => {
+    const imagens = (item.fotos || [])
+      .filter((f) => !!f.preview_url)
+      .map((f, i, todas) => ({
+        url: f.preview_url || '',
+        legenda: `${item.numero_protocolo} · Foto ${i + 1} de ${todas.length}`,
+      }));
+    if (imagens.length) lightbox.abrir(imagens, indice);
+  };
+
   const formSaidaVazio = () => ({
     vigilante_saida: user.name,
     data_saida: api.hojeISO(),
@@ -201,9 +244,14 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
   const rascunhoEntrada = useRascunhoFormulario({
     chave: chaveRascunho(user.id, 'portaria-equipamentos-entrada'),
     aberto: modalNovoAberto,
-    dados: { formEntrada, faraBafometro },
-    temConteudo: (d) => algumTextoPreenchido(d.formEntrada, ['data_entrada', 'hora_entrada', 'vigilante_entrada']),
-    aplicar: (d) => { setFormEntrada({ ...formEntradaVazio(), ...d.formEntrada }); setFaraBafometro(!!d.faraBafometro); },
+    dados: { formEntrada, faraBafometro, assinaturaResponsavel, assinaturaResponsavelEm },
+    temConteudo: (d) => algumTextoPreenchido(d.formEntrada, ['data_entrada', 'hora_entrada', 'vigilante_entrada']) || !!d.assinaturaResponsavel,
+    aplicar: (d) => {
+      setFormEntrada({ ...formEntradaVazio(), ...d.formEntrada });
+      setFaraBafometro(!!d.faraBafometro);
+      setAssinaturaResponsavel(d.assinaturaResponsavel ?? null);
+      setAssinaturaResponsavelEm(d.assinaturaResponsavelEm ?? null);
+    },
     abrir: () => setModalNovoAberto(true),
   });
   const rascunhoSaida = useRascunhoFormulario({
@@ -254,23 +302,50 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
     }
 
     setSalvando(true);
+    let pathsEnviados: string[] = [];
     try {
+      const equipamentoId = fotosNovas.length > 0 && typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : undefined;
+      let fotosSalvas: PortControleEquipamento['fotos'] = [];
+      let falhasUpload = 0;
+
+      if (fotosNovas.length > 0 && equipamentoId) {
+        const res = await api.subirFotosEquipamento(equipamentoId, fotosNovas.map((f) => f.file));
+        fotosSalvas = res.ok;
+        falhasUpload = res.falhas;
+        pathsEnviados = res.ok.map((f) => f.path);
+      }
+
       await api.criarEquipamento({
+        ...(equipamentoId ? { id: equipamentoId } : {}),
         ...formEntrada,
+        fotos: fotosSalvas,
+        assinatura_responsavel: assinaturaResponsavel,
+        assinatura_responsavel_em: assinaturaResponsavel ? assinaturaResponsavelEm : null,
         criado_por: user.id,
       });
-      toast.success('Entrada de equipamento registrada com sucesso!');
-        if (faraBafometro) {
-          const teste = await api.cadastrarBafometroNaEntrada({ nome: formEntrada.funcionario, empresa: formEntrada.nome_empresa }, { data: formEntrada.data_entrada, horario: formEntrada.hora_entrada, origem: 'Entrada de Equipamentos', criadoPor: user });
-          if (teste) toast.success(`${teste.nome} entrou no Teste de Alcoolemia (pendente).`);
-          else toast.error('A pessoa não entrou no Teste de Alcoolemia. Cadastre pela tela do teste.');
-        }
+
+      if (falhasUpload > 0) {
+        toast.warning(`Entrada registrada, mas ${falhasUpload} foto(s) não puderam ser enviadas.`);
+      } else {
+        toast.success('Entrada de equipamento registrada com sucesso!');
+      }
+      if (faraBafometro) {
+        const teste = await api.cadastrarBafometroNaEntrada({ nome: formEntrada.funcionario, empresa: formEntrada.nome_empresa }, { data: formEntrada.data_entrada, horario: formEntrada.hora_entrada, origem: 'Entrada de Equipamentos', criadoPor: user });
+        if (teste) toast.success(`${teste.nome} entrou no Teste de Alcoolemia (pendente).`);
+        else toast.error('A pessoa não entrou no Teste de Alcoolemia. Cadastre pela tela do teste.');
+      }
       rascunhoEntrada.concluir();
       setFaraBafometro(false);
+      limparFotosNovas();
+      setAssinaturaResponsavel(null);
+      setAssinaturaResponsavelEm(null);
       setModalNovoAberto(false);
       setFormEntrada(formEntradaVazio());
       carregarDados();
     } catch (e) {
+      if (pathsEnviados.length > 0) void api.removerFotosEquipamento(pathsEnviados);
       toast.error(`Falha ao salvar: ${(e as Error).message}`);
     } finally {
       setSalvando(false);
@@ -459,6 +534,30 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                       <p className="line-clamp-2 text-xs leading-relaxed text-slate-700 dark:text-slate-300">
                         {item.descricao_materiais}
                       </p>
+                      {((item.fotos?.length || 0) > 0 || item.assinatura_responsavel) && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {(item.fotos?.length || 0) > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => abrirFotosItem(item, 0)}
+                              className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 cursor-pointer dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-300"
+                              title="Ver fotos dos materiais"
+                            >
+                              <Camera className="h-3 w-3" />
+                              {item.fotos!.length} {item.fotos!.length === 1 ? 'foto' : 'fotos'}
+                            </button>
+                          )}
+                          {item.assinatura_responsavel && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
+                              title="Assinatura digital do responsável registrada"
+                            >
+                              <PenTool className="h-3 w-3" />
+                              Assinado
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 align-top text-xs">
                       <div>Entrada: <span className="font-medium text-slate-900 dark:text-slate-200">{item.vigilante_entrada}</span></div>
@@ -552,7 +651,14 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
             <ModalBody className="space-y-4">
               <AvisoRascunho
                 salvoEm={rascunhoEntrada.recuperadoEm}
-                onDescartar={() => { rascunhoEntrada.descartar(); setFormEntrada(formEntradaVazio()); setFaraBafometro(false); }}
+                onDescartar={() => {
+                  rascunhoEntrada.descartar();
+                  setFormEntrada(formEntradaVazio());
+                  setFaraBafometro(false);
+                  limparFotosNovas();
+                  setAssinaturaResponsavel(null);
+                  setAssinaturaResponsavelEm(null);
+                }}
               />
               <div data-tour="equipamentos-form-empresa" className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
                 <div>
@@ -672,6 +778,32 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                   </datalist>
                 </div>
               </div>
+
+              <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+                <FotosOcorrenciaCampo
+                  titulo="Fotos dos Materiais / Ferramentas"
+                  ajuda="Câmera ou galeria. As imagens são comprimidas automaticamente antes de enviar."
+                  salvas={[]}
+                  novas={fotosNovas}
+                  onAdicionar={adicionarFotosNovas}
+                  onRemoverSalva={() => {}}
+                  onRemoverNova={removerFotoNova}
+                  onAbrir={(urls, indice) => lightbox.abrir(urls, indice)}
+                  tom="blue"
+                />
+              </div>
+
+              <CampoAssinatura
+                rotulo="Assinatura do Responsável"
+                nomeAssinante={formEntrada.responsavel || formEntrada.funcionario}
+                valor={assinaturaResponsavel}
+                assinadaEm={assinaturaResponsavelEm}
+                onChange={(img) => {
+                  setAssinaturaResponsavel(img);
+                  setAssinaturaResponsavelEm(img ? new Date().toISOString() : null);
+                }}
+                disabled={salvando}
+              />
             </ModalBody>
 
             <ModalFooter>
@@ -824,6 +956,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
           onClose={() => setPdfPreview(null)}
         />
       )}
+      {lightbox.elemento}
     </div>
   );
 }

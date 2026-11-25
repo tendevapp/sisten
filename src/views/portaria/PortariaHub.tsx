@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   DoorOpen, Wrench, Bus, Truck, ClipboardList, ShieldCheck, Shield,
-  ArrowRight, ArrowLeft, Activity, Clock,
+  ArrowRight, ArrowLeft, Activity, Clock, FileDown, Calendar,
   HelpCircle, Bug, Lightbulb
 } from 'lucide-react';
 import TourSpotlight from '../../components/help/TourSpotlight';
@@ -26,6 +26,11 @@ import PortariaBriefing from './PortariaBriefing';
 import PortariaPassagemPlantao from './PortariaPassagemPlantao';
 import PortariaAlcoolemia from './PortariaAlcoolemia';
 import { canAccessForm } from '../../lib/pages';
+import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import PdfPreviewModal from '../../components/ui/PdfPreviewModal';
+import type { PdfGerado } from '../../lib/pdfExport/core';
+import { gerarRelatorioGeralPortariaPdf } from '../../lib/pdfExport/exportPortariaGeralPdf';
+import { useToast } from '../../components/ui/Toast';
 
 interface Props {
   user: Profile;
@@ -85,9 +90,119 @@ const PORTARIA_HUB_TOUR_STEPS: TourStep[] = [
 ];
 
 export default function PortariaHub({ user, onNavigate, initialTab = 'visao_geral' }: Props) {
+  const toast = useToast();
   const tour = usePageTour('hub-portaria', PORTARIA_HUB_TOUR_STEPS.length);
   const [activeTab, setActiveTab] = useState(initialTab);
   const [metricas, setMetricas] = useState<PortariaMetricas | null>(null);
+
+  // Relatorio PDF Geral Consolidado (dia unico ou periodo)
+  const [modalRelatorioGeral, setModalRelatorioGeral] = useState(false);
+  const [modoRelatorio, setModoRelatorio] = useState<'dia' | 'periodo'>('dia');
+  const [dataInicioRel, setDataInicioRel] = useState(() => api.hojeISO());
+  const [dataFimRel, setDataFimRel] = useState(() => api.hojeISO());
+  const [pdfPreviewGeral, setPdfPreviewGeral] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
+
+  const aplicarAtalhoPeriodo = (tipo: 'hoje' | 'ontem' | '7d' | 'mes') => {
+    const hoje = new Date();
+    const fmt = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dia = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dia}`;
+    };
+    const hojeStr = fmt(hoje);
+    if (tipo === 'hoje') {
+      setModoRelatorio('dia');
+      setDataInicioRel(hojeStr);
+      setDataFimRel(hojeStr);
+    } else if (tipo === 'ontem') {
+      const ontem = new Date(hoje);
+      ontem.setDate(hoje.getDate() - 1);
+      const ontemStr = fmt(ontem);
+      setModoRelatorio('dia');
+      setDataInicioRel(ontemStr);
+      setDataFimRel(ontemStr);
+    } else if (tipo === '7d') {
+      const ini = new Date(hoje);
+      ini.setDate(hoje.getDate() - 6);
+      setModoRelatorio('periodo');
+      setDataInicioRel(fmt(ini));
+      setDataFimRel(hojeStr);
+    } else {
+      const ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      setModoRelatorio('periodo');
+      setDataInicioRel(fmt(ini));
+      setDataFimRel(hojeStr);
+    }
+  };
+
+  const handleAbrirRelatorioGeralPdf = () => {
+    const inicio = dataInicioRel;
+    const fim = modoRelatorio === 'dia' ? dataInicioRel : dataFimRel;
+    if (!inicio || !fim) {
+      toast.error('Informe a data ou o período para gerar o relatório.');
+      return;
+    }
+    if (fim < inicio) {
+      toast.error('A data final não pode ser anterior à data inicial.');
+      return;
+    }
+
+    const pode = {
+      relatorio: canAccessForm(user, PORTARIA_FORM_PAGE_MAP.relatorio),
+      passagem: canAccessForm(user, PORTARIA_FORM_PAGE_MAP.passagem),
+      transportes: canAccessForm(user, PORTARIA_FORM_PAGE_MAP.transportes),
+      equipamentos: canAccessForm(user, PORTARIA_FORM_PAGE_MAP.equipamentos),
+      carretas: canAccessForm(user, PORTARIA_FORM_PAGE_MAP.carretas),
+      briefing: canAccessForm(user, PORTARIA_FORM_PAGE_MAP.briefing),
+      alcoolemia: canAccessForm(user, PORTARIA_FORM_PAGE_MAP.alcoolemia),
+    };
+
+    setModalRelatorioGeral(false);
+    setPdfPreviewGeral({
+      titulo: inicio === fim ? `Relatório Geral Portaria — ${inicio}` : `Relatório Geral Portaria — ${inicio} a ${fim}`,
+      gerar: async () => {
+        const [relatoriosBrutos, passagens, transportes, equipamentos, carretas, briefings, alcoolemia] = await Promise.all([
+          pode.relatorio ? api.listarRelatorios({ dataInicio: inicio, dataFim: fim }) : Promise.resolve([]),
+          pode.passagem ? api.listarPassagensPlantao({ dataInicio: inicio, dataFim: fim }) : Promise.resolve([]),
+          pode.transportes ? api.listarTransportes({ dataInicio: inicio, dataFim: fim }) : Promise.resolve([]),
+          pode.equipamentos ? api.listarEquipamentos({ dataInicio: inicio, dataFim: fim }) : Promise.resolve([]),
+          pode.carretas ? api.listarCarretas({ dataInicio: inicio, dataFim: fim }) : Promise.resolve([]),
+          pode.briefing ? api.listarSessoesBriefing({ dataInicio: inicio, dataFim: fim }) : Promise.resolve([]),
+          pode.alcoolemia ? api.listarTestesAlcoolemia({ dataInicio: inicio, dataFim: fim }) : Promise.resolve([]),
+        ]);
+
+        // Carrega tambem eventual foto legada (base64 em foto_url) para nao faltar nenhuma imagem.
+        const relatorios = await Promise.all(
+          relatoriosBrutos.map(async (rel) => {
+            const ocs = await Promise.all(
+              (rel.ocorrencias || []).map(async (oc) => {
+                if (oc.tem_foto_legado && !oc.foto_url) {
+                  const legado = await api.obterFotoLegadoOcorrencia(oc.id).catch(() => null);
+                  return legado ? { ...oc, foto_url: legado } : oc;
+                }
+                return oc;
+              }),
+            );
+            return { ...rel, ocorrencias: ocs };
+          }),
+        );
+
+        return gerarRelatorioGeralPortariaPdf({
+          inicioISO: inicio,
+          fimISO: fim,
+          relatorios,
+          passagens,
+          transportes,
+          equipamentos,
+          carretas,
+          briefings,
+          alcoolemia,
+          secoes: pode,
+        });
+      },
+    });
+  };
 
   useEffect(() => {
     // 7 contagens por rodada: a cada 60 s e só com a aba visível (eram 15 s,
@@ -238,18 +353,32 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
           <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
           <span>Voltar para Módulos de Formulários</span>
         </button>
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm shadow-blue-500/20">
-            <DoorOpen className="h-6 w-6" />
-          </span>
-          <div>
-            <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
-              Módulo de Portaria & Segurança Patrimonial
-            </h1>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Painel operacional dos formulários padrão TEN (Torres Eólicas do Nordeste)
-            </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm shadow-blue-500/20">
+              <DoorOpen className="h-6 w-6" />
+            </span>
+            <div>
+              <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
+                Módulo de Portaria & Segurança Patrimonial
+              </h1>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Painel operacional dos formulários padrão TEN (Torres Eólicas do Nordeste)
+              </p>
+            </div>
           </div>
+
+          {formulariosVisiveis.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setModalRelatorioGeral(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-500 active:scale-95 cursor-pointer dark:bg-blue-500 dark:hover:bg-blue-400"
+              title="Gerar PDF consolidado de todos os formulários da Portaria para um dia ou período"
+            >
+              <FileDown className="h-4 w-4" />
+              <span>Relatório Geral (PDF)</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -311,6 +440,136 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
         })
       )}
       </div>
+
+      {modalRelatorioGeral && (
+        <Modal onClose={() => setModalRelatorioGeral(false)} maxWidth="max-w-lg">
+          <ModalHeader onClose={() => setModalRelatorioGeral(false)}>
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+                <FileDown className="h-4 w-4" />
+              </span>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                  Relatório Geral Consolidado (PDF)
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Consolida todos os formulários da Portaria no dia ou período
+                </p>
+              </div>
+            </div>
+          </ModalHeader>
+
+          <ModalBody className="space-y-4">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-950/60">
+              <button
+                type="button"
+                onClick={() => setModoRelatorio('dia')}
+                className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${
+                  modoRelatorio === 'dia'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+                }`}
+              >
+                Dia único
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoRelatorio('periodo')}
+                className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${
+                  modoRelatorio === 'periodo'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+                }`}
+              >
+                Período
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                { id: 'hoje', rotulo: 'Hoje' },
+                { id: 'ontem', rotulo: 'Ontem' },
+                { id: '7d', rotulo: 'Últimos 7 dias' },
+                { id: 'mes', rotulo: 'Mês atual' },
+              ] as const).map((op) => (
+                <button
+                  key={op.id}
+                  type="button"
+                  onClick={() => aplicarAtalhoPeriodo(op.id)}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-blue-400 hover:text-blue-700 cursor-pointer dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-500"
+                >
+                  {op.rotulo}
+                </button>
+              ))}
+            </div>
+
+            <div className={`grid gap-3 ${modoRelatorio === 'periodo' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+              <div>
+                <label className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                  <Calendar className="h-3.5 w-3.5 text-blue-600" />
+                  {modoRelatorio === 'dia' ? 'Data do Relatório' : 'Data Inicial'}
+                </label>
+                <input
+                  type="date"
+                  value={dataInicioRel}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDataInicioRel(v);
+                    if (modoRelatorio === 'dia' || v > dataFimRel) setDataFimRel(v);
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </div>
+
+              {modoRelatorio === 'periodo' && (
+                <div>
+                  <label className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <Calendar className="h-3.5 w-3.5 text-blue-600" />
+                    Data Final
+                  </label>
+                  <input
+                    type="date"
+                    min={dataInicioRel}
+                    value={dataFimRel}
+                    onChange={(e) => setDataFimRel(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-200">
+              <span className="font-bold">Conteúdo completo + Privacidade:</span> inclui todas as informações completas, assinaturas e fotos de todos os formulários liberados no período; no <strong>Teste de Alcoolemia</strong>, exibe apenas as <strong>quantidades consolidadas</strong>, sem expor pessoas.
+            </div>
+          </ModalBody>
+
+          <ModalFooter>
+            <button
+              type="button"
+              onClick={() => setModalRelatorioGeral(false)}
+              className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer dark:text-slate-400 dark:hover:bg-slate-800"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleAbrirRelatorioGeralPdf}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 cursor-pointer dark:bg-blue-500"
+            >
+              <FileDown className="h-4 w-4" />
+              Gerar PDF
+            </button>
+          </ModalFooter>
+        </Modal>
+      )}
+
+      {pdfPreviewGeral && (
+        <PdfPreviewModal
+          gerar={pdfPreviewGeral.gerar}
+          tituloPadrao={pdfPreviewGeral.titulo}
+          onClose={() => setPdfPreviewGeral(null)}
+        />
+      )}
 
       {tour.isOpen && (
         <TourSpotlight

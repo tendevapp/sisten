@@ -125,6 +125,59 @@ export function sugerirTurno(): PortTurno {
 // 1. CONTROLE DE EQUIPAMENTO E FERRAMENTAS DE TERCEIROS (FRM.SGP-0011)
 // =====================================================================
 
+const BUCKET_EQUIPAMENTOS = 'port-equipamentos';
+
+/** Comprime via comprimirImagemUpload e sobe fotos para `<equipamentoId>/...`. */
+export async function subirFotosEquipamento(
+  equipamentoId: string,
+  arquivos: File[],
+): Promise<{ ok: PortAlcoolemiaFoto[]; falhas: number }> {
+  const ok: PortAlcoolemiaFoto[] = [];
+  let falhas = 0;
+  for (const file of arquivos) {
+    try {
+      const blob = await comprimirImagemUpload(file);
+      const ehJpeg = blob !== file;
+      const extensao = ehJpeg ? 'jpg' : (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const fotoId = Math.random().toString(36).substring(2, 9);
+      const path = `${equipamentoId}/${fotoId}.${extensao}`;
+      const mime = ehJpeg ? 'image/jpeg' : file.type;
+      const { error } = await supabase.storage.from(BUCKET_EQUIPAMENTOS).upload(path, blob, { contentType: mime, upsert: false });
+      if (error) throw new Error(error.message);
+      ok.push({ id: fotoId, path, name: file.name, size: blob.size, mime_type: mime, created_at: new Date().toISOString() });
+    } catch (err) {
+      console.warn('Falha no upload de foto do equipamento:', err);
+      falhas++;
+    }
+  }
+  return { ok, falhas };
+}
+
+/** URLs assinadas (24 h) em lote para as fotos dos equipamentos listados. */
+export async function assinarFotosEquipamentos(
+  itens: PortControleEquipamento[],
+): Promise<PortControleEquipamento[]> {
+  const paths = itens.flatMap((it) => (it.fotos || []).map((f) => f.path)).filter(Boolean);
+  if (paths.length === 0) return itens;
+  const urls: Record<string, string> = {};
+  try {
+    const { data } = await supabase.storage.from(BUCKET_EQUIPAMENTOS).createSignedUrls(paths, 60 * 60 * 24);
+    (data || []).forEach((item) => { if (item.path && item.signedUrl) urls[item.path] = item.signedUrl; });
+  } catch (err) {
+    console.warn('Erro ao assinar fotos dos equipamentos:', err);
+  }
+  return itens.map((it) => (it.fotos?.length
+    ? { ...it, fotos: it.fotos.map((f) => ({ ...f, preview_url: urls[f.path] || '' })) }
+    : it));
+}
+
+/** Remove fotos do Storage (usado em limpeza de erro ou exclusao). */
+export async function removerFotosEquipamento(paths: string[]): Promise<void> {
+  if (!paths.length) return;
+  const { error } = await supabase.storage.from(BUCKET_EQUIPAMENTOS).remove(paths);
+  if (error) console.warn('Fotos removidas do equipamento ficaram no Storage:', error.message);
+}
+
 export async function listarEquipamentos(filtros?: {
   status?: PortEquipamentoStatus | 'TODOS';
   termoBusca?: string;
@@ -156,12 +209,13 @@ export async function listarEquipamentos(filtros?: {
 
   const { data, error } = await query.limit(300);
   if (error) throw new Error(error.message);
-  return (data || []) as PortControleEquipamento[];
+  return assinarFotosEquipamentos((data || []) as PortControleEquipamento[]);
 }
 
 export async function criarEquipamento(dados: Partial<PortControleEquipamento>): Promise<PortControleEquipamento> {
   const dataEntrada = dados.data_entrada || hojeISO();
   const payload = {
+    ...(dados.id ? { id: dados.id } : {}),
     codigo_formulario: 'FRM.SGP-0011',
     numero_protocolo: dados.numero_protocolo || gerarProtocolo('EQP', dataEntrada),
     data_entrada: dataEntrada,
@@ -176,10 +230,13 @@ export async function criarEquipamento(dados: Partial<PortControleEquipamento>):
     vigilante_saida: dados.vigilante_saida || null,
     status: dados.status || 'NO_PATIO',
     observacoes: dados.observacoes || null,
+    fotos: semUrlFotos(dados.fotos),
+    assinatura_responsavel: dados.assinatura_responsavel || null,
+    assinatura_responsavel_em: dados.assinatura_responsavel ? (dados.assinatura_responsavel_em || new Date().toISOString()) : null,
     criado_por: dados.criado_por || null,
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('port_controle_equipamentos')
     .insert(payload)
     .select('*')
@@ -190,9 +247,13 @@ export async function criarEquipamento(dados: Partial<PortControleEquipamento>):
 }
 
 export async function atualizarEquipamento(id: string, dados: Partial<PortControleEquipamento>): Promise<PortControleEquipamento> {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('port_controle_equipamentos')
-    .update({ ...dados, updated_at: new Date().toISOString() })
+    .update({
+      ...dados,
+      ...(dados.fotos ? { fotos: semUrlFotos(dados.fotos) } : {}),
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', id)
     .select('*')
     .single();
@@ -236,6 +297,8 @@ export async function restaurarEquipamento(id: string): Promise<void> {
 
 export async function listarTransportes(filtros?: {
   data?: string;
+  dataInicio?: string;
+  dataFim?: string;
   turno?: PortTurno | 'TODOS';
   status?: PortTransporteStatus | 'TODOS';
   termoBusca?: string;
@@ -252,6 +315,12 @@ export async function listarTransportes(filtros?: {
   if (filtros?.data) {
     query = query.eq('data', filtros.data);
   }
+  if (filtros?.dataInicio) {
+    query = query.gte('data', filtros.dataInicio);
+  }
+  if (filtros?.dataFim) {
+    query = query.lte('data', filtros.dataFim);
+  }
   if (filtros?.turno && filtros.turno !== 'TODOS') {
     query = query.eq('turno', filtros.turno);
   }
@@ -263,7 +332,7 @@ export async function listarTransportes(filtros?: {
     query = query.or(`placa.ilike.%${t}%,empresa.ilike.%${t}%,motorista.ilike.%${t}%,veiculo.ilike.%${t}%`);
   }
 
-  const { data, error } = await query.limit(300);
+  const { data, error } = await query.limit(1000);
   if (error) throw new Error(error.message);
   return (data || []) as PortRegistroTransporte[];
 }

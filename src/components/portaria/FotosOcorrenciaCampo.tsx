@@ -27,7 +27,7 @@ interface Props {
   onRemoverSalva: (id: string) => void;
   onRemoverNova: (key: string) => void;
   onAbrir: (urls: string[], indice: number) => void;
-  tom?: 'purple' | 'emerald';
+  tom?: 'purple' | 'emerald' | 'blue';
 }
 
 export default function FotosOcorrenciaCampo({
@@ -50,7 +50,14 @@ export default function FotosOcorrenciaCampo({
   const urls = itens.map((i) => i.url);
   const botaoPrincipal = tom === 'emerald'
     ? 'bg-emerald-600 hover:bg-emerald-500'
-    : 'bg-purple-600 hover:bg-purple-500';
+    : tom === 'blue'
+      ? 'bg-blue-600 hover:bg-blue-500'
+      : 'bg-purple-600 hover:bg-purple-500';
+  const iconeGaleria = tom === 'emerald'
+    ? 'text-emerald-600 dark:text-emerald-400'
+    : tom === 'blue'
+      ? 'text-blue-600 dark:text-blue-400'
+      : 'text-purple-600 dark:text-purple-400';
 
   return (
     <div>
@@ -104,7 +111,7 @@ export default function FotosOcorrenciaCampo({
           onClick={() => galeriaRef.current?.click()}
           className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
         >
-          <Upload className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+          <Upload className={`h-4 w-4 ${iconeGaleria}`} />
           Galeria
         </button>
       </div>

@@ -77,10 +77,24 @@ export async function gerarEquipamentoPdf(item: PortControleEquipamento): Promis
     writer.drawCallout('Observações Gerais da Portaria', item.observacoes);
   }
 
-  writer.drawSignatures([
+  await writer.drawSignaturesWithImages([
     { role: 'Vigilante da Portaria', name: item.vigilante_entrada },
-    { role: 'Responsável / Terceiro', name: item.funcionario },
+    { role: 'Responsável / Terceiro', name: item.responsavel || item.funcionario, signature: item.assinatura_responsavel },
   ]);
+
+  const fotosAnexas = (item.fotos || [])
+    .filter((f) => !!f.preview_url)
+    .map((f, idx, todas) => ({
+      title: `Foto ${idx + 1} de ${todas.length} — ${item.numero_protocolo}`,
+      reference: `Empresa: ${item.nome_empresa} · Portador: ${item.funcionario}`,
+      description: item.descricao_materiais,
+      timestamp: `${formatDataBR(item.data_entrada)}${item.hora_entrada ? ` às ${item.hora_entrada}` : ''}`,
+      source: f.preview_url || '',
+    }));
+
+  if (fotosAnexas.length > 0) {
+    await writer.drawPhotoAttachments(fotosAnexas);
+  }
 
   writer.finalizeDoc(item.codigo_formulario || 'FRM.SGP-0011');
   return docToPdfGerado(doc, `portaria-equipamentos-${item.numero_protocolo}.pdf`, `Equipamento ${item.numero_protocolo} - ${item.nome_empresa}`);

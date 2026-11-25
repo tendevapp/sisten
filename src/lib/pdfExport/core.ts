@@ -1098,6 +1098,81 @@ export class PdfTextWriter {
     this.y = lineY - 26;
   }
 
+  /**
+   * Bloco de assinaturas que tambem suporta assinatura digital (PNG data URL)
+   * desenhada acima da linha, mantendo o espaco em branco quando nao ha imagem.
+   */
+  async drawSignaturesWithImages(
+    signers: { role: string; name?: string; signature?: string | null }[],
+  ) {
+    if (signers.length === 0) return;
+
+    this.ensureSpace(70);
+
+    const count = signers.length;
+    const colWidth = this.contentWidth / count;
+    const lineY = this.y - 44;
+
+    for (let idx = 0; idx < signers.length; idx++) {
+      const s = signers[idx];
+      const startX = MARGIN + idx * colWidth + 16;
+      const endX = MARGIN + (idx + 1) * colWidth - 16;
+      const midX = (startX + endX) / 2;
+
+      if (s.signature && s.signature.startsWith('data:image/')) {
+        try {
+          const base64 = s.signature.split(',')[1];
+          const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+          const sigImg = s.signature.includes('image/png')
+            ? await this.doc.embedPng(bytes)
+            : await this.doc.embedJpg(bytes);
+          const maxW = Math.max(40, endX - startX - 12);
+          const maxH = 36;
+          const dims = sigImg.scaleToFit(maxW, maxH);
+          this.page.drawImage(sigImg, {
+            x: midX - dims.width / 2,
+            y: lineY + 3,
+            width: dims.width,
+            height: dims.height,
+          });
+        } catch (err) {
+          console.warn('Falha ao embutir assinatura digital no PDF:', err);
+        }
+      }
+
+      this.page.drawLine({
+        start: { x: startX, y: lineY },
+        end: { x: endX, y: lineY },
+        thickness: 0.8,
+        color: PDF_COLORS.darkText,
+      });
+
+      if (s.name) {
+        const nameText = sanitizeText(s.name);
+        const nameWidth = this.fontBold.widthOfTextAtSize(nameText, 8);
+        this.page.drawText(nameText, {
+          x: midX - nameWidth / 2,
+          y: lineY - 10,
+          size: 8,
+          font: this.fontBold,
+          color: PDF_COLORS.darkText,
+        });
+      }
+
+      const roleText = sanitizeText(s.role.toUpperCase());
+      const roleWidth = this.font.widthOfTextAtSize(roleText, 7);
+      this.page.drawText(roleText, {
+        x: midX - roleWidth / 2,
+        y: lineY - 19,
+        size: 7,
+        font: this.font,
+        color: PDF_COLORS.mutedLabel,
+      });
+    }
+
+    this.y = lineY - 26;
+  }
+
   /** Aplica Numeração de Página e Rodapé Oficial em Todas as Páginas */
   finalizeDoc(formCode?: string) {
     const pages = this.doc.getPages();
