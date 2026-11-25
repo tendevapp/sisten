@@ -466,8 +466,8 @@ export async function buscarMetricasHistoricoCotacoes(): Promise<MetricasHistori
     { data: propostasValor },
   ] = await Promise.all([
     supabase.from('sup_cotacao_proposta_itens').select('*', { count: 'exact', head: true }),
-    supabase.from('sup_cotacao_propostas').select('*', { count: 'exact', head: true }),
-    supabase.from('sup_cotacao_propostas').select('valor_total_orcamento, fornecedor_razao_social'),
+    (supabase.from('sup_cotacao_propostas') as any).select('*', { count: 'exact', head: true }).eq('ativa', true),
+    (supabase.from('sup_cotacao_propostas') as any).select('valor_total_orcamento, fornecedor_razao_social').eq('ativa', true),
   ]);
 
   let valorTotal = 0;

@@ -1543,6 +1543,16 @@ export interface CotacaoProposta {
   /** `null` enquanto for a extração original, sem correção manual. */
   arquivo_markdown_editado_em: string | null;
   arquivo_markdown_editado_por: string | null;
+  /** Rodada de negociação desta proposta para o fornecedor (1 = original, 2+ = renegociação). */
+  rodada?: number;
+  /** `true` na rodada vigente do fornecedor; `false` quando substituída por renegociação posterior. */
+  ativa?: boolean;
+  /** ID da proposta da rodada imediatamente anterior. */
+  proposta_origem_id?: string | null;
+  /** ID da proposta da rodada seguinte que substituiu esta. */
+  substituida_por_id?: string | null;
+  renegociada_em?: string | null;
+  renegociada_por?: string | null;
   criado_por: string | null;
   criado_por_nome: string;
   created_at: string;
@@ -1637,6 +1647,9 @@ export interface CotacaoPropostaItemDraft {
   mapa_selecionado?: boolean;
   /** Ver `CotacaoPropostaItem.mapa_observacao`. */
   mapa_observacao?: string | null;
+  /** Metadado de conferência de renegociação (só front, antes de aceitar). */
+  _reneg_origem?: 'renegociado' | 'mantido' | 'novo';
+  _reneg_item_anterior_key?: string | null;
   extraido_raw: ItemPropostaExtraido;
 }
 
@@ -1693,6 +1706,12 @@ export interface CotacaoPropostaDraft {
   arquivo_markdown: string | null;
   arquivo_markdown_editado_em: string | null;
   arquivo_markdown_editado_por: string | null;
+  rodada?: number;
+  ativa?: boolean;
+  proposta_origem_id?: string | null;
+  substituida_por_id?: string | null;
+  renegociada_em?: string | null;
+  renegociada_por?: string | null;
   itens: CotacaoPropostaItemDraft[];
 }
 

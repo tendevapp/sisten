@@ -391,6 +391,12 @@ export function normalizarProposta(
     arquivo_markdown: ctx.arquivoMarkdown ?? null,
     arquivo_markdown_editado_em: null,
     arquivo_markdown_editado_por: null,
+    rodada: 1,
+    ativa: true,
+    proposta_origem_id: null,
+    substituida_por_id: null,
+    renegociada_em: null,
+    renegociada_por: null,
 
     itens: (bruta.itens ?? []).map(itemParaDraft),
   };
@@ -730,6 +736,12 @@ export function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft
     arquivos_originais: p.arquivos_originais ?? [],
     arquivo_tamanho_bytes: p.arquivo_tamanho_bytes, arquivo_markdown: p.arquivo_markdown,
     arquivo_markdown_editado_em: p.arquivo_markdown_editado_em, arquivo_markdown_editado_por: p.arquivo_markdown_editado_por,
+    rodada: p.rodada ?? 1,
+    ativa: p.ativa ?? true,
+    proposta_origem_id: p.proposta_origem_id ?? null,
+    substituida_por_id: p.substituida_por_id ?? null,
+    renegociada_em: p.renegociada_em ?? null,
+    renegociada_por: p.renegociada_por ?? null,
     observacoes: p.observacoes, dados_bancarios: p.dados_bancarios,
     itens: (p.itens ?? []).map(it => ({
       _key: it.id, processo_item_id: it.processo_item_id, fora_escopo: it.fora_escopo,

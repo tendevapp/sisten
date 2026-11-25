@@ -22,6 +22,7 @@ import MercadoLivrePropostaModal from '../components/cotacoes/MercadoLivrePropos
 import PropostaCard from '../components/cotacoes/PropostaCard';
 import MapaComparativo from '../components/cotacoes/MapaComparativo';
 import RevisaoPedidoCompra from '../components/cotacoes/RevisaoPedidoCompra';
+import RenegociacaoPropostaModal from '../components/cotacoes/RenegociacaoPropostaModal';
 import { limparComprasMemoryCache } from './Compras';
 import { converterComIA } from '../lib/converterMarkdownApi';
 import { consolidarMarkdown } from '../lib/markdownConvert';
@@ -29,6 +30,8 @@ import { comprimirImagemUpload } from '../lib/imageCompression';
 import { RASCUNHO_COTACAO_KEY, chaveRascunhoPropostas, normalizarProposta, complementarPropostaComPrint, aplicarSugestoes, normalizarDescricao, propostaSalvaParaDraft } from '../lib/cotacoes';
 import { aplicarVinculosIa, revisarDivergencias } from '../lib/vinculoCotacao';
 import { simularFreteCotacao, aplicarFreteTeorico, alinharPesoComVinculo, chavePesoAlinhado } from '../lib/freteCotacao';
+import { construirHistoricoRodadas } from '../lib/renegociacaoCotacao';
+import { formatBRL } from '../lib/format';
 import {
   criarProcessoCotacao, listarProcessosCotacao, buscarProcessoCotacao,
   extrairCotacao, sugerirVinculos, salvarProcessoCotacao, excluirPropostaCotacao,
@@ -91,6 +94,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
   const enviadosRef = useRef<Map<string, ArquivoOriginalCotacao>>(new Map());
 
   const [mercadoLivreAberto, setMercadoLivreAberto] = useState(false);
+  const [propostaEmRenegociacao, setPropostaEmRenegociacao] = useState<CotacaoPropostaDraft | null>(null);
   const [extraindo, setExtraindo] = useState(false);
   const [erroExtracao, setErroExtracao] = useState<string | null>(null);
   const [extracaoSemItens, setExtracaoSemItens] = useState(false);
@@ -682,18 +686,24 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     if (!draft || !draft._salvo || !processo) return;
     const processoId = processo.id;
 
-    // Otimista: some da tela na hora. A exclusão de verdade no Supabase só
-    // acontece se a janela de "Desfazer" (toast) expirar sem clique.
-    setPropostas(prev => prev.filter(p => p._key !== key));
+    // Otimista: some da tela na hora. Se era uma renegociacao ativa, reativa
+    // a rodada anterior localmente enquanto dura a janela de "Desfazer".
+    const origemId = draft.proposta_origem_id ?? null;
+    setPropostas(prev => prev
+      .filter(p => p._key !== key)
+      .map(p => (origemId && p._key === origemId ? { ...p, ativa: true, substituida_por_id: null } : p)));
 
     const timeoutId = window.setTimeout(async () => {
       pendentesExclusaoRef.current.delete(key);
       try {
-        await excluirPropostaCotacao(key);
+        await excluirPropostaCotacao(key, origemId);
       } catch (err) {
         console.error('Falha ao excluir proposta:', err);
         if (processoIdAtualRef.current === processoId) {
-          setPropostas(prev => (prev.some(p => p._key === key) ? prev : [...prev, draft]));
+          setPropostas(prev => {
+            const restauradas = prev.map(p => (origemId && p._key === origemId ? { ...p, ativa: false, substituida_por_id: key } : p));
+            return restauradas.some(p => p._key === key) ? restauradas : [...restauradas, draft];
+          });
           toast.error(`Falha ao excluir a proposta de "${draft.fornecedor_razao_social || 'fornecedor'}": ${(err as Error).message}`);
         }
       }
@@ -709,7 +719,10 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
         window.clearTimeout(pendente.timeoutId);
         pendentesExclusaoRef.current.delete(key);
         if (processoIdAtualRef.current === pendente.processoId) {
-          setPropostas(prev => (prev.some(p => p._key === key) ? prev : [...prev, pendente.draft]));
+          setPropostas(prev => {
+            const revertidas = prev.map(p => (origemId && p._key === origemId ? { ...p, ativa: false, substituida_por_id: key } : p));
+            return revertidas.some(p => p._key === key) ? revertidas : [...revertidas, pendente.draft];
+          });
         }
       }
     );
@@ -806,13 +819,36 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     });
   };
 
-  const propostasSalvas = useMemo(() => propostas.filter(p => p._salvo).length, [propostas]);
+  const historicoRodadas = useMemo(() => construirHistoricoRodadas(propostas), [propostas]);
+  const propostasAtivas = historicoRodadas.ativas;
 
-  /** Quantos itens já foram marcados para compra no mapa (`mapa_selecionado`), entre as propostas salvas — habilita o botão de revisão do pedido. */
+  const propostasSalvas = useMemo(() => propostasAtivas.filter(p => p._salvo).length, [propostasAtivas]);
+
+  /** Quantos itens já foram marcados para compra no mapa (`mapa_selecionado`), entre as propostas salvas ativas — habilita o botão de revisão do pedido. */
   const itensParaPedido = useMemo(
-    () => propostas.reduce((soma, p) => soma + (p._salvo ? p.itens.filter(it => it.mapa_selecionado).length : 0), 0),
-    [propostas],
+    () => propostasAtivas.reduce((soma, p) => soma + (p._salvo ? p.itens.filter(it => it.mapa_selecionado).length : 0), 0),
+    [propostasAtivas],
   );
+
+  const handleRenegociacaoAceita = async (res: {
+    novaPropostaId: string;
+    rodada: number;
+    savingTotal: number;
+    diffPct: number | null;
+    arquivosEnviados: { nome: string; file: File }[];
+  }) => {
+    if (res.arquivosEnviados.length > 0) {
+      handleArquivosEnviados(res.arquivosEnviados);
+    }
+    await recarregarPropostas();
+    setPropostaEmRenegociacao(null);
+    const savingTexto = res.savingTotal > 0.005
+      ? `Saving de negociação: ${formatBRL(res.savingTotal)}${res.diffPct != null ? ` (${res.diffPct.toFixed(1)}%)` : ''}.`
+      : res.savingTotal < -0.005
+        ? `Variação de +${formatBRL(Math.abs(res.savingTotal))}${res.diffPct != null ? ` (+${res.diffPct.toFixed(1)}%)` : ''}.`
+        : 'Mesmo valor total da rodada anterior.';
+    toast.success(`Rodada ${res.rodada} aceita! ${savingTexto}`);
+  };
 
   /** A decisão do mapa já foi gravada no banco quando isto é chamado — só reflete no estado local para a revisão do pedido não depender de recarregar o processo. */
   const handleDecisaoMapaSalva = (itensSelecionados: Set<string>, observacoes?: Map<string, string>) => {
@@ -835,8 +871,8 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
   };
 
   const propostasOrdenadas = useMemo(
-    () => [...propostas].sort((a, b) => (b._extraido_em ?? '').localeCompare(a._extraido_em ?? '')),
-    [propostas]
+    () => [...propostasAtivas].sort((a, b) => (b._extraido_em ?? '').localeCompare(a._extraido_em ?? '')),
+    [propostasAtivas]
   );
 
   const voltarParaLista = () => {
@@ -915,7 +951,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
         <MapaComparativo
           processo={processo}
           escopo={escopo}
-          propostas={propostas}
+          propostas={propostasAtivas}
           usuarioNome={user.name}
           onVoltar={() => setFase('processo')}
           onAtualizarProposta={handleChangeProposta}
@@ -924,6 +960,8 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
           arquivosOriginais={arquivosOriginais}
           onEditarMarkdown={handleEditarMarkdown}
           compradorPadrao={user.grupo_compras}
+          historicoPorProposta={historicoRodadas.porPropostaKey}
+          onRenegociar={prop => setPropostaEmRenegociacao(prop)}
         />
       )}
 
@@ -931,7 +969,8 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
         <RevisaoPedidoCompra
           processo={processo}
           escopo={escopo}
-          propostas={propostas}
+          propostas={propostasAtivas}
+          historicoPorProposta={historicoRodadas.porPropostaKey}
           onVoltar={() => setFase('mapa')}
           onProcessoConcluido={handleProcessoConcluido}
         />
@@ -946,7 +985,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
               <PackageSearch className="h-3.5 w-3.5" />
-              {escopo.length} {escopo.length === 1 ? 'item' : 'itens'} no escopo · {propostas.length} {propostas.length === 1 ? 'proposta' : 'propostas'}
+              {escopo.length} {escopo.length === 1 ? 'item' : 'itens'} no escopo · {propostasAtivas.length} {propostasAtivas.length === 1 ? 'proposta' : 'propostas'}
               <div className="ml-auto flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -1019,6 +1058,8 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
                 tabelaFrete={tabelaFrete}
                 onEditarMarkdown={md => handleEditarMarkdown(p._key, md)}
                 onReextrairComPrint={arquivos => handleReextrairComPrint(p._key, arquivos)}
+                historicoRodadas={historicoRodadas.porPropostaKey.get(p._key)}
+                onRenegociar={p._salvo && p.ativa !== false ? () => setPropostaEmRenegociacao(p) : undefined}
                 processoId={processo.id}
               />
             ))}
@@ -1065,6 +1106,20 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
             )}
           </div>
         )
+      )}
+
+      {propostaEmRenegociacao && processo && (
+        <RenegociacaoPropostaModal
+          processoId={processo.id}
+          user={user}
+          propostaAnterior={propostaEmRenegociacao}
+          escopo={escopo}
+          resolverVinculos={resolverVinculos}
+          alinharPeso={alinharPeso}
+          comFreteTeorico={comFreteTeorico}
+          onAceita={handleRenegociacaoAceita}
+          onClose={() => setPropostaEmRenegociacao(null)}
+        />
       )}
 
       {showScrollTop && (

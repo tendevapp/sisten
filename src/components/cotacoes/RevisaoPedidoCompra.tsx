@@ -19,6 +19,7 @@ import React, { useMemo, useState } from 'react';
 import {
   ArrowLeft, Download, CheckCircle2, AlertTriangle, CalendarClock, CreditCard,
   Truck, ShieldAlert, PackageX, Loader2, FileWarning, Save, Calculator, Files, FileStack,
+  TrendingDown, TrendingUp,
 } from 'lucide-react';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
@@ -26,6 +27,7 @@ import { useToast } from '../ui/Toast';
 import { formatBRL, formatQtd, formatDateBR } from '../../lib/format';
 import { formatarCnpj, nomeFornecedorCurto } from '../../lib/cotacoes';
 import { atualizarStatusProcesso, atualizarItensCotacao } from '../../lib/cotacoesApi';
+import { calcularSavingPedido, type HistoricoRodadasProposta } from '../../lib/renegociacaoCotacao';
 import PdfPreviewModal from '../ui/PdfPreviewModal';
 import type { PdfGerado } from '../../lib/pdfExport/core';
 import { exportPedidoCompraPdf, exportPedidosCompraPdfUnico, gerarPedidoCompraPdf, gerarPedidosCompraPdfUnico } from '../../lib/pdfExport/exportPedidoCompraPdf';
@@ -50,15 +52,20 @@ function Chip({ tom, children, title }: { tom: 'neutro' | 'ok' | 'aviso' | 'ruim
 }
 
 function CardPedido({
-  pedido, numeroProcesso,
+  pedido, numeroProcesso, historicoRodadas,
 }: {
   pedido: PedidoFornecedor;
   numeroProcesso: string;
+  historicoRodadas?: HistoricoRodadasProposta;
 }) {
   const toast = useToast();
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ gerar: () => Promise<PdfGerado>; titulo?: string } | null>(null);
+  const savingPedido = useMemo(
+    () => calcularSavingPedido(pedido, historicoRodadas?.comparativoAnterior),
+    [pedido, historicoRodadas],
+  );
 
   const handleSalvarPedido = async () => {
     setSalvando(true);
@@ -102,6 +109,22 @@ function CardPedido({
             {pedido.numeroProposta ? ` · Proposta ${pedido.numeroProposta}` : ''}
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
+            {historicoRodadas && historicoRodadas.rodadaAtual > 1 && (
+              <Chip tom="neutro" title={`Proposta renegociada — Rodada ${historicoRodadas.rodadaAtual}`}>
+                Rodada {historicoRodadas.rodadaAtual}
+              </Chip>
+            )}
+            {savingPedido && Math.abs(savingPedido.savingTotal) > 0.005 && (
+              <Chip
+                tom={savingPedido.savingTotal > 0 ? 'ok' : 'ruim'}
+                title={`Saving de negociação nos itens deste pedido: ${formatBRL(savingPedido.totalAnterior)} → ${formatBRL(savingPedido.totalNovo)}`}
+              >
+                {savingPedido.savingTotal > 0 ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
+                {savingPedido.savingTotal > 0
+                  ? `Saving ${formatBRL(savingPedido.savingTotal)} (${savingPedido.diffPct != null ? `${savingPedido.diffPct.toFixed(1)}%` : ''})`
+                  : `+${formatBRL(Math.abs(savingPedido.savingTotal))} (${savingPedido.diffPct != null ? `+${savingPedido.diffPct.toFixed(1)}%` : ''})`}
+              </Chip>
+            )}
             <Chip tom="neutro" title={pedido.prazoEntregaTexto ?? undefined}>
               <CalendarClock className="h-3 w-3" />
               {pedido.prazoEntregaDias != null ? `${pedido.prazoEntregaDias} dias de entrega` : 'prazo não informado'}
@@ -190,8 +213,38 @@ function CardPedido({
                 <td className="px-2 py-2 text-center tabular-nums text-slate-600 dark:text-slate-300">
                   {formatQtd(it.quantidade)} {it.unidadeMedida || ''}
                 </td>
-                <td className="px-2 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">{formatBRL(it.precoUnitario)}</td>
-                <td className="px-2 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">{formatBRL(it.precoTotal)}</td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">
+                  <div>{formatBRL(it.precoUnitario)}</div>
+                  {(() => {
+                    const c = historicoRodadas?.comparativoAnterior?.porItemKey.get(it.itemKey);
+                    if (!c || c.diffUnitario == null || Math.abs(c.diffUnitario) <= 0.0001) return null;
+                    const red = c.diffUnitario < 0;
+                    return (
+                      <div
+                        className={`text-[10px] font-semibold ${red ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}
+                        title={`Rodada anterior: ${formatBRL(c.precoUnitarioAnterior)}`}
+                      >
+                        {red ? '-' : '+'}{formatBRL(Math.abs(c.diffUnitario))} ({c.diffUnitarioPct != null ? `${c.diffUnitarioPct > 0 ? '+' : ''}${c.diffUnitarioPct.toFixed(1)}%` : ''})
+                      </div>
+                    );
+                  })()}
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">
+                  <div>{formatBRL(it.precoTotal)}</div>
+                  {(() => {
+                    const c = historicoRodadas?.comparativoAnterior?.porItemKey.get(it.itemKey);
+                    if (!c || c.savingTotal == null || Math.abs(c.savingTotal) <= 0.005) return null;
+                    const econ = c.savingTotal > 0;
+                    return (
+                      <div
+                        className={`text-[10px] font-semibold ${econ ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}
+                        title={`Total anterior: ${formatBRL(c.precoTotalAnterior)}`}
+                      >
+                        {econ ? `Saving ${formatBRL(c.savingTotal)}` : `+${formatBRL(Math.abs(c.savingTotal))}`}
+                      </div>
+                    );
+                  })()}
+                </td>
                 <td className="px-2 py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">
                   {it.freteTeorico != null ? formatBRL(it.freteTeorico) : '—'}
                 </td>
@@ -215,6 +268,18 @@ function CardPedido({
         {pedido.valorDesconto != null && pedido.valorDesconto > 0 && (
           <span className="text-emerald-600 dark:text-emerald-400" title="Desconto identificado na proposta, já abatido do total">
             Desconto: <strong>-{formatBRL(pedido.valorDesconto)}</strong>
+          </span>
+        )}
+        {savingPedido && Math.abs(savingPedido.savingTotal) > 0.005 && (
+          <span
+            className={savingPedido.savingTotal > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}
+            title={`Comparado à rodada anterior (${formatBRL(savingPedido.totalAnterior)} → ${formatBRL(savingPedido.totalNovo)})`}
+          >
+            Saving negociação:{' '}
+            <strong>
+              {savingPedido.savingTotal > 0 ? formatBRL(savingPedido.savingTotal) : `-${formatBRL(Math.abs(savingPedido.savingTotal))}`}
+              {savingPedido.diffPct != null ? ` (${savingPedido.diffPct > 0 ? '+' : ''}${savingPedido.diffPct.toFixed(1)}%)` : ''}
+            </strong>
           </span>
         )}
         <span className="text-sm font-bold text-slate-900 dark:text-slate-50">Total: {formatBRL(pedido.total)}</span>
@@ -253,13 +318,14 @@ interface RevisaoPedidoCompraProps {
   processo: CotacaoProcesso;
   escopo: CotacaoProcessoItem[];
   propostas: CotacaoPropostaDraft[];
+  historicoPorProposta?: Map<string, HistoricoRodadasProposta>;
   onVoltar: () => void;
   /** Refletido no estado do processo mantido pela tela-mãe, após concluir. */
   onProcessoConcluido: () => void;
 }
 
 export default function RevisaoPedidoCompra({
-  processo, escopo, propostas, onVoltar, onProcessoConcluido,
+  processo, escopo, propostas, historicoPorProposta, onVoltar, onProcessoConcluido,
 }: RevisaoPedidoCompraProps) {
   const toast = useToast();
   const [concluindo, setConcluindo] = useState(false);
@@ -308,6 +374,24 @@ export default function RevisaoPedidoCompra({
 
   const totalGeral = pedidos.reduce((s, p) => s + p.total, 0);
   const totalItens = pedidos.reduce((s, p) => s + p.itens.length, 0);
+  const savingTotalPedidos = useMemo(() => {
+    let anterior = 0;
+    let novo = 0;
+    let count = 0;
+    for (const p of pedidos) {
+      const s = calcularSavingPedido(p, historicoPorProposta?.get(p.propostaKey)?.comparativoAnterior);
+      if (s) {
+        anterior += s.totalAnterior;
+        novo += s.totalNovo;
+        count += s.itensComparados;
+      }
+    }
+    if (count === 0 || anterior <= 0) return null;
+    return {
+      savingTotal: anterior - novo,
+      diffPct: ((novo - anterior) / anterior) * 100,
+    };
+  }, [pedidos, historicoPorProposta]);
   const jaConcluido = processo.status === 'concluido';
 
   const handleConcluir = async () => {
@@ -352,6 +436,13 @@ export default function RevisaoPedidoCompra({
         <span className="text-xs text-slate-500">
           {pedidos.length} {pedidos.length === 1 ? 'pedido' : 'pedidos'} · {totalItens} {totalItens === 1 ? 'item' : 'itens'} · total {formatBRL(totalGeral)}
         </span>
+        {savingTotalPedidos && Math.abs(savingTotalPedidos.savingTotal) > 0.005 && (
+          <Chip tom={savingTotalPedidos.savingTotal > 0 ? 'ok' : 'ruim'}>
+            {savingTotalPedidos.savingTotal > 0 ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
+            Saving de negociação: {savingTotalPedidos.savingTotal > 0 ? formatBRL(savingTotalPedidos.savingTotal) : `-${formatBRL(Math.abs(savingTotalPedidos.savingTotal))}`}
+            {` (${savingTotalPedidos.diffPct > 0 ? '+' : ''}${savingTotalPedidos.diffPct.toFixed(1)}%)`}
+          </Chip>
+        )}
         {jaConcluido && (
           <Chip tom="ok"><CheckCircle2 className="h-3 w-3" />processo concluído</Chip>
         )}
@@ -379,7 +470,12 @@ export default function RevisaoPedidoCompra({
 
       <div className="space-y-4">
         {pedidos.map(p => (
-          <CardPedido key={p.propostaKey} pedido={p} numeroProcesso={processo.numero} />
+          <CardPedido
+            key={p.propostaKey}
+            pedido={p}
+            numeroProcesso={processo.numero}
+            historicoRodadas={historicoPorProposta?.get(p.propostaKey)}
+          />
         ))}
       </div>
 

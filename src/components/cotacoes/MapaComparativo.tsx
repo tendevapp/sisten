@@ -26,7 +26,7 @@ import { createPortal } from 'react-dom';
 import {
   ArrowLeft, AlertTriangle, Truck, CalendarClock, CreditCard, Sparkles,
   Scissors, Merge, Award, PackageX, RotateCcw, Link2, Ban, X, ShoppingCart, Plus, Check, SearchX, FileSearch,
-  LayoutGrid, Table2, Rows3, BarChart3, EyeOff, Eye, History, Building2, Loader2,
+  LayoutGrid, Table2, Rows3, BarChart3, EyeOff, Eye, History, Building2, Loader2, RefreshCw, TrendingDown, TrendingUp,
 } from 'lucide-react';
 import * as XLSX from 'xlsx-js-style';
 import MapaOpcoesBar from './MapaOpcoesBar';
@@ -64,6 +64,7 @@ import {
 import type {
   BaseComparacao, CreditosHabilitados, LinhaMapa, CelulaMapa, PropostaMapa, ResumoFornecedor, Cenario, OrdenacaoMapa,
 } from '../../lib/mapaCotacao';
+import type { ComparativoItemRenegociacao, HistoricoRodadasProposta } from '../../lib/renegociacaoCotacao';
 import type { CotacaoProcesso, CotacaoProcessoItem, CotacaoPropostaDraft } from '../../types';
 import { dataHojeLocal } from '../../lib/dataLocal';
 
@@ -475,7 +476,7 @@ function ConfirmarForaDoMelhorModal({
 
 function CabecalhoFornecedor({
   resumo, proposta, posicao, melhorTotal, onFrete, arquivoOriginal, onEditarMarkdown, onAtualizarProposta,
-  regime, consultandoRegime, erroRegime, onReconsultarRegime,
+  regime, consultandoRegime, erroRegime, onReconsultarRegime, historicoRodadas, onRenegociar,
 }: {
   /** Regime tributário do fornecedor (Simples/MEI) pela consulta de CNPJ; ausente = ainda não consultado. */
   regime?: RegimeFornecedor | null;
@@ -493,6 +494,10 @@ function CabecalhoFornecedor({
   onEditarMarkdown?: (novoMarkdown: string) => Promise<void>;
   /** Reflete no estado do processo o arquivo original vinculado pelo modal de visualização. */
   onAtualizarProposta: (key: string, patch: Partial<CotacaoPropostaDraft>) => void;
+  /** Historico de rodadas e saving de renegociacao deste fornecedor. */
+  historicoRodadas?: HistoricoRodadasProposta;
+  /** Abre o modal de renegociacao (rodada seguinte) para este fornecedor. */
+  onRenegociar?: () => void;
 }) {
   const delta = melhorTotal != null && melhorTotal > 0 ? ((resumo.totalCotacao - melhorTotal) / melhorTotal) * 100 : null;
   const vencedor = posicao === 0 && resumo.itensCotados > 0;
@@ -527,16 +532,30 @@ function CabecalhoFornecedor({
             {proposta.fornecedor_uf ? ` · ${proposta.fornecedor_uf}` : ''}
           </div>
         </div>
-        {proposta.arquivo_origem && (
-          <button aria-label="Ver a cotação original — documento e/ou o Markdown extraído dele"
-            type="button"
-            onClick={() => setPreviewAberto(true)}
-            title="Ver a cotação original — documento e/ou o Markdown extraído dele"
-            className="shrink-0 rounded-md border border-slate-200 p-1 text-slate-500 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
-          >
-            <FileSearch className="h-3.5 w-3.5" />
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-1">
+          {onRenegociar && (
+            <button
+              aria-label="Renegociar proposta deste fornecedor"
+              type="button"
+              onClick={onRenegociar}
+              title={`Iniciar Rodada ${(proposta.rodada ?? 1) + 1} de negociação com este fornecedor`}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-1 text-[10px] font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-950/70"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Renegociar
+            </button>
+          )}
+          {proposta.arquivo_origem && (
+            <button aria-label="Ver a cotação original — documento e/ou o Markdown extraído dele"
+              type="button"
+              onClick={() => setPreviewAberto(true)}
+              title="Ver a cotação original — documento e/ou o Markdown extraído dele"
+              className="shrink-0 rounded-md border border-slate-200 p-1 text-slate-500 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
+            >
+              <FileSearch className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {previewAberto && proposta.arquivo_origem && (
@@ -563,6 +582,29 @@ function CabecalhoFornecedor({
       )}
 
       <div className="flex flex-wrap gap-1">
+        {(proposta.rodada ?? 1) > 1 && (
+          <Chip tom="neutro" title={`Proposta renegociada — Rodada ${proposta.rodada}`}>
+            R{proposta.rodada}
+          </Chip>
+        )}
+        {historicoRodadas?.comparativoAnterior && Math.abs(historicoRodadas.comparativoAnterior.savingTotal) > 0.005 && (() => {
+          const comp = historicoRodadas.comparativoAnterior;
+          const econ = comp.savingTotal > 0;
+          const acum = historicoRodadas.comparativoInicial;
+          const tooltip = [
+            `Renegociação R${comp.rodadaAnterior} → R${comp.rodadaNova}: ${formatBRL(comp.totalAnterior)} → ${formatBRL(comp.totalNovo)}`,
+            `Saving da rodada: ${econ ? formatBRL(comp.savingTotal) : `-${formatBRL(Math.abs(comp.savingTotal))}`} (${comp.diffPct != null ? `${comp.diffPct > 0 ? '+' : ''}${comp.diffPct.toFixed(1)}%` : '—'})`,
+            acum ? `Acumulado desde R1: ${formatBRL(acum.savingTotal)} (${acum.diffPct != null ? `${acum.diffPct > 0 ? '+' : ''}${acum.diffPct.toFixed(1)}%` : '—'})` : null,
+          ].filter(Boolean).join('\n');
+          return (
+            <Chip tom={econ ? 'ok' : 'ruim'} title={tooltip}>
+              {econ ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
+              {econ
+                ? `Saving ${formatBRL(comp.savingTotal)} (${comp.diffPct != null ? `${comp.diffPct.toFixed(1)}%` : ''})`
+                : `+${formatBRL(Math.abs(comp.savingTotal))} (${comp.diffPct != null ? `+${comp.diffPct.toFixed(1)}%` : ''})`}
+            </Chip>
+          );
+        })()}
         {proposta.frete_modalidade && (
           <Chip tom={proposta.frete_modalidade === 'CIF' ? 'ok' : 'neutro'} title="Modalidade de frete informada na cotação">
             <Truck className="h-3 w-3" />
@@ -673,7 +715,7 @@ function CabecalhoFornecedor({
 // =====================================================================
 
 function Celula({
-  celula, freteEhTeorico, fornecedorUf, marcado, onMarcar, selecionadoAgrupamento, onToggleAgrupamento,
+  celula, freteEhTeorico, fornecedorUf, marcado, onMarcar, selecionadoAgrupamento, onToggleAgrupamento, comparativoItem, rodadaAtual,
 }: {
   celula: CelulaMapa;
   freteEhTeorico: boolean;
@@ -684,6 +726,8 @@ function Celula({
   /** Selecionado para a ação flutuante de juntar/separar linhas — independente da decisão de compra. */
   selecionadoAgrupamento: boolean;
   onToggleAgrupamento: (v: boolean) => void;
+  comparativoItem?: ComparativoItemRenegociacao;
+  rodadaAtual?: number;
 }) {
   const { item, custo } = celula;
   const delta = celula.deltaPct;
@@ -770,6 +814,37 @@ function Celula({
           </span>
         )}
       </div>
+
+      {comparativoItem && comparativoItem.diffUnitario != null && Math.abs(comparativoItem.diffUnitario) > 0.0001 && (() => {
+        const reduziu = comparativoItem.diffUnitario < 0;
+        const un = item.unidade_medida || 'un';
+        const detalhe = [
+          `Renegociação (Rodada ${rodadaAtual ?? 2}) vs. rodada anterior deste fornecedor:`,
+          `Unitário: ${formatBRL(comparativoItem.precoUnitarioAnterior)} → ${formatBRL(comparativoItem.precoUnitarioNovo)}/${un} (${reduziu ? '-' : '+'}${formatBRL(Math.abs(comparativoItem.diffUnitario))}/${un})`,
+          comparativoItem.precoTotalAnterior != null && comparativoItem.precoTotalNovo != null
+            ? `Total item: ${formatBRL(comparativoItem.precoTotalAnterior)} → ${formatBRL(comparativoItem.precoTotalNovo)} (Saving: ${comparativoItem.savingTotal != null && comparativoItem.savingTotal >= 0 ? formatBRL(comparativoItem.savingTotal) : `-${formatBRL(Math.abs(comparativoItem.savingTotal ?? 0))}`})`
+            : null,
+        ].filter(Boolean).join('\n');
+        return (
+          <div
+            title={detalhe}
+            className={`flex flex-wrap items-center gap-1 pl-[18px] text-[10px] font-semibold tabular-nums ${
+              reduziu ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+            }`}
+          >
+            {reduziu ? <TrendingDown className="h-3 w-3 shrink-0" /> : <TrendingUp className="h-3 w-3 shrink-0" />}
+            <span>
+              R{rodadaAtual ?? 2}: {comparativoItem.diffUnitarioPct != null ? `${comparativoItem.diffUnitarioPct > 0 ? '+' : ''}${comparativoItem.diffUnitarioPct.toFixed(1)}%` : ''}
+            </span>
+            <span className="font-normal opacity-90">
+              ({reduziu ? '-' : '+'}{formatBRL(Math.abs(comparativoItem.diffUnitario))}/{un}
+              {comparativoItem.savingTotal != null && Math.abs(comparativoItem.savingTotal) > 0.005
+                ? ` · ${comparativoItem.savingTotal > 0 ? `Saving ${formatBRL(comparativoItem.savingTotal)}` : `+${formatBRL(Math.abs(comparativoItem.savingTotal))}`}`
+                : ''})
+            </span>
+          </div>
+        );
+      })()}
 
       <div className="pl-[18px]">
         <ChipsImpostos celula={celula} freteEhTeorico={freteEhTeorico} />
@@ -1177,11 +1252,15 @@ interface MapaComparativoProps {
   compradorPadrao?: string | null;
   /** Rótulo personalizado do botão de voltar (padrão: "Propostas"). */
   rotuloVoltar?: string;
+  /** Historico de rodadas e saving por proposta ativa. */
+  historicoPorProposta?: Map<string, HistoricoRodadasProposta>;
+  /** Abre o modal de renegociacao a partir do cabecalho de um fornecedor no mapa. */
+  onRenegociar?: (proposta: CotacaoPropostaDraft) => void;
 }
 
 export default function MapaComparativo({
   processo, escopo, propostas, usuarioNome, onVoltar, onAtualizarProposta, onDecisaoSalva, onRecarregarPropostas,
-  arquivosOriginais, onEditarMarkdown, compradorPadrao, rotuloVoltar = 'Propostas',
+  arquivosOriginais, onEditarMarkdown, compradorPadrao, rotuloVoltar = 'Propostas', historicoPorProposta, onRenegociar,
 }: MapaComparativoProps) {
   const toast = useToast();
 
@@ -1369,14 +1448,16 @@ export default function MapaComparativo({
 
   useEffect(() => {
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const chavesAtivas = new Set(propostas.filter(p => p._salvo).flatMap(p => p.itens.map(it => it._key)));
+    const temChaveObsoleta = [...selecionados].some(k => !chavesAtivas.has(k)) || [...selecaoPersistida].some(k => !chavesAtivas.has(k));
     const temChaveInvalida = [...selecionados].some(k => !UUID_REGEX.test(k)) || [...selecaoPersistida].some(k => !UUID_REGEX.test(k));
     const doBanco = selecaoDoBanco(propostas);
 
-    if (temChaveInvalida || (selecaoPersistida.size === 0 && doBanco.size > 0)) {
+    if (temChaveInvalida || temChaveObsoleta || (selecaoPersistida.size === 0 && doBanco.size > 0)) {
       setSelecaoPersistida(doBanco);
       setSelecionados(prev => {
         const next = new Set<string>();
-        for (const k of prev) if (UUID_REGEX.test(k)) next.add(k);
+        for (const k of prev) if (UUID_REGEX.test(k) && chavesAtivas.has(k)) next.add(k);
         for (const k of doBanco) next.add(k);
         return next;
       });
@@ -1956,6 +2037,8 @@ export default function MapaComparativo({
                         }
                         onEditarMarkdown={onEditarMarkdown ? (md => onEditarMarkdown(r.propostaKey, md)) : undefined}
                         onAtualizarProposta={onAtualizarProposta}
+                        historicoRodadas={historicoPorProposta?.get(r.propostaKey)}
+                        onRenegociar={onRenegociar ? () => onRenegociar(propostaDoFornecedor) : undefined}
                       />
                       <AlcaColuna
                         largura={larguraDe(r.propostaKey)}
@@ -2032,6 +2115,8 @@ export default function MapaComparativo({
                               onMarcar={v => alternarSelecao(celula, linha, v)}
                               selecionadoAgrupamento={selecaoAgrupamento.has(celula.item._key)}
                               onToggleAgrupamento={v => alternarAgrupamento(celula.item._key, v)}
+                              comparativoItem={historicoPorProposta?.get(r.propostaKey)?.comparativoAnterior?.porItemKey.get(celula.item._key)}
+                              rodadaAtual={historicoPorProposta?.get(r.propostaKey)?.rodadaAtual}
                             />
                           ) : (
                             <div className="flex h-full min-h-[70px] items-center justify-center text-[10px] text-slate-300 dark:text-slate-700">

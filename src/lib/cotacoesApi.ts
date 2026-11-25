@@ -327,10 +327,18 @@ export async function buscarPropostasPorNomeArquivo(nomeArquivo: string): Promis
   }
 }
 
-/** Exclui uma proposta salva (e seus itens, via ON DELETE CASCADE em `cotacao_proposta_itens`). */
-export async function excluirPropostaCotacao(propostaId: string): Promise<void> {
+/** Exclui uma proposta salva (e seus itens, via ON DELETE CASCADE em `cotacao_proposta_itens`). Se era uma renegociacao ativa, reativa a rodada imediatamente anterior. */
+export async function excluirPropostaCotacao(propostaId: string, propostaOrigemId?: string | null): Promise<void> {
   const { error } = await supabase.from('sup_cotacao_propostas').delete().eq('id', propostaId);
   if (error) throw new Error(`Falha ao excluir a proposta: ${error.message}`);
+  if (propostaOrigemId && UUID_REGEX_ITEM.test(propostaOrigemId)) {
+    const { error: errReativar } = await (supabase.from('sup_cotacao_propostas') as any)
+      .update({ ativa: true, substituida_por_id: null, updated_at: new Date().toISOString() })
+      .eq('id', propostaOrigemId);
+    if (errReativar) {
+      console.warn('Falha ao reativar rodada anterior apos exclusao:', errReativar.message);
+    }
+  }
 }
 
 /**
@@ -515,9 +523,49 @@ function propostaParaPayload(processoId: string, p: CotacaoPropostaDraft) {
       preco_liquido_unitario: item.preco_liquido_unitario,
       preco_liquido_total: item.preco_liquido_total,
       custo_total_item: item.custo_total_item,
+      mapa_selecionado: item.mapa_selecionado ?? false,
+      mapa_observacao: item.mapa_observacao ?? null,
       extraido_raw: item.extraido_raw,
     })),
   };
+}
+
+export interface ResultadoRenegociacao {
+  proposta_id: string;
+  rodada: number;
+  itens: number;
+  aprendidos: number;
+}
+
+/**
+ * Persiste uma nova rodada de renegociacao de forma atomica via RPC:
+ * grava a nova proposta ativa (rodada + 1) com selecoes transferidas e marca
+ * a proposta anterior como historico inativo (`ativa = false`).
+ */
+export async function salvarRenegociacaoCotacao(params: {
+  processoId: string;
+  propostaAnteriorId: string;
+  proposta: CotacaoPropostaDraft;
+  usuarioId: string;
+  usuarioNome: string;
+}): Promise<ResultadoRenegociacao> {
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_REGEX.test(params.processoId) || !UUID_REGEX.test(params.propostaAnteriorId)) {
+    throw new Error('Identificador de processo ou proposta anterior invalido para renegociacao.');
+  }
+
+  const payload = {
+    proposta_anterior_id: params.propostaAnteriorId,
+    usuario_id: params.usuarioId,
+    usuario_nome: params.usuarioNome,
+    proposta: propostaParaPayload(params.processoId, params.proposta),
+  };
+
+  const { data, error } = await (supabase as any).rpc('salvar_renegociacao_cotacao', { p_payload: payload });
+  if (error) {
+    throw new Error(`Falha ao aceitar a proposta renegociada: ${error.message}`);
+  }
+  return data as ResultadoRenegociacao;
 }
 
 export async function salvarProcessoCotacao(params: {

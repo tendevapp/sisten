@@ -10,7 +10,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, AlertTriangle, EyeOff, Eye, Trash2, Save, Loader2, Clock, FileSearch, Truck, Ban, Sparkles, ImagePlus } from 'lucide-react';
+import { FileText, AlertTriangle, EyeOff, Eye, Trash2, Save, Loader2, Clock, FileSearch, Truck, Ban, Sparkles, ImagePlus, RefreshCw, TrendingDown, TrendingUp, History, ChevronDown, ChevronUp } from 'lucide-react';
 import PropostaItensGrid from './PropostaItensGrid';
 import FornecedorMatchBadge from './FornecedorMatchBadge';
 import CoberturaEscopoPanel from './CoberturaEscopoPanel';
@@ -21,6 +21,7 @@ import { validarProposta, conferirTotais, podeSalvar } from '../../lib/cotacoes'
 import { simularFreteCotacao, ROTULO_SEM_FRETE } from '../../lib/freteCotacao';
 import { aplicarSugestoesVinculoRi } from '../../lib/vinculoCotacao';
 import { sugerirVinculoRiIa } from '../../lib/cotacoesApi';
+import { valorTotalEfetivoProposta, type HistoricoRodadasProposta } from '../../lib/renegociacaoCotacao';
 import { formatDateTimeBR, formatBRL } from '../../lib/format';
 import type { CotacaoProcessoItem, CotacaoPropostaDraft, FornecedorMatch, TabelaFrete } from '../../types';
 
@@ -109,15 +110,21 @@ interface PropostaCardProps {
   processoId?: string;
   /** Complementa esta proposta (ainda em rascunho) com um print da cotação — OCR + extração preenchem o que está em branco; o print vira o arquivo original dela. */
   onReextrairComPrint?: (arquivos: File[]) => Promise<void>;
+  /** Historico de rodadas e calculo de saving quando esta proposta passou por renegociacao. */
+  historicoRodadas?: HistoricoRodadasProposta;
+  /** Abre o modal de renegociacao (rodada seguinte) para esta proposta ja salva. */
+  onRenegociar?: () => void;
 }
 
 export default function PropostaCard({
   proposta, escopo, onChange, onChangeItem, onRemover, onSalvar, salvando, onExcluirSalva, arquivoOriginal,
-  tabelaFrete, onEditarMarkdown, processoId, onReextrairComPrint,
+  tabelaFrete, onEditarMarkdown, processoId, onReextrairComPrint, historicoRodadas, onRenegociar,
 }: PropostaCardProps) {
   const toast = useToast();
   const [soFaltando, setSoFaltando] = useState(false);
   const [previewArquivoAberto, setPreviewArquivoAberto] = useState(false);
+  const [previewRodadaAnterior, setPreviewRodadaAnterior] = useState<CotacaoPropostaDraft | null>(null);
+  const [detalheSavingAberto, setDetalheSavingAberto] = useState(false);
   const [confirmSalvarAberto, setConfirmSalvarAberto] = useState(false);
   const [confirmExcluirAberto, setConfirmExcluirAberto] = useState(false);
   const [confirmRemoverAberto, setConfirmRemoverAberto] = useState(false);
@@ -263,6 +270,40 @@ export default function PropostaCard({
         {proposta._salvo && (
           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Salva</span>
         )}
+        {(proposta.rodada ?? 1) > 1 && (
+          <span
+            title={`Proposta na Rodada ${proposta.rodada}${proposta.renegociada_por ? ` · aceita por ${proposta.renegociada_por}` : ''}`}
+            className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300"
+          >
+            Rodada {proposta.rodada}
+          </span>
+        )}
+        {historicoRodadas?.comparativoAnterior && (() => {
+          const comp = historicoRodadas.comparativoAnterior;
+          const economizou = comp.savingTotal > 0.005;
+          const aumentou = comp.savingTotal < -0.005;
+          return (
+            <button
+              type="button"
+              onClick={() => setDetalheSavingAberto(v => !v)}
+              title={`Comparado à Rodada ${comp.rodadaAnterior} (${formatBRL(comp.totalAnterior)} → ${formatBRL(comp.totalNovo)}). Clique para ver o detalhamento por item e o histórico de rodadas.`}
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums transition-colors ${
+                economizou
+                  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300'
+                  : aumentou
+                    ? 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-950/50 dark:text-rose-300'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+              }`}
+            >
+              {economizou ? <TrendingDown className="h-3 w-3" /> : aumentou ? <TrendingUp className="h-3 w-3" /> : null}
+              {economizou
+                ? `Saving ${formatBRL(comp.savingTotal)} (${comp.diffPct != null ? `${comp.diffPct.toFixed(1)}%` : '0%'})`
+                : aumentou
+                  ? `+${formatBRL(Math.abs(comp.savingTotal))} (${comp.diffPct != null ? `+${comp.diffPct.toFixed(1)}%` : ''})`
+                  : 'Sem variação de valor'}
+            </button>
+          );
+        })()}
         {proposta._extraido_em && (
           <span className="inline-flex items-center gap-1 text-[11px] text-slate-500" title="Quando esta proposta foi extraída pela IA">
             <Clock className="h-3 w-3" />
@@ -278,6 +319,17 @@ export default function PropostaCard({
           >
             <FileSearch className="h-3.5 w-3.5" />
             Ver cotação original
+          </button>
+        )}
+        {proposta._salvo && proposta.ativa !== false && onRenegociar && (
+          <button
+            type="button"
+            onClick={onRenegociar}
+            title="Iniciar nova rodada de negociação com este fornecedor anexando novo PDF, imagem ou planilha"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-950/70"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Renegociar
           </button>
         )}
 
@@ -323,6 +375,145 @@ export default function PropostaCard({
         />
         <CoberturaEscopoPanel escopo={escopo} itens={proposta.itens} />
       </div>
+
+      {historicoRodadas?.comparativoAnterior && (
+        <div className="mx-4 mt-3 overflow-hidden rounded-xl border border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+          <button
+            type="button"
+            onClick={() => setDetalheSavingAberto(v => !v)}
+            className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2 text-left text-xs"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <History className="h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-400" />
+              <span className="font-semibold text-slate-800 dark:text-slate-100">
+                Renegociação (Rodada {historicoRodadas.comparativoAnterior.rodadaAnterior} → {historicoRodadas.comparativoAnterior.rodadaNova}):
+              </span>
+              <span className="tabular-nums text-slate-600 dark:text-slate-300">
+                {formatBRL(historicoRodadas.comparativoAnterior.totalAnterior)} → <strong>{formatBRL(historicoRodadas.comparativoAnterior.totalNovo)}</strong>
+              </span>
+              <span className={`font-bold tabular-nums ${
+                historicoRodadas.comparativoAnterior.savingTotal > 0.005
+                  ? 'text-emerald-700 dark:text-emerald-300'
+                  : historicoRodadas.comparativoAnterior.savingTotal < -0.005
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : 'text-slate-500'
+              }`}>
+                {historicoRodadas.comparativoAnterior.savingTotal >= 0
+                  ? `Saving ${formatBRL(historicoRodadas.comparativoAnterior.savingTotal)}`
+                  : `+${formatBRL(Math.abs(historicoRodadas.comparativoAnterior.savingTotal))}`}
+                {historicoRodadas.comparativoAnterior.diffPct != null && (
+                  ` (${historicoRodadas.comparativoAnterior.diffPct > 0 ? '+' : ''}${historicoRodadas.comparativoAnterior.diffPct.toFixed(1)}%)`
+                )}
+              </span>
+              {historicoRodadas.comparativoInicial && (
+                <span className="text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
+                  · Acumulado desde R1: <strong>{formatBRL(historicoRodadas.comparativoInicial.savingTotal)}</strong>
+                  {historicoRodadas.comparativoInicial.diffPct != null ? ` (${historicoRodadas.comparativoInicial.diffPct.toFixed(1)}%)` : ''}
+                </span>
+              )}
+            </div>
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+              {detalheSavingAberto ? 'Ocultar comparativo' : `Ver comparativo e histórico (${historicoRodadas.rodadas.length} rodadas)`}
+              {detalheSavingAberto ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </span>
+          </button>
+
+          {detalheSavingAberto && (
+            <div className="space-y-3 border-t border-emerald-200/70 bg-white/80 p-3 dark:border-emerald-900/50 dark:bg-slate-900/60">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-[10px] font-semibold uppercase text-slate-500 dark:border-slate-700">
+                      <th className="py-1 pr-2">Item</th>
+                      <th className="px-2 py-1 text-right">Unit. R{historicoRodadas.comparativoAnterior.rodadaAnterior}</th>
+                      <th className="px-2 py-1 text-right">Unit. R{historicoRodadas.comparativoAnterior.rodadaNova}</th>
+                      <th className="px-2 py-1 text-right">Δ Unit. / %</th>
+                      <th className="px-2 py-1 text-right">Total R{historicoRodadas.comparativoAnterior.rodadaAnterior}</th>
+                      <th className="px-2 py-1 text-right">Total R{historicoRodadas.comparativoAnterior.rodadaNova}</th>
+                      <th className="py-1 pl-2 text-right">Saving Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {historicoRodadas.comparativoAnterior.itens.map(it => {
+                      const red = it.diffUnitario != null && it.diffUnitario < -0.0001;
+                      const aum = it.diffUnitario != null && it.diffUnitario > 0.0001;
+                      return (
+                        <tr key={it.itemKey}>
+                          <td className="max-w-[240px] truncate py-1.5 pr-2 font-medium text-slate-700 dark:text-slate-200" title={it.descricao}>
+                            {it.descricao}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">
+                            {it.precoUnitarioAnterior != null ? formatBRL(it.precoUnitarioAnterior) : '—'}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums font-medium text-slate-800 dark:text-slate-100">
+                            {it.precoUnitarioNovo != null ? formatBRL(it.precoUnitarioNovo) : '—'}
+                          </td>
+                          <td className={`px-2 py-1.5 text-right tabular-nums ${red ? 'font-semibold text-emerald-700 dark:text-emerald-400' : aum ? 'font-semibold text-rose-600 dark:text-rose-400' : 'text-slate-400'}`}>
+                            {it.diffUnitario != null
+                              ? `${it.diffUnitario > 0 ? '+' : '-'}${formatBRL(Math.abs(it.diffUnitario))}${it.diffUnitarioPct != null ? ` (${it.diffUnitarioPct > 0 ? '+' : ''}${it.diffUnitarioPct.toFixed(1)}%)` : ''}`
+                              : '—'}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">
+                            {it.precoTotalAnterior != null ? formatBRL(it.precoTotalAnterior) : '—'}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums font-medium text-slate-800 dark:text-slate-100">
+                            {it.precoTotalNovo != null ? formatBRL(it.precoTotalNovo) : '—'}
+                          </td>
+                          <td className={`py-1.5 pl-2 text-right tabular-nums font-semibold ${
+                            (it.savingTotal ?? 0) > 0.005 ? 'text-emerald-700 dark:text-emerald-400' : (it.savingTotal ?? 0) < -0.005 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'
+                          }`}>
+                            {it.savingTotal != null
+                              ? (it.savingTotal >= 0 ? formatBRL(it.savingTotal) : `-${formatBRL(Math.abs(it.savingTotal))}`)
+                              : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="border-t border-slate-200 pt-2 dark:border-slate-800">
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Histórico de rodadas deste fornecedor
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {historicoRodadas.rodadas.map(r => {
+                    const ehAtual = r._key === proposta._key;
+                    const tot = valorTotalEfetivoProposta(r);
+                    return (
+                      <div
+                        key={r._key}
+                        className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${
+                          ehAtual
+                            ? 'border-indigo-300 bg-indigo-50/60 dark:border-indigo-800 dark:bg-indigo-950/30'
+                            : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50'
+                        }`}
+                      >
+                        <span className="font-bold text-slate-700 dark:text-slate-200">R{r.rodada ?? 1}</span>
+                        <span className="tabular-nums font-semibold text-slate-800 dark:text-slate-100">{formatBRL(tot)}</span>
+                        {r._extraido_em && <span className="text-[10px] text-slate-500">{formatDateTimeBR(r._extraido_em)}</span>}
+                        {ehAtual ? (
+                          <span className="rounded bg-indigo-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">Vigente</span>
+                        ) : r.arquivo_origem ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewRodadaAnterior(r)}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                          >
+                            <FileSearch className="h-3 w-3" />
+                            Ver original
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {totais && totais.divergenciaPct != null && totais.divergenciaPct > 1 && (
         <div className="mx-4 mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
@@ -500,6 +691,19 @@ export default function PropostaCard({
             });
           }}
           onClose={() => setPreviewArquivoAberto(false)}
+        />
+      )}
+
+      {previewRodadaAnterior && previewRodadaAnterior.arquivo_origem && (
+        <VerCotacaoOriginalModal
+          nome={previewRodadaAnterior.arquivo_origem}
+          storagePath={previewRodadaAnterior.arquivo_storage_path}
+          arquivos={previewRodadaAnterior.arquivos_originais}
+          markdown={previewRodadaAnterior.arquivo_markdown}
+          markdownEditadoEm={previewRodadaAnterior.arquivo_markdown_editado_em}
+          markdownEditadoPor={previewRodadaAnterior.arquivo_markdown_editado_por}
+          propostaId={null}
+          onClose={() => setPreviewRodadaAnterior(null)}
         />
       )}
 
