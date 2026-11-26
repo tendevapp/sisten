@@ -7,6 +7,7 @@ import { registrarAcessoIp } from './lib/monitoramentoIpApi';
 import { recordRecentPage } from './lib/homePrefs';
 import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, isUserAndre, pageIdForPath, tituloAba } from './lib/pages';
 import { marcarDiaSessao, limparDiaSessao, usuarioSessaoPermanente } from './lib/sessaoDiaria';
+import { iniciarAtualizacaoApp, navegarComAtualizacao } from './lib/atualizacaoApp';
 import { limparCenaSessao } from './lib/cenaInicio';
 import { pareceFalhaDeRede, comPrazo, PRAZO_ESGOTADO } from './lib/rede';
 
@@ -238,6 +239,12 @@ function ViewLoadingFallback() {
 
 export default function App() {
   const [user, setUser] = useState<Profile | null>(null);
+  // Versão nova do app: aplica sozinha num momento seguro (ver lib/atualizacaoApp.ts).
+  const userAtualizacaoRef = React.useRef<Profile | null>(null);
+  userAtualizacaoRef.current = user;
+  useEffect(() => {
+    iniciarAtualizacaoApp({ ehTv: () => !!userAtualizacaoRef.current && usuarioSessaoPermanente(userAtualizacaoRef.current) });
+  }, []);
   const [simulatedRole, setSimulatedRole] = useState<Role | null>(() => {
     const saved = sessionStorage.getItem('simulated_role');
     return (saved as Role) || null;
@@ -699,6 +706,8 @@ export default function App() {
 
 
   const handleNavigate = (path: string) => {
+    // Versão nova do app esperando: aproveita a troca de tela para aplicá-la.
+    if (navegarComAtualizacao(() => { window.location.hash = path; })) return;
     window.location.hash = path;
     setMobileSidebarOpen(false);
   };

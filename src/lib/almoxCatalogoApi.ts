@@ -1524,6 +1524,10 @@ export async function carregarItensConsumiveisZl0024(forcar = false): Promise<It
  * Consulta a lista de grupos de mercadoria com níveis 1 e 2.
  */
 export async function carregarGruposMercadoria(): Promise<CadastroGrupoMercadoria[]> {
+  // Cópia do sync (rebaixada só quando a tabela muda — lib/sincronizacaoPequenas.ts).
+  // Antes, cada abertura do Cadastro de Itens baixava a tabela inteira de novo.
+  const emCache = localDb.getGruposMercadoria() as CadastroGrupoMercadoria[];
+  if (emCache.length > 0) return emCache;
   if (supabase) {
     try {
       const data = await buscarTudo<CadastroGrupoMercadoria>((de, ate) =>

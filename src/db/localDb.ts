@@ -47,6 +47,8 @@ import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval'
 import { dataHojeLocal } from '../lib/dataLocal';
 import { buscarPorChave, buscarPorGrupo } from '../lib/paginacaoChave';
 import { buscarTudo } from '../lib/buscarTudo';
+import { TABELA_DA_TAREFA_PEQUENA, deveBaixarTabelaPequena } from '../lib/sincronizacaoPequenas';
+import { maisRecente, mesclarNotificacoes, precisaLeituraCompleta } from '../lib/notificacoesDelta';
 import { liberadoEm, type AdiamentoDownload } from '../lib/espalhamentoDownload';
 import {
   STATUS_DERIVADOS_DO_ATRASO, alertaAtrasoComprador, diasUteisEntre, faixaAtrasoComprador, statusPorAtraso,
@@ -120,6 +122,10 @@ class LocalDatabase {
   // Notificações: Header e Início pedem juntos; uma busca serve aos dois.
   private notificacoesEmCurso: Promise<void> | null = null;
   private notificacoesAt = 0;
+  /** Última leitura completa das notificações e de quem (ver lib/notificacoesDelta.ts). */
+  private notificacoesCompletaEm: number | null = null;
+  private notificacoesUsuario: string | null = null;
+  private notificacoesDesde: string | null = null;
 
   // Resolvida assim que o cache em memória estiver populado (a partir do IndexedDB,
   // com migração de dados legados do localStorage se necessário). App.tsx aguarda
@@ -369,19 +375,35 @@ class LocalDatabase {
         const pequena = (task: () => Promise<void>): (() => Promise<void>) => async () => {
           if (rodarPequenas) await task();
         };
+        // Pequena com versão: na rodada de 15 min, só baixa se a tabela mudou
+        // desde o último download deste aparelho (gatilho no banco sobe a
+        // versão a cada gravação — ver lib/sincronizacaoPequenas.ts).
+        const pequenaVersionada = (tarefa: string, storageKey: string, task: () => Promise<void>): (() => Promise<void>) => async () => {
+          const tabela = TABELA_DA_TAREFA_PEQUENA[tarefa];
+          const baixar = deveBaixarTabelaPequena({
+            rodadaDasPequenas: rodarPequenas,
+            forcar: !!force && (!datasets || datasets.includes(tarefa)),
+            temCache: this.cache.has(storageKey),
+            versaoLocal: this.getDatasetMeta(tabela)?.version ?? null,
+            versaoServidor: markers?.get(tabela)?.version ?? null,
+          });
+          if (!baixar) return;
+          await task();
+          this.commitDatasetMeta(tabela, markers);
+        };
         // Bases SAP pesadas baixadas nesta rodada (versão mudou): decide se o
         // status automático das compras precisa ser recalculado.
         let baixouSap = false;
         const gatedSap = (dataset: string, task: () => Promise<void>) => gated(dataset, async () => { baixouSap = true; await task(); });
 
         const tasks: Array<[string, () => Promise<void>]> = [
-          ['sectors', pequena(() => this.syncSectors())],
-          ['profiles', pequena(() => this.syncProfiles())],
-          ['buyer_groups', pequena(() => this.syncBuyerGroups())],
-          ['sup_compradores', pequena(() => this.syncSimpleTable('sup_compradores', this.compradoresKey, true, undefined, 'grupo_compras'))],
-          ['sup_rastreio_prioridades', pequena(() => this.syncSimpleTable('sup_rastreio_prioridades', this.prioridadesKey, true, undefined, 'id'))],
-          ['almoxarifado_chegadas', pequena(() => this.syncSimpleTable('almoxarifado_chegadas', this.chegadasAlmoxarifadoKey, true, undefined, 'ri_po'))],
-          ['sup_fretes', pequena(() => this.syncSimpleTable('sup_fretes', this.tabelaFreteKey, true, undefined, 'id'))],
+          ['sectors', pequenaVersionada('sectors', this.sectorsKey, () => this.syncSectors())],
+          ['profiles', pequenaVersionada('profiles', this.profilesKey, () => this.syncProfiles())],
+          ['buyer_groups', pequenaVersionada('buyer_groups', this.buyerGroupsKey, () => this.syncBuyerGroups())],
+          ['sup_compradores', pequenaVersionada('sup_compradores', this.compradoresKey, () => this.syncSimpleTable('sup_compradores', this.compradoresKey, true, undefined, 'grupo_compras'))],
+          ['sup_rastreio_prioridades', pequenaVersionada('sup_rastreio_prioridades', this.prioridadesKey, () => this.syncSimpleTable('sup_rastreio_prioridades', this.prioridadesKey, true, undefined, 'id'))],
+          ['almoxarifado_chegadas', pequenaVersionada('almoxarifado_chegadas', this.chegadasAlmoxarifadoKey, () => this.syncSimpleTable('almoxarifado_chegadas', this.chegadasAlmoxarifadoKey, true, undefined, 'ri_po'))],
+          ['sup_fretes', pequenaVersionada('sup_fretes', this.tabelaFreteKey, () => this.syncSimpleTable('sup_fretes', this.tabelaFreteKey, true, undefined, 'id'))],
           // 'materials' saiu da sincronização geral: o catálogo tem ~172k linhas e é
           // consultado direto no Supabase por toda tela que precisa dele (busca,
           // autocomplete). Baixar o catálogo inteiro para o cache local a cada sessão
@@ -400,14 +422,14 @@ class LocalDatabase {
           // comentários seguem locais). Com `syncSimpleTable`, a primeira linha
           // inserida no servidor faria o download apagar tudo que existe só no
           // cache do usuário — inclusive as mutações que ainda não migraram.
-          ['requests', pequena(() => this.syncMergedTable('core_solicitacoes', this.requestsKey))],
-          ['request_items', pequena(() => this.syncMergedTable('core_solicitacoes_itens', this.requestItemsKey))],
-          ['request_attachments', pequena(() => this.syncMergedTable('core_solicitacoes_anexos', this.attachmentsKey))],
+          ['requests', pequenaVersionada('requests', this.requestsKey, () => this.syncMergedTable('core_solicitacoes', this.requestsKey))],
+          ['request_items', pequenaVersionada('request_items', this.requestItemsKey, () => this.syncMergedTable('core_solicitacoes_itens', this.requestItemsKey))],
+          ['request_attachments', pequenaVersionada('request_attachments', this.attachmentsKey, () => this.syncMergedTable('core_solicitacoes_anexos', this.attachmentsKey))],
           // Também por merge, pelo mesmo motivo das demais tabelas de
           // solicitação: substituir o array local apagaria comentários e
           // transições que ainda não conseguiram subir.
-          ['request_comments', pequena(() => this.syncMergedTable('core_solicitacoes_comentarios', this.commentsKey))],
-          ['request_status_history', pequena(() => this.syncMergedTable('core_solicitacoes_historico_status', this.historyKey))],
+          ['request_comments', pequenaVersionada('request_comments', this.commentsKey, () => this.syncMergedTable('core_solicitacoes_comentarios', this.commentsKey))],
+          ['request_status_history', pequenaVersionada('request_status_history', this.historyKey, () => this.syncMergedTable('core_solicitacoes_historico_status', this.historyKey))],
           // Notificações saíram daqui: o Header busca as 100 mais recentes do
           // usuário (`refreshNotificationsFromSupabase`) e este download, de
           // todas, sobrescrevia aquele cache a cada sync.
@@ -438,7 +460,7 @@ class LocalDatabase {
           // Compras. Resolvido no cliente porque acrescentar a coluna em
           // `vw_sap_requisicoes_enriquecidas` significaria reescrever uma definição de
           // 15 KB com 81 dependências.
-          ['cadastro_grupo_mercadoria', pequena(() => this.syncSimpleTable('cadastro_grupo_mercadoria', this.gruposMercadoriaKey, true, undefined, 'codigo'))],
+          ['cadastro_grupo_mercadoria', pequenaVersionada('cadastro_grupo_mercadoria', this.gruposMercadoriaKey, () => this.syncSimpleTable('cadastro_grupo_mercadoria', this.gruposMercadoriaKey, true, undefined, 'codigo'))],
         ];
 
 
@@ -2669,13 +2691,36 @@ class LocalDatabase {
       if (!supabase) return;
       const user = this.getCurrentUser();
       if (!user) return;
-      const { data } = await supabase
+      // Delta: só as criadas depois da mais recente do aparelho; completa a cada
+      // 10 min e na troca de usuário (o cache é um só no aparelho).
+      const atuais = this.getStorageItem<Notification[]>(this.notificationsKey, []);
+      const completa = this.notificacoesUsuario !== user.id || !this.notificacoesDesde || precisaLeituraCompleta({
+        temCache: atuais.length > 0, ultimaCompletaEm: this.notificacoesCompletaEm, agora: Date.now(),
+      });
+      // Marcador vem só do que o servidor devolveu: notificação criada no
+      // aparelho (hora local, às vezes adiantada) faria o delta pular as do servidor.
+      const desde = completa ? null : this.notificacoesDesde;
+      let consulta = supabase
         .from('core_notificacoes')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(100);
-      if (data) this.setStorageItem(this.notificationsKey, data as Notification[]);
+      if (desde) consulta = consulta.gt('created_at', desde);
+      const { data, error } = await consulta;
+      if (error || !data) return;
+      if (desde) {
+        if (data.length) {
+          this.setStorageItem(this.notificationsKey, mesclarNotificacoes(atuais as any, data as any, 100) as Notification[]);
+          this.notificacoesDesde = maisRecente([...data as any, { id: '', created_at: desde }]);
+        }
+      } else {
+        this.setStorageItem(this.notificationsKey, data as Notification[]);
+        this.notificacoesCompletaEm = Date.now();
+        this.notificacoesUsuario = user.id;
+        // Sem nenhuma notificação: fica sem marcador e a próxima é completa de novo (barata).
+        this.notificacoesDesde = maisRecente(data as any);
+      }
     } catch (e) {
       console.warn('Falha ao atualizar notificações:', e);
     }
