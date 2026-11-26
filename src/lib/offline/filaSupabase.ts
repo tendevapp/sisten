@@ -31,7 +31,7 @@
 
 import { createStore, del, get, keys, set, type UseStore } from 'idb-keyval';
 import { gerarUUID } from '../ids';
-import { estaOffline, pareceFalhaDeRede } from '../rede';
+import { PRAZO_ESGOTADO, comPrazo, estaOffline, pareceFalhaDeRede } from '../rede';
 import {
   aplicarEfeitos, consultarConhecidas, corpoNoFormato, idDoFiltro, lerConsulta, lerFiltros, linhasAfetadas, recursoRest, substituirIds, tocaConsulta,
   type EfeitoPendente, type Linha,
@@ -39,6 +39,7 @@ import {
 import { configBucket, configRpc, configTabela, rpcDeLeitura } from './configFormularios';
 import { chamadaIdempotente } from './idempotencia';
 import { erroTransitorio, idsDaOperacao, precisaEsperar, servidorForaDoAr, virouRecusa } from './planoEnvio';
+import { criarPausaAuth, ehRenovacaoDeSessao, prazoDaRequisicao } from './redePatio';
 
 // =====================================================================
 // Tipos
@@ -107,6 +108,8 @@ interface ConfigFila {
   /** Token atual da sessão (renova se preciso). */
   obterToken: () => Promise<string | null>;
   renovarToken: () => Promise<string | null>;
+  /** Id de quem estava logado, pela sessão guardada — vale mesmo com o token vencido. */
+  usuarioGuardado?: () => string | null;
 }
 
 let config: ConfigFila | null = null;
@@ -368,7 +371,10 @@ function semTamanho(cabecalhos: Headers): Headers {
   return copia;
 }
 
-async function lerRest(url: URL, init: RequestInit, cabecalhos: Headers, usuarioId: string): Promise<Response> {
+/** Leitura de tabela de formulário que ficou sem resposta e sem cópia: espera mais isto e desiste. */
+const TEMPO_LIMITE_LEITURA_MS = 30_000;
+
+async function lerRest(url: URL, init: RequestInit, cabecalhos: Headers, usuarioId: string, semSessao = false): Promise<Response> {
   const cfg = config!;
   const accept = cabecalhos.get('accept');
   const efeitos = await efeitosDoUsuario(usuarioId);
@@ -396,7 +402,8 @@ async function lerRest(url: URL, init: RequestInit, cabecalhos: Headers, usuario
     return new Response(guardada.corpo, { status: guardada.status, headers });
   };
 
-  if (estaOffline()) return doAparelho(new TypeError('Failed to fetch'));
+  // Sem rede, ou sessão vencida sem renovar (anônimo leria listas vazias): só a cópia.
+  if (estaOffline() || semSessao) return doAparelho(new TypeError('Failed to fetch'));
 
   let resposta: Response;
   try {
@@ -410,13 +417,23 @@ async function lerRest(url: URL, init: RequestInit, cabecalhos: Headers, usuario
     const primeira = configTabela(tabela) ? await Promise.race([busca, tempo]) : await busca;
     if (primeira === 'tempo') {
       const guardada = await get<RespostaGuardada>(chaveGet(usuarioId, url.href), banco()).catch(() => undefined);
+      const atualizarCopiaDepois = () => void busca.then(async r => {
+        if (r.ok) await guardarLeitura(usuarioId, url.href, { corpo: await r.text(), status: r.status, contentType: r.headers.get('content-type') || 'application/json', contentRange: r.headers.get('content-range'), salvoEm: new Date().toISOString() });
+      }).catch(() => {});
       if (guardada) {
-        void busca.then(async r => {
-          if (r.ok) await guardarLeitura(usuarioId, url.href, { corpo: await r.text(), status: r.status, contentType: r.headers.get('content-type') || 'application/json', contentRange: r.headers.get('content-range'), salvoEm: new Date().toISOString() });
-        }).catch(() => {});
+        atualizarCopiaDepois();
         return doAparelho(new TypeError('Failed to fetch'));
       }
-      resposta = await busca;
+      // Sem cópia desta URL: espera mais um pouco e, se a rede seguir muda,
+      // responde com o que o aparelho conhece da tabela (ou falha como sem rede)
+      // em vez de deixar a tela carregando para sempre.
+      const limite = new Promise<'tempo'>(resolve => setTimeout(() => resolve('tempo'), TEMPO_LIMITE_LEITURA_MS));
+      const segunda = await Promise.race([busca, limite]);
+      if (segunda === 'tempo') {
+        atualizarCopiaDepois();
+        return doAparelho(new TypeError('Failed to fetch (rede sem resposta)'));
+      }
+      resposta = segunda;
     } else {
       resposta = primeira;
     }
@@ -449,14 +466,14 @@ function semCopiaOffline(tabela: string): boolean {
 }
 
 /** RPC que só lê: guarda a resposta por (RPC + argumentos) e usa a cópia sem rede. */
-async function lerRpc(url: URL, init: RequestInit, usuarioId: string): Promise<Response> {
+async function lerRpc(url: URL, init: RequestInit, usuarioId: string, semSessao = false): Promise<Response> {
   const chave = `${url.href}#${typeof init.body === 'string' ? init.body : ''}`;
   const daCopia = async (erro: unknown) => {
     const guardada = await get<RespostaGuardada>(chaveGet(usuarioId, chave), banco()).catch(() => undefined);
     if (!guardada) throw erro;
     return new Response(guardada.corpo, { status: guardada.status, headers: { 'content-type': guardada.contentType, 'x-sisten-offline': '1' } });
   };
-  if (estaOffline()) return daCopia(new TypeError('Failed to fetch'));
+  if (estaOffline() || semSessao) return daCopia(new TypeError('Failed to fetch'));
   let resposta: Response;
   try {
     resposta = await config!.fetchReal(url.href, init);
@@ -583,14 +600,16 @@ const TEMPO_UPLOAD_MS = 90_000;
 async function gravar(
   url: URL, initOriginal: RequestInit, cabecalhos: Headers, usuarioId: string,
   alvo: { tipo: OperacaoFila['tipo']; tabela?: string; rpc?: string; bucket?: string },
+  semSessao = false,
 ): Promise<Response> {
   const init: RequestInit = { ...initOriginal, body: comIdsNovos(initOriginal.body, alvo.tipo, url) };
   // RPC: a chave nasce aqui e acompanha a operação se ela for para a fila.
   const chave = alvo.tipo === 'rpc' ? gerarUUID() : undefined;
   // Com operações na fila, esta entra atrás delas: a ordem importa (a
   // ocorrência depende do relatório, a saída depende da entrada).
+  // Sem sessão válida (token vencido sem rede para renovar): fila, sempre.
   const temFila = (await listarOperacoes(usuarioId)).length > 0;
-  if (estaOffline() || temFila) return enfileirar(url, init, cabecalhos, usuarioId, alvo, chave);
+  if (estaOffline() || temFila || semSessao) return enfileirar(url, init, cabecalhos, usuarioId, alvo, chave);
   const embrulhada = chave && typeof init.body === 'string' ? chamadaIdempotente(url.pathname + url.search, alvo.rpc!, init.body, chave) : null;
   const destino = embrulhada ? `${url.origin}${embrulhada.caminho}` : url.href;
   const corpoEnvio = embrulhada ? embrulhada.corpo : init.body;
@@ -647,22 +666,37 @@ export async function fetchOffline(entrada: RequestInfo | URL, init: RequestInit
   if (!cfg || entrada instanceof Request) return (cfg?.fetchReal || fetch)(entrada, init);
   const url = new URL(String(entrada));
   if (!url.href.startsWith(cfg.urlSupabase)) return cfg.fetchReal(entrada, init);
+  // Renovação de sessão e link de foto com prazo: rede muda não pode prender o app (ver redePatio.ts).
+  const prazo = prazoDaRequisicao(url.href);
+  if (prazo !== null) return comPrazoDeRede(url, init, prazo);
   const cabecalhos = new Headers(init.headers);
-  const usuarioId = usuarioDoToken(cabecalhos);
-  if (!usuarioId) return cfg.fetchReal(entrada, init);
+  let usuarioId = usuarioDoToken(cabecalhos);
+  // Sessão venceu e não renovou (sem rede): a chamada saiu com a chave
+  // anônima, mas ainda é de quem estava logado. Gravação de formulário vai
+  // para a fila dessa pessoa (sobe com token novo); leitura só da cópia.
+  // Nunca manda ao servidor como anônimo — a RLS devolveria listas vazias.
+  let semSessao = false;
+  if (!usuarioId) {
+    usuarioId = cfg.usuarioGuardado?.() ?? null;
+    if (!usuarioId) return cfg.fetchReal(entrada, init);
+    semSessao = true;
+  }
   const metodo = (init.method || 'GET').toUpperCase();
 
   const recurso = recursoRest(url.pathname);
   if (recurso !== null) {
-    if (metodo === 'GET') return lerRest(url, init, cabecalhos, usuarioId);
+    if (metodo === 'GET') {
+      if (semSessao && !configTabela(recurso)) return cfg.fetchReal(entrada, init);
+      return lerRest(url, init, cabecalhos, usuarioId, semSessao);
+    }
     if (recurso.startsWith('rpc/')) {
       const rpc = recurso.slice(4);
-      if (metodo === 'POST' && configRpc(rpc)) return gravar(url, init, cabecalhos, usuarioId, { tipo: 'rpc', rpc });
-      if (metodo === 'POST' && rpcDeLeitura(rpc)) return lerRpc(url, init, usuarioId);
+      if (metodo === 'POST' && configRpc(rpc)) return gravar(url, init, cabecalhos, usuarioId, { tipo: 'rpc', rpc }, semSessao);
+      if (metodo === 'POST' && rpcDeLeitura(rpc)) return lerRpc(url, init, usuarioId, semSessao);
       return cfg.fetchReal(entrada, init);
     }
     const tipo = tipoGravacaoRest(metodo, cabecalhos, url);
-    if (tipo && configTabela(recurso)) return gravar(url, init, cabecalhos, usuarioId, { tipo, tabela: recurso });
+    if (tipo && configTabela(recurso)) return gravar(url, init, cabecalhos, usuarioId, { tipo, tabela: recurso }, semSessao);
     return cfg.fetchReal(entrada, init);
   }
 
@@ -670,13 +704,44 @@ export async function fetchOffline(entrada: RequestInfo | URL, init: RequestInit
   if (storage && configBucket(storage[1])) {
     // Bucket compartilhado: só os arquivos das pastas do formulário entram na fila.
     if (metodo === 'POST' && storage[2] && configBucket(storage[1], [decodeURIComponent(storage[2])])) {
-      return gravar(url, init, cabecalhos, usuarioId, { tipo: 'upload', bucket: storage[1] });
+      return gravar(url, init, cabecalhos, usuarioId, { tipo: 'upload', bucket: storage[1] }, semSessao);
     }
     if (metodo === 'DELETE' && configBucket(storage[1], arquivosDaRemocao(init.body, storage[2]))) {
-      return gravar(url, init, cabecalhos, usuarioId, { tipo: 'remover-arquivo', bucket: storage[1] });
+      return gravar(url, init, cabecalhos, usuarioId, { tipo: 'remover-arquivo', bucket: storage[1] }, semSessao);
     }
   }
   return cfg.fetchReal(entrada, init);
+}
+
+const pausaRenovacao = criarPausaAuth(30_000);
+
+/**
+ * Requisição com prazo. Esgotado, falha como erro de rede (o auth-js trata
+ * como "tente depois" e guarda a falha; o link da foto volta vazio). Depois
+ * de uma renovação de sessão que esgotou, as próximas falham na hora por 30 s
+ * — senão cada nova tentativa do auth-js esperaria o prazo inteiro.
+ */
+async function comPrazoDeRede(url: URL, init: RequestInit, prazo: number): Promise<Response> {
+  const renovacao = ehRenovacaoDeSessao(url.href);
+  if (renovacao && (estaOffline() || pausaRenovacao.ativa(Date.now()))) {
+    throw new TypeError('Failed to fetch (sem rede para renovar a sessão)');
+  }
+  const controle = new AbortController();
+  const relogio = setTimeout(() => controle.abort(), prazo);
+  init.signal?.addEventListener('abort', () => controle.abort());
+  try {
+    const resposta = await config!.fetchReal(url.href, { ...init, signal: controle.signal });
+    if (renovacao) pausaRenovacao.registrarSucesso();
+    return resposta;
+  } catch (erro) {
+    if (controle.signal.aborted && !init.signal?.aborted) {
+      if (renovacao) pausaRenovacao.registrarFalha(Date.now());
+      throw new TypeError('Failed to fetch (rede sem resposta)');
+    }
+    throw erro;
+  } finally {
+    clearTimeout(relogio);
+  }
 }
 
 // =====================================================================
@@ -718,7 +783,9 @@ export async function sincronizarFilaOffline(opcoes: { automatico?: boolean } = 
   }
 }
 
-const RESULTADO_VAZIO: ResultadoFila = { enviadas: 0, semRede: false, erro: null, recusadas: 0, aguardando: 0 };
+const TEMPO_TOKEN_MS = 20_000;
+
+const RESULTADO_VAZIO: ResultadoFila ={ enviadas: 0, semRede: false, erro: null, recusadas: 0, aguardando: 0 };
 
 /** Envio que não responde no prazo vira "sem rede": a rodada não fica presa num fetch mudo. */
 async function enviarComPrazo(url: string, init: RequestInit, ms: number): Promise<Response> {
@@ -738,8 +805,11 @@ async function executarRodada(automatico: boolean): Promise<ResultadoFila> {
   const resultado: ResultadoFila = { ...RESULTADO_VAZIO };
   const cfg = config;
   if (!cfg) return resultado;
-  let token = await cfg.obterToken().catch(() => null);
-  if (!token) return { ...resultado, semRede: estaOffline() };
+  // A renovação já tem prazo no transporte; este é o cinto de segurança: a
+  // rodada nunca fica presa esperando token ("Sincronizando…" eterno).
+  const tokenOuPrazo = await comPrazo(cfg.obterToken().catch(() => null), TEMPO_TOKEN_MS);
+  let token = tokenOuPrazo === PRAZO_ESGOTADO ? null : tokenOuPrazo;
+  if (!token) return { ...resultado, semRede: true };
   const usuarioId = usuarioDoToken(new Headers({ authorization: `Bearer ${token}` }));
   const pendentes = (await operacoes()).filter(op => op.usuarioId === usuarioId);
   // Ids do que foi recusado: só espera quem depende deles (e exclusões); o resto sobe.
@@ -801,8 +871,11 @@ async function executarRodada(automatico: boolean): Promise<ResultadoFila> {
         if ((erro.code === '23505' && /_pkey/.test(mensagem)) || ((op.tipo === 'upload') && (resposta.status === 409 || /already exists|duplicate/i.test(mensagem)))) break;
         if (resposta.status === 401 && !renovou) {
           renovou = true;
-          token = await cfg.renovarToken().catch(() => null);
-          if (token) continue;
+          const renovado = await comPrazo(cfg.renovarToken().catch(() => null), TEMPO_TOKEN_MS);
+          token = renovado === PRAZO_ESGOTADO ? null : renovado;
+          // Sem token novo não é recusa do registro: fica guardado até a sessão voltar.
+          if (!token) throw new TypeError('Failed to fetch (sessão não renovou)');
+          continue;
         }
         // Servidor fora, sobrecarregado ou sem resposta: não é recusa. Fica
         // pendente e sobe na próxima rodada, sem ninguém precisar apertar nada.

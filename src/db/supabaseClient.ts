@@ -2,6 +2,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
 import { configurarFilaOffline, fetchOffline } from '../lib/offline/filaSupabase';
 import { medirFetch } from '../lib/desempenho/medidorFetch';
+import { usuarioDaSessaoGuardada } from '../lib/offline/redePatio';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -39,5 +40,19 @@ if (supabase) {
     fetchReal: (entrada, init) => fetch(entrada, init),
     obterToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null,
     renovarToken: async () => (await supabase.auth.refreshSession()).data.session?.access_token ?? null,
+    // Sessão que o Supabase guarda no aparelho: identifica quem estava logado
+    // mesmo com o token vencido e sem rede para renovar (ver redePatio.ts).
+    usuarioGuardado: () => {
+      try {
+        const entradas: [string, string | null][] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const chave = localStorage.key(i);
+          if (chave) entradas.push([chave, localStorage.getItem(chave)]);
+        }
+        return usuarioDaSessaoGuardada(entradas);
+      } catch {
+        return null;
+      }
+    },
   });
 }

@@ -11,8 +11,9 @@
  * vezes nunca.
  *
  * Agora:
- *  - meia-noite: o logoff espera a fila (formulários, checklists da Qualidade
- *    e outbox da Produção) esvaziar; tenta de novo a cada minuto;
+ *  - meia-noite: o logoff automático foi retirado em 26/11/2026 (o motivo
+ *    'virada-do-dia' fica para quem voltar a encerrar sessão sozinho: espera
+ *    a fila — formulários, checklists da Qualidade e outbox da Produção);
  *  - "Sair": tenta enviar e, se ainda sobrar, pede confirmação dizendo o que
  *    fica para trás.
  */

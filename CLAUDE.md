@@ -70,7 +70,10 @@ Nada fica para trás (`src/lib/offline/planoEnvio.ts`, `saidaSegura.ts`):
 recusa do servidor só segura o que depende dela (e exclusões) — o resto sobe;
 servidor fora (5xx, 429, tempo esgotado) é "sem rede", não recusa; o logoff da
 meia-noite espera a fila esvaziar e o "Sair" avisa o que ficaria no aparelho.
-Bucket compartilhado com telas que não são formulário entra com `pastas` (ex.:
+Rede muda (Wi-Fi sem internet) é o caso difícil: toda chamada espera a
+renovação do token, então ela tem prazo e, vencida sem rede, a gravação entra
+na fila de quem estava logado (`redePatio.ts`). Nenhuma espera do app pode
+ficar sem prazo. Bucket compartilhado com telas que não são formulário entra com `pastas` (ex.:
 `request-attachments` só `almox-catalogo/`). Mudou o nome de uma RPC de
 formulário? Troque também no registro — o Inventário ficou sem offline quando
 passou para as funções `_auditado`.

@@ -77,11 +77,14 @@ export default function FilaOfflineFormularios({ usuarioId, emFormulario }: Prop
     });
     const aoMudarRede = () => { setOnline(!estaOffline()); void automatico(); };
     const aoVoltar = () => { if (document.visibilityState === 'visible') void automatico(); };
+    // iPhone devolve a página congelada da memória (bfcache) sem focus/visibilitychange confiáveis.
+    const aoRestaurar = () => { setOnline(!estaOffline()); void recarregar().then(automatico); };
     void recarregar().then(automatico);
     const intervalo = window.setInterval(() => { void automatico(); }, INTERVALO_MS);
     window.addEventListener('online', aoMudarRede);
     window.addEventListener('offline', aoMudarRede);
     window.addEventListener('focus', aoVoltar);
+    window.addEventListener('pageshow', aoRestaurar);
     document.addEventListener('visibilitychange', aoVoltar);
     return () => {
       ativo = false;
@@ -91,9 +94,20 @@ export default function FilaOfflineFormularios({ usuarioId, emFormulario }: Prop
       window.removeEventListener('online', aoMudarRede);
       window.removeEventListener('offline', aoMudarRede);
       window.removeEventListener('focus', aoVoltar);
+      window.removeEventListener('pageshow', aoRestaurar);
       document.removeEventListener('visibilitychange', aoVoltar);
     };
   }, [recarregar, automatico, toast]);
+
+  // Número no ícone do app instalado (Android e iPhone com o app na tela de
+  // início): lembra que há registro no aparelho mesmo com o app fechado.
+  useEffect(() => {
+    const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+    try {
+      if (operacoes.length > 0) void nav.setAppBadge?.(operacoes.length).catch(() => {});
+      else void nav.clearAppBadge?.().catch(() => {});
+    } catch { /* navegador sem a API */ }
+  }, [operacoes.length]);
 
   const comErro = operacoes.filter(op => op.estado === 'erro');
   const visivel = operacoes.length > 0 || (!online && emFormulario);

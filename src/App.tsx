@@ -6,8 +6,7 @@ import { trackLogin, trackPageView } from './lib/usageTracker';
 import { registrarAcessoIp } from './lib/monitoramentoIpApi';
 import { recordRecentPage } from './lib/homePrefs';
 import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, isUserAndre, pageIdForPath, tituloAba } from './lib/pages';
-import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia, usuarioSessaoPermanente } from './lib/sessaoDiaria';
-import { decidirSaida, pendentesAposTentarEnviar } from './lib/offline/saidaSegura';
+import { marcarDiaSessao, limparDiaSessao, usuarioSessaoPermanente } from './lib/sessaoDiaria';
 import { limparCenaSessao } from './lib/cenaInicio';
 import { pareceFalhaDeRede, comPrazo, PRAZO_ESGOTADO } from './lib/rede';
 
@@ -371,17 +370,10 @@ export default function App() {
           ? localDb.getCurrentUser()
           : null;
 
-        // Expiração diária: se a sessão foi aberta em outro dia (virou a
-        // meia-noite), descarta antes de restaurar — o usuário faz login
-        // de novo. Zera `session` para cair no fluxo de "sem sessão".
-        // Usuários fixos/TV (como tv.fin) NUNCA expiram a sessão.
-        const isTvSession = session?.user?.email && usuarioSessaoPermanente(session.user.email);
-        if (session && session.user && !isRecovery && !isTvSession && sessaoExpirouNoDia(new Date(), session.user.email)) {
-          await comPrazo(supabase.auth.signOut().catch(() => {}), PRAZO_ABERTURA_MS);
-          limparDiaSessao();
-          limparCenaSessao();
-          session = null;
-        }
+        // Sem expiração diária desde 26/11/2026: o logoff da meia-noite
+        // deixava registros feitos sem rede presos no aparelho (a fila só
+        // sobe com quem gravou) e derrubava o plantão da noite no meio do
+        // preenchimento. A sessão segue até o "Sair".
 
         if (session && session.user) {
           if (isRecovery) {
@@ -436,7 +428,7 @@ export default function App() {
               setUser(null);
             }
           }
-        } else if (usuarioOffline && usuarioOffline.status === 'ativo' && !sessaoExpirouNoDia(new Date(), usuarioOffline)) {
+        } else if (usuarioOffline && usuarioOffline.status === 'ativo') {
           setUser(usuarioOffline);
         } else {
           if (!isRecovery) {
@@ -646,10 +638,8 @@ export default function App() {
     };
   }, [user?.id]);
 
-  // Expiração diária da sessão: quando vira a meia-noite com o usuário
-  // logado, faz logoff. Checa a cada minuto e também ao voltar o foco para
-  // a aba (uma aba que passou a madrugada aberta expira assim que reativa).
-  // Usuários de TV (como tv.fin) NUNCA deslogam por virada de dia nem inatividade.
+  // Usuários de TV (como tv.fin): mantém a sessão viva sem ninguém mexer na
+  // tela. (O logoff da meia-noite dos demais usuários foi retirado em 26/11/2026.)
   useEffect(() => {
     if (!user) return;
 
@@ -677,37 +667,6 @@ export default function App() {
         window.removeEventListener('focus', aoReconectarOuFocar);
       };
     }
-
-    let verificando = false;
-    const encerrarSePassouODia = async () => {
-      if (verificando || !sessaoExpirouNoDia(new Date(), user)) return;
-      verificando = true;
-      try {
-        // Registros ainda só no aparelho sobem apenas com este usuário: o
-        // logoff da meia-noite espera a fila esvaziar (tenta de novo a cada minuto).
-        const pendentes = await pendentesAposTentarEnviar(user.id);
-        if (decidirSaida(pendentes, 'virada-do-dia') === 'adiar') return;
-        await localDb.logout();
-        handleUserSessionChange();
-      } finally {
-        verificando = false;
-      }
-    };
-
-    const intervalId = setInterval(encerrarSePassouODia, 60 * 1000);
-    const aoFocar = () => {
-      if (document.visibilityState === 'visible') void encerrarSePassouODia();
-    };
-    window.addEventListener('focus', aoFocar);
-    document.addEventListener('visibilitychange', aoFocar);
-
-    void encerrarSePassouODia();
-
-    return () => {
-      clearInterval(intervalId);
-      window.removeEventListener('focus', aoFocar);
-      document.removeEventListener('visibilitychange', aoFocar);
-    };
   }, [user?.id, user?.email, user?.cargo]);
 
   // Usuário de TV (tv.fin) tem o painel /financeiro/faturamento-gwjaco como destino fixo.
