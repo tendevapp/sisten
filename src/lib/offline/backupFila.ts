@@ -22,6 +22,7 @@ import type { OperacaoFila } from './filaSupabase';
 import type { PendenciaOffline } from '../qualidadeOffline';
 import type { OutboxItem } from '../outbox';
 import { pareceFalhaDeRede } from '../rede';
+import { ehArquivoGuardado } from './arquivoGuardado';
 
 export type FilaBackup = 'formularios' | 'qualidade' | 'producao';
 
@@ -54,6 +55,8 @@ function ehBlob(valor: unknown): valor is Blob {
 export function separarArquivos(valor: unknown): { valor: unknown; arquivos: Blob[] } {
   const arquivos: Blob[] = [];
   const andar = (v: unknown): unknown => {
+    // Foto guardada como bytes na fila (arquivoGuardado.ts): vira arquivo do backup.
+    if (ehArquivoGuardado(v)) v = new Blob([v.bytes], { type: v.tipo });
     if (ehBlob(v)) {
       arquivos.push(v);
       return { __arquivo: arquivos.length - 1, tipo: v.type || 'application/octet-stream', tamanho: v.size };

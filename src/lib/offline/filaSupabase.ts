@@ -38,6 +38,7 @@ import {
 } from './postgrest';
 import { configBucket, configRpc, configTabela, rpcDeLeitura } from './configFormularios';
 import { chamadaIdempotente } from './idempotencia';
+import { guardarArquivo, lerArquivo, type ArquivoGuardado } from './arquivoGuardado';
 import { erroTransitorio, idsDaOperacao, precisaEsperar, servidorForaDoAr, virouRecusa } from './planoEnvio';
 import { criarPausaAuth, ehRenovacaoDeSessao, prazoDaRequisicao } from './redePatio';
 
@@ -45,10 +46,12 @@ import { criarPausaAuth, ehRenovacaoDeSessao, prazoDaRequisicao } from './redePa
 // Tipos
 // =====================================================================
 
+// Arquivos vão como bytes (ArquivoGuardado): Blob no IndexedDB do iPhone volta
+// vazio. `Blob` fica no tipo só para os registros guardados antes da troca.
 type CorpoGuardado =
   | { tipo: 'texto'; texto: string }
-  | { tipo: 'form'; partes: [string, string | Blob, string | undefined][] }
-  | { tipo: 'blob'; blob: Blob };
+  | { tipo: 'form'; partes: [string, string | Blob | ArquivoGuardado, string | undefined][] }
+  | { tipo: 'blob'; blob: Blob | ArquivoGuardado };
 
 export type EstadoOperacao = 'pendente' | 'enviando' | 'erro';
 
@@ -254,18 +257,21 @@ async function guardarCorpo(corpo: BodyInit | null | undefined): Promise<CorpoGu
   if (corpo === null || corpo === undefined) return null;
   if (typeof corpo === 'string') return { tipo: 'texto', texto: corpo };
   if (typeof FormData !== 'undefined' && corpo instanceof FormData) {
-    const partes: [string, string | Blob, string | undefined][] = [];
-    corpo.forEach((valor, nome) => {
-      partes.push([nome, valor, typeof valor !== 'string' && 'name' in valor ? (valor as File).name : undefined]);
-    });
+    const partes: [string, string | ArquivoGuardado, string | undefined][] = [];
+    for (const [nome, valor] of corpo.entries()) {
+      if (typeof valor === 'string') { partes.push([nome, valor, undefined]); continue; }
+      const arquivo = 'name' in valor ? (valor as File).name : undefined;
+      partes.push([nome, await guardarArquivo(valor, arquivo), arquivo]);
+    }
     return { tipo: 'form', partes };
   }
-  if (typeof Blob !== 'undefined' && corpo instanceof Blob) return { tipo: 'blob', blob: corpo };
-  if (corpo instanceof ArrayBuffer || ArrayBuffer.isView(corpo)) return { tipo: 'blob', blob: new Blob([corpo as ArrayBuffer]) };
+  if (typeof Blob !== 'undefined' && corpo instanceof Blob) return { tipo: 'blob', blob: await guardarArquivo(corpo) };
+  if (corpo instanceof ArrayBuffer || ArrayBuffer.isView(corpo)) return { tipo: 'blob', blob: await guardarArquivo(new Blob([corpo as ArrayBuffer])) };
   return { tipo: 'texto', texto: String(corpo) };
 }
 
-function montarCorpo(corpo: CorpoGuardado | null, mapa: Record<string, string>): BodyInit | undefined {
+/** Remonta o corpo para enviar. Arquivo que voltou vazio do aparelho falha com o motivo (vira recusa visível). */
+async function montarCorpo(corpo: CorpoGuardado | null, mapa: Record<string, string>): Promise<BodyInit | undefined> {
   if (!corpo) return undefined;
   if (corpo.tipo === 'texto') {
     try {
@@ -274,12 +280,13 @@ function montarCorpo(corpo: CorpoGuardado | null, mapa: Record<string, string>):
       return corpo.texto;
     }
   }
-  if (corpo.tipo === 'blob') return corpo.blob;
+  if (corpo.tipo === 'blob') return lerArquivo(corpo.blob);
   const form = new FormData();
   for (const [nome, valor, arquivo] of corpo.partes) {
-    if (typeof valor === 'string') form.append(nome, substituirIds(valor, mapa));
-    else if (arquivo) form.append(nome, valor, arquivo);
-    else form.append(nome, valor);
+    if (typeof valor === 'string') { form.append(nome, substituirIds(valor, mapa)); continue; }
+    const blob = await lerArquivo(valor);
+    if (arquivo) form.append(nome, blob, arquivo);
+    else form.append(nome, blob);
   }
   return form;
 }
@@ -849,7 +856,7 @@ async function executarRodada(automatico: boolean): Promise<ResultadoFila> {
         cabecalhos.set('apikey', cfg.chaveAnon);
         cabecalhos.set('authorization', `Bearer ${token}`);
         const caminho = substituirIds(op.caminho, mapa);
-        const corpo = montarCorpo(op.corpo, mapa);
+        const corpo = await montarCorpo(op.corpo, mapa);
         const embrulhada = op.tipo === 'rpc' && op.rpc && op.chaveIdempotencia && typeof corpo === 'string'
           ? chamadaIdempotente(caminho, op.rpc, corpo, op.chaveIdempotencia)
           : null;

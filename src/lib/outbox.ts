@@ -29,6 +29,7 @@
  */
 
 import { get, set, del, keys } from 'idb-keyval';
+import { deGuardado, paraGuardar } from './offline/arquivoGuardado';
 
 /** Prefixo de chave no IndexedDB — isola o outbox de qualquer outro uso do idb-keyval. */
 const PREFIXO_CHAVE = 'sisten_outbox_';
@@ -82,7 +83,7 @@ export async function enfileirar<T>(item: {
     ultimoErro: null,
     criadoEm: new Date().toISOString(),
   };
-  await set(chaveDe(item.id), registro);
+  await set(chaveDe(item.id), await paraGuardar(registro));
   notificar();
 }
 
@@ -92,7 +93,8 @@ export async function listarPendentes<T = Record<string, unknown>>(tipo?: string
   const relevantes = todasChaves.filter(
     (k): k is string => typeof k === 'string' && k.startsWith(PREFIXO_CHAVE),
   );
-  const itens = await Promise.all(relevantes.map(k => get<OutboxItem<T>>(k)));
+  // Arquivos vão como bytes (Safari perde Blob no IndexedDB — offline/arquivoGuardado.ts).
+  const itens = await Promise.all(relevantes.map(async k => deGuardado(await get<OutboxItem<T>>(k)) as OutboxItem<T> | undefined));
   return itens
     .filter((i): i is OutboxItem<T> => !!i && (!tipo || i.tipo === tipo))
     .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
@@ -106,9 +108,9 @@ export async function remover(id: string): Promise<void> {
 
 /** Marca uma tentativa falha, preservando o item na fila para a próxima rodada. */
 async function registrarFalha(id: string, erro: string): Promise<void> {
-  const atual = await get<OutboxItem>(chaveDe(id));
+  const atual = deGuardado(await get<OutboxItem>(chaveDe(id))) as OutboxItem | undefined;
   if (!atual) return;
-  await set(chaveDe(id), { ...atual, tentativas: atual.tentativas + 1, ultimoErro: erro });
+  await set(chaveDe(id), await paraGuardar({ ...atual, tentativas: atual.tentativas + 1, ultimoErro: erro }));
   notificar();
 }
 

@@ -22,6 +22,7 @@
  */
 
 import { createStore, del, get, keys, set, type UseStore } from 'idb-keyval';
+import { deGuardado, paraGuardar } from './offline/arquivoGuardado';
 
 /** Rascunho mais velho que isto é descartado ao abrir a tela. */
 export const VALIDADE_RASCUNHO_MS = 3 * 24 * 60 * 60 * 1000;
@@ -149,7 +150,8 @@ export async function lerRascunho<T>(chave: string): Promise<RascunhoGuardado<T>
     }
     const blobs = new Map<string, Blob>();
     for (const id of reg.blobs) {
-      const b = await get<Blob>(`${chave}${SEPARADOR_BLOB}${id}`, s);
+      // Bytes, não Blob: o Safari perde Blob no IndexedDB (offline/arquivoGuardado.ts).
+      const b = deGuardado(await get<Blob>(`${chave}${SEPARADOR_BLOB}${id}`, s)) as Blob | undefined;
       if (b) blobs.set(id, b);
     }
     return { dados: juntarBlobs(reg.dados, blobs) as T, aberto: reg.aberto, salvoEm: reg.salvoEm };
@@ -167,7 +169,7 @@ export async function gravarRascunho<T>(chave: string, dados: T, aberto: boolean
     const anterior = await get<RegistroGuardado>(chave, s);
     const jaGravados = new Set(anterior?.blobs ?? []);
     for (const [id, b] of blobs) {
-      if (!jaGravados.has(id)) await set(`${chave}${SEPARADOR_BLOB}${id}`, b, s);
+      if (!jaGravados.has(id)) await set(`${chave}${SEPARADOR_BLOB}${id}`, await paraGuardar(b), s);
     }
     const salvoEm = new Date().toISOString();
     const reg: RegistroGuardado = { versao: 1, dados: semBlobs, aberto, salvoEm, blobs: [...blobs.keys()] };

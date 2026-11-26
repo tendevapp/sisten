@@ -34,6 +34,7 @@
  */
 
 import { createStore, get, set, del, keys, type UseStore } from 'idb-keyval';
+import { deGuardado, paraGuardar } from './offline/arquivoGuardado';
 import { pareceFalhaDeRede } from './rede';
 import { gerarUUID } from './ids';
 import { comprimirImagemUpload } from './imageCompression';
@@ -255,26 +256,27 @@ export function assinarPendencias(fn: () => void): () => void {
 export async function listarPendencias<P extends PendenciaOffline = PendenciaOffline>(modulo: ModuloOffline, usuarioId?: string): Promise<P[]> {
   const prefixo = `${PREFIXO_PENDENCIA}${modulo}:`;
   const todas = (await keys(banco())).filter((k): k is string => typeof k === 'string' && k.startsWith(prefixo));
-  const itens = (await Promise.all(todas.map(k => get<P>(k, banco())))) as (P | undefined)[];
+  // Fotos/assinaturas vão como bytes (Safari perde Blob no IndexedDB — offline/arquivoGuardado.ts).
+  const itens = (await Promise.all(todas.map(async k => deGuardado(await get<P>(k, banco()))))) as (P | undefined)[];
   return itens
     .filter((p): p is P => !!p && (!usuarioId || p.usuarioId === usuarioId))
     .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
 }
 
 export async function obterPendencia<P extends PendenciaOffline = PendenciaOffline>(modulo: ModuloOffline, id: string): Promise<P | null> {
-  return (await get<P>(chavePendencia(modulo, id), banco())) || null;
+  return (deGuardado(await get<P>(chavePendencia(modulo, id), banco())) as P | undefined) || null;
 }
 
 /** Grava a pendência (substitui). Volta o estado para `pendente` — foi editada, merece nova tentativa. */
 export async function salvarPendencia<P extends PendenciaOffline>(p: P): Promise<P> {
   const registro = { ...p, estado: 'pendente' as const, ultimoErro: null, atualizadoEm: new Date().toISOString() };
-  await set(chavePendencia(p.modulo, p.id), registro, banco());
+  await set(chavePendencia(p.modulo, p.id), await paraGuardar(registro), banco());
   notificar();
   return registro;
 }
 
 async function gravarSemNotificar<P extends PendenciaOffline>(p: P): Promise<void> {
-  await set(chavePendencia(p.modulo, p.id), p, banco());
+  await set(chavePendencia(p.modulo, p.id), await paraGuardar(p), banco());
 }
 
 export async function removerPendencia(modulo: ModuloOffline, id: string): Promise<void> {

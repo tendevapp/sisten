@@ -70,6 +70,18 @@ describe('itens de cada fila no mesmo formato', () => {
     });
     expect(item.arquivos).toEqual([foto]);
   });
+  it('formulário com foto guardada como bytes: o arquivo também sai do corpo', async () => {
+    const bytes = await new Blob(['jpg!'], { type: 'image/jpeg' }).arrayBuffer();
+    const guardado = { __arquivoGuardado: true as const, bytes, tipo: 'image/jpeg', nome: 'blob', tamanho: 4 };
+    const item = itemDeOperacao({
+      id: 'op3', usuarioId: 'u1', criadoEm: '2026-11-26T10:00:00Z', metodo: 'POST', caminho: '/storage/v1/object/b/p.jpg',
+      cabecalhos: {}, corpo: { tipo: 'form', partes: [['cacheControl', '3600', undefined], ['', guardado, 'blob']] },
+      tipo: 'upload', rotulo: 'Foto', resumo: '', estado: 'erro', tentativas: 1, erro: 'x',
+    });
+    expect(item.arquivos).toHaveLength(1);
+    expect(await item.arquivos[0].text()).toBe('jpg!');
+    expect(JSON.stringify(item.conteudo)).toContain('"__arquivo":0');
+  });
   it('checklist da Qualidade e apontamento da Produção', () => {
     const p = itemDePendencia({ id: 'c1', modulo: 'qua_expedicao', usuarioId: 'u2', usuarioNome: 'BIA', criadoEm: 't', estado: 'erro', ultimoErro: 'x', input: { a: 1 } } as never, 'Checklist de Expedição');
     expect(p).toMatchObject({ fila: 'qualidade', itemId: 'qua_expedicao:c1', donoId: 'u2', donoNome: 'BIA', estado: 'erro', erro: 'x' });
