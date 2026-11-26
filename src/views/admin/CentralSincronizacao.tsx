@@ -13,7 +13,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, CloudOff, Hourglass, Loader2, RefreshCw, RefreshCcwDot, WifiOff } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CloudOff, Eye, Hourglass, Loader2, RefreshCw, RefreshCcwDot, WifiOff } from 'lucide-react';
+import FilaAparelhoModal from '../../components/admin/FilaAparelhoModal';
 import type { Profile } from '../../types';
 import { supabase } from '../../db/supabaseClient';
 import KpiCard from '../../components/charts/KpiCard';
@@ -100,12 +101,27 @@ function textoErro(a: Aparelho): string {
 
 const idCurto = (a: Aparelho) => a.device_id.slice(0, 8);
 
+function BotaoVerFila({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold"
+      style={{ borderColor: 'var(--hairline)', color: 'var(--ink-primary)', background: 'var(--surface-card)' }}
+    >
+      <Eye className="h-3.5 w-3.5" aria-hidden="true" /> Ver fila
+    </button>
+  );
+}
+
 export default function CentralSincronizacao({ user: _user }: Props) {
   const [linhas, setLinhas] = useState<LinhaBanco[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [agora, setAgora] = useState(() => Date.now());
   const [soProblema, setSoProblema] = useState(true);
+  /** Aparelho com o conteúdo da fila aberto (backup em ops_fila_backup). */
+  const [verFila, setVerFila] = useState<{ deviceId: string; titulo: string } | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -243,6 +259,7 @@ export default function CentralSincronizacao({ user: _user }: Props) {
                     <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                       Último report {formatarIdade(a.reportado_em, agora)} · {a.online ? 'online' : 'sem rede'}
                     </p>
+                    <BotaoVerFila onClick={() => setVerFila({ deviceId: a.device_id, titulo: `${a.user_name || 'Usuário'} · ${a.plataforma || 'Dispositivo'}` })} />
                   </TableCardRow>
                 ))}
               </TableCards>
@@ -258,6 +275,7 @@ export default function CentralSincronizacao({ user: _user }: Props) {
                       <Th label="Mais antiga" />
                       <Th label="Último erro" />
                       <Th label="Último report" />
+                      <Th label="Conteúdo" />
                     </TableHeadRow>
                     <TableBody>
                       {visiveis.map(a => (
@@ -279,6 +297,9 @@ export default function CentralSincronizacao({ user: _user }: Props) {
                             {formatarIdade(a.reportado_em, agora)}
                             <span className="block text-[10px]" style={{ color: 'var(--ink-muted)' }}>{a.online ? 'online' : 'sem rede'}</span>
                           </Td>
+                          <Td>
+                            <BotaoVerFila onClick={() => setVerFila({ deviceId: a.device_id, titulo: `${a.user_name || 'Usuário'} · ${a.plataforma || 'Dispositivo'}` })} />
+                          </Td>
                         </Tr>
                       ))}
                     </TableBody>
@@ -289,6 +310,7 @@ export default function CentralSincronizacao({ user: _user }: Props) {
           )}
         </>
       )}
+      {verFila && <FilaAparelhoModal deviceId={verFila.deviceId} titulo={verFila.titulo} onClose={() => setVerFila(null)} />}
     </div>
   );
 }

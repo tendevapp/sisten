@@ -13,6 +13,7 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import { buscarTudo } from './buscarTudo';
 import type { ContagemInventario, ItemInventario, StatusItemInventario } from './inventarioCiclico';
 import type { LinhaImportacaoInventario, ResumoImportacaoInventario } from './inventarioCiclicoImportacao';
 import type { CausaInventario, ContextoAuditoriaInventario } from './inventarioAuditoria';
@@ -130,6 +131,27 @@ export async function listarInventarios(limite = 200): Promise<InventarioRow[]> 
   return [...porId.values()]
     .sort((a, b) => (b.data === a.data ? String(b.created_at || '').localeCompare(String(a.created_at || '')) : String(b.data).localeCompare(String(a.data))))
     .map(normalizar);
+}
+
+/** O mínimo de cada inventário para o histórico (cobertura, "já contado", "já divergiu"). */
+export interface InventarioHistorico {
+  data: string;
+  itens: { material: string; deposito: string; status: StatusItemInventario; contagens: { id: string }[] }[];
+}
+
+/**
+ * Todos os inventários (não excluídos), só com o que o histórico usa. A lista
+ * da tela traz os 200 mais recentes com tudo; o histórico não pode ter corte:
+ * em 26/11 eram 279 inventários (os avulsos do "Contar" são um por dia por
+ * pessoa) e a cobertura caiu de 63,9% para 19,4% porque só enxergava os de
+ * 09/11 em diante.
+ */
+export async function listarHistoricoInventarios(): Promise<InventarioHistorico[]> {
+  return buscarTudo<InventarioHistorico>((de, ate) => (supabase.from as any)('alm_inventarios')
+    .select('id, data, itens:alm_inventario_itens(material, deposito, status, contagens:alm_inventario_contagens(id))')
+    .eq('excluido', false)
+    .order('id')
+    .range(de, ate), 200);
 }
 
 /** Um inventário só, com itens e contagens — para quem conta fora da tela do inventário. */

@@ -27,6 +27,7 @@ import { listarPendentes, subscribe as assinarOutbox } from '../outbox';
 import { pareceFalhaDeRede } from '../rede';
 import { assinarFilaOffline, listarOperacoes } from './filaSupabase';
 import { obterIdAparelho } from './aparelho';
+import { enviarBackupFila } from './envioBackupFila';
 import {
   construirSnapshot,
   resumirPlataforma,
@@ -104,6 +105,9 @@ export function iniciarReporterSincronizacao(usuario: UsuarioReporter): () => vo
     if (parado || emAndamento) return;
     emAndamento = true;
     try {
+      // Backup do conteúdo da fila (todos os usuários do aparelho). Ele mesmo só
+      // manda o que mudou; falha sem rede não impede o resumo abaixo.
+      await enviarBackupFila(usuario).catch(() => {});
       const snapshot = await coletarSnapshot(usuario.id);
       const online = typeof navigator === 'undefined' ? true : navigator.onLine;
       const agora = Date.now();

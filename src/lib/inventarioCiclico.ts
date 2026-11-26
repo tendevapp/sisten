@@ -310,7 +310,8 @@ export function rotuloDias(dias: number): string {
  * inventariado.
  */
 export function historicoPorItem(
-  inventarios: { data: string; itens: Pick<ItemInventario, 'material' | 'deposito' | 'status' | 'contagens'>[] }[],
+  // Só a quantidade de contagens importa: aceita a lista leve do histórico completo.
+  inventarios: { data: string; itens: (Pick<ItemInventario, 'material' | 'deposito' | 'status'> & { contagens: readonly unknown[] })[] }[],
 ): Map<string, HistoricoItem> {
   const mapa = new Map<string, HistoricoItem>();
   const datasPorItem = new Map<string, Set<string>>();

@@ -37,7 +37,8 @@ import {
 } from '../../lib/inventarioCiclico';
 import { baixaPendenteDoItem, codigosDoRetrato } from '../../lib/inventarioBaixaPendente';
 import {
-  adicionarItensInventario, buscarInventario, criarInventario, encerrarItemInventario, excluirInventario, listarInventarios, registrarContagem,
+  adicionarItensInventario, buscarInventario, criarInventario, encerrarItemInventario, excluirInventario, listarHistoricoInventarios,
+  listarInventarios, registrarContagem, type InventarioHistorico,
   removerItemInventario, type InventarioRow, type ResultadoContagem,
 } from '../../lib/inventarioCiclicoApi';
 import { exportarPlanilhaInventario } from '../../lib/inventarioCiclicoPlanilha';
@@ -159,6 +160,7 @@ function idInventarioDaRota(): string | null {
 export default function InventarioCiclico({ user, onNavigate }: Props) {
   const toast = useToast();
   const [inventarios, setInventarios] = useState<InventarioRow[]>([]);
+  const [historicoCompleto, setHistoricoCompleto] = useState<InventarioHistorico[] | null>(null);
   const [estoque, setEstoque] = useState<EstoqueItem[]>([]);
   const [giro, setGiro] = useState<EstoqueGiro[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,11 +182,17 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
   const posicoesZl = useMemo(() => indexarPosicoes(estoque), [estoque]);
 
   const recarregarInventarios = useCallback(async () => {
+    // Histórico inteiro à parte: a lista traz só os 200 mais recentes, e a
+    // cobertura/"já contado" precisam de todos (ver listarHistoricoInventarios).
+    const historico = listarHistoricoInventarios()
+      .then(setHistoricoCompleto)
+      .catch((err) => console.warn('[InventarioCiclico] Histórico completo indisponível; usando só a lista recente.', err));
     try {
       setInventarios(await listarInventarios());
     } catch (err: any) {
       toast.error(err?.message || 'Não foi possível carregar os inventários.');
     }
+    await historico;
   }, [toast]);
 
   const recarregar = useCallback(async (forcar = false) => {
@@ -288,7 +296,7 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
     return agruparPorData(filtrados, diaLocal(agora), diaLocal(ontem));
   }, [filtrados]);
 
-  const historico = useMemo(() => historicoPorItem(inventarios), [inventarios]);
+  const historico = useMemo(() => historicoPorItem(historicoCompleto ?? inventarios), [historicoCompleto, inventarios]);
   const cobertura = useMemo(() => coberturaInventario(estoque, historico), [estoque, historico]);
 
   const emAberto = inventarios.filter((i) => i.status === 'aberto').length;
@@ -384,7 +392,7 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <Indicador rotulo="Inventários" valor={inventarios.length} />
+        <Indicador rotulo="Inventários" valor={historicoCompleto?.length ?? inventarios.length} />
         <Indicador rotulo="Em andamento" valor={emAberto} destaque={emAberto > 0} />
         <Indicador
           rotulo="Com divergência"

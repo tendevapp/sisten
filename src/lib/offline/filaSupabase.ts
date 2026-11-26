@@ -175,6 +175,9 @@ async function apagarOperacao(id: string): Promise<void> {
 // Ouvintes (indicador na tela)
 // =====================================================================
 
+/** Disparado pelo botão do cabeçalho: o painel da fila (FilaOfflineFormularios) abre. */
+export const EVENTO_ABRIR_SINCRONIZACAO = 'sisten:abrir-sincronizacao';
+
 const ouvintes = new Set<() => void>();
 const ouvintesEnfileirado = new Set<(op: OperacaoFila) => void>();
 

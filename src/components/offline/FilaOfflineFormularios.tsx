@@ -20,8 +20,8 @@ import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import { useToast } from '../ui/Toast';
 import {
-  assinarEnfileirado, assinarFilaOffline, descartarOperacao, listarOperacoes, sincronizandoFila, sincronizarFilaOffline,
-  type OperacaoFila, type ResultadoFila,
+  EVENTO_ABRIR_SINCRONIZACAO, assinarEnfileirado, assinarFilaOffline, descartarOperacao, listarOperacoes, sincronizandoFila,
+  sincronizarFilaOffline, type OperacaoFila, type ResultadoFila,
 } from '../../lib/offline/filaSupabase';
 import { estaOffline } from '../../lib/rede';
 
@@ -79,6 +79,9 @@ export default function FilaOfflineFormularios({ usuarioId, emFormulario }: Prop
     const aoVoltar = () => { if (document.visibilityState === 'visible') void automatico(); };
     // iPhone devolve a página congelada da memória (bfcache) sem focus/visibilitychange confiáveis.
     const aoRestaurar = () => { setOnline(!estaOffline()); void recarregar().then(automatico); };
+    // Botão do cabeçalho: abre o painel mesmo com a fila vazia.
+    const aoPedirPainel = () => { setOnline(!estaOffline()); void recarregar(); setAberto(true); };
+    window.addEventListener(EVENTO_ABRIR_SINCRONIZACAO, aoPedirPainel);
     void recarregar().then(automatico);
     const intervalo = window.setInterval(() => { void automatico(); }, INTERVALO_MS);
     window.addEventListener('online', aoMudarRede);
@@ -95,6 +98,7 @@ export default function FilaOfflineFormularios({ usuarioId, emFormulario }: Prop
       window.removeEventListener('offline', aoMudarRede);
       window.removeEventListener('focus', aoVoltar);
       window.removeEventListener('pageshow', aoRestaurar);
+      window.removeEventListener(EVENTO_ABRIR_SINCRONIZACAO, aoPedirPainel);
       document.removeEventListener('visibilitychange', aoVoltar);
     };
   }, [recarregar, automatico, toast]);

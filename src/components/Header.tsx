@@ -14,6 +14,7 @@ import { resolverRotaNotificacao } from '../lib/notificationRouting';
 import AlertaNotificacoes, { tipoDoAviso, type ItemAviso } from './notifications/AlertaNotificacoes';
 import LeitorQrHeader from './LeitorQrHeader';
 import { confirmar } from '../lib/confirmar';
+import BotaoSincronizacaoHeader from './offline/BotaoSincronizacaoHeader';
 import { decidirSaida, mensagemSaidaComPendencias, pendentesAposTentarEnviar } from '../lib/offline/saidaSegura';
 import {
   atualizarTituloAba, avisarNoDesktop, filtrarNovas, gravarIdsAlertados, gravarPrefsAviso,
@@ -362,6 +363,8 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
         )}
         {/* Leitor de QR da etiqueta de material: baixa de estoque ou inventário. */}
         <LeitorQrHeader user={user} onNavigate={onNavigate} />
+        {/* Fila de sincronização do próprio usuário: ver e mandar sincronizar na hora. */}
+        <BotaoSincronizacaoHeader usuarioId={user.id} />
         {/* Atalho de Importação de Planilhas — só admin, é onde ele mais precisa chegar rápido. */}
         {user.roles.includes('admin') && (
           <button
