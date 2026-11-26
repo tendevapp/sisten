@@ -153,7 +153,7 @@ export default function FilaOfflineFormularios({ usuarioId, emFormulario }: Prop
             </div>
           </li>)}
         </ul>}
-        {comErro.length > 0 && <p className="text-[11px] text-slate-500">A fila anda na ordem em que os registros foram feitos e para no que o servidor recusou. Corrija o motivo e sincronize de novo, ou descarte esse registro para liberar os seguintes.</p>}
+        {comErro.length > 0 && <p className="text-[11px] text-slate-500">O que o servidor recusou fica aqui com o motivo e não sobe sozinho. Os outros registros continuam subindo; só esperam os que dependem do recusado (itens, fotos, saída do mesmo registro) e as exclusões. Corrija o motivo e sincronize de novo, ou descarte o recusado.</p>}
       </ModalBody>
       <ModalFooter>
         <div className="flex w-full items-center justify-end gap-2">
@@ -188,7 +188,13 @@ export default function FilaOfflineFormularios({ usuarioId, emFormulario }: Prop
         {resultado.erro && <div className="space-y-1">
           <p className="flex items-center gap-2 font-bold text-red-700 dark:text-red-300"><X className="h-4 w-4" /> O servidor recusou "{resultado.erro.operacao.rotulo}"</p>
           <p className="rounded-lg bg-red-50 px-2 py-1 text-xs dark:bg-red-950/30">{resultado.erro.mensagem}</p>
-          <p className="text-xs text-slate-500">A fila parou nele. Veja no selo de sincronização: corrija e tente de novo, ou descarte.</p>
+          <p className="text-xs text-slate-500">
+            {resultado.recusadas > 1 ? `${resultado.recusadas} registros recusados no total. ` : ''}
+            {resultado.aguardando > 0
+              ? `${resultado.aguardando === 1 ? '1 registro espera' : `${resultado.aguardando} registros esperam`} por ele (depende dele ou é exclusão). `
+              : ''}
+            Os demais seguiram. Veja no selo de sincronização: corrija e tente de novo, ou descarte.
+          </p>
         </div>}
         {!resultado.enviadas && !resultado.semRede && !resultado.erro && <p className="flex items-center gap-2 font-bold text-emerald-700 dark:text-emerald-300"><CloudCheck className="h-4 w-4" /> Tudo sincronizado — nada pendente neste aparelho.</p>}
       </ModalBody>

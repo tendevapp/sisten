@@ -7,6 +7,7 @@ import { registrarAcessoIp } from './lib/monitoramentoIpApi';
 import { recordRecentPage } from './lib/homePrefs';
 import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, isUserAndre, pageIdForPath, tituloAba } from './lib/pages';
 import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia, usuarioSessaoPermanente } from './lib/sessaoDiaria';
+import { decidirSaida, pendentesAposTentarEnviar } from './lib/offline/saidaSegura';
 import { limparCenaSessao } from './lib/cenaInicio';
 import { pareceFalhaDeRede, comPrazo, PRAZO_ESGOTADO } from './lib/rede';
 
@@ -677,10 +678,20 @@ export default function App() {
       };
     }
 
+    let verificando = false;
     const encerrarSePassouODia = async () => {
-      if (!sessaoExpirouNoDia(new Date(), user)) return;
-      await localDb.logout();
-      handleUserSessionChange();
+      if (verificando || !sessaoExpirouNoDia(new Date(), user)) return;
+      verificando = true;
+      try {
+        // Registros ainda só no aparelho sobem apenas com este usuário: o
+        // logoff da meia-noite espera a fila esvaziar (tenta de novo a cada minuto).
+        const pendentes = await pendentesAposTentarEnviar(user.id);
+        if (decidirSaida(pendentes, 'virada-do-dia') === 'adiar') return;
+        await localDb.logout();
+        handleUserSessionChange();
+      } finally {
+        verificando = false;
+      }
     };
 
     const intervalId = setInterval(encerrarSePassouODia, 60 * 1000);

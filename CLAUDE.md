@@ -66,6 +66,15 @@ telas administrativas (excluir, exportar, importar SAP).
 Quando o resultado depende do servidor (ex.: contagem cega comparada com a
 ZL0024), a tela checa `ehRespostaOffline(retorno)` e não afirma o resultado.
 
+Nada fica para trás (`src/lib/offline/planoEnvio.ts`, `saidaSegura.ts`):
+recusa do servidor só segura o que depende dela (e exclusões) — o resto sobe;
+servidor fora (5xx, 429, tempo esgotado) é "sem rede", não recusa; o logoff da
+meia-noite espera a fila esvaziar e o "Sair" avisa o que ficaria no aparelho.
+Bucket compartilhado com telas que não são formulário entra com `pastas` (ex.:
+`request-attachments` só `almox-catalogo/`). Mudou o nome de uma RPC de
+formulário? Troque também no registro — o Inventário ficou sem offline quando
+passou para as funções `_auditado`.
+
 Os checklists da Qualidade têm modo offline próprio (`src/lib/qualidadeOffline.ts`).
 
 ## 4. Novos módulos: sem liberação padrão geral (nascem desmarcados)

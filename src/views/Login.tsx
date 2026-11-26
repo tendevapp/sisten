@@ -5,6 +5,7 @@ import {
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
 import { ehEmailInterno, emailDeLogin } from '../lib/loginSemEmail';
+import AvisoPendenciasAparelho from '../components/offline/AvisoPendenciasAparelho';
 
 interface LoginProps {
   onLoginSuccess: (user: Profile) => void;
@@ -306,6 +307,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                     </div>
                   ) : (
                     <form onSubmit={handleSubmit} className="space-y-4 text-left login-stagger">
+                      <AvisoPendenciasAparelho />
                       <div className="space-y-2">
                         <label htmlFor="email" className="text-sm font-semibold text-slate-700">
                           E-mail ou usuário

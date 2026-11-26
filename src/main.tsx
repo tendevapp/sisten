@@ -10,6 +10,11 @@ import { initAssociarRotulos } from './lib/associarRotulos';
 import './index.css';
 
 installConsoleLogBuffer();
+// A fila offline (formulários, checklists, outbox) mora no IndexedDB. Sem
+// armazenamento persistente, o navegador pode apagá-lo quando o celular fica
+// sem espaço — e com ele registros que ainda não subiram. Pedir não custa:
+// o Chrome concede sem perguntar para PWA instalado/site muito usado.
+try { void navigator.storage?.persist?.().catch(() => {}); } catch { /* navegador sem a API */ }
 initResponsiveTables();
 initRolagemSuperiorTabelas();
 initAssociarRotulos();

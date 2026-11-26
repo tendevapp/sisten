@@ -78,8 +78,9 @@ function useItensContadosNaFila(): Set<string> {
   const [ids, setIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     let ativo = true;
-    const ler = () => argumentosNaFila('alm_inv_registrar_contagem')
-      .then(args => { if (ativo) setIds(new Set(args.map(a => String(a.p_item_id)))); })
+    // A auditada é a atual; a antiga fica para contagens guardadas antes da troca.
+    const ler = () => Promise.all([argumentosNaFila('alm_inv_registrar_contagem_auditada'), argumentosNaFila('alm_inv_registrar_contagem')])
+      .then(([novas, antigas]) => { if (ativo) setIds(new Set([...novas, ...antigas].map(a => String(a.p_item_id)))); })
       .catch(() => {});
     ler();
     const cancelar = assinarFilaOffline(ler);
@@ -1669,6 +1670,8 @@ export function ModalContagem({
   const [obs, setObs] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [ultimo, setUltimo] = useState<ResultadoContagem | null>(null);
+  /** Contagem/encerramento foi para a fila do aparelho: o resultado só existe depois de sincronizar. */
+  const [guardadaNoAparelho, setGuardadaNoAparelho] = useState(false);
   const [fotoAtual, setFotoAtual] = useState<CatalogoItem | null>(fotoItem ?? null);
   const [modalFotoAberto, setModalFotoAberto] = useState(false);
   const qtdRef = useRef<HTMLInputElement>(null);
@@ -1721,6 +1724,15 @@ export function ModalContagem({
         causa: causa || null, causaDetalhe: causaDetalhe.trim() || null,
         iniciadaEm: iniciadaRef.current,
       });
+      if (ehRespostaOffline(r)) {
+        // Sem rede: a comparação com a ZL0024 é do servidor. Não dá para dizer se confere.
+        setQtd(''); setObs(''); setCausa(''); setCausaDetalhe('');
+        setGuardadaNoAparelho(true);
+        toast.success('Contagem guardada neste aparelho. Ela sobe sozinha quando a rede voltar, e o resultado aparece depois.');
+        await onRecarregar();
+        setFase('final');
+        return;
+      }
       setUltimo(r);
       if (r.zl0024_importada_em) setZl0024ImportadaEm(r.zl0024_importada_em);
       setPendenciasSap(r.divergente ? r.pendencias_sap ?? [] : []);
@@ -1747,7 +1759,14 @@ export function ModalContagem({
     if (!causaValida) { toast.error('Informe a causa provável e o detalhe antes de encerrar.'); return; }
     setEnviando(true);
     try {
-      await encerrarItemInventario(item.id, causa as CausaInventario, causaDetalhe);
+      const r = await encerrarItemInventario(item.id, causa as CausaInventario, causaDetalhe);
+      if (ehRespostaOffline(r)) {
+        setGuardadaNoAparelho(true);
+        toast.success('Encerramento guardado neste aparelho. O saldo do sistema aparece quando sincronizar.');
+        await onRecarregar();
+        setFase('final');
+        return;
+      }
       toast.warning('Divergência registrada — alerta gravado.');
       await onRecarregar();
       setFase('final');
@@ -1978,7 +1997,13 @@ export function ModalContagem({
           </div>
         )}
 
-        {fase === 'final' && (
+        {fase === 'final' && guardadaNoAparelho && (
+          <p role="status" className="rounded-xl border px-3 py-2.5 text-xs font-semibold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+            Guardada neste aparelho, sem rede. Ela sobe sozinha quando a conexão voltar (selo de sincronização no canto da tela),
+            e só então o sistema compara com a ZL0024. Até lá, este item fica marcado como contado e não aceita outra contagem aqui.
+          </p>
+        )}
+        {fase === 'final' && !guardadaNoAparelho && (
           <>
             <ResultadoFinal item={item} />
             {item.status === 'divergente' && <AvisoGestaoDivergencia importadaEm={zl0024ImportadaEm} pendencias={pendenciasSap} />}

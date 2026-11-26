@@ -48,6 +48,12 @@ export interface ConfigRpc {
 
 export interface ConfigBucket {
   rotulo: string;
+  /**
+   * Só estas pastas entram na fila — para bucket compartilhado com telas que
+   * não são formulário (o `request-attachments` também guarda anexos das
+   * Solicitações). Sem a lista, o bucket inteiro.
+   */
+  pastas?: string[];
 }
 
 /** Marca nas respostas provisórias das RPCs: a tela pode avisar que o servidor ainda não respondeu. */
@@ -185,6 +191,11 @@ const TABELAS: Record<string, ConfigTabela> = {
   alm_receb_nc: { rotulo: 'Recebimento — não conformidade', resumo: campos('codigo') },
   // O código SEM sai do trigger no banco, no envio. A regularização (doc SAP) não entra: é de escritório.
   alm_solicitacao_extra: { rotulo: 'Solicitação extraordinária de materiais', resumo: campos('codigo', 'tramo', 'projeto') },
+  // Cadastro de Itens. O código CAT sai do trigger no envio. Dois aparelhos
+  // cadastrando o mesmo material offline: o segundo é recusado pelo unique
+  // (codigo_sap ativo) e aparece na fila para conferir — não sobrescreve.
+  alm_catalogo_itens: { rotulo: 'Cadastro de Itens', resumo: campos('codigo_sap', 'descricao') },
+  alm_catalogo_item_fotos: { rotulo: 'Cadastro de Itens — foto adicional' },
 
   // Suprimentos — Ava. Fornecedor. Códigos OCF/AVF saem do trigger no banco, no envio.
   sup_aval_ocorrencias: { rotulo: 'Ocorrência de fornecedor', resumo: campos('codigo', 'fornecedor_nome', 'nro_pedido') },
@@ -253,6 +264,29 @@ const RPCS: Record<string, ConfigRpc> = {
     respostaProvisoria: () => ({ numero: 0, divergente: false, status: 'pendente', pode_recontar: false, saldo_sistema: null, diferenca: null, [MARCA_OFFLINE]: true }),
   },
   alm_inv_encerrar_item: {
+    rotulo: 'Inventário cíclico — encerrar item',
+    respostaProvisoria: () => ({ status: 'divergente', saldo_sistema: null, diferenca: null, alerta: '', [MARCA_OFFLINE]: true }),
+  },
+  // Inventário auditado (o fluxo atual). A contagem, que é o trabalho no
+  // pátio, sobe pela fila. Criar e acrescentar itens: na tela do Inventário a
+  // reserva exclusiva (alm_inv_definir_reserva) é online e já barra sem rede;
+  // o atalho "Contar" do Cadastro de Itens não usa reserva e, sem rede, põe o
+  // item na fila do inventário avulso — a contagem abre depois de sincronizar.
+  // Se outra pessoa pegou o item antes, o servidor recusa e aparece na fila.
+  alm_inv_criar_auditado: {
+    rotulo: 'Inventário cíclico',
+    resumo: args => campos('data', 'criterio')(args?.p_inv || {}),
+    criaRegistro: true,
+    respostaProvisoria: (args, id) => ({ ...(args?.p_inv || {}), id, codigo: '', [MARCA_OFFLINE]: true }),
+  },
+  alm_inv_adicionar_reservados: { rotulo: 'Inventário cíclico — itens', respostaProvisoria: args => (args?.p_itens || []).length },
+  alm_inv_registrar_contagem_auditada: {
+    rotulo: 'Inventário cíclico — contagem',
+    resumo: args => (args?.p_quantidade !== undefined ? `quantidade ${args.p_quantidade}` : ''),
+    // A comparação com a ZL0024 é do servidor: offline não dá para dizer se confere.
+    respostaProvisoria: () => ({ numero: 0, divergente: false, status: 'pendente', pode_recontar: false, saldo_sistema: null, diferenca: null, [MARCA_OFFLINE]: true }),
+  },
+  alm_inv_encerrar_auditado: {
     rotulo: 'Inventário cíclico — encerrar item',
     respostaProvisoria: () => ({ status: 'divergente', saldo_sistema: null, diferenca: null, alerta: '', [MARCA_OFFLINE]: true }),
   },
@@ -327,10 +361,19 @@ const BUCKETS: Record<string, ConfigBucket> = {
   'alm-recebimento': { rotulo: 'Recebimento — foto' },
   'port-alcoolemia': { rotulo: 'Teste de alcoolemia — foto' },
   'port-ocorrencias': { rotulo: 'Relatório de ocorrências — foto' },
+  // Cadastro de Itens: foto principal e adicionais (ver almoxCatalogoApi.ts).
+  'request-attachments': { rotulo: 'Cadastro de Itens — foto', pastas: ['almox-catalogo/'] },
 };
 
 /** RPCs que só leem (POST por protocolo): a resposta fica guardada como as leituras comuns. */
-const RPCS_LEITURA = new Set(['alm_receb_po_linhas']);
+const RPCS_LEITURA = new Set([
+  'alm_receb_po_linhas',
+  // Inventário e Cadastro de Itens chamam ao abrir; sem a cópia, a tela não abria sem rede.
+  'alm_inv_contexto_auditoria',
+  'alm_codigos_epi_book',
+  'alm_baixas_pendentes_por_material',
+  'alm_ultimo_movimento_por_material',
+]);
 
 export function rpcDeLeitura(nome: string): boolean {
   return RPCS_LEITURA.has(nome);
@@ -344,8 +387,17 @@ export function configRpc(nome: string): ConfigRpc | undefined {
   return RPCS[nome];
 }
 
-export function configBucket(bucket: string): ConfigBucket | undefined {
-  return BUCKETS[bucket];
+/**
+ * Config do bucket para estes arquivos — `undefined` quando o bucket não é de
+ * formulário ou algum arquivo está fora das pastas liberadas (vai direto ao
+ * servidor). Sem arquivos informados, só confere o bucket.
+ */
+export function configBucket(bucket: string, arquivos?: string[]): ConfigBucket | undefined {
+  const cfg = BUCKETS[bucket];
+  if (!cfg || !cfg.pastas || !arquivos) return cfg;
+  const limpos = arquivos.map(a => a.replace(/^\/+/, ''));
+  if (!limpos.length) return undefined;
+  return limpos.every(a => cfg.pastas!.some(p => a.startsWith(p))) ? cfg : undefined;
 }
 
 /** Resposta provisória de uma RPC na fila (marcada com `__offline`)? */

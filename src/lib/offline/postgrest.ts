@@ -274,6 +274,24 @@ export function aplicarEfeitos(linhas: Linha[], consulta: ConsultaRest, efeitos:
 }
 
 /**
+ * Resposta, sem rede, a uma consulta que o aparelho nunca fez com esta URL
+ * exata (ex.: "este material já está no catálogo?"): junta tudo o que já
+ * guardou da tabela (cópias de outras leituras, sem repetir a mesma linha),
+ * aplica as gravações pendentes, filtra e ordena como o PostgREST faria.
+ */
+export function consultarConhecidas(conhecidas: Linha[], consulta: ConsultaRest, efeitos: EfeitoPendente[]): Linha[] {
+  const porId = new Map<string, Linha>();
+  const semId: Linha[] = [];
+  for (const linha of conhecidas) {
+    if (linha?.id !== undefined && linha?.id !== null) porId.set(String(linha.id), linha);
+    else if (linha) semId.push(linha);
+  }
+  const base = [...porId.values(), ...semId].filter(linha => atendeFiltros(linha, consulta.filtros));
+  const comPendentes = aplicarEfeitos(base, consulta, efeitos);
+  return consulta.ordem.length ? ordenar(comPendentes, consulta.ordem) : comPendentes;
+}
+
+/**
  * Linhas que um update/delete da fila afetaria, procuradas no que o aparelho
  * já conhece da tabela (cópias de leituras + inserções pendentes). Serve para
  * a resposta provisória de `.update().eq('id', x).select().single()`.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  aplicarEfeitos, atendeFiltro, corpoNoFormato, idDoFiltro, lerConsulta, lerEmbeds, lerFiltros, linhasAfetadas, substituirIds,
+  aplicarEfeitos, atendeFiltro, consultarConhecidas, corpoNoFormato, idDoFiltro, lerConsulta, lerEmbeds, lerFiltros, linhasAfetadas, substituirIds,
   type EfeitoPendente,
 } from './postgrest';
 
@@ -89,5 +89,30 @@ describe('offline dos formulários — PostgREST', () => {
     const real = '22222222-2222-4222-8222-222222222222';
     expect(substituirIds({ p_item_id: prov, lista: [prov, 'x'], caminho: `/rest/v1/t?id=eq.${prov}` }, { [prov]: real }))
       .toEqual({ p_item_id: real, lista: [real, 'x'], caminho: `/rest/v1/t?id=eq.${real}` });
+  });
+});
+
+describe('consulta sem cópia exata: responde com o que o aparelho já guardou da tabela', () => {
+  const catalogo = (q: string) => lerConsulta(new URL(`https://x.supabase.co/rest/v1/alm_catalogo_itens?${q}`))!;
+  const conhecidas = [
+    { id: 'a', codigo_sap: '100', ativo: true, descricao: 'PARAFUSO' },
+    { id: 'b', codigo_sap: '200', ativo: true, descricao: 'PORCA' },
+    { id: 'a', codigo_sap: '100', ativo: true, descricao: 'PARAFUSO' }, // mesma linha em duas páginas guardadas
+    { id: 'c', codigo_sap: '100', ativo: false, descricao: 'PARAFUSO ANTIGO' },
+  ];
+
+  it('filtra pela consulta e não repete a linha que estava em duas cópias', () => {
+    const r = consultarConhecidas(conhecidas, catalogo('select=*&codigo_sap=eq.100&ativo=eq.true'), []);
+    expect(r).toEqual([{ id: 'a', codigo_sap: '100', ativo: true, descricao: 'PARAFUSO' }]);
+  });
+
+  it('inclui o que foi gravado offline e ainda não subiu', () => {
+    const efeitos: EfeitoPendente[] = [{ tabela: 'alm_catalogo_itens', tipo: 'insert', linhas: [{ id: 'n', codigo_sap: '300', ativo: true }] }];
+    expect(consultarConhecidas(conhecidas, catalogo('select=*&codigo_sap=eq.300&ativo=eq.true'), efeitos)).toEqual([{ id: 'n', codigo_sap: '300', ativo: true }]);
+  });
+
+  it('respeita a ordem pedida', () => {
+    const r = consultarConhecidas(conhecidas, catalogo('select=*&ativo=eq.true&order=codigo_sap.desc'), []);
+    expect(r.map(l => l.id)).toEqual(['b', 'a']);
   });
 });

@@ -33,11 +33,12 @@ import { createStore, del, get, keys, set, type UseStore } from 'idb-keyval';
 import { gerarUUID } from '../ids';
 import { estaOffline, pareceFalhaDeRede } from '../rede';
 import {
-  aplicarEfeitos, corpoNoFormato, idDoFiltro, lerConsulta, lerFiltros, linhasAfetadas, recursoRest, substituirIds, tocaConsulta,
+  aplicarEfeitos, consultarConhecidas, corpoNoFormato, idDoFiltro, lerConsulta, lerFiltros, linhasAfetadas, recursoRest, substituirIds, tocaConsulta,
   type EfeitoPendente, type Linha,
 } from './postgrest';
 import { configBucket, configRpc, configTabela, rpcDeLeitura } from './configFormularios';
 import { chamadaIdempotente } from './idempotencia';
+import { erroTransitorio, idsDaOperacao, precisaEsperar, servidorForaDoAr, virouRecusa } from './planoEnvio';
 
 // =====================================================================
 // Tipos
@@ -53,6 +54,8 @@ export type EstadoOperacao = 'pendente' | 'enviando' | 'erro';
 export interface OperacaoFila {
   id: string;
   usuarioId: string;
+  /** Nome (ou e-mail) de quem gravou — o login avisa de quem é o que ficou no aparelho. */
+  usuarioNome?: string | null;
   criadoEm: string;
   metodo: string;
   /** Caminho + query, relativo à URL do Supabase. */
@@ -83,9 +86,14 @@ export interface OperacaoFila {
 
 export interface ResultadoFila {
   enviadas: number;
+  /** Sem rede, ou servidor fora/sobrecarregado: o que falta sobe na próxima rodada, sozinho. */
   semRede: boolean;
-  /** Primeira operação recusada pelo servidor — a fila para nela. */
+  /** Primeira operação recusada pelo servidor. As que não dependem dela seguem subindo. */
   erro: { operacao: OperacaoFila; mensagem: string } | null;
+  /** Operações recusadas nesta rodada (ou já recusadas antes, na rodada automática). */
+  recusadas: number;
+  /** Operações que esperam uma recusa ser resolvida (dependem dela, ou são exclusões). */
+  aguardando: number;
 }
 
 // =====================================================================
@@ -203,17 +211,28 @@ export async function descartarOperacao(id: string): Promise<void> {
 // Utilidades de requisição
 // =====================================================================
 
-function usuarioDoToken(cabecalhos: Headers): string | null {
+function conteudoDoToken(cabecalhos: Headers): { sub?: string; email?: string; user_metadata?: { name?: string } } | null {
   const auth = cabecalhos.get('authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '');
   const partes = token.split('.');
   if (partes.length < 2) return null;
   try {
-    const json = JSON.parse(atob(partes[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return json.sub || null;
+    const base64 = partes[1].replace(/-/g, '+').replace(/_/g, '/');
+    // atob devolve bytes: decodifica como UTF-8 para o nome com acento.
+    const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     return null;
   }
+}
+
+function usuarioDoToken(cabecalhos: Headers): string | null {
+  return conteudoDoToken(cabecalhos)?.sub || null;
+}
+
+function nomeDoToken(cabecalhos: Headers): string | null {
+  const c = conteudoDoToken(cabecalhos);
+  return c?.user_metadata?.name?.trim() || c?.email || null;
 }
 
 function cabecalhosGuardaveis(cabecalhos: Headers): Record<string, string> {
@@ -308,8 +327,8 @@ async function efeitosDoUsuario(usuarioId: string): Promise<EfeitoPendente[]> {
   return (await operacoes()).filter(op => op.usuarioId === usuarioId && op.efeito).map(op => op.efeito!);
 }
 
-/** Tudo o que o aparelho conhece de uma tabela: cópias de leituras + inserções pendentes. */
-async function linhasConhecidas(usuarioId: string, tabela: string): Promise<Linha[]> {
+/** Linhas da tabela em todas as cópias de leitura guardadas (sem as gravações pendentes). */
+async function linhasGuardadas(usuarioId: string, tabela: string): Promise<Linha[]> {
   const prefixo = chaveGet(usuarioId, `${config!.urlSupabase}/rest/v1/${tabela}?`);
   const chaves = (await keys(banco())).filter((k): k is string => typeof k === 'string' && k.startsWith(prefixo));
   const linhas: Linha[] = [];
@@ -320,8 +339,13 @@ async function linhasConhecidas(usuarioId: string, tabela: string): Promise<Linh
       if (Array.isArray(corpo)) linhas.push(...corpo); else if (corpo && typeof corpo === 'object') linhas.push(corpo);
     } catch { /* ignora */ }
   }
+  return linhas;
+}
+
+/** Tudo o que o aparelho conhece de uma tabela: cópias de leituras + inserções pendentes. */
+async function linhasConhecidas(usuarioId: string, tabela: string): Promise<Linha[]> {
   const efeitos = await efeitosDoUsuario(usuarioId);
-  return aplicarEfeitos(linhas, { tabela, filtros: [], ordem: [], embeds: [] }, efeitos);
+  return aplicarEfeitos(await linhasGuardadas(usuarioId, tabela), { tabela, filtros: [], ordem: [], embeds: [] }, efeitos);
 }
 
 function comEfeitos(texto: string, url: URL, accept: string | null, efeitos: EfeitoPendente[]): { corpo: string; status: number } | null {
@@ -353,11 +377,13 @@ async function lerRest(url: URL, init: RequestInit, cabecalhos: Headers, usuario
     const guardada = await get<RespostaGuardada>(chaveGet(usuarioId, url.href), banco()).catch(() => undefined);
     const consulta = lerConsulta(url);
     if (!guardada) {
-      // Sem cópia, mas o registro pedido pode ter nascido offline (abrir o que acabou de criar).
-      if (consulta && efeitos.some(efeito => efeito.tabela === consulta.tabela)) {
-        const linhas = aplicarEfeitos([], consulta, efeitos);
-        if (linhas.length) {
-          const r = corpoNoFormato(linhas, accept);
+      // Sem cópia desta URL. Tabela de formulário: responde com o que o
+      // aparelho já guardou dela em outras leituras (ex.: a lista inteira do
+      // catálogo responde "este material já está cadastrado?").
+      if (consulta && configTabela(consulta.tabela)) {
+        const conhecidas = await linhasGuardadas(usuarioId, consulta.tabela).catch(() => [] as Linha[]);
+        if (conhecidas.length || efeitos.some(efeito => efeito.tabela === consulta.tabela)) {
+          const r = corpoNoFormato(consultarConhecidas(conhecidas, consulta, efeitos), accept);
           return respostaJson(r.corpo, r.status);
         }
       }
@@ -465,6 +491,7 @@ async function enfileirar(
   const base: OperacaoFila = {
     id: gerarUUID(),
     usuarioId,
+    usuarioNome: nomeDoToken(cabecalhos),
     criadoEm: agoraISO(),
     metodo,
     caminho: url.pathname + url.search,
@@ -573,7 +600,13 @@ async function gravar(
   const relogio = setTimeout(() => { esgotou = true; controle.abort(); }, alvo.tipo === 'upload' ? TEMPO_UPLOAD_MS : TEMPO_GRAVACAO_MS);
   initOriginal.signal?.addEventListener('abort', () => controle.abort());
   try {
-    return await config!.fetchReal(destino, { ...init, body: corpoEnvio, signal: controle.signal });
+    const resposta = await config!.fetchReal(destino, { ...init, body: corpoEnvio, signal: controle.signal });
+    // Servidor fora do ar (gateway sem resposta dele): guarda na fila em vez
+    // de devolver o erro — o preenchimento não se perde e sobe depois.
+    if (servidorForaDoAr(resposta.status)) {
+      return enfileirar(url, init, cabecalhos, usuarioId, alvo, embrulhada ? chave : undefined);
+    }
+    return resposta;
   } catch (erro) {
     if (!esgotou && !pareceFalhaDeRede(erro)) throw erro;
     // Mesma chave: se o servidor gravou e só a resposta se perdeu, o reenvio não duplica.
@@ -591,6 +624,18 @@ function tipoGravacaoRest(metodo: string, cabecalhos: Headers, url: URL): Operac
     return /resolution=/.test(prefer) || url.searchParams.has('on_conflict') ? 'upsert' : 'insert';
   }
   return null;
+}
+
+/** Arquivos de um DELETE do Storage: `remove()` manda `{ prefixes: [...] }` no corpo. */
+function arquivosDaRemocao(corpo: BodyInit | null | undefined, caminho: string | undefined): string[] {
+  if (caminho) return [decodeURIComponent(caminho)];
+  if (typeof corpo !== 'string') return [];
+  try {
+    const dados = JSON.parse(corpo);
+    return Array.isArray(dados?.prefixes) ? dados.prefixes.map(String) : [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -623,8 +668,13 @@ export async function fetchOffline(entrada: RequestInfo | URL, init: RequestInit
 
   const storage = url.pathname.match(/\/storage\/v1\/object\/(?!sign\/|public\/|authenticated\/|list\/|info\/)([^/]+)(\/.*)?$/);
   if (storage && configBucket(storage[1])) {
-    if (metodo === 'POST' && storage[2]) return gravar(url, init, cabecalhos, usuarioId, { tipo: 'upload', bucket: storage[1] });
-    if (metodo === 'DELETE') return gravar(url, init, cabecalhos, usuarioId, { tipo: 'remover-arquivo', bucket: storage[1] });
+    // Bucket compartilhado: só os arquivos das pastas do formulário entram na fila.
+    if (metodo === 'POST' && storage[2] && configBucket(storage[1], [decodeURIComponent(storage[2])])) {
+      return gravar(url, init, cabecalhos, usuarioId, { tipo: 'upload', bucket: storage[1] });
+    }
+    if (metodo === 'DELETE' && configBucket(storage[1], arquivosDaRemocao(init.body, storage[2]))) {
+      return gravar(url, init, cabecalhos, usuarioId, { tipo: 'remover-arquivo', bucket: storage[1] });
+    }
   }
   return cfg.fetchReal(entrada, init);
 }
@@ -655,7 +705,7 @@ export function sincronizandoFila(): boolean {
  */
 export async function sincronizarFilaOffline(opcoes: { automatico?: boolean } = {}): Promise<ResultadoFila> {
   while (rodada) {
-    if (opcoes.automatico) return { enviadas: 0, semRede: false, erro: null };
+    if (opcoes.automatico) return { ...RESULTADO_VAZIO };
     await rodada.catch(() => {});
   }
   rodada = executarRodada(!!opcoes.automatico);
@@ -668,17 +718,53 @@ export async function sincronizarFilaOffline(opcoes: { automatico?: boolean } = 
   }
 }
 
+const RESULTADO_VAZIO: ResultadoFila = { enviadas: 0, semRede: false, erro: null, recusadas: 0, aguardando: 0 };
+
+/** Envio que não responde no prazo vira "sem rede": a rodada não fica presa num fetch mudo. */
+async function enviarComPrazo(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const controle = new AbortController();
+  const relogio = setTimeout(() => controle.abort(), ms);
+  try {
+    return await config!.fetchReal(url, { ...init, signal: controle.signal });
+  } catch (erro) {
+    if (controle.signal.aborted) throw new TypeError('Failed to fetch (tempo esgotado no envio da fila)');
+    throw erro;
+  } finally {
+    clearTimeout(relogio);
+  }
+}
+
 async function executarRodada(automatico: boolean): Promise<ResultadoFila> {
-  const resultado: ResultadoFila = { enviadas: 0, semRede: false, erro: null };
+  const resultado: ResultadoFila = { ...RESULTADO_VAZIO };
   const cfg = config;
   if (!cfg) return resultado;
   let token = await cfg.obterToken().catch(() => null);
   if (!token) return { ...resultado, semRede: estaOffline() };
   const usuarioId = usuarioDoToken(new Headers({ authorization: `Bearer ${token}` }));
   const pendentes = (await operacoes()).filter(op => op.usuarioId === usuarioId);
-  if (automatico && pendentes[0]?.estado === 'erro') return { ...resultado, erro: { operacao: pendentes[0], mensagem: pendentes[0].erro || '' } };
+  // Ids do que foi recusado: só espera quem depende deles (e exclusões); o resto sobe.
+  const recusados = new Set<string>();
+  const marcarRecusa = (op: OperacaoFila, mensagem: string) => {
+    idsDaOperacao(op).forEach(id => recusados.add(id));
+    if (op.idProvisorio) recusados.add(op.idProvisorio);
+    recusados.add(op.id);
+    resultado.recusadas++;
+    if (!resultado.erro) resultado.erro = { operacao: op, mensagem };
+  };
 
   for (const inicial of pendentes) {
+    // Automática não insiste no que o servidor já recusou (espera o usuário), mas não para a fila por isso.
+    if (automatico && inicial.estado === 'erro') {
+      marcarRecusa(inicial, inicial.erro || '');
+      continue;
+    }
+    if (precisaEsperar(inicial, recusados)) {
+      idsDaOperacao(inicial).forEach(id => recusados.add(id));
+      if (inicial.idProvisorio) recusados.add(inicial.idProvisorio);
+      resultado.aguardando++;
+      if (inicial.estado === 'enviando') await gravarOperacao({ ...inicial, estado: 'pendente' });
+      continue;
+    }
     let op: OperacaoFila = { ...inicial, estado: 'enviando', tentativas: inicial.tentativas + 1 };
     await gravarOperacao(op);
     try {
@@ -694,11 +780,11 @@ async function executarRodada(automatico: boolean): Promise<ResultadoFila> {
         const embrulhada = op.tipo === 'rpc' && op.rpc && op.chaveIdempotencia && typeof corpo === 'string'
           ? chamadaIdempotente(caminho, op.rpc, corpo, op.chaveIdempotencia)
           : null;
-        const resposta = await cfg.fetchReal(`${cfg.urlSupabase}${embrulhada ? embrulhada.caminho : caminho}`, {
+        const resposta = await enviarComPrazo(`${cfg.urlSupabase}${embrulhada ? embrulhada.caminho : caminho}`, {
           method: op.metodo,
           headers: cabecalhos,
           body: embrulhada ? embrulhada.corpo : corpo,
-        });
+        }, op.tipo === 'upload' ? TEMPO_UPLOAD_MS : TEMPO_GRAVACAO_MS);
         if (resposta.ok) {
           if (op.idProvisorio) {
             const corpo = await resposta.json().catch(() => null);
@@ -718,6 +804,15 @@ async function executarRodada(automatico: boolean): Promise<ResultadoFila> {
           token = await cfg.renovarToken().catch(() => null);
           if (token) continue;
         }
+        // Servidor fora, sobrecarregado ou sem resposta: não é recusa. Fica
+        // pendente e sobe na próxima rodada, sem ninguém precisar apertar nada.
+        // Depois de muitas tentativas vira recusa, para alguém ver o motivo.
+        if (!virouRecusa(resposta.status, op.tentativas)) {
+          throw Object.assign(new TypeError(`Failed to fetch (servidor respondeu ${resposta.status}: ${mensagem})`), { transitorio: true });
+        }
+        if (erroTransitorio(resposta.status)) {
+          throw Object.assign(new Error(`O servidor respondeu ${resposta.status} em ${op.tentativas} tentativas: ${mensagem}`), { recusado: true });
+        }
         // Código de registro calculado offline colidiu: gera de novo, como o online faria.
         if (erro.code === '23505' && tentativasCodigo < 3) {
           const novo = await regenerarCodigo(op, mensagem);
@@ -734,11 +829,18 @@ async function executarRodada(automatico: boolean): Promise<ResultadoFila> {
       resultado.enviadas++;
     } catch (erro) {
       const mensagem = erro instanceof Error ? erro.message : String(erro);
-      const semRede = !(erro as { recusado?: boolean }).recusado && pareceFalhaDeRede(erro);
-      await gravarOperacao({ ...op, estado: semRede ? 'pendente' : 'erro', erro: semRede ? null : mensagem });
-      if (semRede) resultado.semRede = true;
-      else resultado.erro = { operacao: { ...op, estado: 'erro', erro: mensagem }, mensagem };
-      break;
+      const recusado = !!(erro as { recusado?: boolean }).recusado;
+      const semRede = !recusado && ((erro as { transitorio?: boolean }).transitorio || pareceFalhaDeRede(erro));
+      if (semRede) {
+        // Sem rede ou servidor fora: as próximas também não subiriam agora.
+        await gravarOperacao({ ...op, estado: 'pendente', erro: null });
+        resultado.semRede = true;
+        break;
+      }
+      // Recusa de verdade: guarda o motivo e segue com o que não depende desta.
+      const recusada: OperacaoFila = { ...op, estado: 'erro', erro: mensagem };
+      await gravarOperacao(recusada);
+      marcarRecusa(recusada, mensagem);
     }
   }
   return resultado;

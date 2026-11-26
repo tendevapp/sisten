@@ -13,6 +13,8 @@ import { Profile, Notification, Role } from '../types';
 import { resolverRotaNotificacao } from '../lib/notificationRouting';
 import AlertaNotificacoes, { tipoDoAviso, type ItemAviso } from './notifications/AlertaNotificacoes';
 import LeitorQrHeader from './LeitorQrHeader';
+import { confirmar } from '../lib/confirmar';
+import { decidirSaida, mensagemSaidaComPendencias, pendentesAposTentarEnviar } from '../lib/offline/saidaSegura';
 import {
   atualizarTituloAba, avisarNoDesktop, filtrarNovas, gravarIdsAlertados, gravarPrefsAviso,
   lerIdsAlertados, lerPrefsAviso, pedirPermissaoDesktop, permissaoDesktop, tocarBipe,
@@ -232,9 +234,28 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
     }
   };
 
-  const handleLogout = () => {
-    localDb.logout();
-    onUserChange();
+  const [saindo, setSaindo] = useState(false);
+  const handleLogout = async () => {
+    if (saindo) return;
+    setSaindo(true);
+    try {
+      // O que ficou no aparelho só sobe com este usuário: tenta enviar antes de sair.
+      const pendentes = await pendentesAposTentarEnviar(user.id);
+      if (decidirSaida(pendentes, 'manual') === 'confirmar') {
+        const sair = await confirmar({
+          titulo: 'Registros ainda não enviados',
+          mensagem: mensagemSaidaComPendencias(pendentes),
+          confirmarLabel: 'Sair mesmo assim',
+          cancelarLabel: 'Ficar conectado',
+          variante: 'perigo',
+        });
+        if (!sair) return;
+      }
+      await localDb.logout();
+      onUserChange();
+    } finally {
+      setSaindo(false);
+    }
   };
 
   const getRoleBadge = (role: string) => {
@@ -563,11 +584,12 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
               </button>
 
               <button
-                onClick={handleLogout}
-                className="flex w-full items-center px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-rose-950/20 text-left border-t border-gray-50 dark:border-slate-850"
+                onClick={() => void handleLogout()}
+                disabled={saindo}
+                className="flex w-full items-center px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-rose-950/20 text-left border-t border-gray-50 dark:border-slate-850 disabled:opacity-60"
               >
                 <LogOut className="mr-3 h-4 w-4 text-red-500" />
-                Sair
+                {saindo ? 'Enviando registros…' : 'Sair'}
               </button>
             </div>
           )}
