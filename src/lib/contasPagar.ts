@@ -32,6 +32,9 @@ export interface PartidaPagar {
   data_compensacao: string | null;
   tipo_documento: string | null;
   tipo_documento_descricao: string | null;
+  /** Saída de dinheiro: tipo marcado em cadastro_tipodoc.conta_como_pagamento
+   *  (ZP, KZ, FR, PI...) e documento sem estorno. Vem da view. */
+  eh_pagamento: boolean | null;
 }
 
 /** Compensada: tem documento de compensação ou data de compensação. */
@@ -45,10 +48,14 @@ export function saldoAberto(l: PartidaPagar): number {
   return estaCompensada(l) ? 0 : -(l.montante_moeda_doc || 0);
 }
 
-/** Valor pago: partida compensada com montante positivo (o pagamento em si). */
+/** Valor pago: o documento de pagamento em si (compensado, positivo, tipo de
+ *  pagamento e sem estorno). Antes toda partida compensada positiva contava,
+ *  e entravam em dobro a reorganização AB (fatura → partida nova que o ZP
+ *  paga), o lado positivo do parcelamento KS, notas de crédito e pagamentos
+ *  estornados — a Atlanta aparecia com R$ 9,27 mi pagos para R$ 2,85 mi reais. */
 export function valorPago(l: PartidaPagar): number {
   const v = l.montante_moeda_doc || 0;
-  return estaCompensada(l) && v > 0 ? v : 0;
+  return estaCompensada(l) && l.eh_pagamento === true && v > 0 ? v : 0;
 }
 
 export function nomeFornecedor(l: Pick<PartidaPagar, 'razao_social_fornecedor' | 'fornecedor'>): string {
@@ -139,7 +146,9 @@ export function agruparPorFaixa<T extends PartidaPagar>(linhas: T[], hoje: strin
       // Compensados: o pagamento mais recente primeiro.
       return faixa === 'compensado' ? vb.localeCompare(va) : va.localeCompare(vb);
     });
-    const total = itens.reduce((s, l) => s + (faixa === 'compensado' ? Math.abs(l.montante_moeda_doc || 0) : saldoAberto(l)), 0);
+    // Compensados somam só o pagamento: fatura e pagamento da mesma conta
+    // estão os dois compensados, e o módulo de cada um dobrava o valor.
+    const total = itens.reduce((s, l) => s + (faixa === 'compensado' ? valorPago(l) : saldoAberto(l)), 0);
     return { faixa, itens, total };
   });
 }
@@ -235,7 +244,25 @@ export interface GrupoFornecedor<T extends PartidaPagar = PartidaPagar> {
   proximoVencimento: string | null;
 }
 
-export type OrdemFornecedores = 'aberto' | 'fornecedor' | 'lancamentos' | 'valor' | 'vencidos';
+/** Quanto do montante do fornecedor já foi pago: pago ÷ (pago + saldo em
+ *  aberto). Crédito em aberto (saldo negativo) não entra no montante. `null`
+ *  quando não há nada pago nem a pagar. */
+export function percentualPago(g: { valorPago: number; saldoAberto: number }): number | null {
+  const montante = g.valorPago + Math.max(g.saldoAberto, 0);
+  return montante > 0.005 ? g.valorPago / montante : null;
+}
+
+/** Rótulo do percentual sem arredondar para cima nas pontas: 99,6% pago não
+ *  vira "100%", e 0,3% não vira "0%". */
+export function rotuloPercentualPago(p: number): string {
+  if (p <= 0) return '0%';
+  if (p >= 1) return '100%';
+  const n = Math.round(p * 100);
+  if (n === 0) return '<1%';
+  return `${Math.min(n, 99)}%`;
+}
+
+export type OrdemFornecedores ='aberto' | 'fornecedor' | 'lancamentos' | 'valor' | 'vencidos';
 
 export function agruparPorFornecedor<T extends PartidaPagar>(linhas: T[], hoje: string): GrupoFornecedor<T>[] {
   const mapa = new Map<string, GrupoFornecedor<T>>();

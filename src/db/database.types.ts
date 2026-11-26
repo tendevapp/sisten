@@ -1380,6 +1380,7 @@ export type Database = {
         Row: {
           categoria_modulo: string | null
           codigo: string
+          conta_como_pagamento: boolean
           created_at: string | null
           descricao_operacional: string | null
           tipo_documento: string
@@ -1388,6 +1389,7 @@ export type Database = {
         Insert: {
           categoria_modulo?: string | null
           codigo: string
+          conta_como_pagamento?: boolean
           created_at?: string | null
           descricao_operacional?: string | null
           tipo_documento: string
@@ -1396,6 +1398,7 @@ export type Database = {
         Update: {
           categoria_modulo?: string | null
           codigo?: string
+          conta_como_pagamento?: boolean
           created_at?: string | null
           descricao_operacional?: string | null
           tipo_documento?: string
@@ -17392,6 +17395,7 @@ export type Database = {
           documento_compras: string | null
           elemento_pep: string | null
           empresa: string | null
+          eh_pagamento: boolean | null
           estorno_com: string | null
           fornecedor: string | null
           id: number | null

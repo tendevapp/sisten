@@ -34,7 +34,7 @@ import KpiCard from '../components/charts/KpiCard';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import FiltrosSheet, { BotaoFiltros, CampoFiltro, classeCampoFiltro } from '../components/ui/FiltrosSheet';
 import {
-  AgendaVencimentosMobile, AtalhosSituacao, DetalheFornecedorSheet, ListaFornecedoresMobile, ResumoAbertoMobile,
+  AgendaVencimentosMobile, AtalhosSituacao, BarraPago, DetalheFornecedorSheet, ListaFornecedoresMobile, ResumoAbertoMobile,
 } from '../components/financeiro/ContasPagarMobile';
 import {
   TableShell, TableHeadRow, TableBody, SortableTh, Td, TableSkeleton, TableEmpty, TableFooter, TableDesktop,
@@ -115,7 +115,7 @@ export default function ContasPagar({ user }: ContasPagarProps) {
       while (true) {
         const { data, error: fetchError } = await supabase
           .from('vw_fbl1n_c_pagar_analise')
-          .select('id, numero_documento, empresa, razao_social_fornecedor, fornecedor, data_lancamento, vencimento_liquido, moeda_documento, montante_moeda_doc, doc_compensacao, data_compensacao, tipo_documento, tipo_documento_descricao')
+          .select('id, numero_documento, empresa, razao_social_fornecedor, fornecedor, data_lancamento, vencimento_liquido, moeda_documento, montante_moeda_doc, doc_compensacao, data_compensacao, tipo_documento, tipo_documento_descricao, eh_pagamento')
           .order('id', { ascending: true })
           .range(from, from + pageSize - 1);
         if (fetchError) throw fetchError;
@@ -682,6 +682,7 @@ export default function ContasPagar({ user }: ContasPagarProps) {
                     <SortableTh col="lancamentos" label="Qtd. Lançamentos" align="center" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />
                     <SortableTh col="aberto" label="Total em Aberto" align="right" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />
                     <SortableTh col="valor" label="Montante Pago" align="right" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />
+                    <th className="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400" title="Pago ÷ (pago + em aberto)">% Pago</th>
                     <th className="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Status Geral</th>
                   </TableHeadRow>
                   <TableBody>
@@ -747,6 +748,9 @@ export default function ContasPagar({ user }: ContasPagarProps) {
                               {group.valorPago > 0 ? formatBRL(group.valorPago) : <span className="text-slate-500 font-normal">—</span>}
                             </Td>
                             <Td>
+                              <BarraPago g={group} className="w-32" />
+                            </Td>
+                            <Td>
                               <div className="flex flex-wrap items-center gap-1.5">
                                 {group.qtdVencidos > 0 && (
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/50">
@@ -770,7 +774,7 @@ export default function ContasPagar({ user }: ContasPagarProps) {
                           {/* Linhas Filhas: Detalhes dos Lançamentos do Fornecedor quando Expandido */}
                           {isExpanded && (
                             <tr>
-                              <td colSpan={5} className="p-0 border-b-2 border-emerald-500/40 bg-slate-50/70 dark:bg-slate-950/60">
+                              <td colSpan={6}className="p-0 border-b-2 border-emerald-500/40 bg-slate-50/70 dark:bg-slate-950/60">
                                 <div className="py-2.5 px-4 sm:px-8 border-l-4 border-emerald-500">
                                   <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider flex items-center justify-between">
                                     <span>Detalhes das Partidas — {group.nome} ({group.itens.length} lançamento(s))</span>

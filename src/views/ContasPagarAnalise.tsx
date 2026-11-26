@@ -18,7 +18,7 @@ import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import { TableShell, TableHeadRow, TableBody, Td, TableCards, TableDesktop } from '../components/ui/DataTable';
 import FiltrosSheet, { BotaoFiltros, CampoFiltro, classeCampoFiltro } from '../components/ui/FiltrosSheet';
 import { LinhaPartida } from '../components/financeiro/ContasPagarMobile';
-import { estaCompensada, hojeISO, somarDias } from '../lib/contasPagar';
+import { estaCompensada, hojeISO, somarDias, valorPago } from '../lib/contasPagar';
 import type { PartidaSimulacao } from '../lib/simulacaoAtraso';
 import SimulacaoAtrasoModal from '../components/financeiro/SimulacaoAtrasoModal';
 import { useTelaEstreita } from '../lib/useTelaEstreita';
@@ -60,7 +60,7 @@ function estaAberta(l: Fbl1nAnaliseLinha): boolean {
 
 /** Um lançamento pertence à série `metric` do gráfico/legenda? */
 function itemMatchesMetric(l: Fbl1nAnaliseLinha, metric: ModalMetric, hoje: string): boolean {
-  if (metric === 'pago') return estaCompensada(l) && (l.montante_moeda_doc || 0) > 0;
+  if (metric === 'pago') return valorPago(l) > 0;
   if (metric === 'aberto') return estaAberta(l);
   if (!estaAberta(l)) return false;
   const vencido = !!l.vencimento_liquido && l.vencimento_liquido < hoje;
@@ -184,7 +184,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       let from = 0;
       while (true) {
         const { data, error: fetchError } = await (supabase.from as any)('vw_fin_fbl1n_analise_deduplicada')
-          .select('id, numero_documento, fornecedor, empresa, razao_social_fornecedor, montante_moeda_doc, moeda_documento, referencia, parcela, doc_compensacao, data_compensacao, data_pagamento, vencimento_liquido, data_lancamento, tipo_documento_categoria_modulo, tipo_documento_descricao, tipo_documento')
+          .select('id, numero_documento, fornecedor, empresa, razao_social_fornecedor, montante_moeda_doc, moeda_documento, referencia, parcela, doc_compensacao, data_compensacao, data_pagamento, vencimento_liquido, data_lancamento, tipo_documento_categoria_modulo, tipo_documento_descricao, tipo_documento, eh_pagamento')
           .order('id', { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
         if (fetchError) throw fetchError;
@@ -296,8 +296,8 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
     const vencidas = abertas.filter(l => l.vencimento_liquido && l.vencimento_liquido < hoje);
     const totalVencido = vencidas.reduce((sum, l) => sum + exposicao(l), 0);
 
-    const pagas = filtradas.filter(l => estaCompensada(l) && (l.montante_moeda_doc || 0) > 0);
-    const totalPago = pagas.reduce((sum, l) => sum + (l.montante_moeda_doc || 0), 0);
+    const pagas = filtradas.filter(l => valorPago(l) > 0);
+    const totalPago = pagas.reduce((sum, l) => sum + valorPago(l), 0);
 
     return {
       totalAberto,
@@ -347,9 +347,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       const rawVal = l.montante_moeda_doc || 0;
 
       if (estaCompensada(l)) {
-        if (rawVal > 0) {
-          entry.pago += rawVal;
-        }
+        entry.pago += valorPago(l);
       } else {
         // Exposição com sinal, igual aos KPIs e aos demais gráficos: estornos de
         // fornecedor e notas de crédito (montante positivo) abatem o saldo em
@@ -535,7 +533,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       );
 
       if (isComp) {
-        if (rawVal > 0) {
+        if (valorPago(item) > 0) {
           const name = item.razao_social_fornecedor || item.fornecedor || 'Sem fornecedor';
           let group = map.get(name);
           if (!group) {

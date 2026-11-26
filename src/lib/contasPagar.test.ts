@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   agruparPorFaixa, agruparPorFornecedor, diasAte, estaCompensada, faixaVencimento, hojeISO, ordenarFornecedores,
-  passaAtalho, resumirAberto, resumirSelecao, rotuloRelativo, saldoAberto, somarDias, type PartidaPagar,
+  passaAtalho, percentualPago, resumirAberto, resumirSelecao, rotuloPercentualPago, rotuloRelativo, saldoAberto, somarDias,
+  valorPago, type PartidaPagar,
 } from './contasPagar';
 
 const HOJE = '2026-11-06';
@@ -11,7 +12,8 @@ function p(over: Partial<PartidaPagar>): PartidaPagar {
   return {
     id: seq, numero_documento: String(5100000000 + seq), empresa: 'TEN1', razao_social_fornecedor: 'WEG S.A.', fornecedor: '100231',
     data_lancamento: '2026-10-01', vencimento_liquido: '2026-11-20', montante_moeda_doc: -1000,
-    doc_compensacao: null, data_compensacao: null, tipo_documento: 'KR', tipo_documento_descricao: 'Fatura fornecedor', ...over,
+    doc_compensacao: null, data_compensacao: null, tipo_documento: 'KR', tipo_documento_descricao: 'Fatura fornecedor',
+    eh_pagamento: false, ...over,
   };
 }
 
@@ -48,12 +50,50 @@ describe('saldo com sinal', () => {
   });
 });
 
+describe('valor pago só conta o documento de pagamento', () => {
+  it('reorganização AB, parcelamento KS e nota de crédito não somam como pago', () => {
+    // Caso Atlanta: a fatura RE é compensada num AB, que cria a partida
+    // líquida que o ZP paga. Só o ZP é dinheiro saindo.
+    const linhas = [
+      p({ tipo_documento: 'RE', montante_moeda_doc: -134256.93, doc_compensacao: '6500001741' }),
+      p({ tipo_documento: 'AB', montante_moeda_doc: 134256.93, doc_compensacao: '6500001741' }),
+      p({ tipo_documento: 'AB', montante_moeda_doc: -128295.92, doc_compensacao: '3100002170' }),
+      p({ tipo_documento: 'ZP', montante_moeda_doc: 128295.92, doc_compensacao: '3100002170', eh_pagamento: true }),
+      p({ tipo_documento: 'KS', montante_moeda_doc: 237020.17, doc_compensacao: '5090000006' }),
+      p({ tipo_documento: 'RE', montante_moeda_doc: 113377.59, doc_compensacao: '6500002632' }),
+    ];
+    expect(linhas.map(valorPago).filter(v => v > 0)).toEqual([128295.92]);
+    expect(resumirAberto(linhas, HOJE)).toMatchObject({ pago: 128295.92, qtdPagas: 1 });
+    expect(agruparPorFornecedor(linhas, HOJE)[0]).toMatchObject({ valorPago: 128295.92, qtdCompensados: 6 });
+  });
+  it('pagamento estornado vem da view sem a marca e não soma', () => {
+    expect(valorPago(p({ tipo_documento: 'ZP', montante_moeda_doc: 251224.85, doc_compensacao: '3100001197', eh_pagamento: false }))).toBe(0);
+    expect(valorPago(p({ tipo_documento: 'ZP', montante_moeda_doc: 500, eh_pagamento: true }))).toBe(0); // ainda não compensado
+  });
+});
+
+describe('percentual pago do fornecedor', () => {
+  it('pago ÷ (pago + em aberto); crédito não entra no montante', () => {
+    expect(percentualPago({ valorPago: 2852494.86, saldoAberto: 3805000.78 })).toBeCloseTo(0.4285, 4);
+    expect(percentualPago({ valorPago: 900, saldoAberto: -300 })).toBe(1);
+    expect(percentualPago({ valorPago: 0, saldoAberto: 1000 })).toBe(0);
+    expect(percentualPago({ valorPago: 0, saldoAberto: 0 })).toBeNull();
+  });
+  it('rótulo não arredonda para 0% nem 100% nas pontas', () => {
+    expect(rotuloPercentualPago(0.996)).toBe('99%');
+    expect(rotuloPercentualPago(0.003)).toBe('<1%');
+    expect(rotuloPercentualPago(0.4285)).toBe('43%');
+    expect(rotuloPercentualPago(1)).toBe('100%');
+    expect(rotuloPercentualPago(0)).toBe('0%');
+  });
+});
+
 describe('faixas e atalhos', () => {
   const vencida = p({ vencimento_liquido: '2026-11-01' });
   const hoje = p({ vencimento_liquido: HOJE });
   const em7 = p({ vencimento_liquido: '2026-11-13' });
   const em8 = p({ vencimento_liquido: '2026-11-14' });
-  const paga = p({ vencimento_liquido: '2026-10-01', montante_moeda_doc: 500, doc_compensacao: '15' });
+  const paga = p({ vencimento_liquido: '2026-10-01', montante_moeda_doc: 500, doc_compensacao: '15', tipo_documento: 'ZP', eh_pagamento: true });
   const semVenc = p({ vencimento_liquido: null });
 
   it('classifica pelo vencimento', () => {
@@ -71,7 +111,7 @@ describe('faixas e atalhos', () => {
     expect(passaAtalho(paga, 'tudo', HOJE)).toBe(true);
   });
   it('agenda na ordem das faixas, compensados do mais recente', () => {
-    const paga2 = p({ vencimento_liquido: '2026-10-20', montante_moeda_doc: 200, doc_compensacao: '16' });
+    const paga2 = p({ vencimento_liquido: '2026-10-20', montante_moeda_doc: 200, doc_compensacao: '16', tipo_documento: 'ZP', eh_pagamento: true });
     const grupos = agruparPorFaixa([em8, paga, vencida, hoje, paga2], HOJE);
     expect(grupos.map(g => g.faixa)).toEqual(['vencido', 'hoje', '30d', 'compensado']);
     expect(grupos[3].itens).toEqual([paga2, paga]);
@@ -85,7 +125,7 @@ describe('resumo e fornecedores fecham entre si', () => {
     p({ razao_social_fornecedor: 'A', vencimento_liquido: '2026-11-08', montante_moeda_doc: -400 }),
     p({ razao_social_fornecedor: 'A', vencimento_liquido: '2026-11-08', montante_moeda_doc: 100, tipo_documento: 'KG' }),
     p({ razao_social_fornecedor: 'B', vencimento_liquido: '2026-12-30', montante_moeda_doc: -2000 }),
-    p({ razao_social_fornecedor: 'B', vencimento_liquido: '2026-10-01', montante_moeda_doc: 900, doc_compensacao: '15' }),
+    p({ razao_social_fornecedor: 'B', vencimento_liquido: '2026-10-01', montante_moeda_doc: 900, doc_compensacao: '15', tipo_documento: 'ZP', eh_pagamento: true }),
     p({ razao_social_fornecedor: 'B', vencimento_liquido: '2026-10-01', montante_moeda_doc: -900, doc_compensacao: '15' }),
   ];
 

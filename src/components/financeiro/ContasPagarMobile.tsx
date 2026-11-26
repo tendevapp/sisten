@@ -18,7 +18,8 @@ import Modal, { ModalBody, ModalHeader } from '../ui/Modal';
 import { TableCardRow, TableCards } from '../ui/DataTable';
 import { formatBRL, formatBRLCompacto } from '../../lib/format';
 import {
-  ROTULO_ATALHO, ROTULO_FAIXA, agruparPorFaixa, estaCompensada, estaVencida, nomeFornecedor, rotuloRelativo, saldoAberto,
+  ROTULO_ATALHO, ROTULO_FAIXA, agruparPorFaixa, estaCompensada, estaVencida, nomeFornecedor, percentualPago,
+  rotuloPercentualPago, rotuloRelativo, saldoAberto,
   type AtalhoSituacao, type GrupoFornecedor, type PartidaPagar, type ResumoAberto, type ResumoSelecao,
 } from '../../lib/contasPagar';
 
@@ -169,6 +170,28 @@ function SituacaoFornecedor({ g }: { g: GrupoFornecedor }) {
   return <span>tudo compensado</span>;
 }
 
+/** Barra de quanto do montante do fornecedor (pago + em aberto) já foi pago.
+ *  Usada na tabela do desktop e nos cartões do celular. */
+export function BarraPago({ g, className = '' }: { g: { valorPago: number; saldoAberto: number }; className?: string }) {
+  const p = percentualPago(g);
+  if (p === null) return <span className={`text-[11px] text-slate-500 ${className}`}>—</span>;
+  const rotulo = rotuloPercentualPago(p);
+  const montante = g.valorPago + Math.max(g.saldoAberto, 0);
+  return (
+    <span
+      className={`flex items-center gap-2 ${className}`}
+      title={`${formatBRL(g.valorPago)} pagos de ${formatBRL(montante)} (pago + em aberto)`}
+    >
+      <span className="relative h-1.5 min-w-[56px] flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700" aria-hidden="true">
+        <span className="absolute inset-y-0 left-0 rounded-full bg-emerald-500" style={{ width: `${Math.min(p, 1) * 100}%` }} />
+      </span>
+      <span className={`w-9 shrink-0 text-right text-[11px] font-bold tabular ${VERDE}`}>
+        {rotulo}<span className="sr-only"> pago do montante</span>
+      </span>
+    </span>
+  );
+}
+
 function ValorFornecedor({ g }: { g: GrupoFornecedor }) {
   if (Math.abs(g.saldoAberto) >= 0.005) {
     const credito = g.saldoAberto < 0;
@@ -201,6 +224,7 @@ export function ListaFornecedoresMobile({ grupos, onAbrir }: { grupos: GrupoForn
                 <span aria-hidden="true">·</span>
                 <span>{g.itens.length} doc.</span>
               </span>
+              <BarraPago g={g} className="mt-1.5 max-w-[200px]" />
             </span>
             <span className="shrink-0 text-right"><ValorFornecedor g={g} /></span>
             <ChevronRight className="h-4 w-4 shrink-0" style={{ color: 'var(--ink-muted)' }} aria-hidden="true" />
@@ -345,6 +369,7 @@ export function DetalheFornecedorSheet({ grupo, hoje, onClose }: { grupo: GrupoF
             </div>
           ))}
         </dl>
+        <BarraPago g={grupo} className="px-1" />
         {faixas.map(({ faixa, itens, total }) => {
           const recolhido = faixa === 'compensado' && !verCompensados;
           return (

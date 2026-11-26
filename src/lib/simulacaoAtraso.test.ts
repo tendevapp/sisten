@@ -11,7 +11,7 @@ const partida: PartidaSimulacao = {
   id: 1, numero_documento: '00017', fornecedor: '001', razao_social_fornecedor: 'Empresa A',
   parcela: '01', referencia: 'NF-01', empresa: 'TEN', data_lancamento: '2026-08-10', vencimento_liquido: '2026-11-16',
   moeda_documento: 'BRL', montante_moeda_doc: -1000, doc_compensacao: '—', data_compensacao: null,
-  tipo_documento: 'RE', tipo_documento_descricao: 'Fatura',
+  tipo_documento: 'RE', tipo_documento_descricao: 'Fatura', eh_pagamento: false,
 };
 
 describe('simulação de encargos da FBL1N', () => {
