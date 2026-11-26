@@ -503,59 +503,97 @@ export class PdfTextWriter {
       color: PDF_COLORS.cardBg,
     });
 
-    // Tag de Horário
-    const timeText = sanitizeText(`[${opts.time}]`);
-    this.page.drawText(timeText, {
-      x: MARGIN + 8,
-      y: cardY + cardHeight - 12.5,
-      size: 8,
-      font: this.fontBold,
-      color: PDF_COLORS.primaryNavy,
-    });
-
-    // Tag de Setor
-    const sectorText = sanitizeText(`[${opts.sector}]`);
-    this.page.drawText(sectorText, {
-      x: MARGIN + 48,
-      y: cardY + cardHeight - 12.5,
-      size: 8,
-      font: this.fontBold,
-      color: PDF_COLORS.accentBlue,
-    });
-
-    // Vigilante
-    if (opts.vigilante) {
-      const vigText = sanitizeText(`Vigilante: ${opts.vigilante}`);
-      this.page.drawText(vigText, {
-        x: MARGIN + 160,
-        y: cardY + cardHeight - 12.5,
-        size: 7.5,
-        font: this.font,
-        color: PDF_COLORS.mutedLabel,
-      });
-    }
-
-    // Severidade Badge à Direita
+    // Severidade Badge a Direita (calculado antes para reservar limite horizontal)
+    let rightLimit = MARGIN + this.contentWidth - 8;
     if (opts.severity) {
       const isAlerta = opts.severity === 'ALERTA' || opts.severity === 'GRAVE';
       const sevColors = isAlerta ? PDF_COLORS.badgeAmberText : PDF_COLORS.badgeBlueText;
       const sevBg = isAlerta ? PDF_COLORS.badgeAmberBg : PDF_COLORS.badgeBlueBg;
       const sevText = sanitizeText(opts.severity);
       const sevWidth = this.fontBold.widthOfTextAtSize(sevText, 7) + 8;
+      const sevX = MARGIN + this.contentWidth - sevWidth - 8;
+      rightLimit = sevX - 6;
 
       this.page.drawRectangle({
-        x: MARGIN + this.contentWidth - sevWidth - 8,
+        x: sevX,
         y: cardY + cardHeight - 14,
         width: sevWidth,
         height: 10,
         color: sevBg,
       });
       this.page.drawText(sevText, {
-        x: MARGIN + this.contentWidth - sevWidth - 4,
+        x: sevX + 4,
         y: cardY + cardHeight - 11.5,
         size: 7,
         font: this.fontBold,
         color: sevColors,
+      });
+    }
+
+    const truncarTexto = (texto: string, fonte: PDFFont, tamanho: number, larguraMax: number): string => {
+      if (fonte.widthOfTextAtSize(texto, tamanho) <= larguraMax) return texto;
+      let t = texto;
+      while (t.length > 1 && fonte.widthOfTextAtSize(`${t}...`, tamanho) > larguraMax) {
+        t = t.slice(0, -1);
+      }
+      return `${t}...`;
+    };
+
+    const headerY = cardY + cardHeight - 12.5;
+    let curX = MARGIN + 8;
+
+    // Tag de Horario
+    const timeText = sanitizeText(`[${opts.time}]`);
+    this.page.drawText(timeText, {
+      x: curX,
+      y: headerY,
+      size: 8,
+      font: this.fontBold,
+      color: PDF_COLORS.primaryNavy,
+    });
+    curX += this.fontBold.widthOfTextAtSize(timeText, 8) + 6;
+
+    // Tag de Setor (posicionada apos horario sem sobrepor vigilante ou badge)
+    const rawSector = sanitizeText(opts.sector);
+    const vigTextRaw = opts.vigilante ? sanitizeText(`Vigilante: ${opts.vigilante}`) : '';
+    const vigWidthRaw = vigTextRaw ? this.font.widthOfTextAtSize(vigTextRaw, 7.5) : 0;
+    const espacoDisponivel = Math.max(0, rightLimit - curX);
+    const sectorTextFull = `[${rawSector}]`;
+    const sectorWidthFull = this.fontBold.widthOfTextAtSize(sectorTextFull, 8);
+
+    const reservaVigilante = vigTextRaw
+      ? Math.min(vigWidthRaw + 8, espacoDisponivel * 0.45)
+      : 0;
+    const maxSectorWidth =
+      sectorWidthFull + (vigTextRaw ? vigWidthRaw + 8 : 0) <= espacoDisponivel
+        ? espacoDisponivel
+        : Math.max(40, espacoDisponivel - reservaVigilante);
+
+    const sectorText =
+      sectorWidthFull <= maxSectorWidth
+        ? sectorTextFull
+        : `[${truncarTexto(rawSector, this.fontBold, 8, Math.max(12, maxSectorWidth - this.fontBold.widthOfTextAtSize('[]', 8)))}]`;
+
+    if (curX < rightLimit) {
+      this.page.drawText(sectorText, {
+        x: curX,
+        y: headerY,
+        size: 8,
+        font: this.fontBold,
+        color: PDF_COLORS.accentBlue,
+      });
+      curX += this.fontBold.widthOfTextAtSize(sectorText, 8) + 8;
+    }
+
+    // Vigilante
+    if (vigTextRaw && rightLimit - curX > 24) {
+      const vigText = truncarTexto(vigTextRaw, this.font, 7.5, rightLimit - curX);
+      this.page.drawText(vigText, {
+        x: curX,
+        y: headerY,
+        size: 7.5,
+        font: this.font,
+        color: PDF_COLORS.mutedLabel,
       });
     }
 

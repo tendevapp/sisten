@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
+import { PdfTextWriter } from './core';
 import {
   gerarRelatorioGeralPortariaPdf,
   resumirAlcoolemiaSemExporPessoas,
@@ -194,5 +195,64 @@ describe('Portaria — PDF Geral Consolidado e Comprovante de Equipamentos', () 
     expect(pdf.bytes.length).toBeGreaterThan(1000);
     const loaded = await PDFDocument.load(pdf.bytes);
     expect(loaded.getPageCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  it('nao sobrepoe data/hora, setor, vigilante e badge no cabecalho de drawOccurrenceCard', async () => {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const writer = new PdfTextWriter(doc, font, fontBold, null);
+    const page = writer.getPage();
+
+    const chamadas: { text: string; x: number; endX: number }[] = [];
+    const origDrawText = page.drawText.bind(page);
+    vi.spyOn(page, 'drawText').mockImplementation((text, opts) => {
+      const f = opts?.font ?? font;
+      const size = opts?.size ?? 8;
+      const x = opts?.x ?? 0;
+      chamadas.push({ text, x, endX: x + f.widthOfTextAtSize(text, size) });
+      return origDrawText(text, opts);
+    });
+
+    writer.drawOccurrenceCard({
+      index: 1,
+      time: '25/11/2026 05:52:00',
+      sector: 'PORTARIA',
+      severity: 'INFO',
+      vigilante: 'RICARDO ANDRE DOS SANTOS SOUZA',
+      description: 'Registro de teste',
+    });
+
+    const tagHora = chamadas.find((c) => c.text === '[25/11/2026 05:52:00]')!;
+    const tagSetor = chamadas.find((c) => c.text === '[PORTARIA]')!;
+    const tagVig = chamadas.find((c) => c.text.startsWith('Vigilante:'))!;
+    const tagSev = chamadas.find((c) => c.text === 'INFO')!;
+
+    expect(tagHora).toBeDefined();
+    expect(tagSetor).toBeDefined();
+    expect(tagVig).toBeDefined();
+    expect(tagSev).toBeDefined();
+    expect(tagSetor.x).toBeGreaterThan(tagHora.endX);
+    expect(tagVig.x).toBeGreaterThan(tagSetor.endX);
+    expect(tagSev.x).toBeGreaterThan(tagVig.endX);
+
+    chamadas.length = 0;
+    writer.drawOccurrenceCard({
+      index: 2,
+      time: '25/11/2026 06:17:00',
+      sector: 'TRP-251126-ABCD - CAMINHAO ARTICULADO DE TRANSPORTE PESADO PLACA ABC1D23',
+      severity: 'ALERTA',
+      vigilante: 'NOME EXTREMAMENTE LONGO DE VIGILANTE DE PLANTAO NOTURNO PORTARIA PRINCIPAL',
+      description: 'Teste de truncamento sem colisao',
+    });
+
+    const hora2 = chamadas.find((c) => c.text === '[25/11/2026 06:17:00]')!;
+    const setor2 = chamadas.find((c) => c.text.startsWith('[TRP-'))!;
+    const vig2 = chamadas.find((c) => c.text.startsWith('Vigilante:'))!;
+    const sev2 = chamadas.find((c) => c.text === 'ALERTA')!;
+
+    expect(setor2.x).toBeGreaterThan(hora2.endX);
+    expect(vig2.x).toBeGreaterThan(setor2.endX);
+    expect(sev2.x).toBeGreaterThan(vig2.endX);
   });
 });
