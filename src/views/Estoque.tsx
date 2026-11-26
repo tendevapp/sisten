@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Boxes, Search, FileSpreadsheet, AlertCircle, RefreshCw, Filter,
   Package, DollarSign, Layers, Warehouse, ChevronDown, SlidersHorizontal,
-  Clock, PackageCheck, X
+  Clock, PackageCheck, X, ArrowUpDown, ArrowDown, ArrowUp
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -318,6 +318,17 @@ export default function Estoque({ user }: EstoqueProps) {
   const toggleSort = (col: string) => {
     if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortColumn(col); setSortDir('asc'); }
+  };
+
+  const sortValorAtivo = sortColumn === 'valor_total';
+
+  const toggleSortValorMobile = () => {
+    if (!sortValorAtivo) {
+      setSortColumn('valor_total');
+      setSortDir('desc');
+    } else {
+      setSortDir(d => (d === 'desc' ? 'asc' : 'desc'));
+    }
   };
 
   // KPIs.
@@ -686,9 +697,51 @@ export default function Estoque({ user }: EstoqueProps) {
         <div className="space-y-4">
           {/* A contagem "exibindo X de Y" ficava aqui e no rodapé; agora só no
               rodapé, junto do controle que muda esse número. */}
-          <div className="flex items-center justify-end text-xs px-1 font-bold" style={{ color: 'var(--ink-muted)' }}>
-            {/* Personalizar colunas */}
-            <div className="relative">
+          <div className="flex items-center justify-between lg:justify-end gap-2 text-xs px-1 font-bold" style={{ color: 'var(--ink-muted)' }}>
+            {/* Ordenacao por valor no mobile (desktop usa cabecalho da tabela) */}
+            <div className="inline-flex items-center gap-1.5 lg:hidden">
+              <button
+                type="button"
+                onClick={toggleSortValorMobile}
+                aria-pressed={sortValorAtivo}
+                className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-xs font-semibold shadow-sm transition-all cursor-pointer active:scale-95 whitespace-nowrap ${
+                  sortValorAtivo
+                    ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                {sortValorAtivo ? (
+                  sortDir === 'desc' ? (
+                    <ArrowDown className="h-3.5 w-3.5 shrink-0" />
+                  ) : (
+                    <ArrowUp className="h-3.5 w-3.5 shrink-0" />
+                  )
+                ) : (
+                  <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                )}
+                <span>
+                  {sortValorAtivo
+                    ? sortDir === 'desc'
+                      ? 'Valor: Maior → Menor'
+                      : 'Valor: Menor → Maior'
+                    : 'Ordenar por valor'}
+                </span>
+              </button>
+              {sortValorAtivo && (
+                <button
+                  type="button"
+                  onClick={() => { setSortColumn(null); setSortDir('asc'); }}
+                  aria-label="Limpar ordenação por valor"
+                  title="Voltar à ordenação padrão"
+                  className="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-all cursor-pointer active:scale-95"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Personalizar colunas (apenas desktop) */}
+            <div className="relative hidden lg:block">
               {showColMenu && (
                 <div className="fixed inset-0 z-20" onClick={() => setShowColMenu(false)} />
               )}
