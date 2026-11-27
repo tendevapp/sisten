@@ -20,7 +20,6 @@ import {
   adicionarItensInventario, criarInventario, excluirInventario, listarInventarios, removerItemInventario, type InventarioRow,
 } from './inventarioCiclicoApi';
 import { ehDepositoExcluidoSaldo } from './almoxCatalogoApi';
-import { podeEditarFormulario } from './permissoesFormularios';
 import { hojeISO } from './recebimentoAlmox';
 
 /**
@@ -48,6 +47,15 @@ export function lerPreferenciasInventario(): PreferenciasInventario {
 
 export function gravarPreferenciasInventario(p: PreferenciasInventario): void {
   try { localStorage.setItem(CHAVE_PREFERENCIAS, JSON.stringify(p)); } catch { /* sem storage: só não lembra */ }
+}
+
+/**
+ * O inventário avulso aberto hoje por esta pessoa. Só o que ela criou: o admin
+ * pode editar o da colega, mas a contagem dele não entra no formulário dela
+ * (27/11: caiu no INV da Kemilly e respondeu "já está em contagem").
+ */
+export function inventarioAvulsoDaPessoa(lista: InventarioRow[], user: Pick<Profile, 'id'>, hoje: string): InventarioRow | undefined {
+  return lista.find((i) => i.status === 'aberto' && i.criterio === CRITERIO_QR && i.data === hoje && i.criado_por_id === user.id);
 }
 
 /** O que esta chamada gravou — para desfazer se a pessoa fechar sem contar. */
@@ -115,7 +123,7 @@ export async function prepararContagemDoMaterial(
 
   // 2) Senão, entra no inventário avulso do dia desta pessoa (ou abre um).
   const hoje = hojeISO();
-  const meu = lista.find((i) => aberto(i) && i.criterio === CRITERIO_QR && i.data === hoje && podeEditarFormulario(user, i));
+  const meu = inventarioAvulsoDaPessoa(lista, user, hoje);
   const itens = candidatos.map((c) => ({ material: c.material, deposito: c.deposito, classe: c.classe }));
   if (!continuar()) return { tipo: 'cancelado' };
   let inventarioId: string;
