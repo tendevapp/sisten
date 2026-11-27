@@ -50,6 +50,8 @@ import { buscarTudo } from '../lib/buscarTudo';
 import { TABELA_DA_TAREFA_PEQUENA, deveBaixarTabelaPequena } from '../lib/sincronizacaoPequenas';
 import { maisRecente, mesclarNotificacoes, precisaLeituraCompleta } from '../lib/notificacoesDelta';
 import { liberadoEm, type AdiamentoDownload } from '../lib/espalhamentoDownload';
+import { maiorIdMb51, mesclarMb51, planoMb51, type MetaMb51 } from '../lib/mb51Incremental';
+import { precisaBaixar } from '../lib/releituraForcada';
 import {
   STATUS_DERIVADOS_DO_ATRASO, alertaAtrasoComprador, diasUteisEntre, faixaAtrasoComprador, statusPorAtraso,
 } from '../lib/diasUteis';
@@ -165,6 +167,7 @@ class LocalDatabase {
   private contratoAnexosKey = 'sisten_contrato_anexos';
   private tabelaFreteKey = 'sisten_tabela_frete';
   private mb51Key = 'sisten_mb51';
+  private mb51MetaKey = 'sisten_mb51_meta';
   private camadasFifoKey = 'sisten_camadas_fifo';
   private giroEstoqueKey = 'sisten_giro_estoque';
   private reposicaoKey = 'sisten_reposicao';
@@ -4473,7 +4476,14 @@ class LocalDatabase {
     // ficava com a ZL0024 do primeiro download até alguém tocar em Atualizar
     // (o Inventário dizia "não está na ZL0024" para item com saldo).
     const markers = await this.fetchRemoteMarkers(force);
-    if (!force && !this.needsSync('estoque', this.estoqueKey, markers)) {
+    // Forçar (abrir o Balcão, Atualizar) também respeita o carimbo: a ZL0024 só
+    // muda por importação — ver lib/releituraForcada.ts (27/11/2026).
+    if (!precisaBaixar({
+      versaoMudou: this.needsSync('estoque', this.estoqueKey, markers),
+      forcar: force,
+      baixadoEm: this.getDatasetMeta('estoque')?.fetchedAt ?? null,
+      agora: Date.now(),
+    })) {
       return this.getEstoque();
     }
     try {
@@ -4524,14 +4534,36 @@ class LocalDatabase {
     return this.getStorageItem<MB51Classificado[]>(this.mb51Key, []);
   }
 
+  // `force` (Atualizar, depois de importar) não rebaixa tudo: confere o carimbo
+  // e baixa só as linhas novas — ver lib/mb51Incremental.ts (27/11/2026).
   public async fetchMb51(force = false): Promise<MB51Classificado[]> {
     if (!supabase) return this.getMb51();
-    if (!force && this.cache.has(this.mb51Key)) {
+    const temCache = this.cache.has(this.mb51Key);
+    if (!force && temCache) {
       return this.getMb51();
     }
     try {
+      const meta = this.getStorageItem<MetaMb51 | null>(this.mb51MetaKey, null);
+      const markers = await this.fetchRemoteMarkers(true).catch(() => null);
+      const versaoRemota = markers?.get('mb51_mov_estoque')?.version ?? null;
+      const plano = planoMb51({ temCache, meta, versaoRemota, agora: Date.now() });
+      if (plano === 'usar_cache') return this.getMb51();
+
+      if (plano === 'delta' && meta) {
+        const novas = await this.fetchAllPorChave<MB51Classificado>('vw_mb51_classificado', 'id', q => q.gt('id', meta.maiorId));
+        const juntas = mesclarMb51(this.getMb51(), novas);
+        const { count, error } = await supabase.from('vw_mb51_classificado').select('id', { count: 'exact', head: true });
+        // Contagem diferente: alguma linha saiu (ou o delta falhou) — baixa tudo abaixo.
+        if (!error && count === juntas.length) {
+          this.setStorageItem(this.mb51Key, juntas);
+          this.setStorageItem<MetaMb51>(this.mb51MetaKey, { versao: versaoRemota, maiorId: maiorIdMb51(juntas), completoEm: meta.completoEm });
+          return juntas;
+        }
+      }
+
       const rows = await this.fetchAllPorChave<MB51Classificado>('vw_mb51_classificado', 'id');
       this.setStorageItem(this.mb51Key, rows);
+      this.setStorageItem<MetaMb51>(this.mb51MetaKey, { versao: versaoRemota, maiorId: maiorIdMb51(rows), completoEm: new Date().toISOString() });
       return rows;
     } catch (err) {
       console.warn('Falha ao buscar as movimentações de estoque (MB51); usando cache local.', err);

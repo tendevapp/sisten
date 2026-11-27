@@ -17,7 +17,7 @@ import { localDb } from '../db/localDb';
 import { normalizeCode } from './almoxarifado';
 import { chaveItem, itemEncerrado, montarCandidatos, type CriterioCurva, type ItemInventario } from './inventarioCiclico';
 import {
-  adicionarItensInventario, criarInventario, excluirInventario, listarInventarios, removerItemInventario, type InventarioRow,
+  adicionarItensInventario, buscarInventario, criarInventario, excluirInventario, listarInventariosAbertos, removerItemInventario, type InventarioRow,
 } from './inventarioCiclicoApi';
 import { ehDepositoExcluidoSaldo } from './almoxCatalogoApi';
 import { hojeISO } from './recebimentoAlmox';
@@ -67,6 +67,7 @@ export interface CriadoPeloAtalho {
 }
 
 export type ResultadoPreparoContagem =
+  /** `inventarios`: só os abertos (a lista inteira pesava ~380 KB por leitura). */
   | { tipo: 'pronto'; inventario: InventarioRow; item: ItemInventario; inventarios: InventarioRow[]; criado: CriadoPeloAtalho | null }
   /** O item está em contagem aberta no inventário de outra pessoa. */
   | { tipo: 'de_outro'; inventario: InventarioRow; inventarios: InventarioRow[] }
@@ -110,7 +111,7 @@ export async function prepararContagemDoMaterial(
   const doAlvo = (i: ItemInventario) => chaves.has(chaveItem(i.material, i.deposito));
   const aberto = (inv: InventarioRow) => inv.status === 'aberto';
 
-  let lista = await listarInventarios();
+  let lista = await listarInventariosAbertos();
 
   // 1) Já existe contagem em aberto deste item (de qualquer inventário): vai direto a ela.
   for (const inv of lista.filter(aberto)) {
@@ -145,7 +146,7 @@ export async function prepararContagemDoMaterial(
     novas = new Set(itens.map((i) => chaveItem(i.material, i.deposito)));
   }
 
-  lista = await listarInventarios();
+  lista = await listarInventariosAbertos();
   const inv = lista.find((i) => i.id === inventarioId);
   // Se já foi contado e encerrado hoje, devolve o resultado dele.
   const item = inv?.itens.find((i) => doAlvo(i) && !itemEncerrado(i)) ?? inv?.itens.find(doAlvo);
@@ -164,7 +165,7 @@ export async function prepararContagemDoMaterial(
  * inventário foi aberto por ele e ficou vazio, exclui. Item com contagem fica.
  */
 export async function desfazerAtalhoSemContagem(criado: CriadoPeloAtalho, user: Profile): Promise<void> {
-  const inv = (await listarInventarios()).find((i) => i.id === criado.inventarioId);
+  const inv = await buscarInventario(criado.inventarioId);
   if (!inv) return;
   const semContagem = inv.itens.filter((i) => criado.itemIds.includes(i.id) && i.contagens.length === 0);
   for (const item of semContagem) await removerItemInventario(item.id);

@@ -69,6 +69,7 @@ import { gravarPreferenciasInventario, lerPreferenciasInventario, prepararContag
 import { confirmar } from '../../lib/confirmar';
 import { chavePosicao, grupoDoRoteiro, indexarPosicoes, ordenarPorRoteiro } from '../../lib/inventarioRoteiro';
 import { separarPosicoes } from '../../lib/gembaEndereco';
+import { aplicarInventarioRelido } from '../../lib/inventarioAtualizacaoLocal';
 import { descreverPosicao } from '../../lib/gembaLayout';
 
 // Gemba 2D numa janela por cima da lista/contagem — só baixa quando alguém abre o mapa.
@@ -195,6 +196,19 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
     await historico;
   }, [toast]);
 
+  // Depois de contar/remover/concluir dentro de um inventário: relê só ele
+  // (a lista inteira eram ~380 KB por contagem — ver inventarioAtualizacaoLocal).
+  const recarregarInventario = useCallback(async (id: string) => {
+    try {
+      const relido = await buscarInventario(id);
+      if (!relido) { await recarregarInventarios(); return; }
+      setInventarios((lista) => aplicarInventarioRelido(lista, null, relido).inventarios);
+      setHistoricoCompleto((h) => aplicarInventarioRelido([], h, relido).historico);
+    } catch (err: any) {
+      toast.error(err?.message || 'Não foi possível atualizar o inventário.');
+    }
+  }, [recarregarInventarios, toast]);
+
   const recarregar = useCallback(async (forcar = false) => {
     setLoading(true);
     try {
@@ -232,7 +246,8 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
         toast.error(`Item ${codigo} não está na ZL0024 — não há saldo para inventariar.`);
         return;
       }
-      setInventarios(r.inventarios);
+      // O atalho devolve só os abertos: troca eles na lista, sem perder os concluídos.
+      setInventarios((lista) => r.inventarios.reduce((acc, inv) => aplicarInventarioRelido(acc, null, inv).inventarios, lista));
       if (r.tipo === 'offline') {
         toast.info('Contagem guardada sem rede. Ela aparece aqui quando sincronizar.');
         return;
@@ -343,7 +358,7 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
           onNavigate={onNavigate}
           abrirContagem={abrirContagem}
           onVoltar={() => { setAbertoId(null); setAbrirContagem(null); }}
-          onRecarregar={recarregarInventarios}
+          onRecarregar={() => recarregarInventario(aberto.id)}
           onAdicionar={() => setNovo({ inventario: aberto })}
           onExcluido={async () => { setAbertoId(null); await recarregarInventarios(); }}
         />

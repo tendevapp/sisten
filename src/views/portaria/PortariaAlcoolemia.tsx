@@ -444,7 +444,13 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
     if (!formSetor.trim() && m.setor) setFormSetor(m.setor);
   };
 
-  const abrirModalEdicao = (teste: PortAlcoolemiaTeste) => {
+  // A lista não traz a imagem da assinatura: busca antes de abrir (sem rede,
+  // abre sem ela — gravar não apaga a que já existe; ver semApagarAssinatura).
+  const comAssinatura = async (teste: PortAlcoolemiaTeste) =>
+    (await api.comAssinaturaAlcoolemia([teste]).catch(() => [teste]))[0];
+
+  const abrirModalEdicao = async (testeDaLista: PortAlcoolemiaTeste) => {
+    const teste = await comAssinatura(testeDaLista);
     setEditandoTeste(teste);
     setTipoVinculo(teste.tipo_vinculo);
     setRhSelecionado(null);
@@ -473,7 +479,8 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   };
 
   // Modal Dedicado de Aferição
-  const abrirModalAfericao = (teste: PortAlcoolemiaTeste) => {
+  const abrirModalAfericao = async (testeDaLista: PortAlcoolemiaTeste) => {
+    const teste = await comAssinatura(testeDaLista);
     setTesteParaAferir(teste);
     setAfericaoHorario(api.horaAgora());
     setAfericaoResultado(teste.resultado === 'PENDENTE' ? 'NEGATIVO' : teste.resultado);
@@ -696,7 +703,7 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
       }
       setExportarAberto(false);
       setPdfPreview({
-        gerar: () => gerarAlcoolemiaPeriodoPdf(lista, iv.inicio, iv.fim),
+        gerar: async () => gerarAlcoolemiaPeriodoPdf(await api.comAssinaturaAlcoolemia(lista), iv.inicio, iv.fim),
         titulo: `Livro de Alcoolemia - ${rotuloPeriodo('periodo', iv, hoje)}`,
       });
     } catch (err: any) {

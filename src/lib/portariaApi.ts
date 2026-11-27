@@ -15,6 +15,7 @@ import { buscarTudo } from './buscarTudo';
 import { comprimirImagemUpload } from './imageCompression';
 import { aceitaEntregaMaterial } from './portariaFotosOcorrencia';
 import { montarTesteBafometroPortaria, type PessoaParaBafometro } from './alcoolemiaLocal';
+import { faltaImagemAssinatura, mesclarAssinaturas, semApagarAssinatura } from './alcoolemiaAssinatura';
 import type {
   PortAlcoolemiaResultado,
   PortAlcoolemiaFoto,
@@ -2110,10 +2111,44 @@ export async function listarTestesAlcoolemia(filtros?: {
   return buscarTudo<PortAlcoolemiaTeste>((de, ate) => montarConsultaTestesAlcoolemia(filtros).order('id').range(de, ate));
 }
 
+/**
+ * Colunas da lista: todas menos a imagem da assinatura (`assinatura_sorteado`,
+ * ~56 KB por teste). O livro do mês trazia todas a cada leitura — 190 MB num
+ * dia de um só aparelho (Monitor de Desempenho, 27/11/2026). Quem mostra,
+ * edita ou imprime chama `comAssinaturaAlcoolemia`. Coluna nova na tabela
+ * entra aqui também.
+ */
+const COLUNAS_LISTA_ALCOOLEMIA = [
+  'id', 'codigo_formulario', 'numero_protocolo', 'data', 'horario', 'turno', 'tipo_vinculo', 'pessoa_id',
+  'matricula', 'nome', 'empresa', 'cargo_funcao', 'setor_area', 'documento', 'resultado', 'valor_medido',
+  'etilometro_codigo', 'vigilante', 'testemunha', 'observacoes', 'criado_por', 'criado_por_nome',
+  'excluido_em', 'excluido_por', 'created_at', 'updated_at', 'razao_teste', 'local_teste', 'examinador_nome',
+  'examinador_cargo', 'termo_assinado_fisicamente', 'termo_impresso_em', 'fotos', 'assinatura_sorteado_em',
+  'local_afericao',
+].join(', ');
+
+/** Completa a imagem da assinatura dos testes vindos da lista (só os assinados). */
+export async function comAssinaturaAlcoolemia<T extends PortAlcoolemiaTeste>(testes: T[]): Promise<T[]> {
+  const ids = testes.filter(faltaImagemAssinatura).map((t) => t.id);
+  if (ids.length === 0) return testes;
+  const imagens = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 40) {
+    const { data, error } = await (supabase as any)
+      .from('port_alcoolemia_testes')
+      .select('id, assinatura_sorteado')
+      .in('id', ids.slice(i, i + 40));
+    if (error) throw new Error(error.message);
+    for (const r of (data || []) as { id: string; assinatura_sorteado: string | null }[]) {
+      if (r.assinatura_sorteado) imagens.set(r.id, r.assinatura_sorteado);
+    }
+  }
+  return mesclarAssinaturas(testes, imagens);
+}
+
 function montarConsultaTestesAlcoolemia(filtros?: Parameters<typeof listarTestesAlcoolemia>[0]): any {
   let query: any = (supabase as any)
     .from('port_alcoolemia_testes')
-    .select('*');
+    .select(COLUNAS_LISTA_ALCOOLEMIA);
 
   query = apenasVigentes(query, filtros?.incluirExcluidos);
 
@@ -2330,7 +2365,8 @@ export async function atualizarTesteAlcoolemia(
   const { data, error } = await (supabase as any)
     .from('port_alcoolemia_testes')
     .update({
-      ...dados,
+      // Tela aberta a partir da lista (sem a imagem) não apaga a assinatura.
+      ...semApagarAssinatura(dados),
       ...(dados.fotos ? { fotos: semUrlFotos(dados.fotos) } : {}),
       updated_at: new Date().toISOString(),
     } as any)

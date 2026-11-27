@@ -26,6 +26,7 @@ import {
   type Intervalo, type ModoPeriodo,
 } from '../../lib/alcoolemiaPeriodo';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
+import { testeAssinado } from '../../lib/alcoolemiaAssinatura';
 import {
   ETILOMETRO_DO_LOCAL, ROTULO_LOCAL_AFERICAO, localDaAfericao, type LocalAfericaoAlcoolemia,
 } from '../../lib/alcoolemiaLocal';
@@ -405,7 +406,8 @@ export function EtilometroDoLocal({ local, codigo }: { local: LocalAfericaoAlcoo
  * Pendente sem assinatura não mostra nada: ainda é cedo para cobrar.
  */
 export function SeloAssinatura({ teste }: { teste: PortAlcoolemiaTeste }) {
-  if (teste.assinatura_sorteado) {
+  // A lista não traz a imagem, só o horário da assinatura.
+  if (testeAssinado(teste)) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
         <PenLine className="h-3 w-3" aria-hidden="true" /> Assinado pelo sorteado

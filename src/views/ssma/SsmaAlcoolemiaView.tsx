@@ -44,7 +44,7 @@ import {
 } from '../../components/ssma/AlcoolemiaPainel';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import CampoAssinatura from '../../components/portaria/CampoAssinatura';
-import { assinaturaColhida, assinaturaDoTeste, type AssinaturaColhida } from '../../lib/alcoolemiaAssinatura';
+import { assinaturaColhida, assinaturaDoTeste, testeAssinado, type AssinaturaColhida } from '../../lib/alcoolemiaAssinatura';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { etilometroAoRegistrar, localAoRegistrar } from '../../lib/alcoolemiaLocal';
@@ -205,7 +205,7 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
       }
       setExportarAberto(false);
       setPdfPreview({
-        gerar: () => gerarAlcoolemiaPeriodoPdf(lista, iv.inicio, iv.fim),
+        gerar: async () => gerarAlcoolemiaPeriodoPdf(await api.comAssinaturaAlcoolemia(lista), iv.inicio, iv.fim),
         titulo: `Livro de Alcoolemia - ${rotuloPeriodo('periodo', iv, hoje)}`,
       });
     } catch (err: any) {
@@ -286,7 +286,10 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
   const gruposPorDia = useMemo(() => agruparPorData(testesFiltrados), [testesFiltrados]);
 
   // Abertura do Modal de Execução do Termo
-  const abrirModalTermo = (teste: PortAlcoolemiaTeste) => {
+  // A lista não traz a imagem da assinatura: busca antes de abrir (sem rede,
+  // abre sem ela — gravar não apaga a que já existe; ver semApagarAssinatura).
+  const abrirModalTermo = async (testeDaLista: PortAlcoolemiaTeste) => {
+    const teste = (await api.comAssinaturaAlcoolemia([testeDaLista]).catch(() => [testeDaLista]))[0];
     setTesteAtivo(teste);
     setTermoRazao(teste.razao_teste || 'ALEATORIO');
     setTermoResultado(teste.resultado === 'PENDENTE' ? 'NEGATIVO' : teste.resultado);
@@ -367,7 +370,8 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
   const imprimirTermoOficial = (teste: PortAlcoolemiaTeste) => {
     setPdfPreview({
       gerar: async () => {
-        const pdf = await gerarTermoAlcoolemiaPdf(teste);
+        const [completo] = await api.comAssinaturaAlcoolemia([teste]);
+        const pdf = await gerarTermoAlcoolemiaPdf(completo);
         // Marcar termo impresso
         void api.atualizarTesteAlcoolemia(teste.id, {
           termo_impresso_em: new Date().toISOString(),
@@ -1025,7 +1029,7 @@ export default function SsmaAlcoolemiaView({ user, onNavigate }: Props) {
             </div>
 
             <CampoAssinatura
-              rotulo={testeAtivo.assinatura_sorteado ? 'Assinatura do colaborador (colhida na Portaria)' : 'Assinatura do colaborador'}
+              rotulo={testeAssinado(testeAtivo) ? 'Assinatura do colaborador (colhida na Portaria)' : 'Assinatura do colaborador'}
               valor={termoAssinatura?.img ?? null}
               assinadaEm={termoAssinatura?.em}
               nomeAssinante={testeAtivo.nome}

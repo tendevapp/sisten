@@ -133,8 +133,26 @@ export async function listarInventarios(limite = 200): Promise<InventarioRow[]> 
     .map(normalizar);
 }
 
+/**
+ * Só os inventários abertos, com itens e contagens — o que o atalho "Contar"
+ * e o QR precisam. A lista inteira (`listarInventarios`) eram ~380 KB por
+ * leitura, duas por clique (Monitor de Desempenho, 27/11/2026).
+ */
+export async function listarInventariosAbertos(): Promise<InventarioRow[]> {
+  const { data, error } = await (supabase.from as any)('alm_inventarios')
+    .select(`*, itens:alm_inventario_itens(*, contagens:alm_inventario_contagens(${COLUNAS_CONTAGEM}))`)
+    .eq('excluido', false)
+    .eq('status', 'aberto')
+    .order('data', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1000);
+  if (error) throw new Error(error.message);
+  return ((data || []) as any[]).map(normalizar);
+}
+
 /** O mínimo de cada inventário para o histórico (cobertura, "já contado", "já divergiu"). */
 export interface InventarioHistorico {
+  id?: string;
   data: string;
   itens: { material: string; deposito: string; status: StatusItemInventario; contagens: { id: string }[] }[];
 }
