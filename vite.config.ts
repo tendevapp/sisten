@@ -96,6 +96,22 @@ export default defineConfig(() => {
                 cacheName: 'sisten-shell',
                 networkTimeoutSeconds: 4,
                 expiration: { maxEntries: 5 },
+                // 27/11/2026: a Vercel desativou o projeto (402
+                // DEPLOYMENT_DISABLED) e o NetworkFirst entregou a página de
+                // erro dela — só cai no cache quando a rede FALHA, e uma
+                // resposta de erro não é falha. Erro da plataforma (cabeçalho
+                // x-vercel-error) ou do servidor (5xx) vira falha aqui, e o
+                // app abre pela cópia do aparelho; os dados vêm do Supabase.
+                // Sem cópia guardada, o navegador mostra a falha de rede.
+                // A função vai serializada para o sw.js: nada de fora dela.
+                plugins: [{
+                  fetchDidSucceed: async ({ response }) => {
+                    if (response.status >= 500 || response.headers.has('x-vercel-error')) {
+                      throw new Error(`Hospedagem respondeu ${response.status}`);
+                    }
+                    return response;
+                  },
+                }],
               },
             },
             // Checklist de Internos Mecânicos preenchido sem sinal (Qualidade
