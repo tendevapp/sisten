@@ -40,3 +40,11 @@ describe('Cadastro de Itens e Inventário gravam offline', () => {
     expect(r).toMatchObject({ __offline: true, status: 'pendente' });
   });
 });
+
+describe('Cadastro de Itens: material já cadastrado por outro aparelho junta, não trava', () => {
+  it('registra o índice do código SAP e a junção', () => {
+    const regra = configTabela('alm_catalogo_itens')?.duplicado;
+    expect(regra?.indice).toBe('uq_alm_catalogo_itens_sap_ativo');
+    expect(typeof regra?.mesclar).toBe('function');
+  });
+});

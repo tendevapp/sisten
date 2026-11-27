@@ -77,6 +77,10 @@ ficar sem prazo. Bucket compartilhado com telas que não são formulário entra 
 `request-attachments` só `almox-catalogo/`). Mudou o nome de uma RPC de
 formulário? Troque também no registro — o Inventário ficou sem offline quando
 passou para as funções `_auditado`.
+Registro que pode nascer em dois aparelhos com a mesma chave natural (o
+mesmo material no Cadastro de Itens) declara `duplicado` no registro: o envio
+junta com o que já está no servidor (`alm_catalogo_mesclar_offline`) em vez de
+deixar a recusa "duplicate key" presa na fila.
 
 Os checklists da Qualidade têm modo offline próprio (`src/lib/qualidadeOffline.ts`).
 

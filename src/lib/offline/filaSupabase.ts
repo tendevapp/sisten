@@ -39,7 +39,7 @@ import {
 import { configBucket, configRpc, configTabela, rpcDeLeitura } from './configFormularios';
 import { chamadaIdempotente } from './idempotencia';
 import { guardarArquivo, lerArquivo, type ArquivoGuardado } from './arquivoGuardado';
-import { erroTransitorio, idsDaOperacao, precisaEsperar, servidorForaDoAr, virouRecusa } from './planoEnvio';
+import { duplicadoParaMesclar, erroTransitorio, idsDaOperacao, precisaEsperar, servidorForaDoAr, virouRecusa } from './planoEnvio';
 import { criarPausaAuth, ehRenovacaoDeSessao, prazoDaRequisicao } from './redePatio';
 
 // =====================================================================
@@ -896,6 +896,15 @@ async function executarRodada(automatico: boolean): Promise<ResultadoFila> {
         if (erroTransitorio(resposta.status)) {
           throw Object.assign(new Error(`O servidor respondeu ${resposta.status} em ${op.tentativas} tentativas: ${mensagem}`), { recusado: true });
         }
+        // O mesmo registro já está no servidor (feito noutro aparelho): junta
+        // com ele em vez de travar; quem dependia do id daqui aponta para o de lá.
+        if (erro.code === '23505') {
+          const existente = await mesclarDuplicado(op, mensagem);
+          if (existente) {
+            await set(CHAVE_MAPA_IDS, { ...(await mapaIds()), [existente.idAparelho]: existente.idServidor }, banco());
+            break;
+          }
+        }
         // Código de registro calculado offline colidiu: gera de novo, como o online faria.
         if (erro.code === '23505' && tentativasCodigo < 3) {
           const novo = await regenerarCodigo(op, mensagem);
@@ -927,6 +936,15 @@ async function executarRodada(automatico: boolean): Promise<ResultadoFila> {
     }
   }
   return resultado;
+}
+
+async function mesclarDuplicado(op: OperacaoFila, mensagem: string): Promise<{ idAparelho: string; idServidor: string } | null> {
+  const regra = op.tabela ? configTabela(op.tabela)?.duplicado : undefined;
+  if (!regra) return null;
+  const linha = duplicadoParaMesclar(op, mensagem, regra.indice);
+  if (!linha) return null;
+  const idServidor = await regra.mesclar(linha, op.criadoEm);
+  return idServidor ? { idAparelho: linha.id, idServidor } : null;
 }
 
 async function regenerarCodigo(op: OperacaoFila, mensagem: string): Promise<OperacaoFila | null> {

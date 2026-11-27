@@ -122,3 +122,23 @@ export function pendenciasPorUsuario(ops: OperacaoPlano[]): PendenciaUsuario[] {
   }
   return [...mapa.values()];
 }
+
+/**
+ * Inclusão recusada pelo índice único do módulo (ex.: o mesmo material
+ * cadastrado offline em dois aparelhos): devolve a linha para a fila juntar
+ * com o registro que já está no servidor, em vez de travar como recusa.
+ * Só inclusão de uma linha com `id` — o id vira o do registro existente para
+ * quem depende dele (fotos adicionais).
+ */
+export function duplicadoParaMesclar(op: OperacaoPlano, mensagem: string, indice: string): Record<string, unknown> & { id: string } | null {
+  if (op.tipo !== 'insert' || !mensagem.includes(`"${indice}"`)) return null;
+  try {
+    const dados = JSON.parse(textoDoCorpo(op) || 'null');
+    const linhas = Array.isArray(dados) ? dados : dados ? [dados] : [];
+    if (linhas.length !== 1) return null;
+    const linha = linhas[0];
+    return linha && typeof linha === 'object' && typeof linha.id === 'string' && linha.id ? linha : null;
+  } catch {
+    return null;
+  }
+}

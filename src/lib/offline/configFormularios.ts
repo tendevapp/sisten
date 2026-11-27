@@ -26,6 +26,19 @@ export interface RegraCodigo {
   regenerar: (dados: any) => Promise<any | null>;
 }
 
+/**
+ * O mesmo registro criado em dois aparelhos (índice único que não é código
+ * gerado): no envio, `mesclar` completa o registro do servidor com o que o
+ * aparelho trouxe e devolve o id dele — quem dependia do id provisório
+ * (fotos adicionais) passa a apontar para o existente.
+ */
+export interface RegraDuplicado {
+  /** Nome do índice único, como aparece na mensagem de violação. */
+  indice: string;
+  /** Recebe a linha e quando foi feita no aparelho; devolve o id do registro existente (null = não achou). */
+  mesclar: (linha: Linha, feitoEm: string) => Promise<string | null>;
+}
+
 export interface ConfigTabela {
   /** Nome do formulário, para o usuário ("Chegada de transportes"). */
   rotulo: string;
@@ -34,6 +47,7 @@ export interface ConfigTabela {
   /** Nome da alteração ("saída") quando o patch diz o que ela é. */
   rotuloAtualizacao?: (patch: Linha) => string | null;
   codigo?: RegraCodigo;
+  duplicado?: RegraDuplicado;
 }
 
 export interface ConfigRpc {
@@ -191,10 +205,24 @@ const TABELAS: Record<string, ConfigTabela> = {
   alm_receb_nc: { rotulo: 'Recebimento — não conformidade', resumo: campos('codigo') },
   // O código SEM sai do trigger no banco, no envio. A regularização (doc SAP) não entra: é de escritório.
   alm_solicitacao_extra: { rotulo: 'Solicitação extraordinária de materiais', resumo: campos('codigo', 'tramo', 'projeto') },
-  // Cadastro de Itens. O código CAT sai do trigger no envio. Dois aparelhos
-  // cadastrando o mesmo material offline: o segundo é recusado pelo unique
-  // (codigo_sap ativo) e aparece na fila para conferir — não sobrescreve.
-  alm_catalogo_itens: { rotulo: 'Cadastro de Itens', resumo: campos('codigo_sap', 'descricao') },
+  // Cadastro de Itens. O código CAT sai do trigger no envio. O mesmo material
+  // cadastrado em dois aparelhos (ou num aparelho com a lista desatualizada):
+  // o unique (codigo_sap ativo) recusa o segundo e a fila junta com o que já
+  // está no servidor — ver alm_catalogo_mesclar_offline. 27/11: posição e
+  // foto novas ficavam presas na fila com "duplicate key".
+  alm_catalogo_itens: {
+    rotulo: 'Cadastro de Itens',
+    resumo: campos('codigo_sap', 'descricao'),
+    duplicado: {
+      indice: 'uq_alm_catalogo_itens_sap_ativo',
+      mesclar: async (linha, feitoEm) => {
+        const { supabase } = await import('../../db/supabaseClient');
+        const { data, error } = await (supabase as any).rpc('alm_catalogo_mesclar_offline', { p_linha: linha, p_feito_em: feitoEm });
+        if (error) throw new Error(error.message);
+        return typeof data === 'string' ? data : null;
+      },
+    },
+  },
   alm_catalogo_item_fotos: { rotulo: 'Cadastro de Itens — foto adicional' },
 
   // Suprimentos — Ava. Fornecedor. Códigos OCF/AVF saem do trigger no banco, no envio.

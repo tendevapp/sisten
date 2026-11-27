@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LIMITE_TENTATIVAS_TRANSITORIAS, erroTransitorio, idsDaOperacao, pendenciasPorUsuario, precisaEsperar, servidorForaDoAr, virouRecusa,
+  LIMITE_TENTATIVAS_TRANSITORIAS, duplicadoParaMesclar, erroTransitorio, idsDaOperacao, pendenciasPorUsuario, precisaEsperar, servidorForaDoAr, virouRecusa,
   type OperacaoPlano,
 } from './planoEnvio';
 
@@ -98,5 +98,21 @@ describe('pendências do aparelho por usuário', () => {
       { usuarioId: 'u1', nome: 'ANA', total: 2, comErro: 1 },
       { usuarioId: 'u2', nome: null, total: 1, comErro: 0 },
     ]);
+  });
+});
+
+describe('cadastro duplicado (mesmo material cadastrado em dois aparelhos)', () => {
+  const indice = 'uq_alm_catalogo_itens_sap_ativo';
+  const msg = `duplicate key value violates unique constraint "${indice}"`;
+  const linha = { id: 'novo-1', codigo_sap: '1308621', posicao_estoque: '104.370200' };
+  it('inclusão de uma linha recusada pelo índice do módulo: devolve a linha para juntar com a existente', () => {
+    expect(duplicadoParaMesclar(op({ tipo: 'insert', corpo: texto(linha) }), msg, indice)).toEqual(linha);
+    expect(duplicadoParaMesclar(op({ tipo: 'insert', corpo: texto([linha]) }), msg, indice)).toEqual(linha);
+  });
+  it('outro índice, outro tipo ou várias linhas: não junta (segue recusa normal)', () => {
+    expect(duplicadoParaMesclar(op({ tipo: 'insert', corpo: texto(linha) }), 'duplicate key value violates unique constraint "x_pkey"', indice)).toBeNull();
+    expect(duplicadoParaMesclar(op({ tipo: 'update', corpo: texto(linha) }), msg, indice)).toBeNull();
+    expect(duplicadoParaMesclar(op({ tipo: 'insert', corpo: texto([linha, { ...linha, id: 'novo-2' }]) }), msg, indice)).toBeNull();
+    expect(duplicadoParaMesclar(op({ tipo: 'insert', corpo: texto({ codigo_sap: '1' }) }), msg, indice)).toBeNull();
   });
 });
