@@ -138,9 +138,10 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
       <div className={`login-cover ${showForm ? 'login-cover-back' : ''}`}>
         <picture className="login-cover-pic">
           {/* Versao em pe da arte para celular; a media query e a mesma do CSS */}
-          <source media="(max-aspect-ratio: 5/4)" srcSet="/tela-mobile.png" />
+          {/* WebP (~135 KB) no lugar do PNG (1,8 MB) — 27/11/2026, uso da Vercel */}
+          <source media="(max-aspect-ratio: 5/4)" srcSet="/tela-mobile.webp" />
           <img
-            src="/tela.png"
+            src="/tela.webp"
             alt="SISTEN — Sistema de Informação TEN"
             className="h-full w-full select-none"
             draggable={false}

@@ -7,7 +7,7 @@
  * Uma aba aberta antes do deploy segue rodando o código antigo até alguém
  * recarregar — em 28/10/2026 as abas antigas continuaram fazendo as consultas
  * que tinham derrubado o banco horas depois da correção estar no ar. A cada
- * 10 min (com a aba visível) compara o pacote principal desta página com o do
+ * 10 min (com a aba visível; não a cada volta à tela) compara o pacote principal desta página com o do
  * `index.html` publicado; se mudou, pede ao service worker para atualizar e
  * mostra a faixa "Recarregar". Não recarrega sozinho: pode haver formulário
  * preenchido na tela.
@@ -51,9 +51,12 @@ export default function NovaVersaoAviso() {
       }
     };
 
+    // Sem conferir a cada volta à tela: no celular isso é toda hora, e cada
+    // conferência baixa o index.html sem cache — virou parte do uso que fez a
+    // Vercel suspender o projeto em 27/11/2026. Ao voltar, quem procura versão
+    // nova é o service worker (atualizacaoApp.ts), com o sw.js.
     const timer = window.setInterval(conferir, INTERVALO_MS);
-    document.addEventListener('visibilitychange', conferir);
-    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', conferir); };
+    return () => { window.clearInterval(timer); };
   }, []);
 
   if (!novaVersao) return null;

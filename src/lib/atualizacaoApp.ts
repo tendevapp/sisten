@@ -20,6 +20,16 @@
 export const OCULTA_MINIMO_MS = 15 * 60_000;
 const VERIFICAR_A_CADA_MS = 30 * 60_000;
 
+/**
+ * Ao voltar à tela, procura versão nova no máximo a cada 5 min: cada busca
+ * baixa o sw.js do servidor, e no celular a tela volta toda hora (27/11/2026,
+ * a Vercel suspendeu o projeto por uso).
+ */
+export const PROCURAR_AO_VOLTAR_MINIMO_MS = 5 * 60_000;
+export function procurarAoVoltar(ultimaProcura: number | null, agora: number): boolean {
+  return ultimaProcura === null || agora - ultimaProcura >= PROCURAR_AO_VOLTAR_MINIMO_MS;
+}
+
 export type MotivoAvaliacao = 'tick' | 'navegacao' | 'voltou';
 
 export function momentoDeAtualizar(p: {
@@ -79,7 +89,9 @@ export function iniciarAtualizacaoApp(opcoes: { ehTv: () => boolean }): void {
     avaliar('tick');
   });
 
+  let ultimaProcura: number | null = null;
   const procurar = () => {
+    ultimaProcura = Date.now();
     navigator.serviceWorker.getRegistration().then(r => r?.update()).catch(() => {});
   };
   window.setInterval(() => { procurar(); avaliar('tick'); }, VERIFICAR_A_CADA_MS);
@@ -93,6 +105,6 @@ export function iniciarAtualizacaoApp(opcoes: { ehTv: () => boolean }): void {
     }
     const ficou = ocultaDesde !== null ? Date.now() - ocultaDesde : 0;
     ocultaDesde = null;
-    if (!avaliar('voltou', ficou)) procurar();
+    if (!avaliar('voltou', ficou) && procurarAoVoltar(ultimaProcura, Date.now())) procurar();
   });
 }

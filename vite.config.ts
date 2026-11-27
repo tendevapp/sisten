@@ -12,12 +12,93 @@ import {VitePWA} from 'vite-plugin-pwa';
 // o padrão.
 const cacheDir = process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'sisten-vite') : undefined;
 
+// ---------------------------------------------------------------------------
+// Divisão dos arquivos do build — 27/11/2026, a Vercel suspendeu o projeto
+// por uso. Tudo o que a abertura do app carrega ia num só `index-<hash>.js`,
+// e 405 dos 427 arquivos importavam dele: qualquer mudança nele (metade dos
+// commits) trocava o hash de quase todos — 409 arquivos, 12,9 MB que cada
+// aparelho baixava de novo a cada deploy (o conteúdo era o mesmo, só mudava
+// a linha `import … from "./index-<hash>.js"`).
+//
+// Agora cada módulo nosso da abertura vira um arquivo (`m-…`), como no modo
+// dev — mesma ordem de avaliação dos módulos ES, sem risco novo de ciclo — e
+// as bibliotecas ficam em blocos estáveis (`vendor-…`). Uma mudança só troca
+// o arquivo dela e os que dependem dele. Módulos só das telas lazy seguem a
+// divisão padrão do Rollup.
+// ---------------------------------------------------------------------------
+
+// Ícone (`m-icone-`) fica de fora: o pacote todo cai no grafo da abertura, mas
+// o ícone só de tela lazy não carrega na abertura.
+const PREFIXO_ABERTURA = /(^|\/)(m-(?!icone-)|vendor-)[^/]*$/;
+function ehArquivoDaAbertura(arquivo: string): boolean {
+  return PREFIXO_ABERTURA.test(arquivo);
+}
+
+type InfoModulo = { isEntry: boolean; importedIds: readonly string[] } | null;
+interface MetaChunks { getModuleInfo: (id: string) => InfoModulo; getModuleIds: () => IterableIterator<string> }
+
+/** Módulos que a entrada importa estaticamente (direto ou não) — os que carregam na abertura. */
+let abertura: Set<string> | null = null;
+function modulosDaAbertura(meta: MetaChunks): Set<string> {
+  if (abertura) return abertura;
+  const vistos = new Set<string>();
+  const fila = [...meta.getModuleIds()].filter((id) => meta.getModuleInfo(id)?.isEntry);
+  while (fila.length) {
+    const id = fila.pop()!;
+    if (vistos.has(id)) continue;
+    vistos.add(id);
+    for (const dep of meta.getModuleInfo(id)?.importedIds ?? []) fila.push(dep);
+  }
+  return (abertura = vistos);
+}
+
+function separarModulosDaAbertura(id: string, meta: MetaChunks): string | undefined {
+  if (/\.css($|\?)/.test(id) || id.includes('modulepreload-polyfill')) return undefined;
+  if (!modulosDaAbertura(meta).has(id)) return undefined;
+  const nm = id.split('node_modules/').pop()!;
+  if (id.includes('node_modules/')) {
+    if (/^(react|react-dom|scheduler)\//.test(nm)) return 'vendor-react';
+    if (/^(@supabase\/|iceberg-js\/|tslib\/)/.test(nm)) return 'vendor-supabase';
+    // Ícone usado na abertura: um arquivo cada, como os das telas lazy (senão
+    // um ícone novo no cabeçalho trocaria o bloco que todo ícone importa).
+    const icone = nm.match(/^lucide-react\/dist\/esm\/icons\/([\w-]+)\.js$/);
+    if (icone) return `m-icone-${icone[1]}`;
+    if (nm.startsWith('lucide-react/')) return 'vendor-lucide';
+    return 'vendor';
+  }
+  if (id.startsWith('\0') || id.includes('vite/preload-helper')) return 'vendor';
+  if (id.endsWith('/src/main.tsx')) return undefined;
+  const rel = id.replace(/\\/g, '/').replace(/^.*?\/src\//, '');
+  return `m-${rel.replace(/\.[jt]sx?$/, '').replace(/[^\w]+/g, '-')}`;
+}
+
+/**
+ * O pacote de ícones entra inteiro no grafo da abertura (importado pelo
+ * índice do lucide), e cada ícone ganha seu arquivo — os não usados saem
+ * vazios. Descarta arquivo vazio que nenhum outro cita.
+ */
+const descartarArquivosVazios = {
+  name: 'sisten-descartar-arquivos-vazios',
+  generateBundle(_: unknown, bundle: Record<string, { type: string; code?: string }>) {
+    const vazios = Object.entries(bundle)
+      .filter(([, c]) => c.type === 'chunk' && !(c.code ?? '').replace(/\/\/# sourceMappingURL=.*$/m, '').trim())
+      .map(([nome]) => nome);
+    if (!vazios.length) return;
+    const textos = Object.values(bundle).map((c) => (c.type === 'chunk' ? c.code ?? '' : ''));
+    for (const nome of vazios) {
+      const base = nome.split('/').pop()!;
+      if (!textos.some((t) => t.includes(base))) delete bundle[nome];
+    }
+  },
+};
+
 export default defineConfig(() => {
   return {
     cacheDir,
     plugins: [
       react(),
       tailwindcss(),
+      descartarArquivosVazios,
       // Service worker do módulo Produção (chão de fábrica, rede intermitente):
       // faz precache do app shell para o SISTEN ABRIR mesmo sem sinal — o
       // outbox (src/lib/outbox.ts) já cobre a GRAVAÇÃO offline, mas sem SW o
@@ -133,6 +214,17 @@ export default defineConfig(() => {
         },
       }),
     ],
+    build: {
+      rollupOptions: { output: { manualChunks: separarModulosDaAbertura } },
+      modulePreload: {
+        // Os módulos da abertura já estão carregados quando uma tela lazy é
+        // aberta: listá-los no preload de cada tela só inflaria o App e o
+        // faria mudar de nome junto com eles.
+        // No index.html a lista fica inteira (sem ela a abertura vira cascata).
+        resolveDependencies: (_arquivo, deps, { hostType }) =>
+          hostType === 'js' ? deps.filter((d) => !ehArquivoDaAbertura(d)) : deps,
+      },
+    },
     resolve: {
       dedupe: ['react', 'react-dom'],
       alias: {
