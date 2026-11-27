@@ -45,10 +45,11 @@ import {
   buscarEstoqueBalcao, buscarRequisicaoBalcaoPorCodigo, buscarRequisicoesBalcaoPorCodigos, excluirRequisicaoBalcao, importarSapBalcao, informarDocSap, listarAlteracoesBalcao, listarAplicacoesBalcao,
   listarExportacoesBalcao, listarRequisicoesBalcao, reabrirExportacaoBalcao, registrarExportacaoBalcao,
   buscarRequisicoesBalcaoNoHistorico, listarRequisicoesBalcaoDoPeriodo,
-  buscarOriginalExportacaoBalcao, originalBalcaoDisponivel,
+  buscarOriginalExportacaoBalcao, originalBalcaoDisponivel, buscarRequisicoesBalcaoPorIds,
   salvarRequisicaoBalcao, carregarCodigosEpiBook,
   type ReqBalcaoAlteracao, type ReqBalcaoExportacao, type ReqBalcaoRow,
 } from '../../lib/requisicaoBalcaoApi';
+import { conferirAntesDeExportar, mensagemConflitoExportacao } from '../../lib/requisicaoBalcaoExportacao';
 import {
   baixarPlanilhaBalcao, classificarImportacao, codigosForaDaLista, gerarPlanilhaBalcao, lerArquivoBalcaoConcluido,
   type LeituraPlanilhaBalcao, type SituacaoImportacao,
@@ -428,14 +429,27 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
 
     setExportando(true);
     try {
-      const planilha = gerarPlanilhaBalcao(sel);
-      await registrarExportacaoBalcao(sel.map((r) => r.id), planilha, user.name);
+      // A lista pode ter sido carregada antes de outra pessoa exportar (27/11:
+      // duas planilhas com as mesmas 30 requisições). Relê no servidor e gera
+      // a planilha com o que está lá agora; o banco confere de novo no registro.
+      const conferencia = conferirAntesDeExportar(sel, await buscarRequisicoesBalcaoPorIds(sel.map((r) => r.id)));
+      if (conferencia.ok === false) {
+        toast.error(mensagemConflitoExportacao(conferencia));
+        setSelecionadas(new Set());
+        await recarregarRequisicoes();
+        return;
+      }
+      const { atuais, reexportar } = conferencia as Extract<typeof conferencia, { ok: true }>;
+      const planilha = gerarPlanilhaBalcao(atuais);
+      await registrarExportacaoBalcao(atuais.map((r) => r.id), planilha, user.name, reexportar);
       baixarPlanilhaBalcao(planilha.blob, planilha.arquivo);
-      toast.success(`${planilha.arquivo}: ${sel.length} requisição(ões), ${planilha.linhas} linha(s).`);
+      toast.success(`${planilha.arquivo}: ${atuais.length} requisição(ões), ${planilha.linhas} linha(s).`);
       setSelecionadas(new Set());
       await recarregarRequisicoes();
     } catch (err: any) {
       toast.error(err?.message || 'Não foi possível exportar a planilha.');
+      // Recusa do banco (ex.: já exportadas por outra pessoa): mostra a lista de agora.
+      await recarregarRequisicoes().catch(() => undefined);
     } finally {
       setExportando(false);
     }

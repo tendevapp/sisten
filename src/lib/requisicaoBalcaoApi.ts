@@ -157,9 +157,14 @@ export async function listarExportacoesBalcao(limite = 100): Promise<ReqBalcaoEx
   return (data || []) as ReqBalcaoExportacao[];
 }
 
-/** Arquiva os bytes baixados e registra o lote com seu arquivo original. */
+/**
+ * Arquiva os bytes e registra o lote com seu arquivo original — ANTES de
+ * baixar o XLSX. O banco recusa requisição que já está noutro lote (outra
+ * pessoa exportou enquanto a lista estava aberta), a não ser as de
+ * `reexportar`, que a pessoa viu exportadas e confirmou "Exportar de novo".
+ */
 export async function registrarExportacaoBalcao(
-  ids: string[], planilha: { arquivo: string; blob: Blob; linhas: number }, por: string,
+  ids: string[], planilha: { arquivo: string; blob: Blob; linhas: number }, por: string, reexportar: string[] = [],
 ): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Sessão expirada. Entre novamente.');
@@ -176,8 +181,13 @@ export async function registrarExportacaoBalcao(
     p_por: por,
     p_original_path: path,
     p_total_itens: planilha.linhas,
+    p_reexportar: reexportar,
   } as any);
-  if (error) throw new Error(error.message);
+  if (error) {
+    // Lote recusado: o original enviado não serve para nada.
+    await bucketOriginaisBalcao().remove([path]).catch(() => undefined);
+    throw new Error(error.message);
+  }
 }
 
 export async function buscarOriginalExportacaoBalcao(lote: ReqBalcaoExportacao): Promise<Blob> {
